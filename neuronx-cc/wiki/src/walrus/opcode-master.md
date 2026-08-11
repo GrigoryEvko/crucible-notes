@@ -4,9 +4,9 @@
 
 ## Abstract
 
-A BIR op carries **three** distinct integer identities, and conflating them is the single most common cross-layer error in earlier opcode maps. This page is the authoritative reconciliation of all three into one per-op master mapping:
+A BIR op carries **three** distinct integer identities, and conflating them is the most common cross-layer error when reading Walrus codegen. This page is the authoritative reconciliation of all three into one per-op master mapping:
 
-- **L1** — the `bir::InstructionType` ordinal (`0..109`). The IR class id: *what the node is*. Defined in `libBIR.so`, recovered byte-exact from [`InstructionType2string`](../bir/instruction-type.md). **CONFIRMED.**
+- **L1** — the `bir::InstructionType` ordinal (`0..109`). The IR class id: *what the node is*. Defined in `libBIR.so`, recovered byte-exact from [`InstructionType2string`](../bir/instruction-type.md).
 - **L2** — the `NEURON_ISA_TPB_OPCODE` enum value the `COLLECT_OPCODES` arm inserts into a `std::set<u32>`. The silicon micro-op id: *which engine micro-op the op compiles to*. Engine-relative; written as a clean dword in the COLLECT arm and as a byte in the GENERATE arm.
 - **L3** — the 16-bit wire **header word** `setupHeader` stamps at `bundle[0:2]`: `(0x10 << 8) | L2byte`. The bytes that hit the [64-byte bundle](../isa/instruction-bundle.md) on the wire.
 
@@ -16,23 +16,23 @@ The deliverable is the **110-row × {V2,V3,V4} opcode-word table** in [§3](#3-t
 
 | | |
 |---|---|
-| **Header writer** | `CoreV2/V3/V4GenImpl::setupHeader` @ `0x1172120` / `0x1369280` / `0x143f440` — byte-identical — CONFIRMED |
-| **Header word** | `bundle[0:4] = {opcode, 0x10, 0x00, 0x00}`; `*(u16*)bundle = 0x10NN` — CONFIRMED |
-| **`inst_word_len`** | `byte[1] = 0x10` = 16 dwords = 64 B, hardcoded immediate, no non-16 length exists — CONFIRMED |
-| **L3 word rule (INV-1)** | `L3word = (0x10 << 8) \| L2byte`; `QuantizeMx` sets `byte[1] \|= 1` on `SATURATE` — CONFIRMED |
-| **L1 ≠ L2 (INV-3)** | the IT ordinal and the opcode int are **separate enums**; equal for no op — CONFIRMED |
-| **Dispatch** | reached as a virtual through the `Generator` vtable slot **+0x48** (slot 9) — CONFIRMED |
-| **Per-arch diff** | Activation byte `0x21` (V2/V3) → `0x25` (V4); else opcode byte is arch-stable — CONFIRMED |
+| **Header writer** | `CoreV2/V3/V4GenImpl::setupHeader` @ `0x1172120` / `0x1369280` / `0x143f440` — byte-identical |
+| **Header word** | `bundle[0:4] = {opcode, 0x10, 0x00, 0x00}`; `*(u16*)bundle = 0x10NN` |
+| **`inst_word_len`** | `byte[1] = 0x10` = 16 dwords = 64 B, hardcoded immediate, no non-16 length exists |
+| **L3 word rule (INV-1)** | `L3word = (0x10 << 8) \| L2byte`; `QuantizeMx` sets `byte[1] \|= 1` on `SATURATE` |
+| **L1 ≠ L2 (INV-3)** | the IT ordinal and the opcode int are **separate enums**; equal for no op |
+| **Dispatch** | reached as a virtual through the `Generator` vtable slot **+0x48** (slot 9) |
+| **Per-arch diff** | Activation byte `0x21` (V2/V3) → `0x25` (V4); else opcode byte is arch-stable |
 
 ---
 
 ## 1. `setupHeader` — byte-identical across all three generations
 
-`setupHeader(void* this, void* bundle, void* opcodeByte)` writes the 4-byte header word. Disassembled directly from the binary at all three nm-confirmed addresses, the bodies are identical to the byte (`0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3`):
+`setupHeader(void* this, void* bundle, void* opcodeByte)` writes the 4-byte header word. At all three nm-resolved addresses the bodies are identical to the byte (`0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3`):
 
 ```c
-// CoreV2GenImpl::setupHeader @0x1172120  (CONFIRMED — byte-identical to
-// CoreV3 @0x1369280 and CoreV4 @0x143f440; only the entry RVA differs).
+// CoreV2GenImpl::setupHeader @0x1172120 — byte-identical to
+// CoreV3 @0x1369280 and CoreV4 @0x143f440; only the entry RVA differs.
 // System V: rdi=this, rsi=&bundle (64-B buffer), rdx=&opcodeByte.
 void setupHeader(void* this_, uint8_t* bundle, const uint8_t* opcodeByte) {
     uint8_t op = *opcodeByte;        // 1172120  movzbl (%rdx),%eax
@@ -51,9 +51,9 @@ The 4-byte header it produces:
 | `+0x01` | byte | `0x10` | `inst_word_len` = 16 dwords = 64-byte bundle — **hardcoded immediate**, zero data dependence |
 | `+0x02` | word | `0x0000` | format / reserved |
 
-Read little-endian, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte (CONFIRMED). **Are there ANY non-16 `inst_word_len` values?** No. `byte[1]` is the literal `0x10` in all three bodies with no data dependence; every `CoreV{2,3,4}` bundle is exactly 64 bytes (`emplace_back<std::array<u8,64>>` + `fwrite(…, 0x40, …)`). The MX opcodes `0x1009 / 0x100A / 0x10E3` are **full words**: their high byte `0x10` *is* the length, the low byte (`0x09 / 0x0A / 0xE3`) is the opcode. The only op that perturbs the high byte is `QuantizeMx`, which OR-s bit 0 (`0x10 → 0x11`) when its `SATURATE` flag is set.
+Read little-endian, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte. **Are there ANY non-16 `inst_word_len` values?** No. `byte[1]` is the literal `0x10` in all three bodies with no data dependence; every `CoreV{2,3,4}` bundle is exactly 64 bytes (`emplace_back<std::array<u8,64>>` + `fwrite(…, 0x40, …)`). The MX opcodes `0x1009 / 0x100A / 0x10E3` are **full words**: their high byte `0x10` *is* the length, the low byte (`0x09 / 0x0A / 0xE3`) is the opcode. The only op that perturbs the high byte is `QuantizeMx`, which OR-s bit 0 (`0x10 → 0x11`) when its `SATURATE` flag is set.
 
-**Dispatch.** `setupHeader` is a virtual reached through the `Generator` vtable slot at `+0x48` (slot 9). In the canonical encoder body (the `CoreV2` `Rng` visitor `visitInstRng` @`0x12376a0`), the call site is `call *0x48(%rax)` @`0x1237802`, immediately after the opcode byte is materialized on the stack (CONFIRMED — disassembled this pass). The few MX ops write the word directly (`mov $0x10NN,%esi ; mov %si,(bundle)`) instead of calling `setupHeader`, but the wire bytes are byte-identical to the `{opcode, 0x10, 0, 0}` skeleton.
+**Dispatch.** `setupHeader` is a virtual reached through the `Generator` vtable slot at `+0x48` (slot 9). In the canonical encoder body (the `CoreV2` `Rng` visitor `visitInstRng` @`0x12376a0`), the call site is `call *0x48(%rax)` @`0x1237802`, immediately after the opcode byte is materialized on the stack. The few MX ops write the word directly (`mov $0x10NN,%esi ; mov %si,(bundle)`) instead of calling `setupHeader`, but the wire bytes are byte-identical to the `{opcode, 0x10, 0, 0}` skeleton.
 
 ---
 
@@ -68,7 +68,7 @@ Every `CoreV*` encoder shares one skeleton; the per-op deltas are body-field wri
 | `2` | `RUN_ISA_CHECKS` | builds the bundle in scratch + runs `runSingleISACheck`; no `fwrite` | (same field writes as mode 1) |
 | else | error | `reportError "Wrong CodeGenMode…"` | — |
 
-The dual witness — `movl $op,-X(%rbp)` (mode 0) **and** `movb $op,-Y(%rbp)` (mode 1, immediately before `mov %rax,…+0x48` / `call *0x48(%rax)`) — is how every opcode in [§3](#3-the-master-110-row-opcode-word-table-l1--l2--l3-per-arch) was re-pinned. This page verified the dual witness live in the binary for `Pool 0x45`, `Activation(V2) 0x21`, `Activation(V4) 0x25`, `QuantizeMx 0xE3`, `Rng 0x4D`, `CollectiveSend/Recv 0xCB`, `MaxIndex 0x6D+0x6E`, `RangeSelect 0xBC`, `NonzeroWithCount 0xF2`, and the MX word stores.
+Each opcode therefore leaves a dual witness in its encoder body: `movl $op,-X(%rbp)` (mode 0) **and** `movb $op,-Y(%rbp)` (mode 1, immediately before `mov %rax,…+0x48` / `call *0x48(%rax)`). Both witnesses are present and agree for `Pool 0x45`, `Activation(V2) 0x21`, `Activation(V4) 0x25`, `QuantizeMx 0xE3`, `Rng 0x4D`, `CollectiveSend/Recv 0xCB`, `MaxIndex 0x6D+0x6E`, `RangeSelect 0xBC`, `NonzeroWithCount 0xF2`, and the MX word stores; the opcodes in [§3](#3-the-master-110-row-opcode-word-table-l1--l2--l3-per-arch) are read from that pair.
 
 > **The engine is NOT a wire field.** The physical engine rides the BIR `Instruction` at `+0x90` (`EngineType`), pinned by I-strand codegen. The encoder only *reads* it for the census `DenseMap` key. The **Eng** column below is metadata, not a bundle field. Wire engine ordinals: `{PE=0, ACT=1, POOL=2, DVE=3, SP=4}`.
 
@@ -80,7 +80,7 @@ The dual witness — `movl $op,-X(%rbp)` (mode 0) **and** `movb $op,-Y(%rbp)` (m
 - `CoreV3GenImpl::visitInst*` — **13** overrides: `TensorTensor, Matmult, MatmultSparse, CoreBarrier, GPSIMDSB2SB, GetSequenceBounds, RangeSelect, MaxIndexAndMatchReplace, NonzeroWithCount, GetRandState, RandGetState, RandSetState, SetRandState`.
 - `CoreV4GenImpl::visitInst*` — **5** overrides: `Activation, Exponential, MatmultMx, QuantizeMx, Rand2`.
 
-Critically, **most overrides keep the same opcode byte** — the override only extends the int32 / extended-engine field bands (e.g. the `CoreV3` DVE overrides `TensorTensor`, `RangeSelect`, `MaxIndexAndMatchReplace`, `NonzeroWithCount`). The genuine per-arch *opcode renumber* is rare; see [§4(b)](#b-per-arch-l3-differences--v4-v3-newvn).
+Critically, **most overrides keep the same opcode byte** — the override only extends the int32 / extended-engine field bands (e.g. the `CoreV3` DVE overrides `TensorTensor`, `RangeSelect`, `MaxIndexAndMatchReplace`, `NonzeroWithCount`). The genuine per-arch *opcode renumber* is rare; see [§4(b)](#b-per-arch-l3-differences-Δv4--Δv3--newvn).
 
 ---
 
@@ -131,7 +131,7 @@ The headline deliverable. Opcode words shown as `0x10NN` (`NN` = L2 low byte). *
 | 38 | BNBackprop2 | `0x64`(+`0x8E`) | `0x1064(+0x108E)` | = | = | 1–2 | POOL | `[≠][MB:2]` shares `0x64`; V2 visit @`0x12368e0` stamps `0x8E` param |
 | 39 | StreamShuffle | `0x69`+`0x6A` | `0x1069+0x106A` | = | = | 2 | DVE | `[≠][MB:2][COL2]` mask `0x69` (==StreamTranspose) |
 | 40 | StreamTranspose | `0x69`+`0x6B` | `0x1069+0x106B` | = | = | 2 | DVE | `[≠][MB:2][COL2]` mask `0x69` (==StreamShuffle) |
-| 41 | ReadVarAddr | `0xB2`/178 | `0x10B2` | = | = | 1 | DMA | `[≠]` `generateMoveShape`. STRONG |
+| 41 | ReadVarAddr | `0xB2`/178 | `0x10B2` | = | = | 1 | DMA | `[≠]` `generateMoveShape`; opcode read HIGH |
 | 42 | GenericIndirectLoad | — | (lowered→43) | = | = | lo | — | `[LOW]` → IndirectLoad |
 | 43 | IndirectLoad | `0xC4`/`0xD6` | `0x10C4/0x10D6`* | = | = | 1 | DMA | `[≠][SPLIT][COL2]` `generateIndirectLoadSave`; `0xC4` bound-checked / `0xD6` plain; see NOTE-A |
 | 44 | GenericIndirectSave | — | (lowered→45/46) | = | = | lo | — | `[LOW]` → IndirectSave(Accum) |
@@ -197,15 +197,19 @@ The headline deliverable. Opcode words shown as `0x10NN` (`NN` = L2 low byte). *
 | 104 | NonzeroWithCount | `0xF2`/242 | — | `0x10F2` | = | 1 | DVE | `[≠][NEWv3]` IT=104, L2=`0xF2` (NOTE-C) |
 | 105 | Loop | — | (lowered) | = | = | lo | — | `[LOW]` lowered to branch IR |
 | 106 | DynamicForLoop | — | (lowered) | = | = | lo | — | `[LOW]` lowered to branch IR |
-| 107 | DMABlock | — | (region) | = | = | lo | DMA | `[LOW]` region carrier; no opcode. SPECULATIVE on enc |
-| 108 | DoWhile | — | (lowered) | = | = | lo | — | `[LOW]` lowered to branch IR. SPECULATIVE on enc |
-| 109 | TongaReduceMacroSymbolic | — | (macro) | = | = | lo | — | `[LOW]` macro/symbolic reduce carrier. SPECULATIVE |
+| 107 | DMABlock | — | (region) | = | = | lo | DMA | `[LOW]` region carrier; no opcode. Encoder absence SPECULATIVE |
+| 108 | DoWhile | — | (lowered) | = | = | lo | — | `[LOW]` lowered to branch IR. Encoder absence SPECULATIVE |
+| 109 | TongaReduceMacroSymbolic | — | (macro) | = | = | lo | — | `[LOW]` macro/symbolic reduce carrier. Encoder absence SPECULATIVE |
 
-> ***\*NOTE-A (IndirectLoad/Save L2 byte) — SPLIT, not a single value.*** **CORRECTION (#827 audit).** An earlier draft resolved this op to a single L2 `0xD6` and dismissed the competing `0xC4` reading as "the indirect-AP sub-word or an older constant." That is wrong: `generateIndirectLoadSave` @`0x1268c00` inserts **both** opcodes into the per-instruction `std::set<u32>` via genuine COLLECT-arm `_M_insert_unique` calls, selected at runtime by the **bound-check flag** `Inst+0x1ED`. The body branches on `cmp byte ptr [rax+0x1ED],0 ; jz loc_1268FD0` @`0x1268d0c`/`0x1268d13`: bound-check **set** → `movl $0xC4,-0xB0(%rbp)` @`0x1268f89` → `_M_insert_unique` @`0x1268f96` (the path guarded by `"Indirect DMA bound-check can only be on Pool engine"`); bound-check **clear** (the `jz` target) → `movl $0xD6,-0xB0(%rbp)` @`0x1269576` → `_M_insert_unique` @`0x1269583`. Both have identical set-insert status in the same function, so the op is `[SPLIT]` — `0xC4` (range/bound-checked) / `0xD6` (plain). **CONFIRMED — both `movl` + `_M_insert_unique` sites and the `Inst+0x1ED` guard byte-verified.**
->
-> ***★NOTE-B (RangeSelect second word).*** The V3 `RangeSelect` encoder (`0x135f8c0`) may **append** a `0x9B` (`DveReadAccumulator`) drain word, so the practical emission is 2 words: primary `0xBC` (188) + accumulator-drain `0x9B`. The op opcode is `0xBC`. **STRONG.**
->
-> ***★NOTE-C (NonzeroWithCount).*** L1 IT = **104** (CERTAIN, from both `InstructionType2string` and the `sameInst` arm); L2/L3 opcode = `0xF2` (242). An earlier "bir 231" annotation conflates `231 = 0xE7 = IndirectCopy`'s L2 with this op's IT — there is no 231-vs-242 IT split. **CONFIRMED.**
+**NOTE-A (IndirectLoad/Save L2 byte) — a split, not a single value.** `generateIndirectLoadSave` emits **two** different opcodes, chosen at runtime by the bound-check flag at `Inst+0x1ED`. With the flag set the op encodes as `0xC4` (range/bound-checked); that arm is guarded by the diagnostic `"Indirect DMA bound-check can only be on Pool engine"`, so bound-checked indirect DMA is Pool-only. With the flag clear it encodes as `0xD6` (plain). Both values reach the per-instruction `std::set<u32>` through ordinary COLLECT-arm `_M_insert_unique` calls in the same function, which is why the op carries `[SPLIT]` rather than one L2 byte.
+
+*Anchors: `generateIndirectLoadSave` @ `0x1268c00`; flag test `cmp byte ptr [rax+0x1ED],0` @ `0x1268d0c`/`0x1268d13`; `movl $0xC4,-0xB0(%rbp)` @ `0x1268f89` + `_M_insert_unique` @ `0x1268f96`; `movl $0xD6,-0xB0(%rbp)` @ `0x1269576` + `_M_insert_unique` @ `0x1269583`.*
+
+**NOTE-B (RangeSelect second word).** The V3 `RangeSelect` encoder @ `0x135f8c0` may **append** a `0x9B` (`DveReadAccumulator`) drain word, so the practical emission is 2 words: primary `0xBC` (188) + accumulator-drain `0x9B`. The op opcode itself is `0xBC`; the appended drain word is a HIGH-confidence read.
+
+**NOTE-C (NonzeroWithCount).** L1 IT = **104**, agreed by both `InstructionType2string` and the `sameInst` arm; L2/L3 opcode = `0xF2` (242).
+
+> **GOTCHA —** Do not read `NonzeroWithCount` as "bir 231". `231 = 0xE7` is `IndirectCopy`'s L2 opcode, not this op's instruction-type ordinal; there is no 231-vs-242 IT split.
 
 IT 5 `ReadActivationAccumulator` and IT 101 `ActivationReadAccumulator` are two distinct read-accumulator bodies (`visitInstReadActivationAccumulator` @`0x125b830`, `visitInstActivationReadAccumulator` @`0x1234f70`) that both stamp `0x24`.
 
@@ -233,7 +237,7 @@ The wire opcode is **never** a unique per-IT key; these collisions are real and 
 
 ### (b) Per-arch L3 differences `[ΔV4]` / `[ΔV3]` / `[NEWvn]`
 
-- **Genuine opcode renumber** (different byte, same op, across arch): **Activation IT4 — V2=`0x21` / V3=`0x21`(inh) / V4=`0x25`.** This is the single clearest V2→V4 opcode-byte divergence; both bytes are byte-verified in the binary ([§5](#5-adversarial-self-verification--strongest-claims-re-checked-vs-the-binary)). The V4 body opens with an act-accumulator-mode `[rax+0x128]` test (the fused-activation slot).
+- **Genuine opcode renumber** (different byte, same op, across arch): **Activation IT4 — V2=`0x21` / V3=`0x21`(inh) / V4=`0x25`.** This is the single clearest V2→V4 opcode-byte divergence; both bytes are byte-verified in the binary ([§5](#5-evidence-anchors-and-limits)). The V4 body opens with an act-accumulator-mode `[rax+0x128]` test (the fused-activation slot).
 - **GEN3-NEW** (no CoreV2 sibling → abs→opcode at V3): MatmultSparse(9) `0x06+0x07`, GPSIMDSB2SB(33) `0xBF`, RangeSelect(63) `0xBC`, GetSequenceBounds(64) `0xBE`, CoreBarrier(87) `0xD8`, MaxIndexAndMatchReplace(91) `0x6D+0x6E`, RandSetState(98) `0x78`, RandGetState(99) `0x77`, NonzeroWithCount(104) `0xF2`, SetRandState(59) Pool-arm `0x78`.
 - **GEN4-NEW** (abs→opcode at V4): MatmultMx(95) `0x09+0x0A`, QuantizeMx(96) `0xE3`, Rand2(97) `0xE2`, Exponential(103) `0x30`, plus the Activation(4) re-emit `0x25`.
 - **Field-extension ONLY** (opcode UNCHANGED — V3/V4 widen the int32 / extended bands; **do not mistake for renumbers**): TensorTensor(31), TensorScalar/Ptr(28/29), TensorScalarCache(30), RangeSelect/NonzeroWithCount field bands.
@@ -267,21 +271,21 @@ The wire opcode is **never** a unique per-IT key; these collisions are real and 
 
 ---
 
-## 5. Adversarial self-verification — strongest claims re-checked vs the binary
+## 5. Evidence anchors and limits
 
-Each opcode below was re-disassembled this pass at the cited address. The COLLECT dword store (mode 0) and the GENERATE byte store (mode 1) carry the same low value, and the L3 word equals `0x10<<8 | byte`. All are byte-exact.
+For every opcode below the COLLECT dword store (mode 0) and the GENERATE byte store (mode 1) carry the same low value, and the L3 word equals `0x10<<8 | byte`.
 
-| # | claim | binary evidence (this pass) | verdict |
+| # | claim | binary anchor | confidence |
 |---|---|---|---|
-| 1 | `setupHeader` byte-identical 3-arch | `0x1172120`/`0x1369280`/`0x143f440` all = `0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3` (15 B) | CONFIRMED |
-| 2 | Activation V2=`0x21`, V4=`0x25` (★ renumber) | V2 `movl $0x21,-0x150(%rbp)` @`0x125984f`; V4 `movl $0x25,-0xb0(%rbp)` @`0x143bc28`, byte `movb $0x25,-0xf0(%rbp)` @`0x143c25f`, word `mov $0x1025,%r8d` @`0x143c27e` | CONFIRMED |
-| 3 | QuantizeMx = `0x10E3` | `movb $0xe3,-0xd0(%rbp)` @`0x143ddd2`; `mov $0x10e3,%esi` @`0x143ddea` | CONFIRMED |
-| 4 | RangeSelect(63)=`0xBC`, NonzeroWithCount(104)=`0xF2` (gen3-new) | RangeSelect `movl $0xbc,-0x180(%rbp)` @`0x135f95f`; NonzeroWithCount `movl $0xf2` @`0x1355b18` + `movb $0xf2` @`0x1355b87` | CONFIRMED |
-| 5 | Send==Recv `0xCB` collision (COL2) | CollectiveSend `movl $0xcb,-0xb0(%rbp)` @`0x127252b`; CollectiveRecv `movl $0xcb` @`0x1272b9b` + `movb $0xcb` @`0x1272c1d` — byte-identical | CONFIRMED |
+| 1 | `setupHeader` byte-identical 3-arch | `0x1172120`/`0x1369280`/`0x143f440` all = `0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3` (15 B) | CERTAIN |
+| 2 | Activation V2=`0x21`, V4=`0x25` (★ renumber) | V2 `movl $0x21,-0x150(%rbp)` @`0x125984f`; V4 `movl $0x25,-0xb0(%rbp)` @`0x143bc28`, byte `movb $0x25,-0xf0(%rbp)` @`0x143c25f`, word `mov $0x1025,%r8d` @`0x143c27e` | CERTAIN |
+| 3 | QuantizeMx = `0x10E3` | `movb $0xe3,-0xd0(%rbp)` @`0x143ddd2`; `mov $0x10e3,%esi` @`0x143ddea` | CERTAIN |
+| 4 | RangeSelect(63)=`0xBC`, NonzeroWithCount(104)=`0xF2` (gen3-new) | RangeSelect `movl $0xbc,-0x180(%rbp)` @`0x135f95f`; NonzeroWithCount `movl $0xf2` @`0x1355b18` + `movb $0xf2` @`0x1355b87` | CERTAIN |
+| 5 | Send==Recv `0xCB` collision (COL2) | CollectiveSend `movl $0xcb,-0xb0(%rbp)` @`0x127252b`; CollectiveRecv `movl $0xcb` @`0x1272b9b` + `movb $0xcb` @`0x1272c1d` — byte-identical | CERTAIN |
 
-Additional spot-checks this pass (all byte-exact): Pool `movl $0x45` @`0x1239f51`; Rng `movl $0x4d` @`0x1237788`; MaxIndex two arms in one body `movl $0x6d` @`0x12546d3` + `movl $0x6e` @`0x1254732`; MX words `mov $0x1009,%esi` @`0x143e4cc` + `mov $0x100a,%esi` @`0x143ed5a`; the `+0x48` vtable dispatch `call *0x48(%rax)` @`0x1237802`.
+Further byte-exact anchors: Pool `movl $0x45` @`0x1239f51`; Rng `movl $0x4d` @`0x1237788`; MaxIndex two arms in one body `movl $0x6d` @`0x12546d3` + `movl $0x6e` @`0x1254732`; MX words `mov $0x1009,%esi` @`0x143e4cc` + `mov $0x100a,%esi` @`0x143ed5a`; the `+0x48` vtable dispatch `call *0x48(%rax)` @`0x1237802`.
 
-**Re-verify ceiling (honest).** Independently re-pinned this pass: the three `setupHeader` bodies, the `+0x48` dispatch, and 11 opcode stores across V2/V3/V4 (rows 1–5 above plus Pool/Rng/MaxIndex/MX). The remaining ~70 opcode integers are transcribed from prior per-op reads of each `_M_insert_unique` site — graded **STRONG** (consistent with the L2≡L3-low invariant, but not each re-disassembled here). The **L2-name** column (`enum_variant_string_opcode` core_v4 decoder, said to live @`0x143fd80`) is **STRONG**: the helper is an internal symbol not exported in the `nm` table, so its address could not be independently re-pinned on this page. The `[LOW]` classification of ITs 105–109 is **INFERRED** (no `visitInst` body located; consistent with no `sameInst` arm); IT107 DMABlock / IT108 DoWhile / IT109 TongaReduceMacroSymbolic encoder presence is **SPECULATIVE**.
+**Limits.** Directly pinned in the binary: the three `setupHeader` bodies, the `+0x48` dispatch, and 11 opcode stores across V2/V3/V4 (rows 1–5 above plus Pool/Rng/MaxIndex/MX). The remaining ~70 opcode integers come from per-op reads of each `_M_insert_unique` site — HIGH confidence, consistent with the L2≡L3-low invariant, but not individually re-disassembled here. The **L2-name** column (`enum_variant_string_opcode` core_v4 decoder, reported at `0x143fd80`) is HIGH: the helper is an internal symbol absent from the `nm` table, so its address could not be independently pinned. The `[LOW]` classification of ITs 105–109 is **[INFERRED]** — no `visitInst` body was located, consistent with the absence of a `sameInst` arm — and encoder presence for IT107 DMABlock / IT108 DoWhile / IT109 TongaReduceMacroSymbolic remains **[SPECULATIVE]**.
 
 ---
 

@@ -17,8 +17,8 @@ Everything below is read **directly out of the shipped Tensilica libisa config l
 x86-64, **not stripped**): its `formats[]` / `slots[]` tables, the `format_decoder` /
 `length_decoder` bodies, the 256-cell `length_table`, the 12 569 `Opcode_*_encode` thunks, the
 46 `Slot_*_get` extractors and the 3237 `Field_*_get` operand accessors are all resolvable
-symbols, and every table cell, mask and template constant quoted here was re-disassembled
-in-checkout. The device-native `xtensa-elf-objdump`/`xtensa-elf-as` (`XTENSA_CORE=ncore2gp`)
+symbols, and every table cell, mask and template constant quoted here is read from them. The
+device-native `xtensa-elf-objdump`/`xtensa-elf-as` (`XTENSA_CORE=ncore2gp`)
 serve as an independent encode/decode **oracle**. `[HIGH/OBSERVED]` throughout except where a
 format interior is flagged `[MED/INFERRED]`.
 
@@ -57,7 +57,7 @@ format interior is flagged `[MED/INFERRED]`.
 > low nibble into *narrow-8*, *wide-16* and *illegal(−1)*, on top of the `{2,3,16}` it shares
 > with the static rule. "7" is the *class* count; "4" is the *distinct size* count. Neither
 > supersedes the other; a correct decoder reproduces all 7 classes but only ever advances the
-> sweep pointer by one of 4 sizes. `[HIGH/OBSERVED]`
+> sweep pointer by one of 4 sizes.
 
 The two entry points are hardcoded, not pointer-table-dispatched: `decode_format_fn` /
 `decode_length_fn` return the literal addresses `0x3b5970` / `0x3b5a50`. A reimplementation
@@ -123,7 +123,7 @@ verbatim from `.rodata`:
 Every signature byte feeds back through the `format_decoder` predicate ladder (§3) and returns
 its own format — the encoder and decoder are mutual inverses **at the framing level**. The
 operand slotfill never touches `byte0[3:0]` (selector) — the minimum operand bit is 4 — so
-selector and operand fields are provably disjoint. `[HIGH/OBSERVED]`
+selector and operand fields are provably disjoint.
 
 > **NOTE — `F1`/`F2`/`F6`/`F7` share `op0=F, b3lo∈{3,B}`.** The four near-identical 4-slot
 > wide formats are separated *only* by the `byte3` high bits (24/25/28/29), giving the four
@@ -171,7 +171,7 @@ int format_decoder(const uint8_t *inst) {
 
 The `F1`/`F2`/`F6`/`F7` quartet all enter at `op0==0xF, b3lo∈{3,B}` and are separated purely by
 the `0x3700000F`-masked byte-3 selector matching `0x03`/`0x33`/`0x23`/`0x13`. `N1`/`N2` share
-`b3lo∈{8,A,C,E}` and split on the `0x1900000F`-masked value `0x08`/`0x18`. `[HIGH/OBSERVED]`
+`b3lo∈{8,A,C,E}` and split on the `0x1900000F`-masked value `0x08`/`0x18`.
 
 ---
 
@@ -200,9 +200,9 @@ with `b3lo`:
 | `1,3,5,9,b,d` (odd) | 3 | 2 | 2 | 16 | **16** (wide `F0`/`F1`/`F2`/`F4`/`F6`/`F7`) |
 | `7, f` | 3 | 2 | 2 | 16 | **−1** (illegal) |
 
-Value census over the 256 cells: `{3:128, 2:96, 16:22, 8:8, −1:2}`. Spot-verified rows in this
-pass: `b3lo=0` last cell = `0x08`; `b3lo=1` last cell = `0x10`(16); `b3lo=7` and `b3lo=f` last
-cell = `0xffffffff`(−1) — all byte-exact. `[HIGH/OBSERVED]`
+Value census over the 256 cells: `{3:128, 2:96, 16:22, 8:8, −1:2}`. Spot-verified rows:
+`b3lo=0` last cell = `0x08`; `b3lo=1` last cell = `0x10`(16); `b3lo=7` and `b3lo=f` last
+cell = `0xffffffff`(−1) — all byte-exact.
 
 > **CORRECTION — the static `XCHAL_BYTE0_FORMAT_LENGTHS` macro is lossy and will desync you.**
 > The Tensilica static macro keys length on `byte0` *alone* and flattens `op0==0xF` to a
@@ -212,12 +212,11 @@ cell = `0xffffffff`(−1) — all byte-exact. `[HIGH/OBSERVED]`
 > bundle (those are `op0==0xF`, 16 bytes) as two 8-byte reads and desyncs. **The binary
 > `length_table` is authoritative.**
 
-**Self-consistency proof (re-run this pass).** Simulating the `format_decoder` C above over the
+**Self-consistency proof.** Simulating the `format_decoder` C above over the
 full `(byte0.low4 × byte3)` space and comparing each result's format length against
 `length_table` yields **0 mismatches / 4096 combos** — every cell the decoder calls a wide
 format is 16, every narrow is 8, every illegal is −1; all 14 formats are reachable. The two
 firmware bundles in §7 classify byte-exactly (`4f 80 a0 80` → N0/8; `4f ff 42 41` → F0/16).
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -232,7 +231,7 @@ agree by address: the get address embedded in the symbol equals `slots[i].get`.
 The complete roster — `bitoff` = the slot field's start bit (HIGH: symbol `<bitoff>` token +
 get-code first read agree); `width` = decoded slot-word bit-length (`[MED/INFERRED]`,
 machine-code-emulated, ±1–2 bits on scattered FLIX slots); `pos` = sequential issue index;
-`get` from `slots[i]` table, all verified byte-exact this pass:
+`get` from `slots[i]` table, all byte-exact:
 
 | # | slot | fmt | unit | pos | bitoff | width | get_fn |
 |---|---|---|---|:--:|:--:|:--:|---|
@@ -283,8 +282,8 @@ machine-code-emulated, ±1–2 bits on scattered FLIX slots); `pos` = sequential
 | 44 | `N0_S2_None` | N0 | none | 2 | 59 | 1 | `0x3b55b0` |
 | 45 | `N0_S3_ALU` | N0 | alu | 3 | 16 | 32 | `0x3b5610` |
 
-All 46 names, positions, get addresses **and** `<bitoff>` symbol tokens were re-read from
-`slots[]` + the `Slot_*_get` symtab this pass; every cell agrees.
+All 46 names, positions, get addresses **and** `<bitoff>` symbol tokens come from
+`slots[]` + the `Slot_*_get` symtab; every cell agrees.
 
 ### 5.1 Functional-unit vocabulary
 
@@ -368,7 +367,7 @@ Byte form: **`C7 07 <imm32>  [ C7 47 04 <imm32> ]  C3`**.
   past bit 32. **`WORD1 == 0x00000000` is an invariant** across all 12 569 thunks (the upper
   lane carries no selector bits; it is merely cleared) — verified with zero exceptions.
 
-**Spot-checks (byte-exact this pass):**
+**Spot-checks (byte-exact):**
 
 | thunk | bytes | template |
 |---|---|---|
@@ -382,7 +381,7 @@ Byte form: **`C7 07 <imm32>  [ C7 47 04 <imm32> ]  C3`**.
 The **symbol mangling rule** maps the `opcodedefs[]` row to the symtab: `Opcode_<mnem>_Slot_<slot>_encode`
 where (1) `'.'→'_'` in the mnemonic (`add.n`→`add_n`, `wur.fsr`→`wur_fsr`) and (2) the slot
 token is lowercased (`Inst`→`inst`, `F2_S0_LdSt`→`f2_s0_ldst`). Both transforms are required;
-the mangling is injective. `[HIGH/OBSERVED]`
+the mangling is injective.
 
 ### 6.2 The two-tier selector model
 
@@ -396,7 +395,7 @@ shift-type variant is **not** a single global bit. It is a **two-tier** system:
   formats.
 * **Tier (ii) — the per-slot encode template** carries the *format-local* opcode-selector bits,
   where width/precision/predicate/lane/shift-type variants are *distinct opcodes* (own iclass)
-  realized by per-format packing. Examples, byte-exact this pass:
+  realized by per-format packing. Examples, byte-exact:
   * fp-compare predicate on `F1_S3_ALU` is a clean `+0x1000` nibble step:
     `ivp_oeqn_2xf32`=`0x2705c800`, `ivp_olen_2xf32`=`0x2706c800`, `ivp_oltn_2xf32`=`0x2707c800`.
   * the *same* eq/le/lt distinction on `N1_S2_Mul` is a `bits[7:4]` nibble, and its per-format
@@ -406,7 +405,7 @@ shift-type variant is **not** a single global bit. It is a **two-tier** system:
 > invariant.** Where a bit-region coincidence occurs it is a *format-local enumerated field*,
 > not a single global bit; on most formats the same semantic distinction lands at a different
 > bit or is a distinct opcode entirely. The x24 `Inst` template (canonical Xtensa RST0/RRR
-> `op2`/`t` enumerations) is the selector ground truth. `[HIGH/OBSERVED]`
+> `op2`/`t` enumerations) is the selector ground truth.
 
 The scalar `Inst` template **is** the literal 24-bit Xtensa instruction word (AR fields zeroed).
 The SR family is `(op1,op2)`-selected with the SR number in bits `[15:8]`: `RSR` base
@@ -419,7 +418,7 @@ The SR family is `(op1,op2)`-selected with the SR number in bits `[15:8]`: `RSR`
 ### 6.3 Per-slot placement census
 
 The `opcodedefs[]` matrix is fully populated — **all 46 slots host ≥ 1 opcode**, summing to
-**12 569**. Re-counted this pass by grouping all `Opcode_*_Slot_<slot>_encode` symbols:
+**12 569**. Counted by grouping all `Opcode_*_Slot_<slot>_encode` symbols:
 
 ```
 F0:   S0_LdSt 348  S1_Ld 260  S2_Mul 322  S3_ALU 564                      = 1494
@@ -438,7 +437,7 @@ x24:  Inst 319     x16a: Inst16a 4     x16b: Inst16b 10                   =  333
 ```
 
 The three `None` slots (`N0_S1`, `N0_S2`, `N1_S1`) are populated by **exactly one** opcode,
-`nop` — they are NOP-only filler, not real issue units. `[HIGH/OBSERVED]`
+`nop` — they are NOP-only filler, not real issue units.
 
 ---
 
@@ -482,7 +481,7 @@ objdump: { addi a4, a0, 24; nop; nop; ivp_dextrprn_2x32 pr12, v2, v0, 1, 6 }
 byte-identical to the firmware bytes at `0x1000520` in the Cayman `EXTISA_0` image
 (sha256 `910d41c3…`). The encoder, the model, and the oracle agree byte-for-byte. The
 companion's [worked carve](../../reference/flix-decoding.md) demonstrates the inverse
-(bytes → per-slot disassembly) on this same bundle. `[HIGH/OBSERVED]`
+(bytes → per-slot disassembly) on this same bundle.
 
 ---
 
@@ -505,13 +504,13 @@ Operands name one of **8** register files (`num_regfiles` @ `0x3b5c20` → `mov 
 Scalar AR fields are 4 bits in the slot (3 index + 1 window/bank bit, XOR-inverted, ×8, plus
 window-base, masked to 6 bits → 64 physical AR). Vector `vec` fields are 5-bit scattered indices
 (32 registers); `regload` then ×16-gathers each index into a 512-bit value block. The full file
-model is on the [Eight Register Files](register-files.md) page. `[HIGH/OBSERVED]`
+model is on the [Eight Register Files](register-files.md) page.
 
 ---
 
 ## 9. Confidence ledger & the desync wall
 
-**HIGH / OBSERVED** — read from immediates / `.rodata` / disassembly this pass:
+**HIGH / OBSERVED** — read from immediates / `.rodata` / disassembly:
 
 * `num_formats=14`, `num_slots=46`, `num_regfiles=8`, `interface_version=118`; the
   `format_decoder` mask/compare ladder and every constant; the `length_decoder` index math and
@@ -536,8 +535,8 @@ model is on the [Eight Register Files](register-files.md) page. `[HIGH/OBSERVED]
   exhaustively oracle-confirmed on a specific bundle. **Flag any `F4`/`F6` interior decode as
   `[MED/INFERRED]`** unless objdump independently confirms that bundle.
 
-> **CORRECTION (carried) — N0/N1/N2 ARE inverse-proven.** A prior synthesis noted "no
-> `SX-ISS-12`" and tagged the narrow field codecs as ABI-consistent-but-not-cross-validated.
+> **CORRECTION (carried) — N0/N1/N2 ARE inverse-proven.** A prior synthesis tagged the narrow
+> field codecs as ABI-consistent-but-not-cross-validated.
 > The narrow slotfill cross-validation *does* exist: every N0/N1/N2 `(slot × field)` cell has
 > its `field_set == field_get⁻¹` proven over the full field range and its bundle-bit positions
 > matched against the `libisa-core` get-thunk composition with **no mismatch**. The narrow

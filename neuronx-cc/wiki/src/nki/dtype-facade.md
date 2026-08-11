@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Façade module** | `neuronxcc.nki.dtype` → `nki/dtype.cpython-310...so` |
 | **Module exec** | `__pyx_pymod_exec_dtype` @ `0x2ff1` (only function with logic) |
 | **Re-export source A** | `neuronxcc.starfish.support.dtype` (5 custom dtypes) |
-| **Re-export source B** | `numpy` (9 standard dtypes — see CORRECTION) |
+| **Re-export source B** | `numpy` (9 standard dtypes) |
 | **Backing module** | `starfish/support/dtype.cpython-310...so`, exec @ `0x379a` |
 | **Numeric impl** | `custom_ml_dtypes` + `neuron_dtypes._impl` via `support.dtype_impl` |
 | **BIR bridge** | `dtype2str` / `str2dtype` (canonical name token = BIR `Dtype` key) |
@@ -58,7 +58,17 @@ function pymod_exec_dtype(module_dict):              // __pyx_pymod_exec_dtype @
     return 0
 ```
 
-> **CORRECTION (W09-1) —** the backing report (D-W09 §5.1) lists the `nki.dtype` re-export set as `(bfloat16, float16, float32, float32r, tfloat32, float8e4, float8_e4m3, float8_e5m2, float8_e8m0fnu, int8, int16, int32, uint8, uint16, uint32, bool_)` all *"from neuronxcc.starfish.support.dtype"*. The binary disagrees on three points. (1) **`tfloat32` and `float8_e4m3` are NOT re-exported.** Both appear only in the string-table initializer `Pyx_CreateStringTabAndInitStrings` @ `0x2850` (interned constants), never in any `_Pyx_ImportFrom`/`PyDict_SetItem` site — `rg 'n_s_tfloat32|n_s_float8_e4m3' pyx_pymod_exec_dtype_0x2ff1.c` returns only the variable *declarations*, no uses. (2) The standard dtypes `float32/float16/int32/uint32/int16/uint16/int8/uint8/bool` are imported from **`numpy`** (the second `_Pyx_Import` target is `__pyx_n_s_numpy` @ line 698), not from `starfish.support.dtype`. (3) The boolean is re-exported under the name **`bool`** (the numpy attribute), surfacing as `nki.dtype.bool`; the `bool_` token in the string pool is a separate interned constant. The actual published set is the 14 names in groups A and B above.
+The published set is exactly those **14** names — five custom, nine from numpy — and nothing else. Two details in it routinely trip people up.
+
+The boolean is re-exported under the numpy attribute name **`bool`**, so the user-visible handle is `nki.dtype.bool`. The token `bool_` also sits in the string pool, but it is a separate interned constant and is never bound into the module dict.
+
+> **GOTCHA — `tfloat32` and `float8_e4m3` are in the string pool but are *not* re-exported.**
+> Both tokens are interned by `Pyx_CreateStringTabAndInitStrings` @ `0x2850`, so a `strings`
+> sweep of `nki/dtype.so` finds them and suggests a 16-name façade. Neither appears in any
+> `_Pyx_ImportFrom`/`PyDict_SetItem` site in the module-exec body — only the variable
+> declarations exist. `tfloat32` *is* a real singleton one layer down in
+> `support.dtype`; it simply is not skinned into `nki.dtype`. Interned name constants are
+> not evidence of a binding.
 
 ### Function Map
 
@@ -191,26 +201,22 @@ nki.dtype                    (5 custom + 9 numpy re-exports — user API)
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims, re-challenged against the binary:
+Read directly from the two `.so` files:
 
-1. **"`nki.dtype` is a pure re-export façade with no bodies of its own."** Re-checked: the only logic-bearing function in the `.so` is `__pyx_pymod_exec_dtype` @ `0x2ff1`; its body is two `_Pyx_Import` + 14 `_Pyx_ImportFrom`/`PyDict_SetItem` pairs and nothing else. **Holds (CERTAIN).**
+- **`nki.dtype` carries no bodies of its own.** The only logic-bearing function in the module is `__pyx_pymod_exec_dtype` @ `0x2ff1`, and its body is two `_Pyx_Import` calls plus 14 `_Pyx_ImportFrom`/`PyDict_SetItem` pairs — nothing else.
+- **The standard dtypes come from numpy.** The second `_Pyx_Import` target is `__pyx_n_s_numpy`, and the nine names `float32/float16/int32/uint32/int16/uint16/int8/uint8/bool` are pulled with `_Pyx_ImportFrom(numpy, …)`.
+- **`tfloat32` and `float8_e4m3` are interned but never bound** — they exist only in `Pyx_CreateStringTabAndInitStrings` @ `0x2850`, with zero `ImportFrom`/`SetItem` uses.
+- **`dtype2str` / `str2dtype` are imported, not defined, by `support.dtype`** — `n_s_dtype2str` and `n_s_str2dtype` both appear in the `_Pyx_ImportFrom` target list of that module's exec @ `0x379a`.
+- **The `_x4` family exists as named singletons**: `float8_e4m3fn_x4`, `float8_e5m2_x4`, `float4_e2m1fn_x4`, together with the `is_x4_dtype` / `get_x1_from_x4` / `x4_to_x1` helpers.
 
-2. **"The standard dtypes come from numpy, not starfish."** Re-checked: the second `_Pyx_Import` target at line 698 is `__pyx_n_s_numpy`, and the 9 names `float32/float16/int32/uint32/int16/uint16/int8/uint8/bool` are `_Pyx_ImportFrom(numpy, ...)`. This contradicts the report and is issued as CORRECTION (W09-1). **Holds (CERTAIN).**
-
-3. **"`tfloat32` and `float8_e4m3` are not re-exported by `nki.dtype`."** Re-checked: both tokens exist only in `Pyx_CreateStringTabAndInitStrings` @ `0x2850`; `rg 'n_s_tfloat32|n_s_float8_e4m3'` over the exec body finds only declarations, zero `ImportFrom`/`SetItem` uses. **Holds (CERTAIN).** (Caveat: `tfloat32` *is* a real singleton at the `support.dtype` layer — it is listed in the singleton table — it just isn't skinned into `nki.dtype`.)
-
-4. **"`dtype2str` is the BIR-Dtype key and is imported, not defined, by `support.dtype`."** Re-checked: `n_s_dtype2str` and `n_s_str2dtype` appear in the `_Pyx_ImportFrom` target list of `support.dtype`'s exec @ `0x379a`. The *equality* of the token to the BIR enum spelling is INFERRED from the shared canonical name strings (`bfloat16`, `float8_e4m3`, `float4_e2m1fn_x4`) appearing in both this module and the BIR layer; the per-token byte-identity to the Part 7 enum is **tagged INFERRED** pending the Part 7 cross-check.
-
-5. **"`_x4` dtypes pack 4 scalars/word and `sizeinbytes` reports the packed width."** The name set (`float8_e4m3fn_x4`, `float8_e5m2_x4`, `float4_e2m1fn_x4`), the `is_x4_dtype` / `get_x1_from_x4` / `x4_to_x1` helpers, and the `_x4` suffix semantics are CONFIRMED from strings. The specific widths (fp8_x4 = 4 bytes, fp4_x4 = 2 bytes) and "report packed not scalar" behavior are **INFERRED** from the packing arithmetic (4 elements × element bits) — the `sizeinbytes` body is in the impl layer and was not individually decompiled here.
-
-Anything not directly observed is tagged INFERRED in the tables above; no address or width was fabricated to fill a hole.
+Two things on this page are reconstructed rather than read. First, the claim that the `dtype2str` token is byte-identical to the BIR `Dtype` enum spelling rests on the shared canonical name strings (`bfloat16`, `float8_e4m3`, `float4_e2m1fn_x4`) appearing in both layers, not on a per-token comparison. Second, the `_x4` widths (fp8_x4 = 4 bytes, fp4_x4 = 2 bytes) and the "reports the packed word, not the scalar" behaviour of `sizeinbytes` follow from the packing arithmetic — 4 elements × element bits — since the `sizeinbytes` body lives in the impl layer and was not decompiled here.
 
 ---
 
 ## Cross-References
 
 - [nki/type-system](type-system.md) — 6.3.1, the tracer that consumes these dtypes via `is_number` and category dispatch
-- [dtype catalog](../catalog/dtype-catalog.md) — Part 9 (forward), the FP8/FP4/bf16 bit layouts and `static_cast_*` numeric models behind the impl layer
+- [dtype catalog](../numerics/dtype-catalog.md) — Part 9 (forward), the FP8/FP4/bf16 bit layouts and `static_cast_*` numeric models behind the impl layer
 - BIR `Dtype` enum — Part 7 (forward), the consumer of the `dtype2str` token across the BIR boundary

@@ -24,7 +24,7 @@ the substantive content here; the rest is boundary-drawing.
 > `libwalrus.so`, the plain-`.py`/`.pyi` stubs) and the in-book device ledgers cited
 > inline. Recovered symbols, strings, and shipped tables **are** binary-derived and
 > citeable. No external vendor source tree is referenced. Confidence is tagged per claim
-> `HIGH/MED/LOW × OBSERVED` (read this pass) `/ INFERRED` (reasoned over OBSERVED) `/
+> `HIGH/MED/LOW × OBSERVED` `/ INFERRED` (reasoned over OBSERVED) `/
 > CARRIED` (read in a cited in-book page, reused).
 
 ```
@@ -85,7 +85,7 @@ the TPB opcode and *runs* a Vision-Q7 FLIX kernel to implement it (the
 | `neuron_isa.cpython-311-…so` | 533 KB | the TPB ISA **enum** module: `NEURON_ISA_TPB_OPCODE` + 20 sibling enums (DTYPE, ALU_OP, CCE_OP, DGE_OPCODE, DGE_COMPUTE_OP, COLLECTIVE_TYPE, ACCUM_CMD, IMM_SRC(_N), INDIRECT_DIM, MATMUL_PSUM_ACCUMULATE_FLAGS, MATMUL_ZERO_REGION, PE_FP32MODE, PERF_OPT_MODE, RAND_ALGORITHM, TENSOR_SUBDIM, TENS_SCALAR_REV_OPS, UPDATE_MODE, WAIT_MODE, DROPOUT_THRESHOLD_TYPE) | RTTI `_ZTI…NEURON_ISA_TPB_*` + strings |
 | `neuron_isa_tpb_pybind.cpython-311-…so` | 930 KB | the per-opcode **builder + validator** module: a `NeuronInstruction` with `get_bytes`/`set_bytes` (the encode/serialize boundary), `is_valid_neuron_instruction`, the CamelCase per-opcode builders, and the per-field `<field>_valid_*` / `check: '…'` validators | strings + symbols |
 
-`[HIGH/OBSERVED — both `.so` present and read this pass; the
+`[HIGH/OBSERVED — both `.so` present; the
 `NEURON_ISA_TPB_OPCODE`/`_ALU_OP`/`_CCE_OP`/`_COLLECTIVE_TYPE`/`_DGE_COMPUTE_OP` RTTI
 typeinfo strings are present in `neuron_isa.so`.]`
 
@@ -126,7 +126,7 @@ The device decode alone left a set of **maintained gap opcodes** with "name/sema
 inferred" (the firmware decode is a `NONE`-tagged stub, or the descriptor literals were
 unrecoverable from the carved firmware `.literal` pool). For the **sunda-present** subset,
 the 5th source upgrades those to OBSERVED: it carries the opcode **name**, the **builder
-class**, the **descriptor struct**, and the **field validators**. Verified this pass:
+class**, the **descriptor struct**, and the **field validators**:
 
 | device gap op (numeric CARRIED from the ledger) | 5th-source corroboration (byte-verified) | conf |
 |---|---|---|
@@ -147,8 +147,8 @@ class**, the **descriptor struct**, and the **field validators**. Verified this 
 > CoreV5-only opcodes the ledger flags as absent from the sunda floor are
 > **confirmed-absent** in the 5th source: `TENSOR_TENSOR_INT_WIDE 0xF3` /
 > `TENSOR_SCALAR_INT_WIDE 0xF4` — the string `int_wide` (any case) has **grep count 0**
-> across `neuron_isa.so`, `neuron_isa_tpb_pybind.so`, *and* `libwalrus.so` (byte-verified
-> this pass). Likewise `ACTIVATE_MULTIPASS 0x26` and `DMA_MEMCPY2 0xB9` are absent from the
+> across `neuron_isa.so`, `neuron_isa_tpb_pybind.so`, *and* `libwalrus.so`. Likewise
+> `ACTIVATE_MULTIPASS 0x26` and `DMA_MEMCPY2 0xB9` are absent from the
 > sunda table. So the 5th source corroborates the ledger's **per-gen Y/n matrix** in both
 > directions — the sunda-floor gap ops are present-and-named; the maverick-only ones are
 > verifiably-absent. The compiler does **not** reveal the maverick INT_WIDE byte
@@ -165,7 +165,7 @@ tag (N source + M destination access-patterns) — plus the access-pattern types
 (`TENSOR1D`–`4D`, `ADDR4`) and the emitter API
 `neuronxcc::backend::CoreV{2,3,4}GenImpl::assignAccess{1,2,3,4}D(…, const bir::AccessPattern&, …)`
 + `assignAccessToType` + `assignStaticPattern` + `assignStartAddr` + `setupSyncUpdate`
-(mangled symbols present in the `backend::` namespace this pass).
+(mangled symbols present in the `backend::` namespace).
 
 This is a **pointer, not a re-derivation**: the *full* descriptor backend — the
 per-`STRUCT` field byte-offsets, the `get_bytes` 64-byte serializer body, the
@@ -188,7 +188,7 @@ cost model is **owned by the neuronx-cc wiki** (§3).
 
 **Version.** The `isa_tpb`/`sunda` tables ship under the neuronx-cc wheel
 `__version__ = '2.24.5133.0+58f8de22'`, `__buildtime__ = 'Apr 08 2026, 21:07:10 UTC'`
-(byte-verified `cat CC/version/__init__.py` this pass). This is the **toolchain** version;
+(byte-verified `cat CC/version/__init__.py`). This is the **toolchain** version;
 it is **distinct** from the device-image `ulib_to_ucode_version 1.21.1.0` /
 `ulib_to_isa_version 1.0.2520.0` handshake (CARRIED; see the version table at
 [compiler-map §7](compiler-map.md)), which is the runtime/firmware axis. The cc table is
@@ -226,7 +226,7 @@ book (§3) and this Part only *points* at the seam.
 | **MX device bodies** (the `0xE3` DVE kernel, the v4/v5 PE pair) | **byte-decoded native** + the E8M0 value tie ([mx-device-bodies](mx-device-bodies.md)) | the host-side MX lowering map (`mx-path`) is owned **here**; the cc wiki owns nothing of the *device* MX body |
 | scheduler **cost model** | only the GPSIMD launch-cost **tie** (`GPSIMD_START≈150` vs `MIN_II≈64`) and the `ctm.so` Pool-class **existence** (§1.5) | the full `hwm/ctm.so` cost classes, the per-op cycle formulas, the latency→schedule feedback |
 
-> **CORRECTION (vs GX-REF-02 §3.1, which CARRIED "73 InstXxx").** The backing report
+> **CORRECTION (the earlier "73 InstXxx" count).** The backing report
 > tabulated **73** Penguin BIR `Inst*` classes from an intermediate `birpy` read. The
 > committed [bir-inst-roster](bir-inst-roster.md) grounds the count on the **full
 > `libBIR.so`** `createFromJson`/`_ZTV` symbol sets: **110** concrete classes (the "73" was
@@ -234,7 +234,7 @@ book (§3) and this Part only *points* at the seam.
 > 5 kernel containers). This page defers to the **110** figure — point, don't re-derive.
 > [HIGH/OBSERVED — owned at [bir-inst-roster §2, §8](bir-inst-roster.md).]
 
-> **CORRECTION (vs GX-REF-02 §0/§2.2, which framed `isa_tpb` as confirming "~172-opcode"
+> **CORRECTION (the earlier framing of `isa_tpb` as confirming a "~172-opcode"
 > roster).** The committed [compiler-map §7](compiler-map.md) and
 > [opcode-catalog-ledger](../firmware/kernels/opcode-catalog-ledger.md) reconcile the
 > ledger as **172 union enum values − 31 PSEUDO − 1 INVALID = 140 real HW opcodes**. The

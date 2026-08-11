@@ -38,7 +38,7 @@ For reimplementation, the contract is:
 
 ### What crosses the import
 
-`logging.py:7` imports **only** `LogLevel` and `to_log_level`. The binding registers a far larger surface (`setLogLevel`, `getLogLevel`, `setupLogfile`, `flush_console`, `isEnabledFor`, bound classes `Rep`/`Message`/`CPP_LOGGER`, and the `CPP_LOG_*`/`LOGGER_CPP_LOG_*` free functions — see [3.18](neuronlogger.md) for the native side), but the façade ignores all of it. (CONFIRMED — `logging.py:7` is the complete import list; binding symbols verified by `nm -D`.)
+`logging.py:7` imports **only** `LogLevel` and `to_log_level`. The binding registers a far larger surface (`setLogLevel`, `getLogLevel`, `setupLogfile`, `flush_console`, `isEnabledFor`, bound classes `Rep`/`Message`/`CPP_LOGGER`, and the `CPP_LOG_*`/`LOGGER_CPP_LOG_*` free functions — see [3.18](neuronlogger.md) for the native side), but the façade ignores all of it: `logging.py:7` is the complete import list.
 
 ```text
 neuronxlogger_bindings.…so  (statically links the full logging::Logger Boost.Log stack)
@@ -49,7 +49,7 @@ neuronxlogger_bindings.…so  (statically links the full logging::Logger Boost.L
   └─ Rep / Message / CPP_LOGGER / CPP_LOG_* / LOGGER_CPP_LOG_*         [NOT imported]
 ```
 
-> **GOTCHA —** the binding exports a native `setup_console_logging` whose mangled name is `_ZN7logging21setup_console_loggingEiN5boost10shared_ptrINS_10CustomSinkEEE` — arity **2**, taking `(int, boost::shared_ptr<CustomSink>)`. The Python `setup_console_logging(log_level)` (`logging.py:117`) is a **different** function of arity 1 doing pure-stdlib setup. They name-collide but never meet: `logging.py` does not import the native one, so every `neuronxlogger` caller gets the Python shadow. The native `setupLogfile` (camelCase) likewise does not even collide with the Python `setup_logfile_logging`. A reimplementer must keep these two namespaces strictly apart. (CONFIRMED — native symbol present in dynsym; `logging.py:7` omits both natives.)
+> **GOTCHA —** the binding exports a native `setup_console_logging` whose mangled name is `_ZN7logging21setup_console_loggingEiN5boost10shared_ptrINS_10CustomSinkEEE` — arity **2**, taking `(int, boost::shared_ptr<CustomSink>)`. The Python `setup_console_logging(log_level)` (`logging.py:117`) is a **different** function of arity 1 doing pure-stdlib setup. They name-collide but never meet: `logging.py` does not import the native one, so every `neuronxlogger` caller gets the Python shadow. The native `setupLogfile` (camelCase) likewise does not even collide with the Python `setup_logfile_logging`. A reimplementer must keep these two namespaces strictly apart.
 
 > **NOTE —** the binding hard-requires CPython 3.10 (`PyInit_neuronxlogger_bindings` strncmp's `Py_GetVersion` against `"3.10"`), tagged `__pybind11_internals_v11_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1__`. Parallel cp311/cp312 wheels ship the matching ABI build; the `.py` façade is identical across them.
 
@@ -78,20 +78,20 @@ cmpl $0x0a (10)  → DEBUG
 
 | name | `LogLevel` value | python `logging.X` int | stdlib derivation | conf |
 |---|---:|---:|---|---|
-| `TRACE` | 0 | **5** | `logging.NOTSET(0)+5` (`logging.py:18-19`) | CONFIRMED |
-| `DEBUG` | 10 | 10 | stdlib `DEBUG` | CONFIRMED |
-| `INFO` | 20 | 20 | stdlib `INFO` | CONFIRMED |
-| `WARNING` | 30 | 30 | stdlib `WARNING` | CONFIRMED |
-| `ERROR` | 40 | 40 | stdlib `ERROR` | CONFIRMED |
-| `FATAL` | 50 | 50 | stdlib `FATAL`/`CRITICAL` | CONFIRMED |
-| `USER` | 60 | 60 | `logging.CRITICAL(50)+10` (`logging.py:12-13`) | CONFIRMED |
-| `OFF` | 70 | 70 | `logging.CRITICAL(50)+20` (`logging.py:15-16`) | CONFIRMED |
+| `TRACE` | 0 | **5** | `logging.NOTSET(0)+5` (`logging.py:18-19`) | CERTAIN |
+| `DEBUG` | 10 | 10 | stdlib `DEBUG` | CERTAIN |
+| `INFO` | 20 | 20 | stdlib `INFO` | CERTAIN |
+| `WARNING` | 30 | 30 | stdlib `WARNING` | CERTAIN |
+| `ERROR` | 40 | 40 | stdlib `ERROR` | CERTAIN |
+| `FATAL` | 50 | 50 | stdlib `FATAL`/`CRITICAL` | CERTAIN |
+| `USER` | 60 | 60 | `logging.CRITICAL(50)+10` (`logging.py:12-13`) | CERTAIN |
+| `OFF` | 70 | 70 | `logging.CRITICAL(50)+20` (`logging.py:15-16`) | CERTAIN |
 
 `logging.py:12-19` registers three extra names on the stdlib module (`USER=60`, `OFF=70`, `TRACE=5`) so that `logging.getLevelName`/`_nameToLevel` understand them; the stdlib already owns `DEBUG..CRITICAL`. The native↔python crosswalk is then materialized as `LIBRARY_TO_PYTHON_LOG_LEVEL_MAP` (`logging.py:28-37`), a plain dict consumed by `_library_to_python_log_level()` (`logging.py:190-191`) — a bare lookup that raises `KeyError` on an unmapped `LogLevel`, with no default.
 
 > **QUIRK —** the native value and the python int coincide for `DEBUG..OFF` but **diverge at `TRACE`**: native `LogLevel.TRACE==0`, python `logging.TRACE==5`. So `LIBRARY_TO_PYTHON_LOG_LEVEL_MAP[LogLevel.TRACE] == 5` is a non-identity remap. The reason is structural: stdlib `NOTSET==0` is "no level set," so a python handler at level 0 would let everything through indiscriminately; bumping TRACE to `NOTSET+5` keeps it the chattiest *real* threshold while staying below `DEBUG(10)`.
 
-> **CORRECTION (C2) —** `cli/Daemon.py:10-11` redefines `logging.TRACE = logging.NOTSET (=0)` — disagreeing with `logging.py:18-19`'s `NOTSET+5 (=5)`. Two modules set `logging.TRACE` to different values; whichever imports last wins at runtime. Do not assume a single canonical `logging.TRACE`. (CONFIRMED — both source lines read directly.)
+> **GOTCHA — there is no single canonical `logging.TRACE`.** `logging.py:18-19` sets it to `NOTSET+5 (=5)`; `cli/Daemon.py:10-11` sets the same attribute to `logging.NOTSET (=0)`. Whichever module imports last wins at runtime.
 
 > **NOTE —** a *third* encoding exists: the hlo-opt `NeuronLogger` uses a compact 0..7 severity index ([3.18](neuronlogger.md)), distinct from both the 0/10/…/70 `LogLevel` scale and these python ints. Three coexisting encodings; never conflate.
 
@@ -120,19 +120,19 @@ So **`to_log_level(n)` returns the smallest defined `LogLevel` whose value is �
 
 | input n | `lower_bound` key | returned `LogLevel` | conf |
 |---:|---:|---|---|
-| `0` | 0 | `TRACE` | CONFIRMED |
-| `1..10` | 10 | `DEBUG` | CONFIRMED |
-| `11..20` | 20 | `INFO` | CONFIRMED |
-| `21..30` | 30 | `WARNING` | CONFIRMED |
-| `31..40` | 40 | `ERROR` | CONFIRMED |
-| `41..50` | 50 | `FATAL` | CONFIRMED |
-| `51..60` | 60 | `USER` | CONFIRMED |
-| `61..70` | 70 | `OFF` | CONFIRMED |
+| `0` | 0 | `TRACE` | CERTAIN |
+| `1..10` | 10 | `DEBUG` | CERTAIN |
+| `11..20` | 20 | `INFO` | CERTAIN |
+| `21..30` | 30 | `WARNING` | CERTAIN |
+| `31..40` | 40 | `ERROR` | CERTAIN |
+| `41..50` | 50 | `FATAL` | CERTAIN |
+| `51..60` | 60 | `USER` | CERTAIN |
+| `61..70` | 70 | `OFF` | CERTAIN |
 | `>70` | `end()` | undefined — deref of past-the-end iterator | MEDIUM |
 
-> **GOTCHA —** `to_log_level(35)` rounds 35 up to **`ERROR(40)`** — the wrong level for the intended "user-facing output + progress dots" mode (which needs `USER(60)`). This is the entire motivation for the magic-35 special case below: the façade must intercept 35 *before* it reaches `lower_bound`. A reimplementation that simply forwards every CLI integer through `to_log_level` will silently route the user/dots mode to ERROR. (CONFIRMED — round-up table + `logging.py:107,119`.)
+> **GOTCHA —** `to_log_level(35)` rounds 35 up to **`ERROR(40)`** — the wrong level for the intended "user-facing output + progress dots" mode (which needs `USER(60)`). This is the entire motivation for the magic-35 special case below: the façade must intercept 35 *before* it reaches `lower_bound`. A reimplementation that simply forwards every CLI integer through `to_log_level` will silently route the user/dots mode to ERROR.
 
-> **NOTE —** for `n > 70` no key satisfies `key ≥ n`, so `lower_bound` returns `end()` and the `->second` deref is undefined. `OFF=70` is the maximum documented input, so no in-tree caller is known to reach this; tagged MEDIUM because the path is not proven unreachable. (G2.)
+> **NOTE —** for `n > 70` no key satisfies `key ≥ n`, so `lower_bound` returns `end()` and the `->second` deref is undefined. `OFF=70` is the maximum documented input, so no in-tree caller is known to reach this. Unreachability is **[INFERRED]** — the path was not proven dead. (G2.)
 
 ---
 
@@ -157,7 +157,7 @@ function setup_logfile_logging(log_file, log_level):   // logging.py:105
     _logfile_handlers = [h]
 ```
 
-> **QUIRK —** the logfile is opened in **append** mode (`mode='a'`), whereas the native `NeuronLogger::flush()` **truncates** `log-neuron-cc.txt` on each flush ([3.18](neuronlogger.md)). The two stacks, pointed at the same default filename, have opposite file semantics — a behavioral divergence a reimplementer must preserve per-stack. (CONFIRMED — `logging.py:111`.)
+> **QUIRK —** the logfile is opened in **append** mode (`mode='a'`), whereas the native `NeuronLogger::flush()` **truncates** `log-neuron-cc.txt` on each flush ([3.18](neuronlogger.md)). The two stacks, pointed at the same default filename, have opposite file semantics — a behavioral divergence a reimplementer must preserve per-stack.
 
 ### `setup_console_logging` (`logging.py:117-137`)
 
@@ -186,9 +186,9 @@ function setup_console_logging(log_level):             // logging.py:117
 
 Mechanics:
 
-- **STDOUT/STDERR split** by a custom record attribute `user_type` (default `'stdout'`): the stderr handler accepts only `user_type=='stderr'`, the stdout handler only `user_type=='stdout'`. This mirrors the native `MergedSink` console router ([3.18](neuronlogger.md)). (CONFIRMED — `logging.py:130,136`.)
-- **Dots mode** (`log_level==35` only): the stdout filter's `… and not print_dots` evaluates False for *every* record, so **all stdout log records are suppressed** — the compiler's own progress-dot writer (`CompileCommand.runPipeline.<locals>.print_dots` + the `print_dot_context` context manager, both present in `CompileCommand.cpython-310-…so`) then owns stdout exclusively. (CONFIRMED — `logging.py:136`; `print_dots`/`print_dot_context` strings in CompileCommand.)
-- **USER formatting**: in USER mode the stderr handler uses the ANSI-red `\x1b[31;20m%(message)s\x1b[0m` format *iff `sys.stderr.isatty()`* (else plain `user_logging_format`), and stdout uses the plain `user_logging_format`. The same `\x1b[31;20m` red sequence is present in the binding's rodata. (CONFIRMED — `logging.py:21,26`; `[31;20m` string in `.so`.)
+- **STDOUT/STDERR split** by a custom record attribute `user_type` (default `'stdout'`): the stderr handler accepts only `user_type=='stderr'`, the stdout handler only `user_type=='stdout'`. This mirrors the native `MergedSink` console router ([3.18](neuronlogger.md)) (`logging.py:130,136`).
+- **Dots mode** (`log_level==35` only): the stdout filter's `… and not print_dots` evaluates False for *every* record, so **all stdout log records are suppressed** — the compiler's own progress-dot writer (`CompileCommand.runPipeline.<locals>.print_dots` + the `print_dot_context` context manager, both present in `CompileCommand.cpython-310-…so`) then owns stdout exclusively (`logging.py:136`).
+- **USER formatting**: in USER mode the stderr handler uses the ANSI-red `\x1b[31;20m%(message)s\x1b[0m` format *iff `sys.stderr.isatty()`* (else plain `user_logging_format`), and stdout uses the plain `user_logging_format`. The same `\x1b[31;20m` red sequence is present in the binding's rodata (`logging.py:21,26`).
 
 ### Where the 35 comes from
 
@@ -203,7 +203,7 @@ CommandDriver.run (Cython)                       CompileCommand.runPipeline
   setup_console_logging(verbose)   ┘ consumer 2 → logging.py:117 (re-detects 35 → dots ON)
 ```
 
-The driver flips an internal `print_dots` flag and rewrites its in-memory `verbose` attribute to `logging.USER`. Independently, `setup_console_logging` **re-detects** 35 to set its own `print_dots` and suppress stdout — a defensive duplicate of the same convention on the consumer side. (CONFIRMED — `setup_console_logging`/`setup_logfile_logging`/`print_dots`/`to_numeric_level` strings in `CommandDriver.…so`; the exact `--verbose`/internal-flag path that emits the literal 35 is MEDIUM — G1.)
+The driver flips an internal `print_dots` flag and rewrites its in-memory `verbose` attribute to `logging.USER`. Independently, `setup_console_logging` **re-detects** 35 to set its own `print_dots` and suppress stdout — a defensive duplicate of the same convention on the consumer side. The `setup_console_logging`, `setup_logfile_logging`, `print_dots` and `to_numeric_level` strings are all present in `CommandDriver.…so`; the exact `--verbose`/internal-flag path that emits the literal 35 is **INFERRED** (G1).
 
 > **NOTE —** the CLI's `to_numeric_level` (in `Daemon.py` and the Cython `CommandDriver.__init__.to_numeric_level`) maps `0→WARNING(30)`, `1→INFO(20)`, `2→DEBUG(10)`, a bare digit passes through, and a name resolves via `getattr(logging, NAME.upper())` so `--verbose user → USER(60)`. The bare 35 sentinel is *not* one of these outputs; it enters from an internal/interactive path before `CommandDriver.run`'s compare. See [3.20](diagnostic-error-catalog.md) for the full CLI verbosity surface.
 
@@ -223,15 +223,15 @@ A class with mutable class-level attributes used as process globals: `_initializ
 
 `Logger(channel="global")` wraps `logging.getLogger(channel)`, seeds `metadata_opt={"metadata_opt":""}`, and appends itself to `_loggers`. If setup already ran (`_initialized`), the constructor strips the named logger's existing handlers and re-adds the global console+logfile handlers, then sets its level to `_min_log_level()` — that is how late-constructed loggers inherit config; pre-init construction (unit tests) keeps stdlib defaults. `add_scope(metadata)` (`:74-75`) sets `metadata_opt={"metadata_opt": f"({metadata}) "}`, the parenthesized scope that fills `%(metadata_opt)s` in the developer format.
 
-Instance methods `logDebug/logInfo/logWarning/logError` (`:78-88`) join varargs via `_concat_msgs` (`"".join(str(m) …)`, `:194-195`) and emit with `extra=self.metadata_opt`; the `logf*` variants (`:91-101`) pass `*msgs` straight to stdlib for `%`-style formatting. There is **no** `logFatal`/`logUser`/`logTrace` instance method. Module-level wrappers `logDebug…logfError` (`:216-245`) delegate to a lazily-built `_default_logger()` (channel `"global"`). (CONFIRMED — full source.)
+Instance methods `logDebug/logInfo/logWarning/logError` (`:78-88`) join varargs via `_concat_msgs` (`"".join(str(m) …)`, `:194-195`) and emit with `extra=self.metadata_opt`; the `logf*` variants (`:91-101`) pass `*msgs` straight to stdlib for `%`-style formatting. There is **no** `logFatal`/`logUser`/`logTrace` instance method. Module-level wrappers `logDebug…logfError` (`:216-245`) delegate to a lazily-built `_default_logger()` (channel `"global"`).
 
-> **GOTCHA —** `Logger.root_logger()` (`logging.py:67-71`) references `GlobalLoggerState._root_logger`, a field that is **never defined** on the class (the real field is `_default_logger`, `:47`). Calling `root_logger()` raises `AttributeError`. It is dead/buggy API with no in-tree caller in the readable sources. Do not reproduce it; use `_default_logger()`. (HIGH — G3, source bug.)
+> **GOTCHA —** `Logger.root_logger()` (`logging.py:67-71`) references `GlobalLoggerState._root_logger`, a field that is **never defined** on the class (the real field is `_default_logger`, `:47`). Calling `root_logger()` raises `AttributeError`. It is dead/buggy API with no in-tree caller in the readable sources. Do not reproduce it; use `_default_logger()`. (G3, source bug.)
 
 ### Format constants & runtime mutation
 
 Three formats (`logging.py:21-23`): `user_logging_format='%(asctime)s %(message)s'`; the metadata-bearing `developer_logging_format='%(asctime)s %(levelname)s %(process)d %(metadata_opt)s[%(name)s]: %(message)s'`; and the tty-only red `tty_err_user_logging_format`. `set_logfile_log_level`/`set_console_log_level` (`:140-159`) take a `LogLevel` **directly** (no int→enum mapping), re-`setLevel` every handler, then recompute `_min_log_level()` (`:181-187`, the chattier of console/logfile, in python ints) and re-`setLevel` all registered loggers. `flush_logfile`/`flush_console` flush each handler; `shutdown` (`:176-177`) calls `logging.shutdown()`.
 
-> **NOTE —** the driver's own `developer_logging_format` (in `CommandDriver.…so`) has **no** `%(metadata_opt)s` field — there are two developer formats. The metadata-BEARING one (`logging.py:23`) raises `KeyError` on a record that omits the `metadata_opt` extra, but `Logger` always passes `extra=self.metadata_opt`, so it is safe. A reimplementer mixing record sources across the two formats must supply the extra. (HIGH.)
+> **NOTE —** the driver's own `developer_logging_format` (in `CommandDriver.…so`) has **no** `%(metadata_opt)s` field — there are two developer formats. The metadata-BEARING one (`logging.py:23`) raises `KeyError` on a record that omits the `metadata_opt` extra, but `Logger` always passes `extra=self.metadata_opt`, so it is safe. A reimplementer mixing record sources across the two formats must supply the extra.
 
 ---
 
@@ -239,7 +239,7 @@ Three formats (`logging.py:21-23`): `user_logging_format='%(asctime)s %(message)
 
 `_add_lib_path()` (`__init__.py:35-41`) appends the package dir to `sys.path` so the bare `from neuronxlogger_bindings import …` in `logging.py:7` resolves. The package re-exports from `.logging`: `Logger, LogLevel, setup_logfile_logging, setup_console_logging, shutdown, set/get_logfile_log_level, set/get_console_log_level, flush_console, flush_logfile, logDebug, logInfo, logWarning, logfDebug, logfInfo, logfWarning, clear_global_logging_state`; from `.error`: `NeuronAssertion, ErrorCode, register_namespace, neuron_external_assert, neuron_internal_assert, neuron_internal_assert_msg`; from `.error_validation`: `VerifyNeuronAssertError, verify_neuron_assert_namespace`.
 
-> **CORRECTION (C4) —** the `__init__.py:10-15` docstring advertises a `LogType` enum ("Enumeration of output destinations (STDOUT, STDERR)"), but the binding registers **no** `py::enum_<LogType>` — `STDOUT`/`STDERR` exist only inside the native `logging::operator<<(ostream&, LogType)` console router ([3.18](neuronlogger.md)), never as a Python registration. The docstring's `LogType`/`ErrorCode` bullets are stale. Also note `logError`/`logfError` are **not** re-exported — only debug/info/warning module wrappers are public. (CONFIRMED — `__init__.py:44-63`; binding has no LogType enum.)
+> **GOTCHA — the package docstring is stale.** `__init__.py:10-15` advertises a `LogType` enum ("Enumeration of output destinations (STDOUT, STDERR)"), but the binding registers no `py::enum_<LogType>`; `STDOUT`/`STDERR` live only inside the native `logging::operator<<(ostream&, LogType)` console router ([3.18](neuronlogger.md)). The same bullets misstate `ErrorCode`. Note too that `logError`/`logfError` are not re-exported — only the debug/info/warning module wrappers are public (`__init__.py:44-63`).
 
 ---
 

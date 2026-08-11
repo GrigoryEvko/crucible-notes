@@ -16,18 +16,18 @@ path) lowers to: one ring/mesh step = one `rdma_desc_gen` + one `rdma_desc_start
 
 This is the **Cadence Tensilica Vision-Q7 NX "Cairo" GPSIMD compute core's** own firmware —
 windowed-ABI Xtensa (`ncore2gp`, `IsaMaxInstructionSize=32` → FLIX/VLIW bundles up to
-32 bytes). Every device fact below is byte-pinned to a carve re-derived this session from
+32 bytes). Every device fact below is byte-pinned to a carve from
 `libnrtucode_internal.so`; the 64-byte instruction-word layouts are read out of the
-Amazon-shipped `aws_neuron_isa_tpb_extended_utils.h` ISA headers and **compile-verified
-here** with `_Static_assert`; the doorbell register identity is grounded in the shipped
+Amazon-shipped `aws_neuron_isa_tpb_extended_utils.h` ISA headers and
+**compile-verified** with `_Static_assert`; the doorbell register identity is grounded in the shipped
 Cayman CSR JSON. Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the carved objects.** The firmware
 > container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so`
-> (sha256 `b7c67e898a116454…` — the FW-26/FW-29/FW-41 anchor, re-verified in-task). The Q7
+> (sha256 `b7c67e898a116454…` — the FW-26/FW-29/FW-41 anchor). The Q7
 > POOL DEBUG images are `.rodata`-resident `_get.data` symbols (so **file offset == symbol
 > VA**; `.rodata` `Address==Off==0x46b0`, no `.data` delta applies). Carved with `dd`,
 > disassembled and byte-read with the native `xtensa-elf-objdump`/`xxd`
@@ -46,7 +46,7 @@ Cayman CSR JSON. Confidence and evidence tags follow the project
 > no `.xt.prop` FLIX property tables and no `.symtab`. The Q7 IRAM sha `513a8a22` and DRAM
 > sha `226f4254` reproduce the FW-29 anchor exactly; the RDMA function bodies + the TX/RX
 > block all live in the **Q7** carve (the NX carve quoted alongside is the sequencer
-> anchor). `[HIGH/OBSERVED — both shas reproduced this task.]`
+> anchor). `[HIGH/OBSERVED]`
 
 > **DISASSEMBLY-FIDELITY CAVEAT.** `remote_copy.cpp` is densely-scheduled FLIX VLIW with
 > per-function literal pools. Because the carved image has no `.xt.prop`, a linear sweep
@@ -60,7 +60,7 @@ Cayman CSR JSON. Confidence and evidence tags follow the project
 > pool resolves to **negative** PC-relative offsets (the image's true load VA is the
 > non-zero IRAM base, not 0), so the **absolute** doorbell-register and inc-count *values*
 > cannot be read from the raw blob at `adjust-vma=0`; they are bound by reconciliation with
-> the CSR JSON (`[MED]`). `[HIGH/OBSERVED — desync boundaries re-confirmed this task.]`
+> the CSR JSON (`[MED]`).
 
 ---
 
@@ -81,11 +81,11 @@ the transport. The decomposition is:
 | critical-path? | **off** — "can happen earlier without waiting" (header) | **on** — carries the `events` wait/update that gates the launch |
 | completion | posts the two sema descriptors into the ring | the TX/RX doorbell + the `events` arrive |
 
-`[HIGH/OBSERVED — entries by `entry a1,imm` scan, struct split compile-verified §2.]`
+`[HIGH/OBSERVED]`
 
 Both byte anchors confirm directly in the carved IRAM: `0x161f4` = `36 81 4a …`
 (`entry` opcode `0x36`; frame field `0x4a8 << 3 = 0x2540`), `0x1723c` = `36 01 02 …`
-(`0x20 << 3 = 0x100`). `[HIGH/OBSERVED — bytes read from `q7_iram.bin`.]`
+(`0x20 << 3 = 0x100`).
 
 > **GOTCHA — `gen` and `start` are *not* two phases of opcode 6; they are ops 8 and 9.**
 > An earlier framing (FW-29) treated them as inner phases of the SB2SB(op-6) decode. They
@@ -118,15 +118,14 @@ EXTENDED_RDMA_DESC_GEN       = 8   // *** rdma_desc_gen — this page
 EXTENDED_RDMA_DESC_START     = 9   // *** rdma_desc_start — this page
 ```
 
-`[HIGH/OBSERVED — header enum bytes; note value **5 is absent** from the enum.]`
+Value **5 is absent** from the enum. `[HIGH/OBSERVED]`
 
-> **COMPILE-VERIFICATION (this task).** Both structs were compiled against the shipped
+> **COMPILE-VERIFICATION.** Both structs compile against the shipped
 > header (with `aws_neuron_isa_tpb_extended.h` included first for `EXT_COMPLETION_INFO` /
-> `EXTENDED_STRUCT`) and checked with `_Static_assert`: `sizeof == 64` for **both**, and
+> `EXTENDED_STRUCT`) and check with `_Static_assert`: `sizeof == 64` for **both**, and
 > every member offset below asserted with `__builtin_offsetof` — **all PASS**. Repeated
 > against `sunda` (NC-v2), `mariana` (NC-v4), and `maverick` (NC-v5) headers: **all four
-> gens PASS identically.** `[HIGH/OBSERVED — `gcc -c` clean on all four; `extended_opcode`
-> at off 12 confirmed for both.]`
+> gens PASS identically.**
 
 ### 2.1 `NEURON_ISA_TPB_EXTENDED_RDMA_DESC_GEN_STRUCT` (64 B)
 
@@ -157,8 +156,8 @@ Single DMA queue per engine; Power-of-2 # of DMA engines (1/2/4/8/16) by `dma_en
 Semaphore semantics: `local_sem` incremented by all 16 DMA engines when local gpsimd
 finishes triggering DMA, releases handle on local buffer so it can be written into again;
 `remote_sem` incremented by # of DMA engines when all bytes arrive at remote core's data
-buffer, notifies remote engines `dst_buffer` is ready to read."* `[HIGH/OBSERVED — header
-comment; matches the firmware logs §3 verbatim.]`
+buffer, notifies remote engines `dst_buffer` is ready to read."*
+`[HIGH/OBSERVED — matches the §3 logs]`
 
 ### 2.2 `NEURON_ISA_TPB_EXTENDED_RDMA_DESC_START_STRUCT` (64 B)
 
@@ -179,7 +178,6 @@ write to remote SBUF — Data traverses PCIE/RMVT/D2D links if cores are not HBM
 uses on-chip routing if cores are not one-hop from each other; 3. Local semaphore updated
 when local DMA engine finishes receiving all packets so that the source memory can be
 released; 4. Remote semaphore updated when all bytes fully transferred to remote core."*
-`[HIGH/OBSERVED.]`
 
 > **NOTE — `start` is operand-free; all transfer state lives in the ring `gen` produced.**
 > This is the architectural reason `gen` can be hoisted off the critical path: the only
@@ -198,10 +196,9 @@ loaded once at entry); the format-string device VA is passed in `a10` via a **`c
 pair** — `const16 a10,8 ; const16 a10,0xNNNN` builds `a10 = (8<<16)|0xNNNN = 0x8NNNN`
 (Xtensa `const16` shifts the prior immediate into the high half). Verified byte-exact at the
 `gen` Start site: `0x16210` = `a4 08 00` (`const16 a10,8`), `0x16216` = `a4 51 48`
-(`const16 a10,0x4851`) → `a10 = 0x84851` = DRAM `0x4851` + `0x80000`. `[HIGH/OBSERVED.]`
+(`const16 a10,0x4851`) → `a10 = 0x84851` = DRAM `0x4851` + `0x80000`. `[HIGH/OBSERVED]`
 
-The string set, read directly from `q7_dram.bin` at the exact offsets shown (every one
-confirmed present this task):
+The string set, read directly from `q7_dram.bin` at the exact offsets shown:
 
 ```
 --- rdma_desc_gen ---
@@ -238,16 +235,13 @@ confirmed present this task):
  0x4d8c  "M2S\0S2M\0"   (M2S@0x4d8c, S2M@0x4d90) <- the %s queue token for "Trigger %s DMA"
 ```
 
-`[HIGH/OBSERVED — every offset read this task: `strings -t x` for the format strings, `od -c`
-for the token blocks; independently re-confirmed by a second carve.]`
-
 > **QUIRK — the DRAM token layout PINS the role→queue mapping byte-exact.** The block
 > `…cpu_id=%d\0 TX\0 RX\0` sits immediately after the `gen` Start string, and
 > `…n_desc=%d\0 M2S\0 S2M\0` immediately after the Trigger string. Combined with the
 > doorbell stores in §4, this proves: **role TX prints "M2S" and drives the M2S
 > (outbound, read-from-local) queue; role RX prints "S2M" and drives the S2M (inbound,
 > write-to-remote) queue.** No inference needed — the binding is read straight from the
-> adjacency of the NUL-terminated tokens. `[HIGH/OBSERVED.]`
+> adjacency of the NUL-terminated tokens.
 
 ### 3.1 The call graph (instruction-exact)
 
@@ -258,10 +252,9 @@ The SB2SB collective driver (the large fn at IRAM `0x3300`) reaches the builder 
 ```
 
 This decodes exactly: Xtensa `call8` is `op0 = 0x5, n = 2`; `imm18 = 0x4aac`; target
-`= (0x3742 & ~3) + 4 + (0x4aac << 2) = 0x161f4`. `[HIGH/OBSERVED — bytes `25 ab 12`
-read and decoded this task; **upgraded from CARRIED to OBSERVED** vs the FW-29 framing.]`
+`= (0x3742 & ~3) + 4 + (0x4aac << 2) = 0x161f4`. `[HIGH/OBSERVED — was CARRIED in FW-29]`
 `rdma_desc_start` (`0x1723c`) is reached as the second leg of the SB2SB lowering after
-`gen` returns. `[HIGH structure.]`
+`gen` returns. `[HIGH structure]`
 
 `rdma_desc_gen` prologue (scalar, byte-exact):
 
@@ -281,7 +274,7 @@ read and decoded this task; **upgraded from CARRIED to OBSERVED** vs the FW-29 f
 
 The descriptor-array build + the two semaphore-descriptor pushes (logs `0x4bd6`/`0x4c2a`)
 are in the FLIX-scheduled inner loop and desync; their semantics come from §3 logs + §2
-header + §5. `[Start/inputs/swizzle/xt_addrs logs HIGH/OBSERVED; inner build MED.]`
+header + §5. `[HIGH/OBSERVED logs; MED inner build]`
 
 `rdma_desc_start` setup (same align prologue, then a 4-way `dma_engine_mask` select):
 
@@ -299,15 +292,14 @@ header + §5. `[Start/inputs/swizzle/xt_addrs logs HIGH/OBSERVED; inner build ME
 …  → the role split + TX/RX doorbell (§4)
 ```
 
-`[entry/prologue/drain logs + the 4-way mask-select *shape* HIGH/OBSERVED; the inner mask
-arithmetic MED — FLIX-desynced.]`
+`[HIGH/OBSERVED shape; MED inner mask — FLIX-desynced]`
 
 ---
 
 ## 4. The TX/RX protocol + role split — byte-exact
 
-The canonical block, disassembled fresh from the scalar boundary `0x1736b` (every byte
-re-read from `q7_iram.bin`). Register roles: `a5` = logger; `a3` = the tail-inc COUNT
+The canonical block, disassembled from the scalar boundary `0x1736b` in
+`q7_iram.bin`. Register roles: `a5` = logger; `a3` = the tail-inc COUNT
 (`num_descriptors`); `a4` = the per-role doorbell register address; `a6` = the role flag
 (**0 = RX, ≠0 = TX**). **All bytes shown are OBSERVED.**
 
@@ -319,8 +311,7 @@ re-read from `q7_iram.bin`). Register roles: `a5` = logger; `a3` = the tail-inc 
 ```
 
 The drain is the DescriptorStream flush — it guarantees the SWDGE-generated BDs have
-landed in the ring **before** the doorbell. `[logs OBSERVED HIGH; that the `callx8` between
-them is the flush routine INFERRED — MED.]`
+landed in the ring **before** the doorbell. `[HIGH/OBSERVED logs; MED/INFERRED flush]`
 
 ### 4.2 Role determination
 
@@ -333,7 +324,7 @@ them is the flush routine INFERRED — MED.]`
 ```
 
 The `bne` displacement decodes to target `0x173ec` (the error path); the `beqz.n` to
-`0x173a0` (the RX path). `[HIGH/OBSERVED — branch targets decoded from the bytes this task.]`
+`0x173a0` (the RX path).
 
 ### 4.3 TX path (`a6 != 0` — the SENDER)
 
@@ -374,9 +365,7 @@ The `bne` displacement decodes to target `0x173ec` (the error path); the `beqz.n
           with fn-name token "rdma_desc_start" (0x4e07) → assert/error sink.
 ```
 
-`[HIGH/OBSERVED — both `s32i.n a3,a4,0` stores (`39 04` at `0x1739b` TX and `0x173a9` RX),
-the role-split sequence, `retw.n`, and the error fmt loads all byte-read; the assert-sink
-identity INFERRED — MED.]`
+`[HIGH/OBSERVED; MED assert-sink identity]`
 
 ### 4.6 The handshake — C pseudocode
 
@@ -420,8 +409,7 @@ void rdma_desc_start(dma_ctx_t *ctx, uint32_t num_descriptors, int role) {
 > **waits** for the RX signal (the `[TX] Waiting for RX sync (left_pop)` log precedes the
 > store), **then** bumps its M2S tail — which is the actual CME COPY launch. Ordering RX
 > before TX is what prevents the sender from writing into a receive aperture that isn't yet
-> armed. `[handshake structure HIGH/OBSERVED (logs + store order); the wait-vs-signal
-> *direction* INFERRED from the log wording + ring semantics — MED.]`
+> armed. `[HIGH/OBSERVED structure; MED direction]`
 
 > **GOTCHA — `a4` (the doorbell addr) and the `right_push` target are NOT readable from
 > the raw blob.** Both ride `l32r` literals that resolve to **negative** PC-relative
@@ -443,10 +431,8 @@ CSR JSON (`csrs/sdma/udma_m2s.json`, `udma_s2m.json`):
 
 Both queue groups are `M2S_Q` / `S2M_Q` at group base `AddressOffset 0x01000`,
 `BundleSizeInBytes 4096`, **`ArraySize 16`** — i.e. 16 M2S queues mirrored by 16 S2M queues,
-so the per-queue doorbell for queue *q* is `0x1000 + q*0x1000 + 0x038`. `[HIGH/OBSERVED —
-register names, the `0x038` within-group offset, the 24-bit `val` width, and the 16-queue
-array all read from the CSR JSON this task; the `+0x1038` absolute for queue 0 = group base
-`0x1000` + `0x038`.]`
+so the per-queue doorbell for queue *q* is `0x1000 + q*0x1000 + 0x038`; the `0x1038`
+absolute for queue 0 is group base `0x1000` + `0x038`. `[HIGH/OBSERVED — CSR JSON]`
 
 > **NOTE — `TDRTP_inc` is RW, `RDRTP_inc` is WO.** The increment registers are
 > *write-only* on the S2M side and read-write on the M2S side; `val` is a 24-bit
@@ -454,7 +440,7 @@ array all read from the CSR JSON this task; the `+0x1038` absolute for queue 0 =
 > `num_descriptors` — there is no read-modify-write, the hardware does the add. The
 > `dma_engine_mask` being a power of 2 (1/2/4/8/16) means the firmware can broadcast one
 > tail-inc to a *group* of queues (`sdma_bcast`), launching a multi-engine move with one
-> doorbell write (§5.2). `[HIGH/OBSERVED — CSR access types + bitfields.]`
+> doorbell write (§5.2).
 
 ### 4.8 The `events`-field semaphore (instruction-level arrive/wait)
 
@@ -462,8 +448,8 @@ array all read from the CSR JSON this task; the `+0x1038` absolute for queue 0 =
 header states *"Semaphore wait conditions are typically placed on RdmaDescStart; RdmaDescGen
 can happen earlier without waiting."* So `gen` is **free** (issuable early, off the critical
 path) and `start` carries the per-instruction arrive/wait that gates the launch and posts
-completion — the on-chip end of the NCFW counted barrier (§7). `[HIGH/OBSERVED from header;
-the NCFW mapping MED.]`
+completion — the on-chip end of the NCFW counted barrier (§7).
+`[HIGH/OBSERVED header; MED NCFW mapping]`
 
 ---
 
@@ -489,11 +475,12 @@ across all 128 SBUF partitions, **plus two extra semaphore-increment BDs**.
 | **LOCAL sema descriptor** (log `0x4bd6` `{tpb_idx, sem=local_sem}`) | an extra BD that, on the local engine completing its trigger, increments `local_sem` on **this** core → releases the source buffer |
 | **REMOTE sema descriptor** (log `0x4c2a` `{remote_tpb, routing_id, sem=remote_sem}`) | an extra BD that, routed by `routing_id` across the die, increments `remote_sem` on the **peer** when all bytes land |
 
-`[field NAMES + existence HIGH/OBSERVED (header §2 + logs §3); the byte-exact word0/word1
-descriptor encoding INFERRED by reconciliation with the DWARF-decoded SDMA_CME_BD_DESC
-(16 B = `{word0 length+gen-tag, word1 CME COPY command, buf_ptr u64 SoC}`) — MED, because
-the `gen` inner build is FLIX-desynced in this image. The descriptor *format* itself is HIGH
-(DWARF-decoded from a different object); only its instantiation HERE is MED.]`
+Field NAMES + existence are HIGH/OBSERVED (header §2 + logs §3). The byte-exact
+word0/word1 descriptor encoding is INFERRED by reconciliation with the DWARF-decoded
+`SDMA_CME_BD_DESC` (16 B = `{word0 length+gen-tag, word1 CME COPY command, buf_ptr u64
+SoC}`) — MED, because the `gen` inner build is FLIX-desynced in this image. The
+descriptor *format* itself is HIGH (DWARF-decoded from a different object); only its
+instantiation here is MED.
 
 ### 5.2 The broadcast launch (`sdma_bcast`)
 
@@ -501,9 +488,9 @@ the `gen` inner build is FLIX-desynced in this image. The descriptor *format* it
 addr=0x%08x, mask=0x%04x, n_desc=%d"` (`0x4d39`, `%s` = M2S/S2M token). `sdma_bcast_base` is
 a BCAST M2S/S2M aperture: a single tail-inc write to the broadcast doorbell advances the
 tails of the *group* of queues the `dma_mask` selects, launching the multi-engine move with
-one trigger. `[sdma_bcast usage + mask HIGH/OBSERVED (logs); the broadcast-group semantics
-cross-ref the CSR M2S/S2M `ArraySize 16` + the NCFW `dma_apb_bcast{m2s_tail_ptr,
-s2m_tail_ptr, mask}` — HIGH; the exact group cut MED.]`
+one trigger. The broadcast-group semantics cross-reference the CSR M2S/S2M `ArraySize 16`
+plus the NCFW `dma_apb_bcast{m2s_tail_ptr, s2m_tail_ptr, mask}`.
+`[HIGH/OBSERVED usage; MED exact group cut]`
 
 ### 5.3 The two-semaphore + generation-tag completion model
 
@@ -514,9 +501,7 @@ s2m_tail_ptr, mask}` — HIGH; the exact group cut MED.]`
 | **generation-tag poll** | the ring's completion BD carries a 2-bit generation tag; the firmware busy-polls it until it matches the expected generation before reusing a slot. This is the synchronous, polling completion underneath the semaphore — **no interrupt path** for the collective data plane |
 | **structural guard** | the DescriptorStream count check: `start`'s role/parity `bne 0x17373 → 0x173ec` and `"ERROR: DescriptorStream wrote %d descriptors, expected %d"` (`0x5040`) is a **HARD error** if SWDGE produced ≠ expected descriptors |
 
-`[two-semaphore semantics HIGH/OBSERVED (headers + logs); the gen-tag poll HIGH by
-reconciliation with the DWARF-decoded descriptor; the exact Q7 poll site in this image is
-FLIX-desynced — MED.]`
+`[HIGH/OBSERVED semantics; MED exact Q7 poll site — FLIX-desynced]`
 
 ---
 
@@ -543,9 +528,8 @@ The link the transfer traverses, header §2.2 verbatim: *"Data traverses PCIE/RM
 if cores are not HBM neighbors; uses on-chip routing if cores are not one-hop from each
 other"* — the `io_d2d` die-to-die data fabric. The remote SBUF must also be programmed into
 a Q7-local remapper window before the iDMA can reach it (the `xt_addrs[16]` table holds the
-16 per-engine Q7-window views of the peer's SBUF). `[SoC bitfield HIGH (sibling ADDR
-report); the `routing_id` → high-bit rewrite INFERRED from the log + bitfield — MED; the
-`io_d2d` / PCIE/RMVT/D2D path text HIGH (header).]`
+16 per-engine Q7-window views of the peer's SBUF).
+`[HIGH bitfield + path text; MED routing_id rewrite]`
 See the planned [cross-die RDMA](../../dma/rdma-cross-die.md) page (forward link — Part 9).
 
 ---
@@ -576,10 +560,10 @@ barrier). Per step *k*:
 
 So: **one NCFW ring/mesh step = one SB2SB leg = one `rdma_desc_gen` + one
 `rdma_desc_start`** (each potentially fanning out over up-to-16 DMA engines via
-`dma_engine_mask`); step-to-step ordering is the NCFW counted semaphore barrier. `[leg↔step
-correspondence + sema chaining HIGH from the header + the device decode + the NCFW config;
-the exact per-(ctype, topology, world-size) leg SCHEDULE lives in the LX/NCFW firmware, not
-decodable from the Q7 image — MED/LOW.]`
+`dma_engine_mask`); step-to-step ordering is the NCFW counted semaphore barrier. The
+leg↔step correspondence + sema chaining are HIGH from the header + the device decode +
+the NCFW config; the exact per-(ctype, topology, world-size) leg SCHEDULE lives in the
+LX/NCFW firmware and is not decodable from the Q7 image. `[MED/LOW schedule]`
 See the planned [ring-protocol config command](../../collectives/ncfw/ring-protocol-config-command.md)
 (forward link — Part 10).
 
@@ -594,36 +578,35 @@ the `EXTENDED_RDMA_DESC_GEN=8` / `EXTENDED_RDMA_DESC_START=9` enum entries and *
 
 | GEN | ISA header has RDMA ops 8/9? | struct compile-check | Q7 POOL device decode |
 |---|---|---|---|
-| **SUNDA** (v2) | YES | `sizeof==64`, offsets PASS | header-OBSERVED (device decode not re-carved this task) |
+| **SUNDA** (v2) | YES | `sizeof==64`, offsets PASS | header-OBSERVED (no device decode) |
 | **CAYMAN** (v3) | YES | `sizeof==64`, offsets PASS | **full byte-exact decode here** (`513a8a22`/`226f4254`) |
 | **MARIANA** (v4) | YES | `sizeof==64`, offsets PASS | header-OBSERVED + carried from FW-29 family |
 | **MAVERICK** (v5) | YES | `sizeof==64`, offsets PASS | **header-OBSERVED only → interior INFERRED** |
 
-`[header presence + the 4-gen compile-check HIGH/OBSERVED this task; the per-gen *device*
-decode is CAYMAN-grounded byte-exact, others CARRIED/INFERRED.]`
+`[HIGH/OBSERVED headers; CAYMAN-only device decode]`
 
 > **NOTE — v4+ delta: the RDMA TX/RX path is *not* a late addition.** Unlike the RNG family
 > (where LFSR/XORWOW arrive at v3/v4), the RDMA descriptor gen/start ops are present and
 > structurally identical in the ISA header all the way back to **SUNDA (v2)** —
 > `EXTENDED_RDMA_DESC_GEN=8` / `EXTENDED_RDMA_DESC_START=9`, both 64-byte structs with the
 > same field offsets. The compile-check passes byte-for-byte across v2/v3/v4/v5; there is no
-> per-gen struct delta to reconcile. `[HIGH/OBSERVED — 4-gen compile-check.]`
+> per-gen struct delta to reconcile.
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** The MAVERICK ISA header
-> carries the same opcode-8/9 enum and both 64-byte structs (compile-verified PASS this
-> task), but the MAVERICK Q7 POOL DEBUG firmware body was **not separately carved/disasm'd**
-> here — its IRAM RDMA bodies are presumed structurally identical to CAYMAN by header
+> carries the same opcode-8/9 enum and both 64-byte structs (compile-verified PASS), but
+> the MAVERICK Q7 POOL DEBUG firmware body is **not separately carved/disasm'd** here —
+> its IRAM RDMA bodies are presumed structurally identical to CAYMAN by header
 > equivalence. Treat the MAVERICK *interior* (the exact entry addresses, the TX/RX block
-> bytes, the doorbell literal binding) as **INFERRED**, not byte-verified. `[the v4 deltas
-> are likewise carried; only CAYMAN is the byte witness.]`
+> bytes, the doorbell literal binding) as **INFERRED**, not byte-verified.
+> `[v4 CARRIED; CAYMAN is the byte witness]`
 
 ---
 
 ## 9. Honesty ledger
 
 **HIGH / OBSERVED (direct disasm byte-read / compile-verified header / CSR JSON):**
-- **Carve:** `CAYMAN_Q7_POOL_DEBUG` IRAM (`513a8a22`) + DRAM (`226f4254`), shas reproduced
-  this task; reset vector `06 7f 00 00` = `j 0x200`.
+- **Carve:** `CAYMAN_Q7_POOL_DEBUG` IRAM (`513a8a22`) + DRAM (`226f4254`); reset vector
+  `06 7f 00 00` = `j 0x200`.
 - **Opcodes 8/9 + both 64-byte structs:** compile-verified `sizeof==64` + every offset via
   `__builtin_offsetof` PASS, on **all four** gens; the verbatim header semantics.
 - **Function entries:** `rdma_desc_gen @0x161f4` (`36 81 4a` = frame `0x2540`),
@@ -635,8 +618,8 @@ decode is CAYMAN-grounded byte-exact, others CARRIED/INFERRED.]`
   `70 70 04` (extui bit0), `67 97 75` (bne parity → `0x173ec`), `ac 66` (beqz role split →
   `0x173a0`), **both** `39 04` (s32i.n a3,a4,0 tail-inc) at `0x1739b` (TX) and `0x173a9`
   (RX), the `[TX]`/`[RX]` log sequence, `1d f0` retw.n.
-- **The role→queue token mapping:** DRAM `TX\0RX\0` @ `0x487f` and `M2S\0S2M\0` @ `0x4d8c`
-  (read with `od -c`), proving TX→M2S / RX→S2M.
+- **The role→queue token mapping:** DRAM `TX\0RX\0` @ `0x487f` and `M2S\0S2M\0` @ `0x4d8c`,
+  proving TX→M2S / RX→S2M.
 - **The doorbell registers:** `TDRTP_inc` (M2S, RW) / `RDRTP_inc` (S2M, WO), both at group
   offset `0x038` (absolute `0x1038` for queue 0), `val[23:0]` "in descriptors", `M2S_Q`/
   `S2M_Q` `ArraySize 16` — all from the Cayman CSR JSON.

@@ -51,9 +51,9 @@ struct Alias {                  // value per node in ShapeTree<optional<Alias>>
 };
 ```
 
-The `+0x00` / `+0x08` field offsets are recovered from the `AliasToMustAlias` re-register lambda @`0x2009f10`, which reads `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before calling `SetUpAlias`. (CERTAIN.)
+The `+0x00` / `+0x08` field offsets are recovered from the `AliasToMustAlias` re-register lambda @`0x2009f10`, which reads `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before calling `SetUpAlias`.
 
-The config itself is `ShapeTree<std::optional<Alias>>` (one optional node per output subshape) plus an `xla::internal::IndexTable` (flat index of the result shape) plus the result `Shape`. The demangled `RemoveAliases` callees name this storage type verbatim — `ShapeTree<std::optional<xla::HloInputOutputAliasConfig::Alias>>::CreateNodes` and `InlinedVector<pair<ShapeIndex, optional<...Alias>>, 1>::Assign` (CERTAIN, @`0x1f5e0a3` / `0x1f5e18b`).
+The config itself is `ShapeTree<std::optional<Alias>>` (one optional node per output subshape) plus an `xla::internal::IndexTable` (flat index of the result shape) plus the result `Shape`. The demangled `RemoveAliases` callees name this storage type verbatim — `ShapeTree<std::optional<xla::HloInputOutputAliasConfig::Alias>>::CreateNodes` and `InlinedVector<pair<ShapeIndex, optional<...Alias>>, 1>::Assign` (@`0x1f5e0a3` / `0x1f5e18b`).
 
 ### Central Primitive — `SetUpAlias`
 
@@ -78,8 +78,8 @@ Status SetUpAlias(const ShapeIndex& output_index,    // 0x9644da0
 
 The `must_alias` bool surfaces downstream as the MHLO `mhlo.ArgResultAliasAttr` `mustAlias` field. Two distinct string pools confirm two distinct consumers:
 
-- `may_alias` (@`0x21e9eb`) / `must_alias` (@`0x288162`) are referenced by `xla::ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` @`0x75a93a0` — the HLO→MHLO lowering that emits one `ArgResultAliasAttr` per alias onto the entry function (CERTAIN — `referenced_by_functions` on both strings names the `ConvertInputOutputAlias` per-alias `InvokeObject` lambda).
-- `must_alias` (@`0xbd9380`) is referenced by `mlir::mhlo::ArgResultAliasAttr::parse` and `::print` — the attribute's textual round-trip (CERTAIN).
+- `may_alias` (@`0x21e9eb`) / `must_alias` (@`0x288162`) are referenced by `xla::ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` @`0x75a93a0` — the HLO→MHLO lowering that emits one `ArgResultAliasAttr` per alias onto the entry function. `referenced_by_functions` on both strings names the `ConvertInputOutputAlias` per-alias `InvokeObject` lambda.
+- `must_alias` (@`0xbd9380`) is referenced by `mlir::mhlo::ArgResultAliasAttr::parse` and `::print` — the attribute's textual round-trip.
 
 So the kind chosen by these seven passes is exactly what the tensorizer reads from the MHLO arg/result alias attribute. Downstream:
 
@@ -104,7 +104,7 @@ Each pass operates on the entry computation's `HloInputOutputAliasConfig` (and, 
 
 > **QUIRK —** the Flip names are counter-intuitive: the name denotes the *target kind to flip away from*, not a filter on the source. **`flip-must-aliases` makes everything MAY** (demotes must→may, leaves may→may); **`flip-may-aliases` makes everything MUST** (promotes may→must, leaves must→must). Both are *blanket* — they collect every alias via `ForEachAlias` with no per-kind filter, then re-stamp all of them with one fixed kind. There is no "flip only the ones currently must" semantics. The mechanism is a single `xor esi,1` (@`0x1ea5e11`) inverting the bool passed from each `Run` thunk.
 
-> **NOTE —** `flip-may-aliases` (#48) and `aws_neuron_alias_to_must_alias` (#72) reach the *same end-state* (every alias → must) by different implementations. #48 uses the `FlipAliases` collect-then-re-`SetUpAlias` XOR helper; #72 rebuilds the config via a fresh `HloInputOutputAliasConfig(shape)` + `ForEachAliasWithStatus`. They are two entry points for the same intent at different pipeline stages — #48 in the pre-layout 44–48 block, #72 in the post-layout 72–73 block. (HIGH — same observable result, distinct TU.)
+> **NOTE —** `flip-may-aliases` (#48) and `aws_neuron_alias_to_must_alias` (#72) reach the *same end-state* (every alias → must) by different implementations. #48 uses the `FlipAliases` collect-then-re-`SetUpAlias` XOR helper; #72 rebuilds the config via a fresh `HloInputOutputAliasConfig(shape)` + `ForEachAliasWithStatus`. They are two entry points for the same intent at different pipeline stages — #48 in the pre-layout 44–48 block, #72 in the post-layout 72–73 block. The shared-intent reading is **[INFERRED]** — same observable result, distinct translation units.
 
 ---
 
@@ -126,7 +126,7 @@ function RemoveAliases::Run(module):              // 0x1f5df70  (1899 B)
     return /*changed=*/ true
 ```
 
-No source-path string and no logging — a silent config rebuild. It shares the `ShapeTree<optional<Alias>>::CreateNodes` + `IndexTable` helpers with the rest of the family (same TU). (CERTAIN — callees demangled in the disasm.)
+No source-path string and no logging — a silent config rebuild. It shares the `ShapeTree<optional<Alias>>::CreateNodes` + `IndexTable` helpers with the rest of the family (same TU); the callees are demangled in the disasm.
 
 ---
 
@@ -144,7 +144,7 @@ AddMustAliases::Run (0x1e7ea90, 48 B)   mov esi, 1   ──┐
 AddMayAliases::Run  (0x1e7eac0, 45 B)   xor esi,esi  ──┘    (must_alias bool in esi/sil)
 ```
 
-`mov esi,1` @`0x1e7ea91` (must) and `xor esi,esi` @`0x1e7eac1` (may) set the bool, then both `call AddNewAliases` (@`0x1e7eaa5` / `0x1e7ead2`). (CERTAIN.)
+`mov esi,1` @`0x1e7ea91` (must) and `xor esi,esi` @`0x1e7eac1` (may) set the bool, then both `call AddNewAliases` (@`0x1e7eaa5` / `0x1e7ead2`).
 
 ### Algorithm
 
@@ -169,7 +169,7 @@ function AddNewAliases(module, must_alias):        // 0x1e7e280  (2053 B)  hilo/
     return /*changed=*/ (al)
 ```
 
-The must/may bool is *only* the kind stamped on each newly created alias; the discovery trigger (a structurally identical, not-yet-aliased input/output pair) is identical for #45 and #46. The multimap allows several params to share a shape; each consumed entry is erased so two outputs don't both claim one param. (Discovery call sequence CERTAIN; the precise tie-break when multiple params share a shape is multimap-iteration order, first-erase-wins — HIGH on edge cases.)
+The must/may bool is *only* the kind stamped on each newly created alias; the discovery trigger (a structurally identical, not-yet-aliased input/output pair) is identical for #45 and #46. The multimap allows several params to share a shape; each consumed entry is erased so two outputs don't both claim one param. The discovery call sequence is read off the disassembly; the precise tie-break when multiple params share a shape is multimap-iteration order, first-erase-wins — **[INFERRED]** on those edge cases.
 
 > **NOTE —** the shape match is on `Shape::ToString(print_layout=true)`, i.e. element type + dims + layout, compared by `memcmp` of the printed strings. This block runs *before* layout is finalized, so two tensors that will later get the same layout but currently print differently will not be paired here. The post-layout `aws_neuron_buffer_donation_to_alias` (#73) instead matches by `Shape::Equal` on resolved layouts.
 
@@ -189,7 +189,7 @@ FlipMustAliases::Run (0x1ea66c0, 48 B)   mov esi, 1   ──┐
 FlipMayAliases::Run  (0x1ea66f0, 45 B)   xor esi,esi  ──┘    xor esi,1 → fixed kind = !arg
 ```
 
-`mov esi,1` @`0x1ea66c1` (Flip**Must**, passes true) and `xor esi,esi` @`0x1ea66f1` (Flip**May**, passes false), both `call FlipAliases` (@`0x1ea66d5` / `0x1ea6702`). (CERTAIN.)
+`mov esi,1` @`0x1ea66c1` (Flip**Must**, passes true) and `xor esi,esi` @`0x1ea66f1` (Flip**May**, passes false), both `call FlipAliases` (@`0x1ea66d5` / `0x1ea6702`).
 
 ### Algorithm
 
@@ -209,7 +209,7 @@ function FlipAliases(module, flip_from):           // 0x1ea5e10  (2217 B)  hilo/
     return /*changed=*/ true
 ```
 
-The collector lambda @`0x1ea4d10` (1135 B) appends each `(ShapeIndex, Alias)` to a vector with no filter — confirming the blanket semantics. The fixed kind is `!flip_from`, independent of each alias's current kind. (CERTAIN — `xor esi,1` is the inversion.)
+The collector lambda @`0x1ea4d10` (1135 B) appends each `(ShapeIndex, Alias)` to a vector with no filter — confirming the blanket semantics. The fixed kind is `!flip_from`, independent of each alias's current kind — `xor esi,1` is the inversion.
 
 ---
 
@@ -238,7 +238,7 @@ function AliasToMustAlias::Run(module):            // 0x200a250  (898 B)
     return /*changed=*/ true
 ```
 
-The lambda @`0x2009f10` hard-codes `mov r9d,1` (kMustAlias), reads `parameter_number` from `[rcx]` and `parameter_index` from `[rcx+8]` — this is the disasm that pins the `Alias` struct offsets. Re-stamping an already-must alias as must is a no-op. (CERTAIN.)
+The lambda @`0x2009f10` hard-codes `mov r9d,1` (kMustAlias), reads `parameter_number` from `[rcx]` and `parameter_index` from `[rcx+8]` — this is the disasm that pins the `Alias` struct offsets. Re-stamping an already-must alias as must is a no-op.
 
 ---
 
@@ -250,7 +250,7 @@ Convert a **donatable input** (registered in `HloBufferDonorConfig`) into a conc
 
 ### Preconditions
 
-Run `RET_CHECK`s, all string-anchored from `BufferDonationToAlias::Run` (CERTAIN):
+Run `RET_CHECK`s, all string-anchored from `BufferDonationToAlias::Run`:
 
 | Check | String | Addr |
 |---|---|---|
@@ -259,7 +259,7 @@ Run `RET_CHECK`s, all string-anchored from `BufferDonationToAlias::Run` (CERTAIN
 | `LayoutUtil::HasLayout(input_shape)` | — | `0x311950` |
 | `LayoutUtil::HasLayout(output_shape)` | — | `0x31cc90` |
 
-Both the donated input subshape and the candidate output subshape must be layout-resolved — which is why #73 is sequenced *after* `aws_neuron_ensure_descending_layout_in_root` (#71). (CERTAIN.)
+Both the donated input subshape and the candidate output subshape must be layout-resolved — which is why #73 is sequenced *after* `aws_neuron_ensure_descending_layout_in_root` (#71).
 
 ### Algorithm
 
@@ -324,21 +324,21 @@ function BufferDonationToAlias::Run(module):       // 0x200d0b0  (4027 B)
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, each re-challenged against the binary:
+Where each central claim is anchored in the binary:
 
-1. **All seven passes exist and are thin drivers over one upstream config.** Re-checked: the demangled symbol names for all seven `Run` bodies are present in `disasm/` (`RemoveAliases`, `AddMust/MayAliases`, `FlipMust/MayAliases`, `AliasToMustAlias`, `BufferDonationToAlias`), and Add/Flip `Run` bodies are 45–48 B thunks that `call` the shared helpers. **CONFIRMED.**
+1. **All seven passes exist and are thin drivers over one upstream config.** The demangled symbol names for all seven `Run` bodies are present in `disasm/` (`RemoveAliases`, `AddMust/MayAliases`, `FlipMust/MayAliases`, `AliasToMustAlias`, `BufferDonationToAlias`), and Add/Flip `Run` bodies are 45–48 B thunks that `call` the shared helpers.
 
-2. **AliasKind constants: Add/Flip pass a bool, FlipAliases inverts it, donation forces may, promote forces must.** Re-checked in disasm: `mov esi,1`/`xor esi,esi` in the four Add/Flip thunks; `xor esi,1` @`0x1ea5e11` in `FlipAliases`; `xor r9d,r9d` @`0x200dbe1` then `SetUpAlias` @`0x200dbff` in `BufferDonationToAlias`; `mov r9d,1` @`0x2009f15` in the `AliasToMustAlias` lambda. **CONFIRMED** — including the counter-intuitive Flip direction.
+2. **AliasKind constants: Add/Flip pass a bool, FlipAliases inverts it, donation forces may, promote forces must.** In disasm: `mov esi,1`/`xor esi,esi` in the four Add/Flip thunks; `xor esi,1` @`0x1ea5e11` in `FlipAliases`; `xor r9d,r9d` @`0x200dbe1` then `SetUpAlias` @`0x200dbff` in `BufferDonationToAlias`; `mov r9d,1` @`0x2009f15` in the `AliasToMustAlias` lambda — including the counter-intuitive Flip direction.
 
-3. **The kind reaches MHLO via `ConvertInputOutputAlias` → `ArgResultAliasAttr`.** Re-checked: `referenced_by_functions` on `may_alias` @`0x21e9eb` and `must_alias` @`0x288162` both name the `ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` per-alias lambda; `must_alias` @`0xbd9380` is referenced by `ArgResultAliasAttr::{parse,print}`. The bridge symbol `ConvertInputOutputAlias` @`0x75a93a0` exists in `context/`. **CONFIRMED.**
+3. **The kind reaches MHLO via `ConvertInputOutputAlias` → `ArgResultAliasAttr`.** `referenced_by_functions` on `may_alias` @`0x21e9eb` and `must_alias` @`0x288162` both name the `ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` per-alias lambda; `must_alias` @`0xbd9380` is referenced by `ArgResultAliasAttr::{parse,print}`. The bridge symbol `ConvertInputOutputAlias` @`0x75a93a0` exists in `context/`.
 
-4. **The `Alias` struct is `{param_number @+0, param_index @+8, kind}`.** Re-checked: the `AliasToMustAlias` lambda @`0x2009f10` does `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before `SetUpAlias`. The `ShapeTree<optional<Alias>>` storage type appears verbatim in the `RemoveAliases` callee demangling. **CONFIRMED** on offsets; the exact `kind` byte position inside the struct is not separately pinned and is **INFERRED** from the must_alias-bool semantics (the SetUpAlias kind arg).
+4. **The `Alias` struct is `{param_number @+0, param_index @+8, kind}`.** The `AliasToMustAlias` lambda @`0x2009f10` does `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before `SetUpAlias`. The `ShapeTree<optional<Alias>>` storage type appears verbatim in the `RemoveAliases` callee demangling. The exact `kind` byte position inside the struct is not separately pinned and is **[INFERRED]** from the must_alias-bool semantics (the SetUpAlias kind arg).
 
-5. **#73 produces a may-alias because donation is a permission, and removes the donor.** Re-checked: `xor r9d,r9d` (kMayAlias) feeds `SetUpAlias`, immediately followed by `RemoveBufferDonor` @`0x200dc2d`; the `HloBufferDonorConfig::Verify` string @`0x39e6d8` confirms a donor and an alias for the same input is an error state, motivating the removal. The *rationale* ("permission not contract") is **STRONG** (consistent with the may-kind + the Verify invariant) rather than CERTAIN, since no string spells out the design intent.
+5. **#73 produces a may-alias because donation is a permission, and removes the donor.** `xor r9d,r9d` (kMayAlias) feeds `SetUpAlias`, immediately followed by `RemoveBufferDonor` @`0x200dc2d`; the `HloBufferDonorConfig::Verify` string @`0x39e6d8` shows a donor and an alias for the same input is an error state, motivating the removal. The *rationale* ("permission not contract") is **[INFERRED]** — consistent with the may-kind plus the Verify invariant, but no string spells out the design intent.
 
-Residual gaps: which passes actually run, and in what order, is driver-supplied (Python / `HLOToTensorizer.so`), not fixed by registration order; the 44–48 pre-layout / 72–73 post-layout adjacency is the strong proxy. Who *populates* `HloBufferDonorConfig` (`AddBufferDonor`) upstream of #73 is the frontend annotation path, not traced in `hlo-opt`. The Add* tie-break when multiple params share a shape is multimap-iteration order (HIGH, not CERTAIN on edge cases).
+Residual gaps: which passes actually run, and in what order, is driver-supplied (Python / `HLOToTensorizer.so`), not fixed by registration order; the 44–48 pre-layout / 72–73 post-layout adjacency is the strong proxy. Who *populates* `HloBufferDonorConfig` (`AddBufferDonor`) upstream of #73 is the frontend annotation path, not traced in `hlo-opt`. The Add* tie-break when multiple params share a shape is multimap-iteration order — **[INFERRED]** on edge cases.
 
 ---
 
@@ -352,8 +352,8 @@ Residual gaps: which passes actually run, and in what order, is driver-supplied 
 
 ## Cross-References
 
-- [tensor_map alias](../penguin/tensor-map.md) — §12.3, how the BIR `tensor_map` consumes the resolved alias to fold input/output onto one buffer
-- [Output-Operand Aliasing](../backend/output-operand-aliasing.md) — Part 6, the backend/allocator end of the contract: must-alias = unconditional share, may-alias = liveness-gated
-- [TensorizerLegalization Aliasing](../mlir/tensorizer-legalization.md) — §4.40, where the MHLO `ArgResultAliasAttr` is legalized into the tensorizer dialect
+- [tensor_map alias](../formats/neff-json-sidecars.md) — §12.3, how the BIR `tensor_map` consumes the resolved alias to fold input/output onto one buffer
+- [Output-Operand Aliasing](../bir/memory-location.md) — Part 6, the backend/allocator end of the contract: must-alias = unconditional share, may-alias = liveness-gated
+- [TensorizerLegalization Aliasing](tensorizer-legalization.md) — §4.40, where the MHLO `ArgResultAliasAttr` is legalized into the tensorizer dialect
 - [Collective Combiners](collective-combiners.md) — the sibling "thin XLA wrapper" family; same Neuron-driver-over-upstream-core pattern
 - [The hlo-opt Pass Registry](pass-registry.md) — the `--passes` table that registers slots 44–48 and 72–73

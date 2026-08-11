@@ -22,11 +22,11 @@ For reimplementation, the contract is:
 | **Pass 123** | `assign_hwdge_engine` — orchestrator `AssignHWDGEEngine::run(vector&)` `@0x117fe00`; worker `assignEngine` `@0x1180360` (114 lines) |
 | **Pass order** | 110 (`assign_trigger_engine`) · 123 (`assign_hwdge_engine`) · 124 (`alloc_queues`) |
 | **Engine field** | `InstDMA+0x90` engine-id (low u32 = `EngineType`) · `+0x94` sub-id · `+0xF8` `DGEType` · `+0x38` DMA-kind |
-| **`EngineType`** | `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (D-D03; abstract `DMA=4` is the lowering default these passes re-home) |
+| **`EngineType`** | `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (abstract `DMA=4` is the lowering default these passes re-home) |
 | **`DGEType`** | `{0 None, 1 SWDGE, 2 HWDGE, 3 Unassigned}` — gate value for both passes is `HWDGE = 2` |
 | **DMA family** | `byte_1DF3660` selector table (`.rodata`, 49 entries, index = IT−19) → `IT ∈ {18,19,22,32,41-46,67}` |
 
-The two source-path strings baked into the bodies — `neuronxcc/walrus/assign_trigger_engine/src/assign_trigger_engine.cpp` and `neuronxcc/walrus/assign_hwdge_engine/src/assign_hwdge_engine.cpp` — anchor every function on this page; both were read out of `libwalrus.so` directly. CONFIRMED.
+The two source-path strings baked into the bodies — `neuronxcc/walrus/assign_trigger_engine/src/assign_trigger_engine.cpp` and `neuronxcc/walrus/assign_hwdge_engine/src/assign_hwdge_engine.cpp` — anchor every function on this page; both were read out of `libwalrus.so` directly.
 
 ---
 
@@ -36,7 +36,7 @@ Both passes operate on one `InstDMA` structure and touch four fields. Nailing th
 
 | Field | Offset | Decoded as | Meaning | Confidence |
 |---|---|---|---|---|
-| Instruction type | `+0x58` | `*((uint*)inst + 22)` | `bir::InstructionType` — selects the DMA family (D-D01) | CERTAIN |
+| Instruction type | `+0x58` | `*((uint*)inst + 22)` | `bir::InstructionType` — selects the DMA family | CERTAIN |
 | DMA-kind | `+0x38` | `inst[14]` (dword) | DMA-kind classification; `== 2` enables the dedup-vs-`ValidEngines` fast path in pass 123 | HIGH |
 | Engine-id | `+0x90` | `inst[36]`, written as a **qword** | The engine handle; **low u32 = `EngineType` ordinal**. The trigger engine (pass 110) and the HW-DGE descriptor-gen engine (pass 123) both land here | CERTAIN |
 | Engine sub-id | `+0x94` | `inst[37]` | Engine sub-id companion (the high half of the `+0x90` qword) | HIGH |
@@ -50,7 +50,7 @@ Three of the pass-110 leaf visitors (`AssignSaves`, `CheckLimitIOQueues`, `Limit
 
 ```c
 // the DMA-family gate shared by AssignSaves / CheckLimitIOQueues / LimitIOQueues
-IT = *((uint*)inst + 22);                       // InstDMA+0x58 (D-D01)
+IT = *((uint*)inst + 22);                       // InstDMA+0x58
 is_dma_family = (IT == 18)                       // InstDMA base
              || ((uint)(IT - 19) <= 0x30         // index in [0, 48]
                  && byte_1DF3660[IT - 19] != 0);  // .rodata @0x1DF3660
@@ -67,7 +67,7 @@ nonzero indices (= IT−19): {0, 3, 13, 22, 23, 24, 25, 26, 27, 48}
 → IT set: {19 Load, 22 Save, 32 DMACopy, 41,42,43,44,45,46 (collective/DMA variants), 67 DMATrigger}
 ```
 
-With the `IT == 18` special-case this is exactly the D-D01 DMA family `{18,19,22,32,41-46,67}`. CONFIRMED — table bytes read out of the binary; the family reproduces D-D01 with no discrepancy.
+With the `IT == 18` special-case this is exactly the DMA family `{18,19,22,32,41-46,67}` — the table bytes read out of the binary.
 
 ---
 
@@ -119,7 +119,7 @@ For *every* instruction, `visitInstruction` `@0x117a610` inserts `(inst → ID)`
 ```c
 function AssignIdsAndCcLocs_visit(inst):                // 0x117a610
     idMap[inst] = counter++;                            // visitor+0x8; ID = scheduled order
-    if (inst[+0x58] == 48)                              // IT == InstCollectiveCompute (D-D09)
+    if (inst[+0x58] == 48)                              // IT == InstCollectiveCompute
         record_cc_locations(inst);                      // sub_117A0F0
 ```
 
@@ -136,7 +136,7 @@ function AssignSaves_visit(inst):                       // 0x117bd50
                 assignSaveToProducerEngine(inst);       // tail-jump 0x117b960
 ```
 
-> **QUIRK —** only DMAs *currently bound to the abstract `EngineType::DMA` (4)* are re-homed. A DMA that already carries a concrete engine (e.g. one a prior pass placed) is left alone. The `cmp DWORD PTR [rsi+0x90], 0x4` / `jne` at `0x117bd75` is the entire filter — get this wrong and you will stomp engines another pass deliberately chose. CONFIRMED from disassembly: the dispatch is exactly one `call tryAssignToCCEngine` then a tail-`jmp assignSaveToProducerEngine`.
+> **QUIRK —** only DMAs *currently bound to the abstract `EngineType::DMA` (4)* are re-homed. A DMA that already carries a concrete engine (e.g. one a prior pass placed) is left alone. The `cmp DWORD PTR [rsi+0x90], 0x4` / `jne` at `0x117bd75` is the entire filter — get this wrong and you will stomp engines another pass deliberately chose. From disassembly, the dispatch is exactly one `call tryAssignToCCEngine` then a tail-`jmp assignSaveToProducerEngine`.
 
 #### Stage 3a: the CC-engine path (`tryAssignToCCEngine` — the load case)
 
@@ -177,7 +177,7 @@ function assignSaveToProducerEngine(inst):              // 0x117b960
 
 This is the **trigger-follows-producer** rule, the pass's headline. A save DMA is triggered by the engine that wrote its source tile last (latest scheduled ID strictly before the DMA's own), so the producing engine fires the DMA the moment its write completes. If a candidate writer has no ID yet, the pass raises `bir::reportError("… has not assigned ID yet")` (`assign_trigger_engine.cpp:147`) — an invariant violation, not a recoverable case.
 
-> **QUIRK —** the symmetric **load→consumer** arm, `assignLoadToConsumerEngine` `@0x117cd00`, is *compiled but dead* in this build. It mirrors the producer logic (src DRAM, dst not DRAM, dst not `TensorKindInput`, pick the *earliest consumer strictly after* the load), but it has **zero call sites** — disassembly shows `AssignSaves::visitInstruction` tail-jumps *only* to `assignSaveToProducerEngine`, and the only two textual references to `117cd00` in the whole `.text` are the symbol label and its own header. The live policy is therefore Load → CC-engine (Stage 3a) and Save → producer-engine (Stage 3b). The source clearly intends a symmetric save↔producer / load↔consumer scheme; only those two arms are reachable here. CONFIRMED (0 callers).
+> **QUIRK —** the symmetric **load→consumer** arm, `assignLoadToConsumerEngine` `@0x117cd00`, is *compiled but dead* in this build. It mirrors the producer logic (src DRAM, dst not DRAM, dst not `TensorKindInput`, pick the *earliest consumer strictly after* the load), but it has **zero call sites** — disassembly shows `AssignSaves::visitInstruction` tail-jumps *only* to `assignSaveToProducerEngine`, and the only two textual references to `117cd00` in the whole `.text` are the symbol label and its own header. The live policy is therefore Load → CC-engine (Stage 3a) and Save → producer-engine (Stage 3b). The source clearly intends a symmetric save↔producer / load↔consumer scheme; only those two arms are reachable here (`assignLoadToConsumerEngine` has 0 callers).
 
 #### Stage 4: IO-queue limiting (the trigger-pass tail)
 
@@ -197,7 +197,7 @@ function LimitIOQueues_visit(inst):                     // 0x1179cb0
         inst[+0x90] = 6;                                // EngineType::SP — "SP only"
 ```
 
-> **GOTCHA —** the coalescing leaves HWDGE-with-engine DMAs *untouched* — they already carry a deliberate descriptor-gen engine (set by pass 123, which runs later in the pipeline; the engine these DMAs end up on is decided there). Only the non-HWDGE IO traffic is forced onto SP, so all the loose IO collapses onto one queue ("Limiting IO queue to SP only"). A reimplementation that also re-pins the HWDGE DMAs would defeat pass 123's load-balancing. CONFIRMED — `LimitIOQueues::visitInstruction` calls `isHWDGEDMAWithEngineSet` (PLT `0x5fd980`) then `isIODMA` (PLT `0x5ea8f0`) then `mov QWORD PTR [rbx+0x90], 6`.
+> **GOTCHA —** the coalescing leaves HWDGE-with-engine DMAs *untouched* — they already carry a deliberate descriptor-gen engine (set by pass 123, which runs later in the pipeline; the engine these DMAs end up on is decided there). Only the non-HWDGE IO traffic is forced onto SP, so all the loose IO collapses onto one queue ("Limiting IO queue to SP only"). A reimplementation that also re-pins the HWDGE DMAs would defeat pass 123's load-balancing. `LimitIOQueues::visitInstruction` calls `isHWDGEDMAWithEngineSet` (PLT `0x5fd980`) then `isIODMA` (PLT `0x5ea8f0`) then `mov QWORD PTR [rbx+0x90], 6`.
 
 ### Function Map
 
@@ -237,7 +237,7 @@ AssignHWDGEEngine::run(vector<unique_ptr<Module>>&)     0x117fe00  ── orches
 
 ```c
 function AssignHWDGEEngine_run(modules):                 // 0x117fe00
-    arch = modules[0][+0xAC];                            // Module ArchLevel (D-D03)
+    arch = modules[0][+0xAC];                            // Module ArchLevel
     if (arch <= 49):                                     // cmp [rax+0xac], 0x31  @0x117fe44
         ValidEngines = [ EngineInfo{type=6 /*SP*/}, EngineInfo{type=2 /*Activation*/} ];
         // injected literally: mov QWORD [rax], 6 ; mov QWORD [rax-8], 2   @0x1180060/0x1180073
@@ -255,7 +255,7 @@ function AssignHWDGEEngineImpl_ctor(logger, M, ValidEngines):   // 0x1181340
     for F in M.functions(): if F != main: visit(F);
 ```
 
-> **GOTCHA —** `ValidEngines.size() >= 2` is a hard `NeuronAssertion` (`assign_hwdge_engine.cpp:22`, resolution `CONTACT_SUPPORT`), not a soft check. The arch ≤ 49 path satisfies it by injecting the two-entry `[SP, Act]` literal; a `core_v5` target whose config supplies fewer than two HW-DGE engines is a fatal misconfiguration. A reimplementation must guarantee the vector has ≥ 2 entries before the visitor runs. CONFIRMED — `mov QWORD [rax],6` / `mov QWORD [rax-8],2` injection and the assert string both read out of the binary.
+> **GOTCHA —** `ValidEngines.size() >= 2` is a hard `NeuronAssertion` (`assign_hwdge_engine.cpp:22`, resolution `CONTACT_SUPPORT`), not a soft check. The arch ≤ 49 path satisfies it by injecting the two-entry `[SP, Act]` literal; a `core_v5` target whose config supplies fewer than two HW-DGE engines is a fatal misconfiguration. A reimplementation must guarantee the vector has ≥ 2 entries before the visitor runs. The `mov QWORD [rax],6` / `mov QWORD [rax-8],2` injection and the assert string are both read out of the binary.
 
 #### Stage 2: per-instruction dispatch (`IRVisitor::visit`)
 
@@ -285,7 +285,7 @@ LABEL_3:                                                  // current engine NOT 
     }
 ```
 
-> **QUIRK —** the `core_v5` arm is the load-balancer: a single counter at `Impl+0x20` is post-incremented and taken modulo `ValidEngines.size()`, so successive HW-DGE DMAs cycle across the available descriptor-gen engines. CONFIRMED from disassembly: `mov eax,[r15+0x20]` (counter) → `mov rax,[rsi+rdx*8]` (`ValidEngines[idx]`) → `mov QWORD PTR [rbx+0x90],rax`. The `arch <= 49` arm is *deterministic by current engine class* and always rejects PE(3) — the `cmp r12d,0x3` / `cmp r12d,0x4` / `cmp r12d,0x1` ladder and the `"InstDMA cannot be on PE engine"` string are both present.
+> **QUIRK —** the `core_v5` arm is the load-balancer: a single counter at `Impl+0x20` is post-incremented and taken modulo `ValidEngines.size()`, so successive HW-DGE DMAs cycle across the available descriptor-gen engines. From disassembly: `mov eax,[r15+0x20]` (counter) → `mov rax,[rsi+rdx*8]` (`ValidEngines[idx]`) → `mov QWORD PTR [rbx+0x90],rax`. The `arch <= 49` arm is *deterministic by current engine class* and always rejects PE(3) — the `cmp r12d,0x3` / `cmp r12d,0x4` / `cmp r12d,0x1` ladder and the `"InstDMA cannot be on PE engine"` string are both present.
 
 The three policy outcomes:
 
@@ -329,7 +329,7 @@ bool isHWDGEDMAWithEngineSet(inst):
                                                  //   (test [rdi+0x90],0xfffffffb ; setne)
 ```
 
-> **NOTE —** `~4 == 0xfffffffb`. The predicate is true precisely when the engine field holds something other than the lone `DMA=4` bit. Since pass 123 always writes SP(6) / Act(2) / a `core_v5` engine — none equal to 4 alone — the write flips this predicate, and that is the signal downstream passes use to treat the DMA as fully bound. CONFIRMED byte-exact from `libBIR.so`.
+> **NOTE —** `~4 == 0xfffffffb`. The predicate is true precisely when the engine field holds something other than the lone `DMA=4` bit. Since pass 123 always writes SP(6) / Act(2) / a `core_v5` engine — none equal to 4 alone — the write flips this predicate, and that is the signal downstream passes use to treat the DMA as fully bound. Byte-exact from `libBIR.so`.
 
 ---
 
@@ -350,12 +350,12 @@ So 110 fixes the trigger engine, 123 fixes the HW-DGE descriptor-gen engine (and
 
 ## Gaps and Uncertainty
 
-- **`InstDMA+0x38` DMA-kind enum (LOW).** The `== 2` case (enabling the dedup-vs-`ValidEngines` search) is the only value exercised here; the full enum is not transcribed. Likely a copy/IO/CCE kind tag — a Strand-D follow-up on `+0x38`.
-- **`getWritersFromBB` / `getReadersFromBB` internals (MED).** The templated BB-local def/use scans that feed producer/consumer selection were not transcribed end-to-end. The *selection arithmetic* (latest-before / earliest-after by scheduled ID) is certain from the call sites; the scan helper internals are not.
-- **`unk_3E03CD8` force flag (LOW).** The global that force-enables `LimitIOQueues` regardless of `shouldLimitIOQueues` is likely an env/option byte; its origin is not pinned.
-- **`core_v5` `ValidEngines` contents (MED).** For arch ≥ 50 the vector is target-supplied (chip-parts / target-datamodel), not a `libwalrus` literal. The round-robin *behavior* is certain; the concrete per-gen engine set is config-driven and not enumerated here.
+- **`InstDMA+0x38` DMA-kind enum** — **[INFERRED]**. The `== 2` case (enabling the dedup-vs-`ValidEngines` search) is the only value exercised here; the full enum is not transcribed. Plausibly a copy/IO/CCE kind tag — a Strand-D follow-up on `+0x38`.
+- **`getWritersFromBB` / `getReadersFromBB` internals** — **[INFERRED]**. The templated BB-local def/use scans that feed producer/consumer selection were not transcribed end-to-end. The *selection arithmetic* (latest-before / earliest-after by scheduled ID) is read off the call sites; the scan helper internals are not.
+- **`unk_3E03CD8` force flag** — **[INFERRED]**. The global that force-enables `LimitIOQueues` regardless of `shouldLimitIOQueues` is plausibly an env/option byte; its origin is not pinned.
+- **`core_v5` `ValidEngines` contents** — **[INFERRED]**. For arch ≥ 50 the vector is target-supplied (chip-parts / target-datamodel), not a `libwalrus` literal. The round-robin *behavior* is read off the disassembly; the concrete per-gen engine set is config-driven and not enumerated here.
 
-Every address, offset, enum ordinal, and rodata byte cited at CERTAIN was read directly off `libwalrus.so` / `libBIR.so` (cp310) and cross-checked against a real instruction. The pass-110 selection policy (Load→CC, Save→producer; consumer arm dead), the pass-123 worker (DGEType gate, SP/Act-or-round-robin, PE reject, `size>=2` assert), the `[SP=6, Act=2]` injection, the DMA-family table, and the `isHWDGEDMAWithEngineSet` predicate are all CONFIRMED at the binary level.
+Every address, offset, enum ordinal, and rodata byte cited here was read directly off `libwalrus.so` / `libBIR.so` (cp310) and cross-checked against a real instruction. The pass-110 selection policy (Load→CC, Save→producer; consumer arm dead), the pass-123 worker (DGEType gate, SP/Act-or-round-robin, PE reject, `size>=2` assert), the `[SP=6, Act=2]` injection, the DMA-family table, and the `isHWDGEDMAWithEngineSet` predicate are all anchored at the binary level.
 
 ---
 

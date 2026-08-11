@@ -13,17 +13,18 @@ the caller's instruction buffer.
 > **consumer** — `load_external_libraries_impl`, which parses each `0x1095` record's
 > direction/selector/device_addr — is
 > [`../firmware/pool/external-lib-loader.md`](../firmware/pool/external-lib-loader.md)
-> (committed, FW-16). The two pages reconcile field-for-field; see §8.
+> (FW-16). The two pages reconcile field-for-field; see §8.
 
 **Binary.** `libnrtucode_internal.so` — `0.21.2.0` customop build, 10,276,288 B,
 BuildID `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd`, **not stripped**. Every address,
-offset and constant below is read directly from this binary.
+offset and constant below is read directly from this binary. The page default is
+`[HIGH·OBSERVED]`; claims that depart from it carry an explicit tag.
 
-| Quantity | Value | Anchor | Tag |
-|---|---|---|---|
-| `.rodata` VMA−fileoff Δ | `0` (`readelf`: VMA `0x46b0` / off `0x46b0`) | section table | OBSERVED·HIGH |
-| `.text` VMA−fileoff Δ | `0x1000` (VMA `0x9b01a0` / off `0x9af1a0`) | section table | OBSERVED·HIGH |
-| C++ `_ZTV` vtables | **0** (`nm \| rg -c '_ZTV'` → 0) | symbol table | OBSERVED·HIGH |
+| Quantity | Value | Anchor |
+|---|---|---|
+| `.rodata` VMA−fileoff Δ | `0` (`readelf`: VMA `0x46b0` / off `0x46b0`) | section table |
+| `.text` VMA−fileoff Δ | `0x1000` (VMA `0x9b01a0` / off `0x9af1a0`) | section table |
+| C++ `_ZTV` vtables | **0** (`nm \| rg -c '_ZTV'` → 0) | symbol table |
 
 > **GOTCHA — no C++ vtables in this binary.** `libnrtucode_internal.so` is plain C:
 > zero `_ZTV` symbols. The one indirect call in the body (`call *0x20(%rax)`,
@@ -33,7 +34,7 @@ offset and constant below is read directly from this binary.
 
 ---
 
-## 1. Symbol / address table `[HIGH·OBSERVED]`
+## 1. Symbol / address table
 
 `nm libnrtucode_internal.so` — all six symbols verified at the exact addresses below:
 
@@ -50,11 +51,11 @@ The body is `t` (local) — both public shims `T` (global) tail-call into it. Th
 is the **sole producer** of the `0x1095` record: `objdump -d \| rg -c '0x1095'` = **8**
 across the whole binary, and all 8 are `movw $0x1095` stores inside this one function
 (addresses `0x9b20f7`, `0x9b2137`, `0x9b216b`, `0x9b21c0`, `0x9b2215`, `0x9b226a`,
-`0x9b22bf`, `0x9b2314` — the record-0 builder plus the 7-fold unroll). `[OBSERVED·HIGH]`
+`0x9b22bf`, `0x9b2314` — the record-0 builder plus the 7-fold unroll).
 
 ---
 
-## 2. The two shims — byte-exact `[HIGH·OBSERVED]`
+## 2. The two shims — byte-exact
 
 Both shims are 16 bytes; they reshuffle SysV registers and inject the direction
 immediate. The **only semantic difference is the immediate** (`01` vs `02`).
@@ -91,13 +92,13 @@ nrtucode_result_t nrtucode_ll_get_load_sequence(   // and ..._unload_sequence
 
 `instr_buf_max_instrs` is a **count of records**, not a byte length: the count
 (1 or 8) is compared against it and the record stride is `0x40`, so one `0x1095`
-record = one device "instruction". `[OBSERVED·HIGH]`
+record = one device "instruction".
 
 **Return codes** (`eax`): `0` = OK (records written, `*num_instrs_pushed = count`);
 `7` = capacity `< count` (no write, `mov $0x7,%eax`@`0x9b2085`/`0x9b2099` before the
 `cmp %r13,%rdi` test); `8` = `instr_buf` not 8-byte aligned (`test $0x7,%bl`@`0x9b1ff8`
 fails → logs *"instruction buffer is not correctly aligned"*, `mov $0x8,%eax`@`0x9b2022`).
-`[OBSERVED·HIGH]`
+
 
 **NULL-arg contract is FATAL** (`fprintf "...`%s` is null" + abort`), one abort site per
 arg, all naming the fn `nrtucode_ll_get_sequence_common` (`.rodata 0x4e0d`):
@@ -110,11 +111,11 @@ arg, all naming the fn `nrtucode_ll_get_sequence_common` (`.rodata 0x4e0d`):
 | `num_instrs_pushed` | `0x51a6` `"num_instrs_pushed"` | `0x9b240e` |
 
 All four strings dumped byte-exact at the file offsets above (`.rodata` Δ=0).
-`[OBSERVED·HIGH]`
+
 
 ---
 
-## 3. The `0x1095` record — 64-byte slot field map `[HIGH·OBSERVED]`
+## 3. The `0x1095` record — 64-byte slot field map
 
 Each record is built field-by-field on a stack scratch buffer (one `mov`-immediate
 or register store per field) then `memcpy`'d to `instr_buf`. Every store below is
@@ -158,7 +159,7 @@ struct nrtucode_ll_seq_record_t {   /* sizeof = 0x40 (64) ; identical for load/u
 > 64-bit `ll[+0x10]` ([`nrtucode-ll-create.md`](nrtucode-ll-create.md) §1), but the
 > generator reads only the **low 32 bits** (`mov 0x10(%r15),%edi`@`0x9b20f3`) and
 > stores a `uint32_t` at record `+0x18`. The selector space is `{0, 3}`, so the
-> truncation is harmless; the on-wire selector is a `u32`. `[OBSERVED·HIGH]`
+> truncation is harmless; the on-wire selector is a `u32`.
 
 **`lane_mask` / `0xff` (`+0x0d`)** — `[INFERRED·MED]`. A constant `0xff` immediately
 after the direction byte; most plausibly an all-lanes / all-cores broadcast mask or an
@@ -179,7 +180,7 @@ happens here — the generator is a pure handoff descriptor):
 
 ---
 
-## 4. The shared generation algorithm `[HIGH·OBSERVED]`
+## 4. The shared generation algorithm
 
 Walking the body (`0x9b1fc0`) with `r14b` = the injected direction:
 
@@ -241,7 +242,7 @@ Walking the body (`0x9b1fc0`) with `r14b` = the injected direction:
 
 ---
 
-## 5. The `num_instrs` sizing queries `[HIGH·OBSERVED]`
+## 5. The `num_instrs` sizing queries
 
 `nrtucode_ll_get_load_sequence_num_instrs` (`0x9b1e30`) and the unload twin
 (`0x9b1ef0`) answer "how big a buffer do I need?". Each NULL-guards `ll`/`core`,
@@ -256,7 +257,7 @@ computes `core_ctx`, then:
 > well-behaved caller sizes its buffer from `num_instrs` (= 1) and only ever hits the
 > 1-record path. **In correct usage, the load/unload sequence is EXACTLY ONE 64-byte
 > record.** The 8-record path is a defensive fallback for the API-misuse of passing a
-> core in the wrong context. `[OBSERVED·HIGH]`
+> core in the wrong context.
 
 > **NOTE — the warning names its own sibling.** Inside the body, the ctx-mismatch
 > assert picks the function-name token by a direction-keyed `cmove`:
@@ -267,11 +268,11 @@ computes `core_ctx`, then:
 > 9b205f: cmove %rax,%r8            ; dir==1 -> load name; else keep unload name
 > ```
 > So the load path's warning names `0x4de4`, the unload path's names `0x5078`. Both
-> strings verified byte-exact in `.rodata`. `[OBSERVED·HIGH]`
+> strings verified byte-exact in `.rodata`.
 
 ---
 
-## 6. The load vs unload distinction `[HIGH·OBSERVED]`
+## 6. The load vs unload distinction
 
 LOAD and UNLOAD are **one function** differing only by the direction immediate the shim
 injects. The inverse-map is therefore a **field/dataflow map**, not an 8-row
@@ -297,18 +298,18 @@ from its own state (it loaded the lib; the host gives it no address to unmap). T
 shipped public header documents this role verbatim: the unload sequence is "a sequence
 of 1+ instructions required to unload instruction implementation kernels … inserted
 into the instruction stream at end of model execution or before a new library is
-loaded." `[OBSERVED·HIGH]`
+loaded."
 
 ---
 
-## 7. The 8-record unload path and teardown ordering `[HIGH·OBSERVED]`
+## 7. The 8-record unload path and teardown ordering
 
-The task's "8-record path" is the **cross-context fallback** described in §4 step 4 —
+The "8-record path" is the **cross-context fallback** described in §4 step 4 —
 not a distinct teardown-opcode set. Reading each `movw $0x1095` site confirms records
 1..7 are unrolled byte-copies at `+0x40` increments (e.g. record-1:
 `movw $0x1095,0x40(%rsi)`@`0x9b2137`, `mov %r14b,0x4c(%rsi)`@`0x9b214b` =
 direction at `+0x4c` = `+0x0c + 0x40`). All 8 stamps live within
-`0x9b20f7..0x9b2314`. `[OBSERVED·HIGH]`
+`0x9b20f7..0x9b2314`.
 
 The unload generator **frees nothing** (host or device). Its complete call set on the
 record path is `{nrtucode_core_get_context, nrtucode_context_log (warn/align),
@@ -329,9 +330,9 @@ staging buffer + free of the host struct). The lifecycle:
 
 ---
 
-## 8. Reconciliation with the device loader (FW-16) `[HIGH·OBSERVED]`
+## 8. Reconciliation with the device loader (FW-16)
 
-The committed
+The
 [`../firmware/pool/external-lib-loader.md`](../firmware/pool/external-lib-loader.md)
 documents `load_external_libraries_impl` — the device consumer of this exact record.
 Its `0x1095` field table reconciles **field-for-field** with the host writers decoded
@@ -367,9 +368,9 @@ The UCODE_LL upload descriptor / host-device handoff:
 
 ---
 
-## 9. Adversarial self-verification `[OBSERVED]`
+## 9. Adversarial self-verification
 
-Each strongest claim re-challenged against `libnrtucode_internal.so`:
+The strongest claims, each anchored in `libnrtucode_internal.so`:
 
 1. **Two generators = shims into one body.** `nm` → `nrtucode_ll_get_load_sequence`@`0x9b1fb0`
    and `nrtucode_ll_get_unload_sequence`@`0x9b2440`; both `jmp 9b1fc0`
@@ -388,6 +389,6 @@ Each strongest claim re-challenged against `libnrtucode_internal.so`:
    record-1 `movw $0x1095,0x40(%rsi)`@`0x9b2137`. UNLOAD device_addr/size gate skipped
    (`cmp $0x1,%r14b ; jne 0x9b20dc`@`0x9b20ac`). **Confirmed.**
 
-All five hold against the binary. The single non-OBSERVED claims are the `0xff`
+The single non-OBSERVED claims are the `0xff`
 `lane_mask` *meaning* (value OBSERVED, meaning INFERRED·MED) and the "8 = per-core"
 reading (INFERRED·MED) — both explicitly tagged and deferred to FW-16/FW-17.

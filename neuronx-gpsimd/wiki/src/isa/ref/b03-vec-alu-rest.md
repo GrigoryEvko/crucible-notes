@@ -40,7 +40,7 @@ derived from static analysis of the shipped artifacts only.
 > `ivp_ltrn`, `ivp_ltrsn`) are **B08**; vbool→vbool boolean logic and the vbool-folding
 > `ivp_bnorfs2n`/`ivp_borfs2n` are **B11**; `sel`/`dsel`/shuffle are **B21**; `rep` is **B16**;
 > scatter/gather `*t` is **B19**. The explicit family-prefix assignment is the partition table in
-> §7. `[HIGH/OBSERVED]`
+> §7.
 
 ---
 
@@ -73,7 +73,7 @@ last cell). `opcode-sel imm` is `word0` of the `Opcode_<mn>_Slot_f0_s3_alu_encod
 (`C7 07 imm32` — [flix-encoding §6.1](../core/flix-encoding.md)); for ops not legal in
 `f0_s3_alu` the first available placement is named. `vbr field` = the `vbool` operand at slot
 bits [18:15]; its **direction** is the discriminator: `out` (compare/B-variant writes the flag),
-`in` (predicated-t reads the mask). `[conf]` is `[HIGH/OBSERVED]` for every row.
+`in` (predicated-t reads the mask). Every row of §2.1–§2.3 is `[HIGH/OBSERVED]`.
 
 ### 2.1 Integer compares — write a `vbool` predicate (18 mnemonics, 378 placements)
 
@@ -98,8 +98,8 @@ bits [18:15]; its **direction** is the discriminator: `out` (compare/B-variant w
 | `ivp_neqnx16`  | F0·S3_ALU | `0x80870200` | a,b → vb | 32×16b | `vb[l] = (a≠b)` | 21 |
 | `ivp_neqn_2x32`| F0·S3_ALU | `0x80870202` | a,b → vb | 16×32b | `vb[l] = (a≠b)` | 21 |
 
-All 18 share the iclass prefix `0x80870000` (re-read byte-exact from the F0·S3_ALU templates this
-pass; the low 16 bits are the enumerated `(predicate, lane-width)` selector, §3.1). There is **no
+All 18 share the iclass prefix `0x80870000` (read byte-exact from the F0·S3_ALU templates; the
+low 16 bits are the enumerated `(predicate, lane-width)` selector, §3.1). There is **no
 `gt`/`ge`** opcode — greater-than is the assembler swapping operands into `lt`/`le` (a B01/B02
 convention; B03 ships the canonical 6-predicate basis × 3 widths). Each compare is legal in **21**
 slots (every ALU slot + every Mul slot + `n2_s0_ldst`); the per-slot selector differs (the
@@ -184,7 +184,7 @@ eqn2x32 0x0004   len2x32 0x000a   leun2x32 0x0100   ltn2x32 0x0106   ltun2x32 0x
 > real shape is a structured `(group∈{0,1,2}, sub∈{0..7})` enum: `sel = (group<<8) | (sub<<1)`. A
 > reimplementer must look the selector up per-opcode from the `opcodes[]`/template table, **not**
 > compute it from a single counter, or the `le→lt→neq` wrap mis-encodes. The per-op selector word
-> above is the ground truth. `[HIGH/OBSERVED]`
+> above is the ground truth.
 
 The width-suffix (`2nx8`/`nx16`/`n_2x32`) interleaves with the predicate as the **fast** axis
 (width-minor, predicate-major in display) — the binary orders them width-minor inside each
@@ -214,7 +214,7 @@ straddle `0x67`/`0x80`; there is **no** single XOR that turns `add` → `addt` a
 
 The extra `vbool` operand (the flag for compares/B-variants, the mask for predicated-t) is
 deposited/extracted by the `Field_fld_ivp_sem_vec_alu_vbr_Slot_<slot>_{get,set}` thunks. The
-*get* body is identical across all 20 ALU/Mul/LdSt slots that carry it (re-disassembled at
+*get* body is identical across all 20 ALU/Mul/LdSt slots that carry it (disassembled at
 `0x32b710` for F0·S3_ALU, `0x32ba30` for N0·S3_ALU, `0x32b7d0` for F1·S3_ALU — all byte-equal):
 
 ```c
@@ -233,7 +233,7 @@ this field; it is in the per-opcode operand-descriptor table (§3.4), which is w
 ### 3.4 Operand count and direction — the byte that defines the sub-family
 
 The `proto_TIE_xt_ivp32_<OP>_insn_num_args` immediate and the `_operands` descriptor array
-(`.data.rel.ro`, file = VMA − `0x200000`) pin the operand shape byte-exact. Re-read this pass:
+(`.data.rel.ro`, file = VMA − `0x200000`) pin the operand shape byte-exact:
 
 | opcode | `num_args` | operand directions (descriptor +0x0f byte) | meaning |
 |---|--:|---|---|
@@ -344,9 +344,8 @@ data=300)` (no overflow, no normalize).
 > threads a multi-word addition. The one op that **consumes** an incoming predicate is the fused
 > `ivp_bxorabssubu2nx8` (§5.4), whose `vbool` operand is both `in` and `out` (a predicate
 > XOR-accumulation, not an arithmetic carry). Wide/multi-precision arithmetic is instead done in
-> the `wvec` accumulator path (B04/B05 MAC), not by carry-chaining these 16-bit ALU ops.
-> `[HIGH/OBSERVED]` (no `*carry*`/`*cin*`/`*cout*` mnemonic exists: `nm | rg -i 'carry|cin|cout'`
-> = 0).
+> the `wvec` accumulator path (B04/B05 MAC), not by carry-chaining these 16-bit ALU ops. No
+> `*carry*`/`*cin*`/`*cout*` mnemonic exists: `nm | rg -i 'carry|cin|cout'` = 0.
 
 ---
 
@@ -354,8 +353,8 @@ data=300)` (no overflow, no normalize).
 
 `libfiss-base.so` (sha256 `260b110c…`, 864 `module__xdref_*` value leaves) is callable in-process
 with no license. The per-element leaf ABI is **System-V with `rdi` reserved** (a ctx pointer the
-scalar leaves ignore): value args begin in `rsi`, outputs are pointer args. Twelve leaves driven
-live this pass; transcripts below are reproducible with `ctypes.CDLL(...)`.
+scalar leaves ignore): value args begin in `rsi`, outputs are pointer args. Twelve leaves were
+driven live; transcripts below are reproducible with `ctypes.CDLL(...)`.
 
 ### 5.1 Predicated-merge — masked vs unmasked lanes (the required merge case)
 
@@ -371,7 +370,7 @@ Composing `add_16_16_16` with the `bitkillf_16_2` keep-mask reproduces `ivp_addn
 ```
 
 The unmasked lanes (1, 3) keep `0xBB`/`0xDD` exactly — the inout/merge semantics, proven by
-execution. `[HIGH/OBSERVED by execution]`
+execution.
 
 ### 5.2 Compares and B-variant min/max — signed/unsigned divergence + flag
 
@@ -404,7 +403,6 @@ bsubnorm(20000,-20000):             pred=0x3 data=20000     (40000 difference ->
 ```
 
 The `vbool` flag is the per-lane carry/overflow; the data is the normalize-on-overflow value.
-`[HIGH/OBSERVED by execution]`
 
 ### 5.4 The fused predicate-chain form `ivp_bxorabssubu2nx8`
 
@@ -419,8 +417,7 @@ bxorabssubu(a=10,b= 3,pin=1) -> pred=0x1 data=0x07   (pin(1) ^ 0 = 1)
 
 This is the only B03 op that *consumes* a predicate to *produce* a predicate — a fused
 abs-difference whose flag accumulates a running boolean (used in sort/argmin kernels). Note it
-exposes **no** arithmetic carry-in; the chained quantity is a boolean. `[HIGH/OBSERVED by
-execution]`
+exposes **no** arithmetic carry-in; the chained quantity is a boolean.
 
 ---
 
@@ -453,7 +450,7 @@ bundle (compare → Mul slot writes `vbool`; the `*t` form → ALU slot reads it
 ## 7. Partition discipline — the exact family-prefix assignment
 
 To guarantee **no mnemonic is double-counted** across B01/B02/B03 (and the predicate-adjacent
-batches), the per-prefix ownership, re-derived against the roster this pass:
+batches), the per-prefix ownership, derived against the roster:
 
 | family / prefix | example | owner | why |
 |---|---|---|---|
@@ -498,34 +495,32 @@ batch's prefix set. The 889 placements are part of — never additive beyond —
 
 ## 9. Adversarial self-verification — five strongest claims re-challenged
 
-1. **"The compare result is a `vbool` predicate, width = lane-bytes bits per lane."** Re-challenged
-   by driving `eq_1_8_8`/`eq_2_16_16`/`eq_4_32_32` live: outputs `0x1`/`0x3`/`0xf` on a true
+1. **"The compare result is a `vbool` predicate, width = lane-bytes bits per lane."** Driving
+   `eq_1_8_8`/`eq_2_16_16`/`eq_4_32_32` live gives outputs `0x1`/`0x3`/`0xf` on a true
    compare — exactly 1/2/4 set bits, matching the 8/16/32-bit lane and the `vbool` "one mask bit
    per 8-bit sub-lane" geometry ([register-files §3](../core/register-files.md)). The leaf
-   bodies `and $0x1`/`$0x3`/`$0xf` confirm the mask width. **Holds.** `[HIGH/OBSERVED]`
-2. **"B-variant ops write *two* outputs (data + flag), predicated-t marks dst inout."** Re-read the
+   bodies `and $0x1`/`$0x3`/`$0xf` confirm the mask width. **Holds.**
+2. **"B-variant ops write *two* outputs (data + flag), predicated-t marks dst inout."** The
    `_operands` descriptor bytes: `IVP_BMAXNX16` has `num_args=4` with two `0x6f` ('o') bytes;
    `IVP_ADDNX16T` has `num_args=4` with the dst byte `0x6d` ('m', inout); `IVP_ADDNX16` has
    `num_args=3`, one `0x6f`. The byte-level direction tags are the discriminator, not an inferred
-   convention. **Holds.** `[HIGH/OBSERVED]`
-3. **"`baddnorm` produces a carry/overflow flag and normalizes by >>1."** Re-challenged by execution
-   across 5 inputs: `(20000,20000)→(0x3,20000)`, `(30000,5000)→(0x3,17500)`, `(100,200)→(0x0,300)`.
+   convention. **Holds.**
+3. **"`baddnorm` produces a carry/overflow flag and normalizes by >>1."** Execution across 5
+   inputs: `(20000,20000)→(0x3,20000)`, `(30000,5000)→(0x3,17500)`, `(100,200)→(0x0,300)`.
    The disasm shows the bit15-vs-bit16 compare (`sete`) and the conditional `shr $1`/`cmove`. The
-   value-and-flag both reproduce. **Holds.** `[HIGH/OBSERVED by execution]`
-4. **"The compare selector is enumerated, not a flat `index×2` counter."** Re-challenged by reading
+   value-and-flag both reproduce. **Holds.**
+4. **"The compare selector is enumerated, not a flat `index×2` counter."** Reading
    all 18 selector words: within a byte they step by 2 (`0,2,…,e`) but `0x0e→0x100` is a carry, so
    `sel = (group<<8)|(sub<<1)`, not a single counter. A naive `index×2` would mis-encode every op
    past `leunx16`. The per-op table is authoritative. **Holds (and corrects the naive reading).**
-   `[HIGH/OBSERVED]`
-5. **"`ivp_addnx16` is B01, `ivp_addnx16t` is B03 — distinct opcodes."** Re-challenged: distinct
+5. **"`ivp_addnx16` is B01, `ivp_addnx16t` is B03 — distinct opcodes."** They carry distinct
    `Opcode_*_encode` symbols, distinct `word0` templates (`0x80b50000` vs `0x66f80000`), distinct
    `num_args` (3 vs 4), distinct `opcodes[]` rows. Not a bit-flip — the `t` band is `0x66/0x67`,
    uncorrelated with the base op's selector. The partition is mechanical, not nominal. **Holds.**
-   `[HIGH/OBSERVED]`
 
 **Ungrounded / flagged items.** (i) The `2nx8`/`n_2x32` **B-variant** selector words for the
 non-`nx16` widths (e.g. `ivp_bmaxu2nx8`, `ivp_bminn_2x32`) are present and counted but only a
-subset were template-dumped this pass; their value semantics *are* execution-validated via the
+subset were template-dumped; their value semantics *are* execution-validated via the
 `bmax_1_8_8_8`/`bmax_4_32_32_32` leaves, so the gap is the *selector word*, not the behaviour —
 `[MED/OBSERVED]` on those specific selector immediates. (ii) Bundle-level whether a compare can
 forward its `vbool` to a same-bundle `*t` consumer is **scheduler policy**, not an ISA fact; the
@@ -559,7 +554,7 @@ mnemonics — noted so no downstream page treats it as a second witness for B03.
 ---
 
 *Provenance: selector templates, `num_args`/`_operands` direction bytes and the
-`ivp_sem_vec_alu_vbr` field thunk are re-disassembled from `libisa-core.so` (sha256 `8fe68bf4…`,
+`ivp_sem_vec_alu_vbr` field thunk are disassembled from `libisa-core.so` (sha256 `8fe68bf4…`,
 `ncore2gp/config/`, not stripped); the 12 value leaves in §4–§5 are driven live via `ctypes`
 against `libfiss-base.so` (sha256 `260b110c…`), license-free. Counts via `nm | rg -c`; `.data.rel.ro`
 file = VMA − `0x200000`; the `extracted/` tree is gitignored (reach with absolute paths). All

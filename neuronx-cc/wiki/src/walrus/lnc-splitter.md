@@ -40,21 +40,21 @@ The naming, `.cpp:line` anchors, and the `^nc[0-9]{2}$` module-name regex are re
 `lnc_size` is a single dword in `PassOptions` at offset `0x1A4` (dword index 420), defaulting to `1` for an ordinary single-core compile. The `LncSplitter` constructor caches it onto the pass object so the per-module split loop never re-reads `PassOptions`. The ctor tail at `0x16d6240` is unambiguous:
 
 ```c
-// LncSplitter::LncSplitter(PassOptions const& opts) @ 0x16d6240  [CONFIRMED]
+// LncSplitter::LncSplitter(PassOptions const& opts) @ 0x16d6240
 result = *((unsigned int *)opts + 105);   // 105 * 4 = 0x1A4 = lnc_size
 *((_QWORD *)this + 12) = result;           // this + 12*8 = this+0x60 = cached lnc
 ```
 
-`run(vector)` then reads `this+0x60` (`v7 = *((_QWORD *)a2 + 12)`, disasm `mov rsi,[rsi+0x60]` @ `0x16d5cbc`) as the per-module replication factor. This ties the splitter's clone count to the **same** `PassOptions+0x1A4` field the verifier gate reads, so the two passes can never disagree on `N`. **[CONFIRMED — ctor body + run body.]**
+`run(vector)` then reads `this+0x60` (`v7 = *((_QWORD *)a2 + 12)`, disasm `mov rsi,[rsi+0x60]` @ `0x16d5cbc`) as the per-module replication factor. This ties the splitter's clone count to the **same** `PassOptions+0x1A4` field the verifier gate reads, so the two passes can never disagree on `N`.
 
-The `lnc==1` case is a hard fast path: the entire clone/concretize loop is guarded by `if (v7 != 1)`. A single-core module therefore **passes through untouched** — it is never cloned, never renamed, and never given a concrete `NeuronCoreId`. This is precisely why downstream code treats `getNeuronCoreId().has_value() == false` as the signal "this module is still symbolic." **[CONFIRMED — `if (v7 != 1)` guard in `run(vector)`.]**
+The `lnc==1` case is a hard fast path: the entire clone/concretize loop is guarded by `if (v7 != 1)`. A single-core module therefore **passes through untouched** — it is never cloned, never renamed, and never given a concrete `NeuronCoreId`. This is precisely why downstream code treats `getNeuronCoreId().has_value() == false` as the signal "this module is still symbolic."
 
 ## 2. `LncSplitter::run(vector)` @ `0x16d5ca0` — the clone + concretize loop
 
 The pass manager dispatches the splitter on the *vector* of subgraph modules (`M` modules, one per subgraph after the subgraph-fork). The output is `M · lnc_size` modules grouped `[origModuleIdx][coreIdx]`, with slot index `coreIdx + origModuleIdx·lnc_size`. The body — decompiler register names preserved — places clones into a freshly allocated `M·lnc` pointer block:
 
 ```c
-// LncSplitter::run(__int64 result, this, vector& inMods) @ 0x16d5ca0  [CONFIRMED]
+// LncSplitter::run(__int64 result, this, vector& inMods) @ 0x16d5ca0
 lnc   = *((_QWORD *)this + 12);              // this+0x60, cached lnc_size
 M     = (inMods.end - inMods.begin) >> 3;     // #unique_ptr<Module>
 out   = tc_new(8 * M * lnc); memset(out, 0, …);  // zeroed pointer block, M*lnc slots
@@ -82,18 +82,18 @@ inMods._M_range_insert(out);                   // splice out[] back into the cal
 result.status = 0; result.string = "";         // BackendPass success
 ```
 
-The two clone-vs-reuse halves are visible directly in the decompiled body: the inner `cloneModule(v62, a2)` → `concretizeModule(a2, v62[0], v11)` pair with slot `&v58[v11] + v12*v13` for cores `0 .. lnc-2` (`++v11 >= *((_QWORD*)a2+12) - 1` exits the outer loop), then the `LABEL_12` block that does `concretizeModule(a2, v62[0], lnc-1)` on the moved-out original with slot `&v58[++v18 * lnc - 1]`. The `operator delete[](…, 0x310u)` on every freed slot pins **Module size = 784 bytes** (`0x310 == 784`, matching `tc_new(784)` in §3). **[CONFIRMED — full body, both loops, slot arithmetic.]**
+The body is two halves: a clone loop for cores `0 .. lnc-2` pairing `cloneModule` with `concretizeModule` at slot `coreIdx + m·lnc`, then a tail block that concretizes the moved-out original at slot `m·lnc + (lnc-1)`. The `operator delete[](…, 0x310u)` on every freed slot pins **Module size = 784 bytes** (`0x310 == 784`, matching `tc_new(784)` in §3).
 
 > **GOTCHA — the last core is the *original*, not a clone.** Cores `0 .. lnc-2` get fresh JSON clones; core `lnc-1` is the source module object concretized in place. All `lnc` copies are nonetheless serialize-identical *at the moment of concretization* (the original has not yet been mutated when the clones are taken), so the SPMD-identity the verifier checks holds regardless of which copy is the original.
 
-> **GOTCHA — `0x16d2f50` does no splitting.** The task index and some prior notes cite `LncSplitter::run(bir::Module&)` @ `0x16d2f50`. That overload is a `__noreturn` **abort shim**: it builds `NeuronAssertion<ErrorCode>` code **738** with message `"false"` at source `lnc_splitter.cpp:162` and `throw_with_nested`s it. It exists only to satisfy the `BackendPass::run(Module&)` single-module virtual and to hard-fail if the pass manager ever dispatches the splitter on a single `Module` instead of the multi-module `vector`. The real work is the `vector` overload @ `0x16d5ca0`. **[CONFIRMED — body builds 738/"false"/`lnc_splitter.cpp:162`, `__noreturn`.]**
+> **GOTCHA — the single-`Module` overload does no splitting.** `LncSplitter::run(bir::Module&)` @ `0x16d2f50` is a `__noreturn` **abort shim**: it builds `NeuronAssertion<ErrorCode>` code **738** with message `"false"` at source `lnc_splitter.cpp:162` and `throw_with_nested`s it. It exists only to satisfy the `BackendPass::run(Module&)` single-module virtual and to hard-fail if the pass manager ever dispatches the splitter on a single `Module` instead of the multi-module `vector`. The real work is the `vector` overload @ `0x16d5ca0`.
 
 ## 3. `cloneModule` @ `0x16d3820` — a JSON round-trip deep clone
 
 The clone is **not** a field-copy or a `Module` copy-ctor. It allocates a fresh module, serializes the source to JSON text in a local `stringstream`, then deserializes that text back into the new module:
 
 ```c
-// LncSplitter::cloneModule(bir::Module const* src) @ 0x16d3820  [CONFIRMED]
+// LncSplitter::cloneModule(bir::Module const* src) @ 0x16d3820
 cloneModule(src):
   std::stringstream ss;
   newMod = (bir::Module*) tc_new(784);
@@ -103,20 +103,20 @@ cloneModule(src):
   return newMod;                           // structurally == src, fresh object
 ```
 
-Because the clone passes through the BIR JSON schema, it faithfully reproduces **every** serialized field — functions, basic blocks, instructions, arguments, access patterns, memory-location sets, shard-id symbols, and attributes — except those that `concretizeModule` subsequently overwrites. All `lnc` clones come from the same source, so they are byte-identical until concretization diverges them. This is the structural precondition the verifier's shape-match assertions (function/BB count and names match core 0) rely on, and it is the same round-trip the pipeline's standalone `verifyBirSerDes` invariant pass exercises. **[CONFIRMED — `tc_new(784)`, `saveJson`/`loadJson` calls in body.]**
+Because the clone passes through the BIR JSON schema, it faithfully reproduces **every** serialized field — functions, basic blocks, instructions, arguments, access patterns, memory-location sets, shard-id symbols, and attributes — except those that `concretizeModule` subsequently overwrites. All `lnc` clones come from the same source, so they are byte-identical until concretization diverges them. This is the structural precondition the verifier's shape-match assertions (function/BB count and names match core 0) rely on, and it is the same round-trip the pipeline's standalone `verifyBirSerDes` invariant pass exercises.
 
 ## 4. `concretizeModule` @ `0x16d3bf0` — specialize a clone to one core
 
 Concretization runs four phases in order on the clone for `coreId`.
 
-**(4a) Stamp the core id.** At entry the module gets a concrete `NeuronCoreId` via `bir::Module::setAttribute(ModuleAttribute=2, variant<long>=coreId)`. Attribute key `2` is `NeuronCoreId` — the same key `bir::Module::getNeuronCoreId` reads, whose `has_value()` flips `true` only after this call. **[CONFIRMED for `setAttribute`; key-`2`==`NeuronCoreId` is INFERRED-STRONG from the get/set pairing — the `ModuleAttribute` enum body is libBIR-side.]**
+**(4a) Stamp the core id.** At entry the module gets a concrete `NeuronCoreId` via `bir::Module::setAttribute(ModuleAttribute=2, variant<long>=coreId)`. Attribute key `2` is `NeuronCoreId` — the same key `bir::Module::getNeuronCoreId` reads, whose `has_value()` flips `true` only after this call. That key `2` *is* `NeuronCoreId` is **INFERRED** from the get/set pairing; the `ModuleAttribute` enum body is libBIR-side.
 
-**(4b) Per-core rename.** `getName()` is scanned for the substring `"nc_symbolic"` and the module is renamed to the concrete `"nc"+coreId` via `setName()`; `setArtifactAbsPath()` is rewritten to a per-core output directory, guarded by `std::filesystem` `exists` / `is_directory` / `create_directory` assertions (codes 1648/1649/1650). Module names follow `^nc[0-9]{2}$` and pair with subgraph ids as `(nc[0-9]+)/(sg[0-9]+|sgLnk)` — i.e. `nc00`, `nc01`, … (regexes `.rodata`-confirmed). **[CONFIRMED — `getName`/`"nc_symbolic"`/`setName`/`setArtifactAbsPath`/`create_directory` all present in body.]**
+**(4b) Per-core rename.** `getName()` is scanned for the substring `"nc_symbolic"` and the module is renamed to the concrete `"nc"+coreId` via `setName()`; `setArtifactAbsPath()` is rewritten to a per-core output directory, guarded by `std::filesystem` `exists` / `is_directory` / `create_directory` assertions (codes 1648/1649/1650). Module names follow `^nc[0-9]{2}$` and pair with subgraph ids as `(nc[0-9]+)/(sg[0-9]+|sgLnk)` — i.e. `nc00`, `nc01`, … (both regexes are `.rodata` literals).
 
 **(4c) Walk, concretize, prune.** For every function (function list at `Module+560`), every basic block, every instruction:
 
 ```c
-// concretizeModule walk  @ 0x16d3bf0  [CONFIRMED]
+// concretizeModule walk  @ 0x16d3bf0
 for (inst in all functions/BBs):
     if ( !concretizeInstruction(this, inst, coreId) )   // returns 1 ⟺ DELETE
         deleteList.push_back(inst);                       // collected, not yet removed
@@ -126,18 +126,18 @@ for (fn in functions):
     fn.shardIds.clear();                                  // empty the ShardId DenseSet
 ```
 
-The decompiled body shows the deletion test as `if ( !concretizeInstruction(this, inst, coreId) )` — note the `!`: `concretizeInstruction` returns the **delete** decision, so the `!` selects the *kept* ops to skip, and the false branch schedules the rest for `removeInstruction` (@ `0x16d5364` in the body, `bir::BasicBlock::removeInstruction(parentBB, inst)`). After the walk, each function's `pelican::RefPtr<pelican::ShardId>` `DenseSet` is cleared, so no residual symbolic shard-id survives in any function. **[CONFIRMED — `concretizeInstruction` calls, `removeInstruction`, ShardId-set `initEmpty` all in body.]**
+The deletion test is `if ( !concretizeInstruction(this, inst, coreId) )` — note the `!`: `concretizeInstruction` returns the **delete** decision, so the `!` skips the kept ops and the false branch schedules the rest for `bir::BasicBlock::removeInstruction` (called from `0x16d5364`). After the walk, each function's `pelican::RefPtr<pelican::ShardId>` `DenseSet` is cleared, so no residual symbolic shard-id survives.
 
 **(4d) The prune *is* the SPMD selection.** An instruction whose affine mask is true only on certain cores survives only on those cores' clones; an op active on all cores (a `CoreBarrier`, a cross-core `SB2SB`) survives identically on every clone by construction. There is no separate "which cores does this run on" table — it falls out of evaluating the mask per core.
 
-> **POLARITY — disasm-verified.** `concretizeModule` does `call concretizeInstruction; test al,al; jz <skip-add-to-removal>`. `concretizeInstruction` returns `evalMask() ^ 1`. Therefore an instruction is **removed ⟺ `evalMask()==0` ⟺ the affine mask is FALSE on this core ⟺ the op does not fire on `coreId`**. Kept ⟺ `evalMask()==1`. This is the canonical SPMD predicate-prune; any reading that "the splitter keeps every op on every core" is wrong. **[CONFIRMED.]**
+> **GOTCHA — the prune polarity.** `concretizeModule` does `call concretizeInstruction; test al,al; jz <skip-add-to-removal>`. `concretizeInstruction` returns `evalMask() ^ 1`. Therefore an instruction is **removed ⟺ `evalMask()==0` ⟺ the affine mask is FALSE on this core ⟺ the op does not fire on `coreId`**. Kept ⟺ `evalMask()==1`. This is the canonical SPMD predicate-prune; any reading that "the splitter keeps every op on every core" is wrong.
 
 ## 5. `concretizeInstruction` @ `0x16d23d0` — shard-bind + mask decision
 
 Per instruction, the routine reads the instruction type at `inst+0x58` and branches:
 
 ```c
-// LncSplitter::concretizeInstruction(Instruction& inst, ulong coreId) @ 0x16d23d0  [CONFIRMED]
+// LncSplitter::concretizeInstruction(Instruction& inst, ulong coreId) @ 0x16d23d0
 v6 = *((int*)inst + 22);                 // inst+0x58 = InstructionType
 if (v6 == 105) {                          // IT105 = nested-region container
     keep = 1;
@@ -163,14 +163,14 @@ return bir::Instruction::evalMask(DenseMap<pelican::AffineIdx*, long>) ^ 1;
        // ^1  ⇒  return value is "should this instruction be DELETED on core coreId"
 ```
 
-Three confirmed details worth pinning. First, the **IT105 region recursion** AND-folds its children: the body's `v7 &= v14` over each child's result means a region is kept iff some child is kept (it is pruned only when *all* its children prune away). Second, the **IT48** pre-bind of the op's own access-pattern dims at `inst+0x1E0..0x1E8` and `inst+504` happens *before* the generic argument walk, because a collective op carries shard-dependent geometry on the instruction itself. Third, the return is `evalMask() ^ 1`, the source of the §4 prune polarity. The `DenseMap<pelican::AffineIdx*, long>` passed to `evalMask`/`AffinePredicate::eval` is the **same** shard-id→core binding map the symbolic verifier builds — the splitter realizes per core what the verifier counterfactually evaluates. **[CONFIRMED — IT read at `+0x58`, IT105 recurse with `&=`, IT48 `update_shard_id`, `eval` @ body, `evalMask() ^ 1` return.]**
+Three details worth pinning. First, the **IT105 region recursion** AND-folds its children: the body's `v7 &= v14` over each child's result means a region is kept iff some child is kept (it is pruned only when *all* its children prune away). Second, the **IT48** pre-bind of the op's own access-pattern dims at `inst+0x1E0..0x1E8` and `inst+504` happens *before* the generic argument walk, because a collective op carries shard-dependent geometry on the instruction itself. Third, the return is `evalMask() ^ 1`, the source of the §4 prune polarity. The `DenseMap<pelican::AffineIdx*, long>` passed to `evalMask`/`AffinePredicate::eval` is the **same** shard-id→core binding map the symbolic verifier builds — the splitter realizes per core what the verifier counterfactually evaluates.
 
 ## 6. `concretizeArgument` @ `0x16d1170` — local address specialization
 
 Argument concretization is where the symbolic shard-id is resolved into a concrete per-core **local** address. It fires only on `SymbolicAccessPattern` arguments (kind tag `2` at `arg+0x18`):
 
 ```c
-// LncSplitter::concretizeArgument(Argument& arg, ulong coreId) @ 0x16d1170  [CONFIRMED]
+// LncSplitter::concretizeArgument(Argument& arg, ulong coreId) @ 0x16d1170
 if (*((int*)arg + 6) == 2) {                 // arg+0x18 == 2  ⇒ SymbolicAccessPattern
     for (qae in arg.apDims[+0xD8 .. +0xE0])
         qae.update_shard_id(coreId);          // each access-pattern dim expr
@@ -181,14 +181,14 @@ if (*((int*)arg + 6) == 2) {                 // arg+0x18 == 2  ⇒ SymbolicAcces
 }
 ```
 
-Every shard-id-dependent component of a symbolic access pattern — the partition/index dims **and** the tile/block base-address expressions — has its shard-id symbol bound to the concrete `coreId`. After this, the access pattern addresses a concrete per-core SBUF/PSUM/DRAM region. Cross-core **remote** addresses (`RemoteLocalTarget`, `vnc_remote_addr_map`) are *not* minted here — those are the job of the bracketing collective-lowering passes (`LowerLocalCollectives::createRemoteAP`/`getMemoryLocation`; cross-ref [8.31 `extend-shared-lifetimes`], the planned `walrus/` page, and the planned `walrus/bir_linker` re-assembly counterpart, 8.33). This function resolves only the **local** per-core addressing. **[CONFIRMED — kind test `arg+0x18==2`, `update_shard_id` over dims/TileAddrs/BlockAddrs.]**
+Every shard-id-dependent component of a symbolic access pattern — the partition/index dims **and** the tile/block base-address expressions — has its shard-id symbol bound to the concrete `coreId`. After this, the access pattern addresses a concrete per-core SBUF/PSUM/DRAM region. Cross-core **remote** addresses (`RemoteLocalTarget`, `vnc_remote_addr_map`) are *not* minted here — those are the job of the bracketing collective-lowering passes (`LowerLocalCollectives::createRemoteAP`/`getMemoryLocation`; cross-ref [8.31 `extend-shared-lifetimes`], the planned `walrus/` page, and the planned `walrus/bir_linker` re-assembly counterpart, 8.33). This function resolves only the **local** per-core addressing.
 
 ## 7. `expand_replication` @ `0x1553500` — why it runs first (order 7)
 
 `ExpandReplication::run(Module&)` is a single-module normalization that runs on the symbolic module **before** `lnc_splitter` ever clones it. Its job is to make multi-LNC replication explicit and symbolic on the one module, so the splitter only has to clone-and-concretize an already-replicated graph.
 
 ```c
-// ExpandReplication::run(bir::Module& mod) @ 0x1553500  [CONFIRMED]
+// ExpandReplication::run(bir::Module& mod) @ 0x1553500
 main = mod.getFunctionByName("main");
 visitor = MatmultVisitor();                         // collects InstMatmult* per BB
 if (main) { visit(main.blocks);                      // main first
@@ -201,9 +201,9 @@ for (entry in replMap)                               // skip DenseMap empty/tomb
         increase_ifmap_memset_size(entry.key, entry.value);
 ```
 
-`increase_ifmap_memset_size` @ `0x1552900` is the heavy lifter (Hex-Rays failed on it; read from the disasm call sequence): it `getTensorShape → setTensorShape` to grow the buffer, `updateDimensions` to resize the IFMAP dimension, then for each reader/writer argument either `offset_replicated_ap` (@ `0x15505f0`, shift this replica's AP) or `expand_replicated_ap` (@ `0x154ff50`, widen the AP partition span), and `replace_with_replicated_copy` (@ `0x1551850`, emit an explicit replicated `Copy`). `expand_replicated_ap` literally adds the replication factor to the leading AP-dim count and stride (`*(_QWORD*)src += a4; *((_QWORD*)src+3) += a4`) so the access pattern spans all replicas. **[CONFIRMED for `run` body / `getFunctionByName("main")` / MatmultVisitor / sentinel skip; STRONG for `increase_ifmap_memset_size` internals — decomp failed, read from disasm call order.]**
+`increase_ifmap_memset_size` @ `0x1552900` is the heavy lifter: it `getTensorShape → setTensorShape` to grow the buffer, `updateDimensions` to resize the IFMAP dimension, then for each reader/writer argument either `offset_replicated_ap` (@ `0x15505f0`, shift this replica's AP) or `expand_replicated_ap` (@ `0x154ff50`, widen the AP partition span), and `replace_with_replicated_copy` (@ `0x1551850`, emit an explicit replicated `Copy`). `expand_replicated_ap` literally adds the replication factor to the leading AP-dim count and stride (`*(_QWORD*)src += a4; *((_QWORD*)src+3) += a4`) so the access pattern spans all replicas. The `run` body, the `getFunctionByName("main")` walk, the MatmultVisitor and the sentinel skip are read directly; `increase_ifmap_memset_size`'s internals resist decompilation and are reconstructed from its call sequence.
 
-> **ORDERING — `expand_replication` (7) MUST precede `lnc_splitter` (8).** Replication is made explicit and symbolic on the *one* module: buffers sized for all replicas, access patterns spanning the replica partition, replicated copies inserted as ordinary shard-predicated instructions. The splitter then only clones + concretizes, and each core's clone takes its slice of the already-grown buffers by binding the shard symbol. If replication ran **after** the split, each of the `lnc_size` clones would replicate independently — risking divergent buffer shapes and instruction counts, which is exactly the SPMD identity the concretized verifier checks. Running expansion first is what *makes* the splitter output legal. **[CONFIRMED for the mechanism; ordering STRONG via the pass-pipeline roster — orders 7/8 from [`pass-pipeline-optlevels.md`](pass-pipeline-optlevels.md).]**
+> **ORDERING — `expand_replication` (7) MUST precede `lnc_splitter` (8).** Replication is made explicit and symbolic on the *one* module: buffers sized for all replicas, access patterns spanning the replica partition, replicated copies inserted as ordinary shard-predicated instructions. The splitter then only clones + concretizes, and each core's clone takes its slice of the already-grown buffers by binding the shard symbol. If replication ran **after** the split, each of the `lnc_size` clones would replicate independently — risking divergent buffer shapes and instruction counts, which is exactly the SPMD identity the concretized verifier checks. Running expansion first is what *makes* the splitter output legal. The orders 7/8 themselves come from the pass roster in [`pass-pipeline-optlevels.md`](pass-pipeline-optlevels.md).
 
 ## 8. End-to-end: single symbolic → N physical
 
@@ -245,20 +245,20 @@ lnc_splitter (order 8, LncSplitter::run(vector) @ 0x16d5ca0):
 
 The split's output is the `vector<Module>` the concretized `lnc_verifier` checks. Each of its shape assertions is satisfied by a specific splitter act: the `NeuronCoreId` stamp (4a) gives every clone a concrete core; the JSON clone (§3) makes function/BB counts and names match core 0; the per-function shard-id clear (4c) leaves no residual symbolic shard; the shard-uniform prune (§4d) keeps the barrier and cross-core-`SB2SB` inventories identical across cores. The symbolic verifier (orders 3-4) proves splittability **before** the split using the *same* `evalMask` primitive the splitter (§5) then uses to prune — so the prediction and the realization share one affine-mask evaluator.
 
-## 9. Verification ceiling
+## 9. Evidence summary
 
-| Claim | Status | Evidence |
+| Claim | Confidence | Evidence |
 |---|---|---|
-| `run(vector)` clone+concretize loop, slot `coreIdx + m·lnc`, last-core reuse, 784-byte module | CONFIRMED | full decompiled body; `0x310u` deletes; `if (v7 != 1)` guard |
-| `0x16d2f50` is a `__noreturn` abort shim (code 738, `"false"`, `lnc_splitter.cpp:162`) | CONFIRMED | body builds `NeuronAssertion(738,…)` + `throw_with_nested` |
-| `cloneModule` = `saveJson → stringstream → loadJson` round-trip | CONFIRMED | `tc_new(784)` + `saveJson`/`loadJson` calls in body |
-| concretize 4 phases; prune polarity `removed ⟺ evalMask()==0` | CONFIRMED | `setAttribute`/`getName`/`nc_symbolic`/`setName`/`removeInstruction`; `!concretizeInstruction`; `evalMask() ^ 1` |
-| `concretizeInstruction` IT read `+0x58`, IT105 AND-recurse, IT48 dispatch, `evalMask ^ 1` | CONFIRMED | body: `*((int*)a2+22)`, `v7 &= v14`, `v6==48`, `return … ^ 1` |
-| `concretizeArgument` SAP kind `2`, bind dims/TileAddrs/BlockAddrs | CONFIRMED | body: `*((int*)a2+6)==2`, `update_shard_id` ×3 |
-| `expand_replication` order-7-first; `getFunctionByName("main")`→MatmultVisitor→ReplicationParams | CONFIRMED (mechanism) / STRONG (ordering) | run body + sentinel skip; orders from pass roster |
-| `lnc_size = PassOptions+0x1A4 → LncSplitter+0x60`, default 1 | CONFIRMED | ctor `*((uint*)opts+105)` → `this+12` |
-| `ModuleAttribute` key `2 == NeuronCoreId` | INFERRED-STRONG | `setAttribute(2,…)` ↔ `getNeuronCoreId` read; enum body libBIR-side |
-| `increase_ifmap_memset_size` / `replace_with_replicated_copy` internals | STRONG | Hex-Rays decomp failed; read from disasm call sequence |
-| `evalMask` / `update_shard_id` / `saveJson` AffineIdx→core mechanics | MED | libBIR externs (8-byte stubs here); internal binding is libBIR-side |
+| `run(vector)` clone+concretize loop, slot `coreIdx + m·lnc`, last-core reuse, 784-byte module | CERTAIN | full body; `0x310u` deletes; `if (v7 != 1)` guard |
+| `0x16d2f50` is a `__noreturn` abort shim (code 738, `"false"`, `lnc_splitter.cpp:162`) | CERTAIN | body builds `NeuronAssertion(738,…)` + `throw_with_nested` |
+| `cloneModule` = `saveJson → stringstream → loadJson` round-trip | CERTAIN | `tc_new(784)` + `saveJson`/`loadJson` calls in body |
+| concretize 4 phases; prune polarity `removed ⟺ evalMask()==0` | CERTAIN | `setAttribute`/`getName`/`nc_symbolic`/`setName`/`removeInstruction`; `!concretizeInstruction`; `evalMask() ^ 1` |
+| `concretizeInstruction` IT read `+0x58`, IT105 AND-recurse, IT48 dispatch, `evalMask ^ 1` | CERTAIN | body: `*((int*)a2+22)`, `v7 &= v14`, `v6==48`, `return … ^ 1` |
+| `concretizeArgument` SAP kind `2`, bind dims/TileAddrs/BlockAddrs | CERTAIN | body: `*((int*)a2+6)==2`, `update_shard_id` ×3 |
+| `expand_replication` order-7-first; `getFunctionByName("main")`→MatmultVisitor→ReplicationParams | CERTAIN (mechanism) / HIGH (ordering) | run body + sentinel skip; orders from pass roster |
+| `lnc_size = PassOptions+0x1A4 → LncSplitter+0x60`, default 1 | CERTAIN | ctor `*((uint*)opts+105)` → `this+12` |
+| `ModuleAttribute` key `2 == NeuronCoreId` | MEDIUM | `setAttribute(2,…)` ↔ `getNeuronCoreId` read; enum body libBIR-side |
+| `increase_ifmap_memset_size` / `replace_with_replicated_copy` internals | HIGH | decompilation fails; read from the disasm call sequence |
+| `evalMask` / `update_shard_id` / `saveJson` AffineIdx→core mechanics | MEDIUM | libBIR externs (8-byte stubs here); internal binding is libBIR-side |
 
-The five strongest claims (the clone+concretize loop, the abort shim, the JSON-clone round-trip, the `evalMask ^ 1` prune polarity, and the expand-replication-first ordering) were each re-checked against the decompiled body and disasm; all hold. The honest ceiling is the libBIR boundary: the exact internal mechanics of `evalMask`, `update_shard_id`, and the JSON serde live in `libBIR.so` and are reached here only as externs, and the `ModuleAttribute` enum value `2` is inferred from the get/set pairing rather than read from an enum table.
+The ceiling on this page is the libBIR boundary: the exact internal mechanics of `evalMask`, `update_shard_id`, and the JSON serde live in `libBIR.so` and are reached here only as externs, and the `ModuleAttribute` enum value `2` is inferred from the get/set pairing rather than read from an enum table.

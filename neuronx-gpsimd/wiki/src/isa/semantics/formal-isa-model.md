@@ -13,9 +13,10 @@ of the residual `MED` opcodes. It is the reference the executable-model Parts va
 behavior against *this* model, not the other way round.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / immediate / symbol / **executed** value read from the shipped binary this pass;
+`OBSERVED` = a byte / immediate / symbol / **executed** value read from the shipped binary;
 `INFERRED` = reasoned over `OBSERVED`; `CARRIED` = re-used at a cited page's confidence — crossed with
-`HIGH`/`MED`/`LOW`. Every count is grounded with `nm <lib> | rg -c` against the `.symtab`, never a
+`HIGH`/`MED`/`LOW`. The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+tag. Every count is grounded with `nm <lib> | rg -c` against the `.symtab`, never a
 decompile grep; the `extracted/` tree is gitignored (reach it with `fd --no-ignore` or an absolute
 path). All prose is binary / static-analysis derived only.
 
@@ -40,11 +41,11 @@ one per branch / per SR / per access-form. The entire compute lives in **two TIE
 * **`libtie-core.so`** carries the per-op **compute**. The `post_rewrite` blob is `.data`-resident at
   VMA `0x20104a` (`nm libtie-core.so | rg xml_data_post_rewrite`), ending at `xml_data_compiler`
   (`0x30c1d27`). `.data` has VMA `0x201018` / file offset `0x001018` (`readelf -SW`), so the blob's
-  **file offset = VMA − `0x200000`** — *not* the `0x400000` delta seen in other DLLs. `[HIGH/OBSERVED]`
+  **file offset = VMA − `0x200000`** — *not* the `0x400000` delta seen in other DLLs.
 * **`libtie-Xtensa-msem.so`** carries the memory/control **interface seam**: the load/store
   reference, the SuperGather host ports, and the SR/EXC/EXTREG/sync signal surface. It has **zero**
   `<OPCODEDEF>` and **zero** `<SEMANTIC>` — it is the signal + load/store-reference half, *not*
-  per-op compute. `[HIGH/OBSERVED]`
+  per-op compute.
 
 The model is checked against a third leg — the **`libfiss-base.so` `module__xdref_*` value leaves**
 (864 of them; `nm libfiss-base.so | rg -c module__xdref_`), self-contained integer-only functions
@@ -83,7 +84,7 @@ The core is a **two's-complement carry-chain adder** with lane-break masks, inst
 
 **Per-op key:** `(op, sign, sat, round, width, pred)` from the `op_<GROUP>` OR-reductions —
 decoder-exhaustive, not name-inferred. Signedness is the **guard-bit extension**
-(`ctrl_unsign_adder`), not a runtime flag. `[HIGH/OBSERVED]`
+(`ctrl_unsign_adder`), not a runtime flag.
 
 ### G2 — Multiply / MAC — `ivp_sem_mul_slice` *(301 ops)*
 
@@ -106,7 +107,7 @@ carry-propagate `<ADD>`s. The fp MACs are a **separate single-rounding FMA datap
 
 **Per-op key:** `(form, sign, accumulate, precision)` from `op_mul`/`op_mulp`/`op_mulq`/`op_mul4t`/
 `op_sqr`/`op_decneg`/`op_dmul`, cross-confirmed by the `xt_ivp32.h` acc ctypes
-(`xb_vecNx48`/`2Nx24`/`N_2x64w`). `[HIGH/OBSERVED]`
+(`xb_vecNx48`/`2Nx24`/`N_2x64w`).
 
 ### G3 — Load / store — `xt_load_semantic` / `xt_store_semantic` *(195 ops)*
 
@@ -127,7 +128,7 @@ has *zero* references to `xt_load_semantic` — the two-provider split is real.
   replaces with a real 64-byte line fetch.
 
 **Per-op key:** `LSBytes`/`SignExtendFrom`/`SignExtendTo`/`RotateAmount`/disable from the per-opcode
-selectors (~27 `has_*`/`Isa*`), *not* `op_<GROUP>` OR-reductions. `[HIGH/OBSERVED]`
+selectors (~27 `has_*`/`Isa*`), *not* `op_<GROUP>` OR-reductions.
 
 ### G4 — Gather / scatter + permute — `ivp_sem_vec_scatter_gather` / `xdsem_tiesel_5_32` *(90 ops)*
 
@@ -147,8 +148,6 @@ msem(access).
   sub-byte `seli` reads the 7-bit `tab_selimm_7b`/`tab_shflimm_7b` LUT (closed in
   [§5.3](#53-closed-the-sub-byte-permute-innermost-lut-med--high)).
 
-`[HIGH/OBSERVED]`
-
 ### G5 — Predicate / vbool — `ivp_sem_vbool_alu_ltr` *(33 ops)*
 
 `ivp_sem_vbool_alu_ltr` (33) + the compares (members of `ivp_sem_vec_alu`). Pure **64-bit bitwise
@@ -158,10 +157,10 @@ logic** over the vbool register (1 bit/lane for the densest 64-lane `2NX8` view)
 * **COMPARE** `z[1:0] = {2{c}}` (`c`→`0x3` true / `0x0` false); signed compare = the sign-flip-bias
   `{~a[msb], a[msb−1:0]}` mapped onto unsigned `<`,`<=`.
 * **BOOLEAN** `notb`/`andb`/`orb`/`xorb`/`andnotb`/`ornotb` = the obvious 64-bit ops.
-* ***`bitkillt` merge polarity*** (the named SEM-09 invariant, live-proven below): `bitkillt` emits
+* ***`bitkillt` merge polarity*** (live-proven below): `bitkillt` emits
   **all-ones in the KILLED (predicate-FALSE) lane** = the keep-destination merge mask; `bitkillf` is
   the complement. The `_t` masked op is a **MERGE** — predicate-false lanes retain the prior
-  destination. `[HIGH/OBSERVED]`
+  destination.
 * **SCALAR-COND** `bitkill_mov{eqz,nez,gez,ltz}_1` → a 1-bit predicate from a 32-bit scalar.
 
 ### G6 — Convert / FP — `ivpep_sem_sp_cvt` / `..._hp_cvt` + lookups *(180 ops)*
@@ -184,8 +183,6 @@ soft-float `normalize→rebias→round→special` netlist; cores `sem_fp_sp_cnv`
   inexact/overflow/underflow/invalid are first-class outputs. `FCR[1:0]` = round mode (control);
   `FSR` = exception flags (status).
 
-`[HIGH/OBSERVED]`
-
 ### G7 — Valign / reduce / scan — `ivp_sem_vec_reduce` + the funnel *(88 ops)*
 
 Valign rides `ivp_sem_ld_st` (7 of the 195 LSU members) + `ivp_sem_vec_reduce` (byte `34,079,437`;
@@ -201,8 +198,6 @@ funnel), `ivp_sem_csa_8_16_32_l0/l1/l2` (the reduce CSA tree).
 * **SCAN** = a **software** Hillis-Steele recurrence: `dst = combine(src, rotate(src, stride))`,
   stride-doubling, `log2(N)` passes — the kernel composes the rotate (`op_ROT`) + combine into one
   FLIX VLIW word; *not* a single hardware op.
-
-`[HIGH/OBSERVED]`
 
 ### G8 — Control / state — the base-Xtensa per-op spine *(384 ops + 6 fences + 43 pseudo)*
 
@@ -226,8 +221,6 @@ the `msem` interface (645 signal decls + 118 load/store reference functions).
 * **PRIVILEGE** `PrivilegedException = (MS_DISPST==0) & |PSRING & !InOCDMode`; the msem EXC roster
   (180 signals) is the fault surface.
 
-`[HIGH/OBSERVED]`
-
 ---
 
 ## 2. The cross-group invariants
@@ -236,24 +229,22 @@ These hold over **all eight groups** and triangulate against the regfile, dtype,
 
 1. **The two-provider split.** Every group's compute is in `libtie-core`; the memory/control interface
    seam (load/store reference, gather host ports, the SR/EXC/EXTREG/sync surface) is in
-   `libtie-Xtensa-msem`. The msem has 0 `<OPCODEDEF>` / 0 `<SEMANTIC>`. `[HIGH/OBSERVED]`
+   `libtie-Xtensa-msem`. The msem has 0 `<OPCODEDEF>` / 0 `<SEMANTIC>`.
 2. **The shared-multiplexed-datapath pattern.** For the IVP vector groups: one `<SEMANTIC>` per
    iclass + a member LIST + `op_<GROUP>` OR-reduction selectors + one parametric core `<MODULE>`. The
    per-op `(op, sign, sat, round, width, pred, form)` tuple is **decoder-exhaustive and OBSERVED**.
-   The base-Xtensa control spine inverts this (per-op blocks). `[HIGH/OBSERVED]`
+   The base-Xtensa control spine inverts this (per-op blocks).
 3. **`<ADD>` is the only native arithmetic primitive.** Across the 49 MB blob: `<ADD>`×1968,
    `<SUB>`×748, `<MUL>`×0, `<MULT>`×0. Multiply = partial-product + carry-save + `<ADD>` resolve;
    shift = concatenation/replication; select = mux net. The whole DB reads as Verilog RTL.
-   `[HIGH/OBSERVED]`
 4. **The 512-bit vector / 48-bit accumulator geometry is uniform.** vec = 512-bit (`64×8`/`32×16`/
    `16×32` lane views); wvec = 1536-bit = 32 lanes × 48-bit; vbool = 64-bit; valign = 4×512-bit.
-   `[HIGH/OBSERVED]`
 5. **Predication is uniform.** The `_t`/`T` forms take a `vboolN d` + an `/*inout*/ a` and are a MERGE
    (predicate-false lanes retain the prior dst), realized by the `bitkillt` all-ones-in-killed-lane
-   mask — identical polarity in the ALU, MAC, convert, gather, and reduce slices. `[HIGH/OBSERVED]`
+   mask — identical polarity in the ALU, MAC, convert, gather, and reduce slices.
 6. **The base-Xtensa state layer is shared.** The windowed ABI, the 42-SR state model, and the msem
    EXC fault surface (the privilege guard, the exception roster, the AR 32×64-wait — 64-physical/
-   16-visible window) are the *same* layer for every op. `[HIGH/OBSERVED]`
+   16-visible window) are the *same* layer for every op.
 
 ### 2.1 The eight-register-file model *(pinned vs the regfile reference)*
 
@@ -275,7 +266,7 @@ touched. The `idx` is the regfile-table index; widths/ctypes are `OBSERVED` from
 > `vec=2`, `vbool=3`, `valign=4`, `wvec=5`, `b32_pr=6`, `gvr=7`. The `vbool`/`b32_pr`/`valign`/`AR`/
 > `BR` ctypes are byte-matched against the regfile reference; the `wvec`/`vec`/`gvr` geometry is
 > `OBSERVED` from the slice wire widths with an `INFERRED-HIGH` lane mapping (each group page notes
-> the wire it read). `[HIGH/OBSERVED]`
+> the wire it read).
 
 ### 2.2 The dtype model — the FP32-HUB
 
@@ -290,15 +281,13 @@ control:
   legs through the fp32 hub** (nibble-unpack → ufloat → scale-MAC → sat-clamp → `cvtg48` extract).
 
 The integer dtype widths are the MAC widening matrix (G2): `i8`/`i16`/`i32` inputs; `24/48/64/96`-bit
-accumulators; the pack saturates back to the lane width. `[HIGH/OBSERVED — the member-LIST negative
-control.]`
+accumulators; the pack saturates back to the lane width.
 
 > **CORRECTION — per-gen dtype availability is *not* a TIE fact.** A reader might be tempted to read
 > "which generation adds fp8/fp4/bf16" off the convert roster. The TIE exposes the **same**
 > `fp16<->fp32` hub and the **same** seed tables regardless of generation; the per-gen
 > dtype-availability is a firmware-image **header** finding, not inferable from this config. See the
 > one-config guard in [§2.3](#23-one-cairo-config-the-coverage-is-semantic-not-a-silicon-generation-claim).
-> `[HIGH/OBSERVED]`
 
 ### 2.3 ONE Cairo config — the coverage is *semantic*, not a silicon-generation claim
 
@@ -343,7 +332,7 @@ body.** `[HIGH/OBSERVED]` — full accounting and the certificate are in the
 > scalar architectural states). Merging the `libisa-core-hw.so` module (`num_states = mov $0x6` = 6)
 > gives **87 = 81 + 6**. This page means **81** wherever it says "architectural states" and **87**
 > only for the explicitly merged-with-hw figure; a sibling page flagged the ambiguity and this is the
-> harmonization. `[HIGH/OBSERVED]`
+> harmonization.
 
 ---
 
@@ -376,7 +365,7 @@ model (B) agree on a datapath *and* the fiss leaf (C) executes the exact result 
 (`tab_shflimm_7b = {0x8, 0x1e}`); the MAC acc48 is triple-confirmed; the gather index plane is
 A=B=C-agreed.
 
-### 4.1 Three leaves driven live this pass (the lifts)
+### 4.1 Three leaves driven live (the lifts)
 
 The `module__xdref_*` ABI has a dead first integer arg (`f(uint64 /*dead*/, uint32 a, …, uint32* res)`).
 The result-pointer slot is operand-count-dependent (read from each prologue's store-target register).
@@ -401,7 +390,7 @@ rsqrt0(4.0) -> 0x3eff0000   # ~0.499 ≈ 1/sqrt(4) = 0.5
 The seed leaves provably `lea` the `.rodata` table and index it with a **4-byte stride** (the table is
 stored dword-per-entry, the 8-bit seed in the low byte), then splash the seed byte into the result
 mantissa. This grounds the seed tables as `OBSERVED` two ways — the raw bytes (§5.2) *and* the live
-read. `[HIGH/OBSERVED]`
+read.
 
 ---
 
@@ -483,7 +472,7 @@ DIV0   : c_w = {nexp_neg, div_exp, recip_data, 13'b0}                   ; reuses
 The higher-precision QLI (quadratic-interpolation) refine reads piecewise `(A, gx)` coefficient pairs
 (`fp_recip_qli_lut1/2_A/_gx`, `fp_rsqrt_qli_lut1/2_A/_gx`) from `bbn_sem_vec_sprecip_rsqrt` — all
 `<TABLE>` `int_value` contents `OBSERVED`. **`MED → HIGH/OBSERVED`** for the seed structure + the
-table contents (re-confirmed by the live `recip0`/`rsqrt0` leaves, §4.1) — see
+table contents (confirmed by the live `recip0`/`rsqrt0` leaves, §4.1) — see
 [B14 hp-lookup](../ref/b14-hp-lookup.md) / [B15 sp-lookup](../ref/b15-sp-lookup.md).
 
 > **WALL — the seed-coefficient derivation is CARRIED (boundary precisely placed).** The `.rodata`
@@ -565,7 +554,7 @@ boundaries. The shipped-roster statement is unchanged: **1528/1534 (99.6%) bit-p
 
 ## 6. Adversarial self-verification of the five strongest model claims
 
-Each strongest claim was re-checked against the shipped binary this pass; failures were corrected
+Each strongest claim is checked against the shipped binary; failures were corrected
 against the binary (not the other way round).
 
 | # | Claim | Check | Verdict |
@@ -582,7 +571,7 @@ against the binary (not the other way round).
 > `recip0` leaf indexes the table with a **4-byte stride** (`mov (%rcx,%r12,4),%r12d` @`0x87878a`).
 > The *seed values* are byte-identical to the model (`ff fd fb f9 …`); only the storage stride
 > differs. The model's "8-bit seed table" claim holds; the storage form is now stated precisely.
-> No other claim required correction. `[HIGH/OBSERVED]`
+> No other claim required correction.
 
 ---
 

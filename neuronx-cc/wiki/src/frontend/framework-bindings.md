@@ -63,7 +63,7 @@ The `_jax.so` and `_torch_xla.so` modules **import jax/torch lazily, at use** �
 
 > **GOTCHA —** the **PjRt plugin is the missing link and it is not in this wheel.** When XLA finishes graph compilation it must hand the HLO module (with its `AwsNeuron*` custom-calls) to *something* that drives the Neuron runtime. That something is the PjRt Neuron plugin, a separate artifact. This wheel produces the custom-call and re-reads its `backend_config` inside the compiler backend, but the end-to-end "JAX program → device" path also requires the out-of-wheel plugin. A reimplementer wiring NKI into a framework must register the plugin themselves; NKI only provides the HLO-emission side.
 
-> **NOTE (CONFIRMED) —** the call-target string is not write-only on the framework side: `"AwsNeuronCustomNativeKernel"` appears in the native string table of the `neuronxcc/starfish/bin/…/xla_infergoldens` binary (3 occurrences). The compiler backend that ingests XLA HLO recognizes the JAX call target and knows to crack open its `backend_config`. This is the round-trip that makes "ship the BIR inside the HLO" work.
+> **NOTE —** the call-target string is not write-only on the framework side: `"AwsNeuronCustomNativeKernel"` appears in the native string table of the `neuronxcc/starfish/bin/…/xla_infergoldens` binary (3 occurrences). The compiler backend that ingests XLA HLO recognizes the JAX call target and knows to crack open its `backend_config`. This is the round-trip that makes "ship the BIR inside the HLO" work.
 
 ---
 
@@ -88,7 +88,7 @@ nki.jit(func=None, mode="auto", **kwargs)            ── compile.so, jit @ 0x
 
 ```c
 // compute_mode  (neuronxcc.nki.compile.compute_mode)
-// Refs CONFIRMED: jax, get_backend, platform, neuron, Array, ArrayImpl, Tracer,
+// Refs in binary: jax, get_backend, platform, neuron, Array, ArrayImpl, Tracer,
 //                 JAXKernel, torch, PyTorchXLAKernel, BaremetalKernel, _native_mode_map
 function compute_mode(args, kwargs, mode):
     if mode != "auto":
@@ -118,12 +118,12 @@ The dispatch is **argument-type based, not import-based.** Having `jax` installe
 
 | Symbol | Module | Role | Confidence |
 |---|---|---|---|
-| `jit` | `compile.so` | front-door decorator; bare & parametrized forms; `__class_getitem__` makes `nki.jit[...]` subscriptable | CONFIRMED |
-| `GenericKernel` | `compile.so` | per-call dispatcher; `__call__` / `build_cache_kernel` | CONFIRMED |
-| `compute_mode` | `compile.so` | mode resolution (explicit table or arg-type auto) | CONFIRMED |
-| `_native_mode_map` | `compile.so` | `{mode-string → kernel-class}` table | CONFIRMED (symbol) |
-| `_jax_jit(func, grid=…)` | `__init__.so` | internal `func,grid → JAXKernel(...).trace` helper | CONFIRMED |
-| `_torchxla_jit(func, grid=…)` | `__init__.so` | internal helper for the torch path | CONFIRMED |
+| `jit` | `compile.so` | front-door decorator; bare & parametrized forms; `__class_getitem__` makes `nki.jit[...]` subscriptable | CERTAIN |
+| `GenericKernel` | `compile.so` | per-call dispatcher; `__call__` / `build_cache_kernel` | CERTAIN |
+| `compute_mode` | `compile.so` | mode resolution (explicit table or arg-type auto) | CERTAIN |
+| `_native_mode_map` | `compile.so` | `{mode-string → kernel-class}` table | CERTAIN (symbol) |
+| `_jax_jit(func, grid=…)` | `__init__.so` | internal `func,grid → JAXKernel(...).trace` helper | CERTAIN |
+| `_torchxla_jit(func, grid=…)` | `__init__.so` | internal helper for the torch path | CERTAIN |
 
 ### Considerations
 
@@ -153,7 +153,7 @@ These three hooks are the **only** framework-specific surface in the entire trac
 
 ### `__init__` and the spec cache
 
-`FrameworkKernel.__init__` takes `func`, `func_name` (defaults to `func.__name__`), an optional SPMD `grid`, and `enable_cache=True`. It allocates a per-instance `OrderedDict` specialization cache on the attribute literally named `__neuron_kernel_interface_kernel_cache__` (CONFIRMED string). One traced+encoded specialization is stored per distinct `(shape/dtype-or-hashable, grid, opts, platform_target_is_fallback)` key.
+`FrameworkKernel.__init__` takes `func`, `func_name` (defaults to `func.__name__`), an optional SPMD `grid`, and `enable_cache=True`. It allocates a per-instance `OrderedDict` specialization cache on the attribute literally named `__neuron_kernel_interface_kernel_cache__`. One traced+encoded specialization is stored per distinct `(shape/dtype-or-hashable, grid, opts, platform_target_is_fallback)` key.
 
 Two concrete subclasses live in `FrameworkKernel.so` alongside the bridge classes: `UnifiedKernel` (the newer unified path) and `LegacyFrameworkKernel` (the legacy `dump_config`-compatible path). The `dump_config` docstring carries the note *"This is still used by legacy framework code, dont change the signature"* — the public `dump_config(*args, **kwargs)` signature is frozen for backward compatibility.
 
@@ -217,7 +217,7 @@ This is the *single point* where the framework escapes into the framework-agnost
 
 ```c
 // generate_operand_output_aliases(inputs, outputs)
-// Refs CONFIRMED: findAliasTensor, hasAliasedTensor, get_alias_output_index
+// Refs in binary: findAliasTensor, hasAliasedTensor, get_alias_output_index
 function generate_operand_output_aliases(inputs, outputs):
     aliases = []
     for out in outputs:
@@ -248,7 +248,7 @@ This is the centerpiece of the whole binding. `encode_backend_config` builds a P
 
 ```c
 // FrameworkKernel.encode_backend_config(...)  @ 0x296d0
-// Refs CONFIRMED: json, dumps, base64, b64encode, encode, decode,
+// Refs in binary: json, dumps, base64, b64encode, encode, decode,
 //                 serialize_dims, serialize_ir_string, KERNEL_VERSION
 function encode_backend_config(...):
     cfg = {
@@ -267,12 +267,12 @@ function encode_backend_config(...):
         "kernel_return":                kernel_return,
         "result_is_sequence":           result_is_sequence,
     }
-    return base64.b64encode(json.dumps(cfg).encode()).decode()  // CONFIRMED b64encode + json.dumps
+    return base64.b64encode(json.dumps(cfg).encode()).decode()  // b64encode + json.dumps refs in binary
 ```
 
 ### The config-key set
 
-These dict keys are all verbatim string constants in `FrameworkKernel.so` (CONFIRMED): `kernel_version`, `func_name`, `grid`, `has_collectives`, `matmul_mac_count`, `platform_target`, `platform_target_is_fallback`, `opts`, `serialize_dims`, `serialize_ir_string`, `tiled`, `constant_values`, `kernel_return`, `result_is_sequence`.
+These dict keys are all verbatim string constants in `FrameworkKernel.so`: `kernel_version`, `func_name`, `grid`, `has_collectives`, `matmul_mac_count`, `platform_target`, `platform_target_is_fallback`, `opts`, `serialize_dims`, `serialize_ir_string`, `tiled`, `constant_values`, `kernel_return`, `result_is_sequence`.
 
 > **QUIRK —** `serialize_ir_string` is the entire traced kernel program — the BIR/penguin IR text — riding inside the HLO `backend_config`. The host framework (JAX, torch-xla) never compiles, inspects, or understands the kernel body; it transports an opaque base64 blob to the Neuron compiler backend, which base64-decodes it, parses the JSON, and reads `serialize_ir_string` to rebuild the kernel. The custom-call is, in effect, a self-describing parcel: target name says "this is an NKI kernel," and the config *is* the kernel. This is why the same `backend_config` works for both the JAX and torch bridges unchanged — it is framework-independent IR, not framework attributes.
 
@@ -290,7 +290,7 @@ The two bridges are nearly identical: each implements the three `FrameworkKernel
 
 ```c
 // nki_call_eval(...)  — the ABSTRACT-EVAL rule (def_abstract_eval)
-// Refs CONFIRMED: dump_config, trace, return_types, ShapedArray, jnp
+// Refs in binary: dump_config, trace, return_types, ShapedArray, jnp
 function nki_call_eval(*avals, kernel):
     cfg = kernel.dump_config(...)              // trace to learn output return_types
     return [ShapedArray(rt.shape, rt.dtype)    // jax avals; NO real compute
@@ -298,12 +298,12 @@ function nki_call_eval(*avals, kernel):
     // wrapped in JaxTraceResult (hashable: __hash__) so JAX caches the lowering
 
 // nki_call_lowering_rule(ctx, *args)  — the MLIR LOWERING rule
-// Refs CONFIRMED: avals_in, avals_out, aval_to_ir_type, custom_call,
+// Refs in binary: avals_in, avals_out, aval_to_ir_type, custom_call,
 //                 dump_config, encode, has_collectives, operand_output_aliases
 function nki_call_lowering_rule(ctx, *args):
     cfg = kernel.dump_config(...)              // (cached via JaxTraceResult)
     return stablehlo.custom_call(
-        call_target_name = "AwsNeuronCustomNativeKernel",   // CONFIRMED literal
+        call_target_name = "AwsNeuronCustomNativeKernel",   // verbatim literal
         operands         = args,
         result_types     = [aval_to_ir_type(a) for a in ctx.avals_out],
         backend_config   = cfg.dumped_config,               // base64 JSON, §encode
@@ -315,7 +315,7 @@ function nki_call_lowering_rule(ctx, *args):
 
 The abstract-eval rule traces once to learn the output `ShapedArray` avals (no compute); the lowering rule emits the `stablehlo.custom_call`. The trace result is wrapped in `JaxTraceResult` (with `__hash__`) so JAX's lowering cache works.
 
-> **CORRECTION / CAVEAT (CONFIRMED) —** there is a known trace-caching bug guarded by an env var. The verbatim message is: *"NKI trace is not properly cached, use `export NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE` to workaround the issue."* Setting `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE` forces a re-trace at lowering time rather than reusing the cached abstract-eval trace. A reimplementer mirroring the JAX cache must replicate this escape hatch.
+> **GOTCHA — a known trace-caching bug, guarded by an env var.** The verbatim message is: *"NKI trace is not properly cached, use `export NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE` to workaround the issue."* Setting `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE` forces a re-trace at lowering time rather than reusing the cached abstract-eval trace. A reimplementer mirroring the JAX cache must replicate this escape hatch.
 
 The verbatim HLO shape this produces (from the `FrameworkKernel` docstring) is:
 
@@ -336,7 +336,7 @@ The verbatim HLO shape this produces (from the `FrameworkKernel` docstring) is:
 
 ```c
 // PyTorchXLAKernel.__call__ → call_impl
-// Refs CONFIRMED: AwsNeuronNkiKernel, CustomCall, build_xla_type, scribe,
+// Refs in binary: AwsNeuronNkiKernel, CustomCall, build_xla_type, scribe,
 //                 dumped_config, output_operand_aliasing, OutputOperandAliasing,
 //                 excluded_output_tensors, xla_data_pb2
 function call_impl(boundargs):
@@ -345,7 +345,7 @@ function call_impl(boundargs):
     result_xla_types = [build_xla_type(o) for o in outputs]   // neuron dtype+shape → XLA Shape
 
     return scribe.CustomCall(
-        custom_call_target = "AwsNeuronNkiKernel",     // CONFIRMED literal (≠ JAX's target!)
+        custom_call_target = "AwsNeuronNkiKernel",     // verbatim literal (≠ JAX's target!)
         operands           = operands,
         shape              = result_xla_types,
         opaque             = cfg.dumped_config,         // base64 JSON backend_config
@@ -374,13 +374,13 @@ function call_impl(boundargs):
 
 | Symbol | Module | Role | Confidence |
 |---|---|---|---|
-| `JAXKernel` | `_jax.so` | JAX `FrameworkKernel` subclass | CONFIRMED |
-| `nki_call_eval` | `_jax.so` | abstract-eval rule (output avals) | CONFIRMED |
-| `nki_call_lowering_rule` | `_jax.so` | stablehlo `custom_call` emitter, target `AwsNeuronCustomNativeKernel` | CONFIRMED |
-| `JaxTraceResult.__hash__` | `_jax.so` | hashable trace wrapper for JAX lowering cache | CONFIRMED |
-| `PyTorchXLAKernel` | `_torch_xla.so` | torch `FrameworkKernel` subclass | CONFIRMED |
-| `PyTorchXLAKernel.build_xla_type` | `_torch_xla.so` | neuron dtype+shape → XLA Shape (`nki_dtype_to_xla_type_map`) | CONFIRMED |
-| `nki_jit` | `_torch_xla.so` | deprecated module-level torch entry | CONFIRMED |
+| `JAXKernel` | `_jax.so` | JAX `FrameworkKernel` subclass | CERTAIN |
+| `nki_call_eval` | `_jax.so` | abstract-eval rule (output avals) | CERTAIN |
+| `nki_call_lowering_rule` | `_jax.so` | stablehlo `custom_call` emitter, target `AwsNeuronCustomNativeKernel` | CERTAIN |
+| `JaxTraceResult.__hash__` | `_jax.so` | hashable trace wrapper for JAX lowering cache | CERTAIN |
+| `PyTorchXLAKernel` | `_torch_xla.so` | torch `FrameworkKernel` subclass | CERTAIN |
+| `PyTorchXLAKernel.build_xla_type` | `_torch_xla.so` | neuron dtype+shape → XLA Shape (`nki_dtype_to_xla_type_map`) | CERTAIN |
+| `nki_jit` | `_torch_xla.so` | deprecated module-level torch entry | CERTAIN |
 
 ---
 
@@ -407,7 +407,7 @@ Both branches inherit `TraceKernel.trace` / `specialize_and_call` — the single
 
 ### The local compile shell-out
 
-`BaremetalKernel._compile` shells out to the Neuron compiler with this verbatim command template (CONFIRMED string in `NumpyKernel.so`):
+`BaremetalKernel._compile` shells out to the Neuron compiler with this verbatim command template, a single string constant in `NumpyKernel.so`:
 
 ```bash
 neuronx-cc compile --framework XLA penguin.py \
@@ -454,12 +454,12 @@ The ISA constraints (verbatim from the `.pyi`): PSUM `fdim_size` ≤ 2 KiB (one 
 
 | Decorator | Effect | Confidence |
 |---|---|---|
-| `force_auto_alloc(func=None)` | switch to auto `Allocator`; ignore any direct alloc in the kernel | CONFIRMED |
-| `enable_stack_allocator(func=None, log_level=50)` | `AllocatorType.stack`; **must** combine with `skip_middle_end_transformations` (stub note) | CONFIRMED |
-| `skip_middle_end_transformations(func=None)` | `OptLevel` skips all middle-end transforms | CONFIRMED |
-| `multi_buffer(factor=2)` | `MultiBufferDirective` lexical scope (`with nki.compiler.multi_buffer(2): …`) | CONFIRMED |
-| `no_reorder()` | `OperationOrderGuard` lexical scope — prevents op reordering | CONFIRMED |
-| `allocation_scope()` | `AllocationScope` context manager | CONFIRMED |
+| `force_auto_alloc(func=None)` | switch to auto `Allocator`; ignore any direct alloc in the kernel | CERTAIN |
+| `enable_stack_allocator(func=None, log_level=50)` | `AllocatorType.stack`; **must** combine with `skip_middle_end_transformations` (stub note) | CERTAIN |
+| `skip_middle_end_transformations(func=None)` | `OptLevel` skips all middle-end transforms | CERTAIN |
+| `multi_buffer(factor=2)` | `MultiBufferDirective` lexical scope (`with nki.compiler.multi_buffer(2): …`) | CERTAIN |
+| `no_reorder()` | `OperationOrderGuard` lexical scope — prevents op reordering | CERTAIN |
+| `allocation_scope()` | `AllocationScope` context manager | CERTAIN |
 
 All decorators re-wrap the `Kernel` via `copy_kernel` + `replace_fields` (immutable-style override): `update_compile_opts` mutates `CompileOpts`; `update_allocator` mutates the allocator type / `OptLevel`. The lexical-scope directives (`multi_buffer`, `no_reorder`, `allocation_scope`) live in `LexicalScopeDirective.so` and wrap an `nki_ctx` context manager.
 
@@ -496,7 +496,7 @@ collective_permute_implicit(src, dst, replica_groups, channel_id, num_channels, 
 collective_permute_reduce_implicit(...)       → nki_ctx.tiled_collective_permute_reduce_implicit
 ```
 
-`srcs`/`dsts` are *lists* of HBM (or SB) tensors (docstrings CONFIRMED). The actual collective-compute realization (the hardware backend the `*_cc` / `*_cc_raw` builders feed) is owned by the collectives strand — see Part 13.
+`srcs`/`dsts` are *lists* of HBM (or SB) tensors, per their docstrings. The actual collective-compute realization (the hardware backend the `*_cc` / `*_cc_raw` builders feed) is owned by the collectives strand — see Part 13.
 
 > **NOTE —** `nki.benchmark` cannot run a kernel with collectives — *"NKI not yet supports collective compute"* for the benchmark path (single-NeuronCore only). Collective kernels must reach the device through the framework (custom-call) path or `baremetal`.
 
@@ -514,17 +514,19 @@ The trace engine underneath both branches is `TraceKernel` (`TraceKernel.so`); i
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+Each of this page's central claims rests on verbatim strings.
 
-1. **JAX target `"AwsNeuronCustomNativeKernel"`** — CONFIRMED. Verbatim in `_jax.so` (`__pyx_n_u_AwsNeuronCustomNativeKernel`), in the `FrameworkKernel` docstring (`custom_call_target="AwsNeuronCustomNativeKernel"`), and in the native `xla_infergoldens` string table (3 hits). Triple-anchored.
-2. **PyTorch-XLA target `"AwsNeuronNkiKernel"`** — CONFIRMED. Verbatim in `_torch_xla.so` (`__pyx_n_s_AwsNeuronNkiKernel`), adjacent to `CustomCall`, `scribe`, `OutputOperandAliasing`. The two targets are genuinely distinct strings.
-3. **base64-JSON `backend_config` carrying BIR** — CONFIRMED. `b64encode`, `encode_backend_config`, `json`/`dumps`, and `serialize_ir_string` all in `FrameworkKernel.so`; full config-key pool string-verified. The "BIR rides inside the config" reading is anchored on the `serialize_ir_string` key plus the docstring's "ship config to backend" framing — STRONG on the *semantics* (that the IR string is the kernel program the backend re-reads), CONFIRMED on the *mechanism* (base64-JSON dict with that key).
-4. **Argument-type compute-mode dispatch** — CONFIRMED. `compute_mode`, `_native_mode_map`, `JAXKernel`/`PyTorchXLAKernel`/`BaremetalKernel`, `get_backend`/`ArrayImpl`/`Tracer`/`is_tensor` all in `compile.so`. The `platform=="neuron"` gate is anchored on the `neuron`/`platform`/`get_backend` refs (STRONG).
-5. **Local compile `neuronx-cc compile --framework XLA penguin.py …`** — CONFIRMED. The full command template is a single verbatim string in `NumpyKernel.so`.
+- **The JAX target `"AwsNeuronCustomNativeKernel"`** is triple-anchored: in `_jax.so` as `__pyx_n_u_AwsNeuronCustomNativeKernel`, in the `FrameworkKernel` docstring as `custom_call_target="AwsNeuronCustomNativeKernel"`, and in the native `xla_infergoldens` string table (3 hits).
+- **The PyTorch-XLA target `"AwsNeuronNkiKernel"`** appears in `_torch_xla.so` as `__pyx_n_s_AwsNeuronNkiKernel`, adjacent to `CustomCall`, `scribe`, and `OutputOperandAliasing`. The two targets are genuinely distinct strings, not variants of one.
+- **The base64-JSON `backend_config` mechanism** is pinned by `b64encode`, `encode_backend_config`, `json`/`dumps`, and `serialize_ir_string`, all in `FrameworkKernel.so`, with the full config-key pool string-verified.
+- **Argument-type compute-mode dispatch** rests on `compute_mode`, `_native_mode_map`, `JAXKernel` / `PyTorchXLAKernel` / `BaremetalKernel`, and `get_backend` / `ArrayImpl` / `Tracer` / `is_tensor`, all in `compile.so`.
+- **The local compile command** `neuronx-cc compile --framework XLA penguin.py …` is one verbatim string in `NumpyKernel.so`.
 
-No fabricated target name, class, or string appears on this page. The one place reasoning exceeds direct observation — that the Neuron backend *parses* `serialize_ir_string` to rebuild the kernel — is tagged STRONG (supported by the native target string + the round-trip framing) rather than CONFIRMED, since the backend-side parser was not individually traced here.
+### Limits of this reading
+
+Two claims reach past what the framework-side binaries show. That the Neuron backend *parses* `serialize_ir_string` to rebuild the kernel — the "BIR rides inside the config" semantics — is supported by the native target string and the round-trip framing, but the backend-side parser was not traced. And the `platform == "neuron"` gate is read from the `neuron` / `platform` / `get_backend` references rather than from a traced comparison.
 
 ---
 

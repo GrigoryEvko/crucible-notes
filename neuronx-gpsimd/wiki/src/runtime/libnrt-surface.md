@@ -19,7 +19,8 @@
 > Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read from
 > `nm`/`objdump`/`readelf`/`c++filt`/`strings` on the shipped ELF, or its DWARF
 > `.debug_info`), `INFERRED` (an ABI/control-flow rule applied to an observed
-> fact), `CARRIED` (taken from a backing static-analysis pass, re-confirmed here).
+> fact), `CARRIED` (taken from a cited sibling page, re-confirmed here). The page
+> default is `[HIGH × OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — artifact & tooling.** Every claim is derived **solely from static
 > analysis** of the shipped `aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64`
@@ -85,7 +86,7 @@ The device-side op ABI is in Part 7 — see
 ## 1. Exported API surface — the flat C ABI
 
 `nm -D --defined-only` prints **151 lines**. Counted by symbol type and by ELF
-symbol-version node (`objdump -T`), they decompose cleanly: `[HIGH × OBSERVED]`
+symbol-version node (`objdump -T`), they decompose cleanly:
 
 | bucket | count | what |
 |---|---|---|
@@ -100,19 +101,19 @@ the 8 `nrta_*` async-schedule symbols). `objdump -T` global `DF .text` rows:
 **141 NRT_2.0.0** (= 137 public `nrt_`/`nec_` + the 4 leaked `_M_` locals) **+ 8
 NRT_3.0.0**.
 
-> **CORRECTION — the export tally.** A backing pass framed this as "151 dynamic
-> exports … 143 NRT_2.0.0 + 8 NRT_3.0.0." Re-grounding on the binary:
+> **CORRECTION — the export tally.** An earlier reading framed this as "151 dynamic
+> exports … 143 NRT_2.0.0 + 8 NRT_3.0.0." Grounded on the binary:
 > `objdump -T` gives **141** versioned `NRT_2.0.0` `DF .text` rows (not 143), of
 > which **4 are the leaked `_M_` libstdc++ helpers**, leaving **137** genuine
 > public C exports under NRT_2.0.0. The clean public surface is **145 global
 > `T` functions** (`121 nrt_ + 16 nec_ + 8 nrta_`); "151" only holds if you also
 > count the 4 leaks and the 2 ABS version markers. Verify:
 > `nm -D --defined-only libnrt.so | rg -c ' T '` → `145`;
-> `objdump -T libnrt.so | rg 'DF .text' | rg -c 'NRT_3.0.0'` → `8`. `[HIGH × OBSERVED]`
+> `objdump -T libnrt.so | rg 'DF .text' | rg -c 'NRT_3.0.0'` → `8`.
 
 ### 1.1 Families (representative, by prefix)
 
-`[HIGH × OBSERVED]` Addresses are file VAs (== file offset in `.text`).
+Addresses are file VAs (== file offset in `.text`).
 
 | family | representative exports (addr) | role |
 |---|---|---|
@@ -130,7 +131,7 @@ NRT_3.0.0**.
 
 ## 2. Major subsystems — the symbol-prefix histogram
 
-`nm libnrt.so | rg ' [tT] '` then per word-boundary prefix `[HIGH × OBSERVED]`:
+`nm libnrt.so | rg ' [tT] '` then per word-boundary prefix:
 
 | prefix | funcs | role (source root from embedded `__FILE__` paths) |
 |---|---|---|
@@ -166,7 +167,6 @@ dispatcher (e.g. `aws_hal_get_q7_params` @`0x44bfb0`) asserts the arch type via
 `al_hal_tpb_get_arch_type()` (`0`=INVALID, `2`=Sunda, `3`=Cayman, `4`=Mariana)
 and calls through a populated pointer in a `kaena_khal.khal_arch.*` dispatch
 struct; each pointer resolves to one arch-suffixed implementation.
-`[HIGH × OBSERVED]`
 
 > **WALL — Maverick (NC-v5).** The byte-grounded arches here are Sunda/Cayman/
 > Mariana only. A v5 "Maverick" family (`arch_id` 36) is header-OBSERVED
@@ -177,7 +177,7 @@ struct; each pointer resolves to one arch-suffixed implementation.
 
 ## 3. Build provenance & version
 
-### 3.1 Version string and git hash `[HIGH × OBSERVED]`
+### 3.1 Version string and git hash
 
 `strings libnrt.so | rg 'libnrt version|0b044f4ce'`:
 
@@ -191,7 +191,7 @@ libnrt version %s
 the caller's buffer is large enough (≥200 B). The version is therefore both the
 package name (`2.31.24.0-0b044f4ce`) and the embedded format string.
 
-### 3.2 The three build worlds `[HIGH × OBSERVED]`
+### 3.2 The three build worlds
 
 The single ELF is fused from three source trees, all visible as `__FILE__`
 literals:
@@ -215,13 +215,13 @@ pipeline distinct from the NRT_2.0.0 sync/implicit-async execute engine.
 ## 4. C++ class hierarchy (reconstructed from RTTI)
 
 **Counts** (`nm libnrt.so | rg -c`): **266** `_ZTI` / **225** `_ZTV` / **245**
-`_ZTS`. `[HIGH × OBSERVED]` Inheritance is read from `__si_class_type_info`
+`_ZTS`. Inheritance is read from `__si_class_type_info`
 records in `.data.rel.ro` (each record = `[vptr, _ZTS-name-ptr, base-_ZTI-ptr]`),
 resolving the base pointer against the `_ZTI` addr→name map. Vtable slot→method
 is read from the qwords at **`vptr = _ZTV symbol + 0x10`** (past the
 offset-to-top and typeinfo-header words) and resolving each to a `.text` symbol.
 
-**Worked example — `mem_ref_sp` (`_ZTV` @`0xbf8c88`).** `[HIGH × OBSERVED]`
+**Worked example — `mem_ref_sp` (`_ZTV` @`0xbf8c88`).**
 `objdump -s -j .data.rel.ro` over the record:
 
 ```
@@ -237,7 +237,7 @@ Of the 184 named non-anon vtables, ~110 are third-party
 (`google::protobuf`, `absl::lts_20230802`, `simdjson`); the **73 Neuron-domain
 polymorphic classes** fall into four families.
 
-### 4.1 `enc_*` collectives — op + proxy-task model `[HIGH × OBSERVED]`
+### 4.1 `enc_*` collectives — op + proxy-task model
 
 ```
 enc_ins  (abstract base, no own vtable symbol)
@@ -253,7 +253,7 @@ alg_mesh_initializer  vt@0xbf6958
   └─ alg_mesh_initializer_switch  vt@0xbf6b98  (switch-topology mesh)
 ```
 
-### 4.2 ★ `kbin` device-programming classes — GPSIMD-relevant `[HIGH × OBSERVED]`
+### 4.2 ★ `kbin` device-programming classes — GPSIMD-relevant
 
 These are the in-memory IR `kbin` builds from a NEFF and lowers into device DMA
 rings. `mem_ref_sp` (on-chip SRAM ref) and `dma_desc_inc_semaphore`
@@ -301,7 +301,7 @@ Vision-Q7 NX DSP. A custom op is a user kernel compiled to Q7 IRAM/DRAM ucode
 that replaces or augments the stock Pool ucode. There are two halves: **(A)**
 ucode *injection* at init, **(B)** custom-op *DMA* at execute.
 
-### 5.1 The injection seam — `nrt_set_pool_eng_ucode` → 4 globals `[HIGH × OBSERVED]`
+### 5.1 The injection seam — `nrt_set_pool_eng_ucode` → 4 globals
 
 The export stores the caller's `nrt_ucode_info` into four process globals. From
 `objdump -d` of `tdrv_set_pool_eng_ucode` @`0x2695f0`:
@@ -331,7 +331,7 @@ The wrapper `nrt_set_pool_eng_ucode` @`0xc1630` guards `nrt_init_state` (must be
 **pre-init**; it warns on `NRT_CLOSED` / errors on a bad state) and then calls
 `tdrv_set_pool_eng_ucode(ui)`.
 
-### 5.2 Stock Q7 Pool ucode selection (per arch) `[HIGH × OBSERVED]`
+### 5.2 Stock Q7 Pool ucode selection (per arch)
 
 `ucode_set_q7_ucode_bins(aws_hal_stpb_ucode_one_eng* bin, al_hal_q7_owner_t owner)`
 @`0x2261e0` selects the stock image by arch (strings confirmed in `.rodata`):
@@ -345,7 +345,7 @@ The wrapper `nrt_set_pool_eng_ucode` @`0xc1630` guards `nrt_init_state` (must be
 `AL_HAL_POOLING_Q7` is the GPSIMD/custom-op engine; `AL_HAL_COMPUTE_CLUSTER_Q7`
 is the collectives CC engine. Image kinds: `NRTUCODE_IMAGE_IRAM` / `_DRAM`.
 
-### 5.3 The override — `tpb_eng_init_hals_v2` `[HIGH × OBSERVED]`
+### 5.3 The override — `tpb_eng_init_hals_v2`
 
 `tpb_eng_init_hals_v2(pcore, tpb_init_config, program_tpb)` @`0x2687e0`
 (`KaenaRuntime/tdrv/init.c`) is the consumer. It builds an `aws_hal_stpb`
@@ -376,7 +376,7 @@ stock Pool ucode with no further ceremony. The RIP-relative loads of the
 `pool_eng_*` globals are observable at the override site and match the store
 site in §5.1.
 
-### 5.4 Custom-op at execute time `[HIGH × OBSERVED]`
+### 5.4 Custom-op at execute time
 
 * **Detection.** `ucode_model_has_custom_ops(model_t*)` @`0x311150` ⟺
   `m->ulib_set_info->num_libs > 1` — a NEFF carries custom ops iff it bundles

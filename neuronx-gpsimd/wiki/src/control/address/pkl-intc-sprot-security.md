@@ -44,15 +44,15 @@ A `.pkl` is a program. This 216 MB file (and its 514 MB `.json` mirror) must **n
 `pickle.load()` / `pickle.loads()` (arbitrary code execution; a 514 MB graph slurp also
 OOMs). Use the [`pkl-db.md`](./pkl-db.md) primitive: either `pickletools.genops()` (opcode
 scan, *no* object construction, *never* calls `find_class`) or stream the `.json` mirror
-line-by-line with `rg`/`jq`/a hand `for line in f` loop. **This page re-ran the gate as an
-independent safety check** before any INTC/SPROT carve:
+line-by-line with `rg`/`jq`/a hand `for line in f` loop. The gate holds for this file
+(every row below is `[HIGH · OBSERVED]`):
 
-| check | value | `[conf · prov]` |
-|-------|-------|-----------------|
-| header bytes (no execution) | `80 04 95 08 00 01 00 00 00` = PROTO 4 · FRAME | `[HIGH · OBSERVED]` |
-| file size | **216,631,794 B** (no drift) | `[HIGH · OBSERVED]` |
-| total records (root list `len`) | **323,198** (`rg -c '"name":'` on `.json`) | `[HIGH · OBSERVED]` |
-| `type` census | `REGFILE` 268,201 · `NODE` 38,573 · `TABLE` 9,848 · **`INTC` 5,904** · `MEM_CTRL` 336 · `INDIRECT_ACCESS` 336 | `[HIGH · OBSERVED]` |
+| check | value |
+|-------|-------|
+| header bytes (no execution) | `80 04 95 08 00 01 00 00 00` = PROTO 4 · FRAME |
+| file size | **216,631,794 B** (no drift) |
+| total records (root list `len`) | **323,198** (`name`-keyed count on `.json`) |
+| `type` census | `REGFILE` 268,201 · `NODE` 38,573 · `TABLE` 9,848 · **`INTC` 5,904** · `MEM_CTRL` 336 · `INDIRECT_ACCESS` 336 |
 
 > **NOTE — no drift.** Header bytes, file size, the 323,198 record count and the `type`
 > census are byte-identical to the [`pkl-db.md`](./pkl-db.md) baseline (#903 anchors:
@@ -69,13 +69,12 @@ name  short_name  short_name_lc  size  type  offset  base  parent_names  count
 The `name` field is the fully-qualified node path (`SECURE_INT_SENG_0_C_DIE_…`); its
 first token (`USER_INT` / `SECURE_INT`) is the **access-domain view**. `short_name_lc` is
 the leaf schema-instance token. `type` is one of the six census values above; `[type='INTC']`
-specifically tags the **per-IP embedded INTC container** nodes (§2). All counts below were
-machine-re-derived this session by streaming the `.json` — **never grepped from a
-decompile**.
+specifically tags the **per-IP embedded INTC container** nodes (§2). All counts below come
+from streaming the `.json`.
 
 ---
 
-## 1. The three surfaces at a glance `[HIGH · OBSERVED]`
+## 1. The three surfaces at a glance
 
 | # | surface | what it is | leaf count | view split (user / secure) |
 |---|---------|-----------|-----------:|----------------------------|
@@ -86,16 +85,16 @@ decompile**.
 | C | per-FIS `sprot` stack | remapper → qos → nsm enforcement | **3,616** (6 schemas) | see §4a |
 
 The **keyword totals** that bracket these (streamed from the `.json`, byte-identical to the
-mirror and to #903's family map):
+mirror and to #903's family map; every row `[HIGH · OBSERVED]`):
 
-| keyword (substring in `name`) | total | user_int | secure_int | `[conf · prov]` |
-|-------------------------------|------:|---------:|-----------:|-----------------|
-| `INTC` | **31,692** | 6,948 | 24,744 | `[HIGH · OBSERVED]` |
-| `SPROT` | **4,896** | 1,224 | 3,672 | `[HIGH · OBSERVED]` |
-| `FIS` | **34,384** | 8,568 | 25,816 | `[HIGH · OBSERVED]` |
-| `ERRTRIG` | **5,488** | 592 | 4,896 | `[HIGH · OBSERVED]` |
-| `REMAPPER` | **1,020** | 612 | 408 | `[HIGH · OBSERVED]` |
-| `NSM` | **24** | 0 | 24 | `[HIGH · OBSERVED]` |
+| keyword (substring in `name`) | total | user_int | secure_int |
+|-------------------------------|------:|---------:|-----------:|
+| `INTC` | **31,692** | 6,948 | 24,744 |
+| `SPROT` | **4,896** | 1,224 | 3,672 |
+| `FIS` | **34,384** | 8,568 | 25,816 |
+| `ERRTRIG` | **5,488** | 592 | 4,896 |
+| `REMAPPER` | **1,020** | 612 | 408 |
+| `NSM` | **24** | 0 | 24 |
 
 > **NOTE — keyword vs type.** `INTC`-keyword (31,692, by name substring) ⊋ `type='INTC'`
 > (5,904, by record type). The keyword family folds in the register-leaf REGFILEs *inside*
@@ -106,7 +105,7 @@ mirror and to #903's family map):
 
 ## 2. The INTC subtree — three controller surfaces
 
-### 2a. The per-IP embedded INTC fleet (`type='INTC'` = 5,904; 13 schemas) `[HIGH · OBSERVED]`
+### 2a. The per-IP embedded INTC fleet (`type='INTC'` = 5,904; 13 schemas)
 
 This is the **Maverick decentralization**: interrupt control is pushed *into each IP block*
 rather than aggregated at a few central IOFICs. Streaming the `.json` and grouping every
@@ -129,23 +128,22 @@ rather than aggregated at a few central IOFICs. Streaming the `.json` and groupi
 | `axi_rd_term_intc` | 144 | AXI read-terminator | axi-rd-term INTC |
 | **sum** | **5,904** | | |
 
-> **CORRECTION (vs SX-ADDR-15 §2a).** The backing report named these 13 by **schema-file
-> basename** (`pmu_intc.json`, `udma_primary_int_ctrl.json`, `d2d_tl_intc.json`, …). The
-> tokens actually carried in the pkl/json `short_name_lc` field are the **container
-> short-names** above — verified this session by streaming `type='INTC'` records and reading
-> one full `name` per schema:
+> **CORRECTION — cite these 13 by `short_name_lc`, not schema basename.** Naming them by
+> **schema-file basename** (`pmu_intc.json`, `udma_primary_int_ctrl.json`,
+> `d2d_tl_intc.json`, …) does not match the DB: the tokens actually carried in the
+> pkl/json `short_name_lc` field are the **container short-names** above. The mapping:
 > `interrupt_ctl` ↔ `…_PMU_INTERRUPT_CTL` (pmu_intc),
 > `int_ctrl_base_addr`/`int_ctrl_sec_addr` ↔ `…UDMA_APP_GEN_INT_CTRL_{BASE,SEC}_ADDR`
 > (udma primary/secondary), `tl_intc`/`ll_phy_intc` ↔ the D2D `…WRAPPER` parents,
 > `dge_desc_lb_intc` ↔ the dge dma-desc adapter, `dma_lb_intc` ↔ `…DMA_LANDING_BUFFER`.
-> **The 13-count partition and the per-schema counts are byte-identical** to the report —
-> only the naming granularity (schema-file vs leaf short-name) differs. Cite by
+> The 13-count partition and the per-schema counts are unaffected — only the naming
+> granularity (schema-file vs leaf short-name) differs. Cite by
 > `short_name_lc` when streaming.
 
 `type='INTC'` view split: **user_int 1,312 / secure_int 4,592 = 5,904** (streamed). Cayman
 has **zero** of these schemas on disk (§7) — this whole fleet is the v5 add.
 
-### 2b. The errtrig `intc_4grp` PAIR primitive `[HIGH · OBSERVED]`
+### 2b. The errtrig `intc_4grp` PAIR primitive
 
 The error-trigger fabric is built from a **symmetric pair** of `intc_4grp` units. Streaming
 the Maverick (v5) `.json` for the strict per-vector `ERRTRIG_TRIG_*` short_name:
@@ -156,16 +154,15 @@ ERRTRIG_TRIG_1  =  844     →  TRIG_0 == TRIG_1  →  844 generator PAIRS (Mave
 ```
 
 > **CORRECTION — Maverick per-vector `TRIG_0`/`TRIG_1` is 844 each, not 1,372;
-> "1,372" is the errtrig anchor-NODE total.** An earlier pass of this page cited
-> `TRIG_0 == TRIG_1 == 1,372`. Re-grounding the streamed Maverick `al_address_map_db`
-> shows the strict `ERRTRIG_TRIG_0` / `ERRTRIG_TRIG_1` short_names count **844 each**
-> (`rg -c ERRTRIG_TRIG_0` = 844). The **1,372** figure is the errtrig *generator-anchor
+> "1,372" is the errtrig anchor-NODE total.** In the streamed Maverick
+> `al_address_map_db` the strict `ERRTRIG_TRIG_0` / `ERRTRIG_TRIG_1` short_names count
+> **844 each**. The **1,372** figure is the errtrig *generator-anchor
 > NODE* total = `errtrig_amzn.json` (**928**) + `errtrig_user.json` (**444**) = 1,372
 > — the parent NODEs that *own* the `TRIG_0`/`TRIG_1`/`NOTIFIC` triplet, not a
 > per-vector `TRIG` count. This matches
 > [`physical-intc-instances.md`](../interrupt/physical-intc-instances.md) §7, which is
 > authoritative on the v5 INTC census. The symmetric-pair *structure* is unchanged;
-> only the number attached to "TRIG_0 == TRIG_1" is corrected. `[HIGH · OBSERVED]`
+> only the number attached to "TRIG_0 == TRIG_1" is corrected.
 
 The equality is structural, not coincidental: every errtrig generator **always emits two
 `intc_4grp` units** (an on-die-summary half and its twin), so the count of `TRIG_0` and
@@ -179,7 +176,7 @@ NOTIFIC @+0x4000}`. The two `intc_4grp` schemas on disk are:
 | `intc_4grp_msix_unit.json` | `REGFILE` | `0x1000` | host-delivered (MSI-X-capable) |
 
 > **NOTE — no `intc_1grp` on Maverick.** The `intc/` schema dir holds **only** the two
-> `4grp` units (`ls` verified). Cayman's RDM-root `intc_1grp_msix_unit` schema is **absent**
+> `4grp` units. Cayman's RDM-root `intc_1grp_msix_unit` schema is **absent**
 > from the Maverick `intc/` dir — a real generational drop (§7).
 
 ERRTRIG keyword decomposition (5,488 = user 592 / secure 4,896), by container/half:
@@ -193,10 +190,10 @@ ERRTRIG keyword decomposition (5,488 = user 592 / secure 4,896), by container/ha
 | `USER_ERRTRIG` | 444 | host-visible errtrig container (user 148 / sec 296) |
 | `AMZN_ERRTRIG` | 400 | privileged errtrig container (secure-only) |
 
-### 2c. The `ap_intc` / IOFIC family `[HIGH · OBSERVED]`
+### 2c. The `ap_intc` / IOFIC family
 
 The classic Annapurna IOFIC line, promoted to **first-class addressable units** on
-Maverick. The `ap_intc/` schema dir (verified on disk) binds:
+Maverick. The `ap_intc/` schema dir (on disk) binds:
 
 | schema (`csrs/ap_intc/`) | `HalName` / role | `Type` · `Size` |
 |--------------------------|------------------|-----------------|
@@ -208,12 +205,12 @@ Maverick. The `ap_intc/` schema dir (verified on disk) binds:
 | `ap_intc_grp_vec_table.json` | group vector table | — |
 | `ap_intc_msix.json` / `ap_intc_pba.json` | MSI-X message / pending-bit array | — |
 
-The `HalName` of `ap_intc_8grp_msix_unit.json` is **`iofic_x8_msix`** (verified by reading
-the schema: `"HalName": "iofic_x8_msix"`, `"Type": "NODE"`) — the new MSI-X-capable
+The `HalName` of `ap_intc_8grp_msix_unit.json` is **`iofic_x8_msix`** (the schema carries
+`"HalName": "iofic_x8_msix"`, `"Type": "NODE"`) — the new MSI-X-capable
 security IOFIC absent on Cayman.
 
 **The `int_sec_grp` SWOM fork** (the security-hardening keystone of the INTC layer) lives in
-`ap_intc_grp_ctrl.json`. Verified on disk:
+`ap_intc_grp_ctrl.json`. On disk:
 
 - `int_sec_grp` register present (`AccessType: RW`), plus `int_regs_sec_grp` (write-locks);
 - `InterfaceType: APB` (Maverick promoted the IOFIC group-ctrl to an APB-decoded block);
@@ -229,7 +226,7 @@ security IOFIC absent on Cayman.
 > generic (`INTERRUPT_CTL`, `PEB_INTC`, …). To census the IOFIC family you must read the
 > `ap_intc/` schema dir and join on the schema binding, not grep the pkl `short_name_lc`.
 
-### 2d. The `peb_intc` apex `[HIGH · OBSERVED]`
+### 2d. The `peb_intc` apex
 
 The top-of-tree PEB interrupt controller binds `peb_intc_amzn.json` = **24 records, all
 `secure_int`**, base `0x2000008010110000…` (per-PEB/die/SENG), size `0x2000`. Streaming the
@@ -252,7 +249,7 @@ FLAVOR pair as the errtrig primitive, per-PEB). Each `PEB_INTC` container holds 
 > ([`../security/security-synthesis.md`](../security/security-synthesis.md)). This page
 > enumerates the INTC *hardware* the apex aggregates, not the routing.
 
-### 2e. D2D INTC placement (cross-check) `[HIGH · OBSERVED]`
+### 2e. D2D INTC placement (cross-check)
 
 The `tl_intc` (440) and `ll_phy_intc` (440) leaves of §2a are **inside the UCIE links**:
 parent chains `SECURE_INT_SENG_0_C_DIE_PEB_APB_IO_AMZN_UCIE_A_EW_0_D2D_TL_WRAPPER_TL_INTC`
@@ -287,9 +284,8 @@ addition of the 5,904 per-IP INTCs, the promotion of the IOFIC family to address
 is `[HIGH]`; the absolute unit counts are Maverick-specific and the cross-gen numeric delta
 is `[MED]`.
 
-> **CORRECTION — the Cayman errtrig PAIR is 962, not 642.** An earlier pass of this
-> cross-gen table cited "642 pairs" for the Cayman flat-YAML side. That is wrong on
-> the very file it claims to read: `rg -c ERRTRIG_TRIG_0 address_map_flat.yaml` =
+> **CORRECTION — the Cayman errtrig PAIR is 962, not 642.** In `address_map_flat.yaml`
+> itself, `ERRTRIG_TRIG_0` =
 > **962**, `ERRTRIG_TRIG_1` = **962**, `ERRTRIG_NOTIFIC` = **962** → **962 generator
 > PAIRS** (one `notific_1_queue` each), splitting **428 USER + 534 AMZN**. This
 > matches [`fis-errtrig-spad.md`](../csr/fis-errtrig-spad.md) (#930, the re-grounded
@@ -300,16 +296,16 @@ is `[MED]`.
 > as **642** (428 USER + 214 AMZN direct generators) — is a *different axis*, not a
 > contradiction. The PAIR-count column here uses the byte-grounded **962**. The
 > Maverick side is **844** per-vector (1,372 errtrig anchor NODEs; §2b). The two SoCs
-> differ — keep the per-gen provenance explicit. `[HIGH · OBSERVED]`
+> differ — keep the per-gen provenance explicit.
 
 ---
 
-## 4. The SPROT / security subtree — remapper → qos → nsm `[HIGH · OBSERVED]`
+## 4. The SPROT / security subtree — remapper → qos → nsm
 
-### 4a. The central enforcement schema home (`csrs/sprot/*` = 3,616) `[HIGH · OBSERVED]`
+### 4a. The central enforcement schema home (`csrs/sprot/*` = 3,616)
 
 Six enforcement schemas, all on disk in `csrs/sprot/`, all `REGFILE`, sizes byte-matching
-the pkl node sizes. The leaf counts and view splits were streamed this session (joining
+the pkl node sizes. The leaf counts and view splits are streamed (joining
 `name`-prefix to `short_name_lc`):
 
 | schema (`csrs/sprot/`) | pkl `short_name_lc` | count | user / secure | `Size` | role |
@@ -337,7 +333,7 @@ the pkl node sizes. The leaf counts and view splits were streamed this session (
 - **BOTH views (guest twin host-visible):** `user_remapper` (204/408),
   `qos_host_visible` (392/784), `qos_pmu` (204/408).
 
-### 4b. The `FIS_0_SPROT` in-series stack `[HIGH · OBSERVED]`
+### 4b. The `FIS_0_SPROT` in-series stack
 
 Each FIS slice's `sprot` container places **the remapper FIRST, the QoS shaper SECOND**, in
 AXI series:
@@ -366,7 +362,7 @@ type = REGFILE   parent_names = [ADDRESS_MAP, secure_int, seng_0, c_die, PEB_APB
 schema = .../csrs/sprot/amzn_remapper.json
 ```
 
-### 4c. The `nsm` AXI integrity watchdog (24; the separate PEB leaf) `[HIGH · OBSERVED]`
+### 4c. The `nsm` AXI integrity watchdog (24; the separate PEB leaf)
 
 `nsm` is **not** inside `FIS_0_SPROT` — it is a separate `AMZN_PEB_NSM` leaf at offset
 `0x11c000` inside `amzn_peb`, size `0x1000`, secure-only. **24 = 4 SENG × 3 dies (C/H/IO) ×
@@ -387,7 +383,7 @@ the 9 protocol violations the watchdog drops the master into isolation, terminat
 SLVERR and poisons the read data. Live register detail in
 [`../csr/nsm.md`](../csr/nsm.md).
 
-### 4d. qos_prot NTS `[HIGH · OBSERVED]`
+### 4d. qos_prot NTS
 
 `qos_prot.json` carries the **no-target-slave responder** (`no_target_mode`,
 `read_response`, `write_response`, `nts_isolation`, SLVERR): when a slave is absent or
@@ -397,10 +393,10 @@ remapper **DENY** path reuses this same NTS termination. Live detail in
 
 ---
 
-## 5. The amzn-fail-CLOSED / user-fail-OPEN trust boundary `[HIGH · OBSERVED]`
+## 5. The amzn-fail-CLOSED / user-fail-OPEN trust boundary
 
 This is the **keystone security semantic** of the whole SoC fabric. Reset values read
-**directly from the Maverick schemas** this session (field key `ResetValue`):
+**directly from the Maverick schemas** (field key `ResetValue`):
 
 | schema / field | `ResetValue` | semantic |
 |----------------|--------------|----------|
@@ -428,7 +424,7 @@ The semantic is spelled out verbatim in the schema's `Description` for `rd_pass_
 > **WALL — this is the FROZEN core.** These reset values (`0x0`/`0x1` pass-on-miss, AxPROT
 > `0x2`, the NTS, the nsm 9-causes/8×deadbeef/SLVERR) are **byte-identical Cayman↔Maverick**
 > (§7). The trust boundary did **not** change generation-to-generation; only the INTC layer
-> hardened. `[HIGH · OBSERVED]` (read from both gens' shipped schemas).
+> hardened (read from both gens' shipped schemas).
 
 ---
 
@@ -464,7 +460,7 @@ remapper/qos/nsm stack is instantiated once per protected master.
 > (34,384). The exact per-record cross-walk is `[MED]` — not byte-reconstructed (different
 > membership predicates).
 
-The FIS **container** schemas the enforcement sits inside (the wrappers, `[HIGH · OBSERVED]`):
+The FIS **container** schemas the enforcement sits inside (the wrappers):
 `fis_control.json` (2,384, secure-only, `0x2000` — APB decode/timeout/gating), `fis_sprot_*`
 (user 612 / dbug 612 / amzn 408), `fis_type_*.json` (10,376 across 16 distinct slice
 schemas). The enforcement REGFILEs of §4a live *inside* these slice containers.
@@ -473,17 +469,19 @@ schemas). The enforcement REGFILEs of §4a live *inside* these slice containers.
 
 ## 7. Maverick vs Cayman — the security-decentralization delta `[HIGH · OBSERVED on disk]`
 
-| aspect | CAYMAN (NC-v3, flat-YAML) | MAVERICK (NC-v5, this DB) | conf |
-|--------|---------------------------|---------------------------|------|
-| `ap_intc_grp_ctrl` | 9-register MEM block; `InterfaceType=NONE`; **no `int_sec_grp`** | `int_sec_grp` (@`0xC` SWOM) + `int_regs_sec_grp` (@`0x24` write-locks) **ADDED**; **APB**-interfaced | HIGH |
-| per-IP embedded INTC | **ZERO** (all 13 schemas absent on disk) | **13 schemas, 5,904** `type='INTC'` nodes (decentralized) | HIGH |
-| security IOFIC | `iofic_x1/x2/x4` (MEM, no MSI-X) | **adds `iofic_x8_msix`** (256-input, MSI-X-capable) | HIGH |
-| RDM-root intc | `intc_1grp_msix_unit` (4) | **absent** (`intc/` dir = 2× `4grp` only) | HIGH |
-| remapper CAM core | fail-CLOSED / fail-OPEN + AxPROT `0x2` | **BYTE-IDENTICAL** (`pass_on_miss` `0x0`/`0x1`, `ar/awprot` `0x2`) | HIGH |
-| qos_prot / NTS | shaper + NTS + `nts_isolation` | **BYTE-IDENTICAL** | HIGH |
-| nsm watchdog | inline per-PCIe-master AXI watchdog | **BYTE-IDENTICAL** (9 causes, 8× deadbeef, `axi_bresp` `0x2`); pkl model 4 SENG × 3 die × 2 | HIGH |
-| die structure | 2-die (DIE bit[47]) | **3-die** C_DIE/H_DIE/IO_DIE | HIGH |
-| errtrig PAIR | `TRIG_0`+`TRIG_1` `intc_4grp` pair | **IDENTICAL** (symmetric pair) | HIGH |
+Every row below is `HIGH`.
+
+| aspect | CAYMAN (NC-v3, flat-YAML) | MAVERICK (NC-v5, this DB) |
+|--------|---------------------------|---------------------------|
+| `ap_intc_grp_ctrl` | 9-register MEM block; `InterfaceType=NONE`; **no `int_sec_grp`** | `int_sec_grp` (@`0xC` SWOM) + `int_regs_sec_grp` (@`0x24` write-locks) **ADDED**; **APB**-interfaced |
+| per-IP embedded INTC | **ZERO** (all 13 schemas absent on disk) | **13 schemas, 5,904** `type='INTC'` nodes (decentralized) |
+| security IOFIC | `iofic_x1/x2/x4` (MEM, no MSI-X) | **adds `iofic_x8_msix`** (256-input, MSI-X-capable) |
+| RDM-root intc | `intc_1grp_msix_unit` (4) | **absent** (`intc/` dir = 2× `4grp` only) |
+| remapper CAM core | fail-CLOSED / fail-OPEN + AxPROT `0x2` | **BYTE-IDENTICAL** (`pass_on_miss` `0x0`/`0x1`, `ar/awprot` `0x2`) |
+| qos_prot / NTS | shaper + NTS + `nts_isolation` | **BYTE-IDENTICAL** |
+| nsm watchdog | inline per-PCIe-master AXI watchdog | **BYTE-IDENTICAL** (9 causes, 8× deadbeef, `axi_bresp` `0x2`); pkl model 4 SENG × 3 die × 2 |
+| die structure | 2-die (DIE bit[47]) | **3-die** C_DIE/H_DIE/IO_DIE |
+| errtrig PAIR | `TRIG_0`+`TRIG_1` `intc_4grp` pair | **IDENTICAL** (symmetric pair) |
 
 > **THE HEADLINE.** The **security-enforcement core** — remapper/qos/nsm + the
 > fail-CLOSED/fail-OPEN trust boundary + AxPROT `0x2` + the errtrig PAIR — is **FROZEN**
@@ -496,21 +494,22 @@ schemas). The enforcement REGFILEs of §4a live *inside* these slice containers.
 
 ---
 
-## 8. Record-arithmetic closure `[HIGH · OBSERVED]`
+## 8. Record-arithmetic closure
 
-Every count below was streamed from the `.json` this session and closes **exactly**:
+Every count below is streamed from the `.json` and closes **exactly**; every row is
+`[HIGH · OBSERVED]`:
 
-| family | closure | `[conf · prov]` |
-|--------|---------|-----------------|
-| `INTC` keyword | 31,692 = NODE 1,044 + INTC 4,584 + REGFILE 26,064 | `[HIGH · OBSERVED]` |
-| `INTC` view split | 31,692 = user 6,948 + secure 24,744 | `[HIGH · OBSERVED]` |
-| `type='INTC'` | 5,904 = the 13 per-IP schemas (§2a sum) | `[HIGH · OBSERVED]` |
-| `SPROT` keyword | 4,896 = NODE 1,632 + REGFILE 3,264; = user 1,224 + secure 3,672 | `[HIGH · OBSERVED]` |
-| sprot enforcement (6 schemas) | 3,616 = 408 + 612 + 784 + 1,176 + 24 + 612 | `[HIGH · OBSERVED]` |
-| `NSM` | 24 = 4 SENG × 3 dies × 2 apertures | `[HIGH · OBSERVED]` |
-| `FIS` keyword | 34,384 = user 8,568 + secure 25,816 (by-IP table §6) | `[HIGH · OBSERVED]` |
-| errtrig PAIR symmetry | `TRIG_0` 844 == `TRIG_1` 844 (Maverick/v5 per-vector; 1,372 anchor NODEs; Cayman PAIR=962) | `[HIGH · OBSERVED]` |
-| `type` census | 268,201 + 38,573 + 9,848 + 5,904 + 336 + 336 = 323,198 | `[HIGH · OBSERVED]` |
+| family | closure |
+|--------|---------|
+| `INTC` keyword | 31,692 = NODE 1,044 + INTC 4,584 + REGFILE 26,064 |
+| `INTC` view split | 31,692 = user 6,948 + secure 24,744 |
+| `type='INTC'` | 5,904 = the 13 per-IP schemas (§2a sum) |
+| `SPROT` keyword | 4,896 = NODE 1,632 + REGFILE 3,264; = user 1,224 + secure 3,672 |
+| sprot enforcement (6 schemas) | 3,616 = 408 + 612 + 784 + 1,176 + 24 + 612 |
+| `NSM` | 24 = 4 SENG × 3 dies × 2 apertures |
+| `FIS` keyword | 34,384 = user 8,568 + secure 25,816 (by-IP table §6) |
+| errtrig PAIR symmetry | `TRIG_0` 844 == `TRIG_1` 844 (Maverick/v5 per-vector; 1,372 anchor NODEs; Cayman PAIR=962) |
+| `type` census | 268,201 + 38,573 + 9,848 + 5,904 + 336 + 336 = 323,198 |
 
 JSON-sibling equivalence: every keyword count above is byte-identical between the `.pkl`
 (via `genops`/guarded stream) and the `.json` mirror (via `rg`), and the `amzn_remapper`
@@ -532,7 +531,7 @@ pickletools.genops() for the inert opcode gate (see pkl-db.md).
 import re
 from collections import Counter
 
-# the real field keys (23-field record schema, #903 / SX-ADDR-15)
+# the real field keys (23-field record schema, #903)
 RE_NAME = re.compile(r'^        "name": "([^"]*)"')
 RE_SNLC = re.compile(r'^        "short_name_lc": "([^"]*)"')
 RE_TYPE = re.compile(r'^        "type": "([^"]*)"')
@@ -622,7 +621,7 @@ def fis_decision(domain, cam_hit, is_write, amzn_schema, user_schema):
 
 ## 10. Confidence ledger
 
-**`[HIGH · OBSERVED]`** (byte-read from the shipped pkl/json/schemas, re-run this session):
+**`[HIGH · OBSERVED]`** (byte-read from the shipped pkl/json/schemas):
 the inert load gate (header `80 04 95 …`, file 216,631,794 B, 323,198 records, `type` census,
 0 dangerous opcodes carried from [`pkl-db.md`](./pkl-db.md)); the 13 per-IP INTC schemas
 (`type='INTC'` = 5,904, streamed, partitioned by `short_name_lc`); the symmetric errtrig PAIR

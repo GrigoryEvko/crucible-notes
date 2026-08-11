@@ -7,7 +7,7 @@
 > `(x cmp0 bound0) AND (x cmp1 bound1)`, writes `x` where the predicate holds and the
 > hard-pinned sentinel **`-FLT_MAX`** where it does not, and *optionally* Max-reduces
 > the result. This page decodes the operand struct
-> (`NEURON_ISA_TPB_S2D2_RS_STRUCT`, **64 B**, compile-verified this session), proves
+> (`NEURON_ISA_TPB_S2D2_RS_STRUCT`, **64 B**, compile-verified), proves
 > the predicate-select-fill-reduce datapath from the shipped header validator bytes,
 > tabulates the dtype matrix, classifies the dispatch surface as **DVE-engine,
 > hardware-native** (not a POOL software kernel) two independent ways, and proves the
@@ -27,7 +27,7 @@
 | # | Fact | Evidence | Tag |
 |---|------|----------|-----|
 | 1 | RangeSelect is **opcode `0xbc`** (`// Y` = supported/maintained); it sits encoding-wise in the `0xb8` DMA/extended block but its *runtime* engine is **DVE**. | `aws_neuron_isa_tpb_common.h:259` (cayman) / `:265` (mariana) / `:271` (maverick) | HIGH/OBSERVED |
-| 2 | The operand struct is the **64-byte `NEURON_ISA_TPB_S2D2_RS_STRUCT`** (`s2d2_rs.h`), the sole struct mapped 1:1 to `RANGE_SELECT`. | `instruction_mapping.json` + `ISA_STATIC_ASSERT(==64)` + `gcc offsetof` this session | HIGH/OBSERVED |
+| 2 | The operand struct is the **64-byte `NEURON_ISA_TPB_S2D2_RS_STRUCT`** (`s2d2_rs.h`), the sole struct mapped 1:1 to `RANGE_SELECT`. | `instruction_mapping.json` + `ISA_STATIC_ASSERT(==64)` + `gcc offsetof` | HIGH/OBSERVED |
 | 3 | The per-element op is a **two-sided range-predicate select**: `pred = (x cmp0 bound0) && (x cmp1 bound1)`; `out = pred ? x : fill_val`. Both comparators and both bounds are independently programmable. | `is_valid_range_select` @ `assert.h:16064` (real C) | HIGH/OBSERVED |
 | 4 | `fill_val` is **hard-pinned to bit pattern `0xff7fffff == -FLT_MAX`** (most-negative *finite* FP32, **not** `-Inf`) — the order identity for the optional Max-reduce. | `is_valid_fill_val` @ `assert.h:16279` returns `(i == 0xff7fffff)` | HIGH/OBSERVED |
 | 5 | An **optional Max-reduction** follows: `reduce_cmd ∈ {Idle, Accumulate, ZeroAccumulate}` and `reduce_op` **must be `Max`** (`0x08`). No Sum/Min; no plain `Zero`; no `LoadAccumulate`. | `has_valid_range_select_reduce_cmd` @ `16210`, `…_reduce_op` @ `16235` | HIGH/OBSERVED |
@@ -49,20 +49,19 @@ No vendor source was consulted.
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454…`, `10,276,288 B` — the FW-26/27/28/41 anchor, re-verified this session |
+| Container sha256 | `b7c67e898a116454…`, `10,276,288 B` — the FW-26/27/28/41 anchor |
 | Disassembler / readelf | `…/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-{objdump,readelf}` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
 | Struct header | `neuron_cayman_arch_isa/tpb/aws_neuron_isa_tpb_s2d2_rs.h` (cayman==mariana==maverick modulo the NC-v comment) |
 | Validators | `…/tpb/aws_neuron_isa_tpb_assert.h` — `is_valid_range_select` @ 16064 |
 | Struct→opcode map | `…/tpb/instruction_mapping.json` — `S2D2_RS_STRUCT → RANGE_SELECT` |
-| Compile-verify | `gcc -I…cayman… offsetof` run this session → `sizeof == 64`, every offset of §4 |
+| Compile-verify | `gcc -I…cayman… offsetof` → `sizeof == 64`, every offset of §4 |
 
-> **NOTE — VMA/offset arithmetic for this container.** `readelf -SW
-> libnrtucode_internal.so` this session: `.rodata` (VMA `0x46b0`) is **VMA ==
-> file-offset**, so the embedded `extisa` images (which live in `.rodata`) carve by
-> file offset directly. (Its writable `.data` carries a `0x3000` VMA↔file delta, but
-> nothing on this page reads `.data`.) The `extisa` *inner* ELFs are themselves
-> Xtensa images with their own section table — read with the **native** `ncore2gp`
-> readelf, never with host tooling. `[HIGH/OBSERVED]`
+> **NOTE — VMA/offset arithmetic for this container.** In `libnrtucode_internal.so`,
+> `.rodata` (VMA `0x46b0`) is **VMA == file-offset**, so the embedded `extisa` images
+> (which live in `.rodata`) carve by file offset directly. (Its writable `.data`
+> carries a `0x3000` VMA↔file delta, but nothing on this page reads `.data`.) The
+> `extisa` *inner* ELFs are themselves Xtensa images with their own section table —
+> read with the **native** `ncore2gp` readelf, never with host tooling.
 
 ---
 
@@ -100,7 +99,7 @@ The `0xbc` encoding sits inside the `0xb8` DMA/extended opcode block:
 > 0x6d MATCH_VALUE_LOAD / 0x6e FIND_INDEX8 / 0x6f MATCH_REPLACE8` (cayman
 > `common.h:200-203`) — yet it **is** in the same DVE engine and the same DVE
 > firmware blob as that cluster (§7.2). Engine membership tracks the firmware blob,
-> not the opcode neighborhood. `[HIGH/OBSERVED]`
+> not the opcode neighborhood.
 
 ### 3.1 The `S2D2_RS` instruction family
 
@@ -124,9 +123,8 @@ contract below is the complete and authoritative encoding.
 
 ## 4. Operand struct — `NEURON_ISA_TPB_S2D2_RS_STRUCT` (64 B) `[HIGH/OBSERVED]`
 
-Reproduced byte-for-byte from `aws_neuron_isa_tpb_s2d2_rs.h`; every offset was
-**compile-verified this session** (`gcc … offsetof`, `_Static_assert(sizeof==64)`
-compiled clean):
+Reproduced byte-for-byte from `aws_neuron_isa_tpb_s2d2_rs.h`; every offset is
+**compile-verified** (`gcc … offsetof`, `_Static_assert(sizeof==64)` compiles clean):
 
 | off | size | field | type | notes |
 |----:|----:|-------|------|-------|
@@ -174,7 +172,6 @@ The constituent types (all from `common.h`):
 > **CORRECTION (vs an earlier survey draft) — `bound0` is at off 40, not 38.** Offsets
 > 38/39 are the **1-byte** `bound0_src`/`bound1_src` selectors; the FP32 `bound0`/
 > `bound1` values begin at 40/44. Confirmed by the `offsetof` run above.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -257,9 +254,8 @@ predicate**, not a clamp:
 > RangeSelect instead gets two **comparators** feeding a boolean predicate, then a
 > *select*. The output of an in-range element is the element itself (`x`), not `lo` or
 > `hi`. So this op gates/masks values; it does not saturate them.
-> `[HIGH/OBSERVED — comparator-only `comp_op` set]`
 
-### 5.3 Why it writes VALUES with a sentinel — a select, not a mask `[HIGH/OBSERVED]`
+### 5.3 Why it writes VALUES with a sentinel — a select, not a mask
 
 `dst_mem_pattern` is a full `TENSOR2D` with the **same element count** as `src`
 (`has_same_elem_count_rs_src_dst`, `assert.h:16160`) and the **output** dtype
@@ -279,14 +275,14 @@ STATIC inline bool is_valid_fill_val(float fill_val) {
 ```
 
 > **QUIRK — the fill is `-FLT_MAX`, not `-Inf`.** `0xff7fffff` is the most-negative
-> *finite* FP32 (`-3.40282e38`), one ULP above `-Inf` (`0xff800000`). Verified this
-> session by reinterpreting the bits as a float. Using the finite max-neg (rather than
-> `-Inf`) makes the **optional Max-reduce well-defined and overflow-clean**: rejected
-> lanes contribute `-FLT_MAX` and can never win the max, but the accumulator stays in
-> the finite range. The header says outright the value is *hard-coded* "due to DVE
-> restrictions (out of immediate to send in programmable `fill_val`)". `[HIGH/OBSERVED]`
+> *finite* FP32 (`-3.40282e38`), one ULP above `-Inf` (`0xff800000`). Using the finite
+> max-neg (rather than `-Inf`) makes the **optional Max-reduce well-defined and
+> overflow-clean**: rejected lanes contribute `-FLT_MAX` and can never win the max, but
+> the accumulator stays in the finite range. The header says outright the value is
+> *hard-coded* "due to DVE restrictions (out of immediate to send in programmable
+> `fill_val`)".
 
-### 5.4 The optional Max-reduction `[HIGH/OBSERVED]`
+### 5.4 The optional Max-reduction
 
 The reduction is controlled by two fields. `reduce_cmd` (`ACCUM_CMD`):
 
@@ -316,10 +312,10 @@ STATIC inline bool has_valid_range_select_reduce_op(NEURON_ISA_TPB_ALU_OP reduce
 > immediate-pointer slots are consumed by `bound0`/`bound1`, leaving none for a load
 > source. `reduce_op` is pinned to `Max` to match the `-FLT_MAX` fill identity: no
 > `Sum`, no `Min`. So a common use is **masked-max / argmax-style reduction**: keep
-> in-range values, send rejects to `-FLT_MAX`, Max-reduce. `[HIGH/OBSERVED for the
-> field legality; MED/INFERRED for the masked-max intent.]`
+> in-range values, send rejects to `-FLT_MAX`, Max-reduce.
+> `[HIGH field legality; MED/INFERRED masked-max intent]`
 
-### 5.5 The `base` index facet `[HIGH that base is a 2^24-bounded origin / OBSERVED]`
+### 5.5 The `base` index facet
 
 `base` (off 16, declared `float` in the struct) is a per-element **ordinal/position
 origin**. The validator bounds it to the FP32 integer ceiling:
@@ -340,8 +336,7 @@ STATIC inline bool has_valid_total_index_range(NEURON_ISA_TPB_TENSOR2D src_mem_p
 > field is a running **integer ordinal carried in FP32** — `base + ordinal` stays
 > exactly representable for the whole walk. This is RangeSelect's index facet and its
 > structural link to the FW-44 index family: its **immediate** firmware-blob neighbor
-> is `S: DveReadIndices` (§7.2), the per-lane index readout. `[HIGH that `base` is a
-> `2^24`-bounded index origin / OBSERVED.]`
+> is `S: DveReadIndices` (§7.2), the per-lane index readout.
 
 > **CORRECTION (residual ambiguity, flagged) — value-on-pass vs index-on-pass.**
 > Whether the element *written to `dst`* on a pass is the VALUE `x` or the INDEX
@@ -382,7 +377,6 @@ sites pass the literal `NEURON_ISA_TPB_DTYPE_FP32`:
 > scalar-bounds-fetch sequence would use. The header is explicit: *"DVE can only do
 > FP32 comparison"* — the bounds are intrinsically FP32 regardless of the in/out tensor
 > dtype, and narrower-FP inputs are upcast to FP32 for the compare (the "FP32 hub").
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -392,14 +386,14 @@ The discriminator is two-pronged: **(i)** presence in the `Q7_POOL`
 `kernel_info_table` = a POOL **software** kernel routed by `funcVA`; absence =
 hardware/engine-native; and for the native ones, **(ii)** the **blob multiplicity** of
 the `"S: <Name>"` device self-name tag in the host ucode selects the engine family
-(`4` copies = DVE). Both were re-derived this session.
+(`4` copies = DVE).
 
-### 7.1 POOL `kernel_info_table` — `0xbc` ABSENT (CAYMAN, carved & decoded this session)
+### 7.1 POOL `kernel_info_table` — `0xbc` ABSENT (CAYMAN, carved & decoded)
 
 The CAYMAN POOL `extisa` is embedded in `libnrtucode_internal.so` as the `.rodata`
 object `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get.data` (VMA `0x2ef7e0`, `41,568 B`).
 Carved by file offset (`.rodata` VMA == file-offset) and parsed with the native
-`ncore2gp` readelf this session, its section `[7] kernel_info_table` is at file
+`ncore2gp` readelf, its section `[7] kernel_info_table` is at file
 `0x7400`, size `0x88` = **17 entries** of 8 bytes (`opcode` = byte 3 of word0,
 `funcVA` = word1):
 
@@ -414,7 +408,7 @@ So **RangeSelect (`0xbc`) is absent from the CAYMAN POOL table**, while its
 enum-neighbor `0xbe` (GET_SEQUENCE_BOUNDS) **is** a POOL kernel at funcVA
 `0x01004204`. The bulk DMA movers `0xb8`/`0xbb` also route through POOL — but the
 compute op `0xbc` does not. (The five `0xf0` entries are the extended-instruction
-slots.) `[HIGH/OBSERVED — carved binary + native readelf, reproduced this session.]`
+slots.)
 
 The same absence holds for SUNDA, with a twist on which image ships:
 
@@ -422,11 +416,11 @@ The same absence holds for SUNDA, with a twist on which image ships:
 > the SUNDA POOL `extisa` symbol is `SUNDA_Q7_POOL_RELEASE_EXTISA_0_SO_get` (an UND
 > weak reference — the release-variant image, not embedded as a `.data` blob like
 > CAYMAN's `PERF` variant). `0xbc` is absent from the SUNDA POOL table for the deeper
-> reason that the opcode itself is not minted in NC-v2 (§10.2). `[HIGH/OBSERVED]`
+> reason that the opcode itself is not minted in NC-v2 (§10.2).
 
 ### 7.2 Host-ucode self-name multiplicity = 4 (DVE), co-resident with the search cluster
 
-A byte scan of `libnrtucode_internal.so` for the device self-name tag this session:
+A byte scan of `libnrtucode_internal.so` for the device self-name tag:
 
 ```
 S: RangeSelect        4   @ 0x18e1d3  0x428513  0x6f0233  0x8b0613
@@ -453,7 +447,6 @@ TensorScalarSelect, CopyPredicatedScalar, CopyPredicated, CastPredicated,
 CopyPredicatedReduce, DveReadAccumulator, DveReadIndices, RangeSelect` — each at the
 DVE multiplicity. `RangeSelect`'s immediate predecessor `DveReadIndices` matches its
 `base` index facet; `DveReadAccumulator` backs the optional Max-reduce accumulator.
-`[HIGH/OBSERVED — multiplicity 4 == DVE; tag adjacency re-read this session.]`
 
 **Verdict.** RangeSelect (`0xbc`) is a **DVE-engine, hardware-native** instruction. It
 is neither a `Q7_POOL` software kernel (absent from the POOL table) nor a
@@ -496,11 +489,11 @@ STATIC inline bool is_valid_fp_dtype_datapath(NEURON_ISA_TPB_DTYPE dtype,
 > side. Narrower-FP inputs are upcast to FP32 for the compare, the bounds are FP32
 > (§6), and the only asymmetry is that the **output** may be the rounded `FP32R`
 > (`0xB`) variant whereas the input may not. The dtype rules are byte-identical
-> cayman==maverick (`diff` SAME). `[HIGH/OBSERVED]`
+> cayman==maverick (`diff` SAME).
 
 ---
 
-## 9. Algorithm `[HIGH for the validated contract; MED for inner-loop ordering / INFERRED]`
+## 9. Algorithm `[HIGH contract; MED/INFERRED loop order]`
 
 ```c
 // RangeSelect — annotated reconstruction. Names are the real struct fields.
@@ -554,9 +547,9 @@ device-blob interior is INFERRED to match cayman/mariana from the identical head
 > REG_SHUFFLE` ("RegShuffle re-shuffles the elements in the embedded pooling
 > register-vector"). The `"rs"` there abbreviates **Reg**ister **S**huffle, an
 > unrelated control op — do **not** conflate the two `"rs"` headers. SUNDA has **no**
-> `s2d2_rs.h`. `[HIGH/OBSERVED]`
+> `s2d2_rs.h`.
 
-### 10.2 SUNDA absence — proven five ways `[HIGH/OBSERVED]`
+### 10.2 SUNDA absence — proven five ways
 
 1. **Zero header hits** — `rg 'RANGE_SELECT\|S2D2_RS'` over the entire
    `neuron_sunda_arch_isa/` tree returns **0 matches**.
@@ -624,10 +617,10 @@ Identical for CAYMAN / MARIANA / MAVERICK (byte-identical struct + op line):
 
 > **DIVERGENCE LEDGER.**
 > 1. **`bound0` offset** — the FP32 bound is at off **40** (not 38); 38/39 are the
->    1-byte `*_src` selectors (§4). `[HIGH/OBSERVED — `offsetof`]`
+>    1-byte `*_src` selectors (§4).
 > 2. **fill = `-FLT_MAX` not `-Inf`** — `0xff7fffff`, the most-negative *finite* FP32
->    (§5.3). `[HIGH/OBSERVED]`
+>    (§5.3).
 > 3. **value-on-pass vs index-on-pass** — the one residual ambiguity; both readings
 >    fit the operand contract (§5.5). `[MED/INFERRED]`
 > 4. **SUNDA `"rs"` header is RegShuffle** — `ctrl_rs.h = REG_SHUFFLE`, unrelated to
->    `s2d2_rs.h` (which SUNDA lacks) (§10.1). `[HIGH/OBSERVED]`
+>    `s2d2_rs.h` (which SUNDA lacks) (§10.1).

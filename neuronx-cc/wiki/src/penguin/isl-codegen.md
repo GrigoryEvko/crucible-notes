@@ -3,7 +3,7 @@
 > **Module:** `neuronxcc/starfish/penguin/IslCodeGen.cpython-310-x86_64-linux-gnu.so`
 > (Cython, **unstripped**, ~1.51 MB). Module docstring, recovered verbatim from the
 > string pool: **`IslCodeGen -- Generate tensoriser IR from ISL AST`**
-> (`__pyx_k_IslCodeGen_Generate_tensoriser`, CONFIRMED).
+> (`__pyx_k_IslCodeGen_Generate_tensoriser`).
 >
 > **Position:** the *back end* of the Penguin polyhedral path. After a loop-transform
 > client builds and **validates** an `isl` schedule tree against the dependence relation
@@ -26,7 +26,7 @@ generated loop nest. `IslCodeGen` never *builds* that AST; it only consumes it.
 
 > **NOTE — the AST builder lives in the client, not here.** Neither
 > `node_from_schedule` nor `AstBuild` appears anywhere in this `.so`'s string pool
-> (CONFIRMED: `strings | rg 'schedule|AstBuild|node_from'` is empty). The only `isl`
+> (`strings | rg 'schedule|AstBuild|node_from'` comes back empty). The only `isl`
 > entry points this module references are the **read-side** AstNode/AstExpr accessors
 > (`for_get_iterator`, `block_get_children`, `user_get_expr`, `get_op_arg`, …). So the
 > schedule→AST lowering is upstream; this module is purely the AST→IR re-emitter.
@@ -54,12 +54,12 @@ module-level helpers and a small `IdWrapper` value type.
 | `IslCodeGenBase` (`14IslCodeGenBase`) | reusable AST-walker skeleton; dispatches every `isl.AstNode` kind and decodes every `isl.AstExpr` into Penguin affine exprs / predicates. Its **target-specific hooks are abstract**. |
 | `IslCodeGen(IslCodeGenBase)` (`10IslCodeGen`) | the loop-regeneration tensorizer concretion; overrides the four abstract hooks + `codegenForBody`, adds `addNewBlock`, owns the `IRBuilder`, the compilation unit `cu`, and the `gen_top_loops` result accumulator. |
 
-The class names are confirmed from the pyx symbol prefixes (`nm | rg IslCodeGen`).
+The class names come straight from the pyx symbol prefixes (`nm | rg IslCodeGen`).
 
 ### 2.1 Abstract hooks (base bodies are `raise NotImplementedError()`)
 
 Four base methods are pure stubs; the `.so` carries **6** `NotImplementedError`
-string references (CONFIRMED), accounting for the four base hooks (two share the
+string references, accounting for the four base hooks (two share the
 unbound-name path):
 
 | Hook | `IslCodeGenBase` (abstract) | `IslCodeGen` override |
@@ -71,7 +71,7 @@ unbound-name path):
 
 ### 2.2 Imports (from `__pyx_pymod_exec_IslCodeGen`)
 
-All CONFIRMED in the string/symbol pool:
+All present in the string/symbol pool:
 
 ```python
 import operator                                              # binary/unary functors
@@ -84,9 +84,9 @@ from neuronxcc.starfish.support.LogContext import print_debug
 ```
 
 > **GOTCHA — `scev` is imported but never called inside the codegen methods.**
-> No `codegen*` body references it; it is re-exported for the affine-expr machinery
-> (`CExpr` / `wrap_expr`) the client subclass uses, or kept live for the IR layer.
-> Flagged INFERRED.
+> No `codegen*` body references it. The likely purpose — re-export for the affine-expr
+> machinery (`CExpr` / `wrap_expr`) the client subclass uses, or keeping the symbol live
+> for the IR layer — is reconstructed from the import graph, not read from a call site.
 
 ### 2.3 Instance state
 
@@ -108,9 +108,9 @@ self.gen_top_loops = [];                             // accumulator: the regener
 ```
 
 Field names `ids`, `params`, `ast_build`, `cu`, `gen_top_loops`, `natural_axis`,
-`insert_before`, `curstmt`, `allocateId`, `updateDebugLoc` are all CONFIRMED string-pool
-entries. The `__init__` argument order `(self, ast_build, cu, insert_before, dl)` is
-CONFIRMED from `__pyx_pyargnames[]`.
+`insert_before`, `curstmt`, `allocateId`, `updateDebugLoc` are all string-pool entries.
+The `__init__` argument order `(self, ast_build, cu, insert_before, dl)` is read directly
+from `__pyx_pyargnames[]`.
 
 ### 2.4 The statement re-emit (`codegenUser`) is left abstract here
 
@@ -134,15 +134,15 @@ is one layer up.
 
 ### 3.1 `codegenNode` — the top dispatcher
 
-Dispatches on `node.get_type()`. CONFIRMED string-pool sequence:
+Dispatches on `node.get_type()`. The string-pool sequence runs
 `get_type` → `ast_node_type.for_/user/block/if` → `codegenFor/codegenUserOp/codegenBlock/codegenIf`,
-else the `"Not implemented node ("` diagnostic.
+falling through to the `"Not implemented node ("` diagnostic.
 
 ```c
 void codegenNode(self, node) {                 // @111  IslCodeGenBase
     t = node.get_type();
     if      (t == isl.ast_node_type.for_)   codegenFor(node);     // ◀ Python keyword → isl spells it `for_`
-    else if (t == isl.ast_node_type.user)   codegenUserOp(node);  //   (CONFIRMED: __pyx_k_for_)
+    else if (t == isl.ast_node_type.user)   codegenUserOp(node);  //   (__pyx_k_for_)
     else if (t == isl.ast_node_type.block)  codegenBlock(node);
     else if (t == isl.ast_node_type.if_)    codegenIf(node);
     else raise_err("Not implemented node (" + node.to_C_str() + ")");
@@ -155,8 +155,8 @@ The trailing `")"` of the f-string is `__pyx_kp_u__16`. The `user` node routes t
 ### 3.2 `codegenFor` — the core `for` → loop-`Axis` mapping (`IslCodeGenBase` @233)
 
 The pivotal method. It pulls the four `for`-node components, lowers each, builds the
-`Axis`, then recurses into the body under two **scoped RAII** contexts. CONFIRMED
-sequence: `for_get_iterator`/`init`/`inc`/`cond` → 2×`print_debug` →
+`Axis`, then recurses into the body under two **scoped RAII** contexts. The call
+sequence is `for_get_iterator`/`init`/`inc`/`cond` → 2×`print_debug` →
 `codegenForInit` → `codegenForCond` → `codegenExpr` → `createAxis` →
 `AttrRAII('predicates')` `__enter__`/`__exit__` →
 `DictRAII(self.ids,…)` `__enter__`/`__exit__` → `codegenForBody` → `IdWrapper`.
@@ -192,9 +192,10 @@ Two scoping disciplines make nested loops correct:
   to *this* loop's `Axis`.
 
 > **GOTCHA — `for_` not `for`.** `for`/`if` are Python keywords, so `islpy` exposes the
-> node-type members as **`ast_node_type.for_`** and **`ast_node_type.if_`** (CONFIRMED:
-> `__pyx_k_for_`, and the `if`/`block`/`user` literals in the pool). The report's
-> pseudocode writes `for`/`if`; the binary spelling is the trailing-underscore form.
+> node-type members as **`ast_node_type.for_`** and **`ast_node_type.if_`**
+> (`__pyx_k_for_`, alongside the `if`/`block`/`user` literals in the pool). Code written
+> against the natural spelling `ast_node_type.for` will not compile; the trailing
+> underscore is part of the API, and this page uses it throughout.
 
 ### 3.3 `codegenBlock` — sibling sequence (`IslCodeGenBase` @105)
 
@@ -221,8 +222,8 @@ void codegenIf(self, node) {                      // @76
 }
 ```
 
-CONFIRMED sequence includes `if_has_else`, `if_get_cond`, `if_get_then`,
-`ast_expr_type.op`, `codegenExpr`, `infimum`, 2×`wrap_expr`, `AttrRAII`.
+*Anchors: the call sequence covers `if_has_else`, `if_get_cond`, `if_get_then`,
+`ast_expr_type.op`, `codegenExpr`, `infimum`, 2×`wrap_expr`, `AttrRAII`.*
 
 > **QUIRK — no `else` handling.** `if_has_else()` is checked **first**; an else-branch
 > would require a complementary-predicate path this re-emitter does not model. The
@@ -252,8 +253,8 @@ list codegenUserOp(self, node) {                  // @95
 ```
 
 > **QUIRK — the typo is real.** The diagnostic literal is `"unexprect user op type!"`,
-> with the `unexprect` typo, byte-for-byte (CONFIRMED: `__pyx_k_unexprect_user_op_type`).
-> It is not a transcription error in this page.
+> with the `unexprect` typo, byte-for-byte (`__pyx_k_unexprect_user_op_type`). Grepping
+> logs for the correctly-spelled word will miss it.
 
 ---
 
@@ -261,7 +262,7 @@ list codegenUserOp(self, node) {                  // @95
 
 ### 4.1 `createAxis(it, lb, ub, stride)` — `for` → Penguin `Axis` (`IslCodeGen` @283)
 
-The concrete loop builder. CONFIRMED string-pool sequence:
+The concrete loop builder. The string-pool sequence runs
 `extractIdName` → `self.builder` → `builder.cu.allocateId` → `Axis(...)` →
 `builder.curstmt` → `builder.insert_before` → `addNewBlock`.
 
@@ -278,7 +279,7 @@ Axis createAxis(self, it, lb, ub, stride) {        // @283
 ```
 
 - **`cu.allocateId()`** gives the `Axis` a unique id in the compilation unit's id-space —
-  the same allocator `penguin.ir` uses for every node (CONFIRMED `builder → cu → allocateId`
+  the same allocator `penguin.ir` uses for every node (the `builder → cu → allocateId`
   chain).
 - **`Axis(...)`** is `neuronxcc.starfish.penguin.ir.ir.Axis`, the Penguin loop-axis IR
   node (the representation of an isl `for`). Its kwargs carry the regenerated bounds.
@@ -288,15 +289,15 @@ Axis createAxis(self, it, lb, ub, stride) {        // @283
 > **INFERRED — exact `Axis(...)` kwarg names.** The kwargs are assembled dynamically via
 > `PyDict_SetItem` (empty positional tuple + keyword dict), so the literal keyword names
 > `lb`/`ub`/`stride`/`id`/`name` are reconstructed from the call-site dataflow and the
-> `penguin.ir.ir` `Axis` schema, not read byte-exact. The `PyNumber_Multiply()` +
-> `PyNumber_Add()` near the `addNewBlock` call compute the derived block-id argument
-> (axis id combined with current nesting depth) — also INFERRED.
+> `penguin.ir.ir` `Axis` schema, not read byte-exact. Likewise the `PyNumber_Multiply()` +
+> `PyNumber_Add()` pair near the `addNewBlock` call computes a derived block-id argument;
+> reading it as "axis id combined with current nesting depth" is a reconstruction.
 
 ### 4.2 `codegenForInit` — the lower bound (`IslCodeGen` @307)
 
 `isl` emits a loop lower bound as a literal int, a single affine expr, or a
 **`max(...)`** of several affine candidates (when multiple constraints lower-bound the
-iterator). The `max` folds to Penguin's **`infimum`** combinator. CONFIRMED sequence:
+iterator). The `max` folds to Penguin's **`infimum`** combinator. The call sequence is
 `dyn_cast_int` → `expr_operands` → `ast_op_type.max` → `codegenExpr` → `infimum` →
 `"Unsupported expression!"` → `CExpr`.
 
@@ -318,7 +319,7 @@ CExpr codegenForInit(self, expr) {                 // @307
 The mirror image. It decodes the guard comparison, verifies one operand is literally the
 loop iterator `it`, and treats the other as the bound. `isl` emits the upper bound as a
 literal, a single affine, or a **`min(...)`** of candidates — `min` folds to Penguin's
-**`supremum`**. CONFIRMED sequence: `expr_icmp` → `ast_op_type.lt` → `ast_op_type.le`
+**`supremum`**. The call sequence is `expr_icmp` → `ast_op_type.lt` → `ast_op_type.le`
 → `"Unexpected predicate"` → `"Expect compare against iterator!"` → `dyn_cast_int` →
 `expr_operands` → `ast_op_type.min` → `codegenExpr` → `supremum` →
 `"Unsupported expression!"` → `CExpr`, plus the comprehension closure `genexpr1`
@@ -350,12 +351,12 @@ CExpr codegenForCond(self, it, cond) {             // @332
 > **The bound symmetry.** Lower bound uses `max` → `infimum`; upper bound uses
 > `min` → `supremum`. These are the affine-domain **meet** and **join** in the Penguin
 > expression algebra: the lower envelope of candidate LBs and the upper envelope of
-> candidate UBs. `infimum`/`supremum` are both CONFIRMED string-pool entries.
+> candidate UBs. Both `infimum` and `supremum` appear in the string pool.
 
 > **INFERRED — the iterator-side selection.** The binary *does* compare one side against
 > `it` and raises `"Expect compare against iterator!"` otherwise; the exact comparison
 > primitive (`extractIdName` equality vs. `IdWrapper.__eq__`) is reconstructed from the
-> presence of `expr_icmp` + `extractIdName` in the call sequence. Tagged INFERRED.
+> presence of `expr_icmp` + `extractIdName` in the call sequence.
 
 ### 4.4 `codegenForBody` — push `natural_axis`, recurse (`IslCodeGen` @279)
 
@@ -368,8 +369,9 @@ void codegenForBody(self, node, natural_axis) {    // @279  (override)
 
 `natural_axis` is the `Axis` just built by `createAxis`; it is set on the **`IRBuilder`**
 for the body's duration so that re-emitted `Inst` nodes (in the client's `codegenUser`)
-know which loop level they sit under. CONFIRMED `natural_axis` string + the
-`AttrRAII(self.builder, …)` enter/exit pair.
+know which loop level they sit under.
+
+*Anchors: the `natural_axis` string plus the `AttrRAII(self.builder, …)` enter/exit pair.*
 
 > **NOTE — base vs. override.** `IslCodeGenBase.codegenForBody` (@230) is the **default**,
 > *not* abstract: it simply calls `self.codegenNode(node.for_get_body())` with no
@@ -388,8 +390,10 @@ void addNewBlock(self, block) {                    // @300
 `gen_top_loops` is the **result accumulator**: as `createAxis` builds each outermost
 `Axis`, it calls `addNewBlock` to record the new top-level loop block. After
 `codegenNode(root)` returns, `gen_top_loops` holds the regenerated top-level loop nests
-that the caller harvests. CONFIRMED: `gen_top_loops` `tp_getattro`/`tp_setattro` pair +
-the `genexpr` closure symbol.
+that the caller harvests.
+
+*Anchors: the `gen_top_loops` `tp_getattro`/`tp_setattro` pair and the `genexpr` closure
+symbol.*
 
 ---
 
@@ -397,8 +401,8 @@ the `genexpr` closure symbol.
 
 ### 5.1 `codegenExpr` — the expression dispatcher (`IslCodeGenBase` @128)
 
-The whole affine/predicate decode pivots here. CONFIRMED full mapping (`get_type` →
-int/id/op; `get_op_type` → the op table). The Penguin affine-expr objects (`CExpr`,
+The whole affine/predicate decode pivots here: `get_type` selects int/id/op, and for an
+op `get_op_type` indexes the dispatch table below. The Penguin affine-expr objects (`CExpr`,
 `Axis`, `ir.ir` exprs) **overload Python operators**, so `operator.add(a, b)` literally
 builds a Penguin affine-sum node.
 
@@ -427,7 +431,7 @@ codegenExpr(self, expr) {                          // @128
 }
 ```
 
-The op-type → functor map is CONFIRMED from the string pool (`add`, `sub`, `mul`,
+The op-type → functor map is read from the string pool (`add`, `sub`, `mul`,
 `floordiv`, `mod`, `neg`, `pdiv_q`, `pdiv_r`, `minus`, `lt`, `le`, `ge`, `and`).
 
 > **GOTCHA — `pdiv_q`/`pdiv_r` are *floored* division.** `isl`'s `pdiv_q`/`pdiv_r` are
@@ -503,7 +507,7 @@ id, this name is the `sN` that maps back to the original `Inst`.
 
 ### 5.7 `codegenId` (`@218`) — iterator → `Axis`, else → parameter
 
-The dual of `codegenFor`'s `DictRAII` binding. CONFIRMED sequence: `ids` → `IdWrapper`
+The dual of `codegenFor`'s `DictRAII` binding. The call sequence is `ids` → `IdWrapper`
 → `params` → `extractIdName`.
 
 ```c
@@ -539,18 +543,19 @@ dyn_cast_int(expr) {                               // @39  (module-level)
 ```
 
 Returning `None` on a non-int is what powers the `if v is not None:` constant-folding
-tests in `codegenForInit`/`Cond`/`Int`. CONFIRMED: `get_val`, `is_int`, `get_num_si`,
-`"Not an integer value!"`.
+tests in `codegenForInit`/`Cond`/`Int`.
+
+*Anchors: `get_val`, `is_int`, `get_num_si`, `"Not an integer value!"`.*
 
 ### 6.2 `expr_operands(expr)` (`@31`) and `expr_icmp(expr)` (`@20`)
 
 ```c
-expr_operands(expr) {                              // @31  (STRONG)
+expr_operands(expr) {                              // @31
     assert(expr.get_type() == isl.ast_expr_type.op);
     return (expr.get_op_type(),
             [ expr.get_op_arg(i) for i in range(expr.get_op_n_arg()) ]);
 }
-expr_icmp(expr) {                                  // @20  (STRONG)
+expr_icmp(expr) {                                  // @20
     assert(expr.get_type() == isl.ast_expr_type.op);
     op = expr.get_op_type();
     if (op == isl.ast_op_type.lt) return (expr.get_op_arg(0), expr.get_op_arg(1));
@@ -574,8 +579,8 @@ class IdWrapper {
 }
 ```
 
-CONFIRMED bodies: `__eq__` does `PyObject_RichCompare(self.expr, other.expr)`; `__hash__`
-does `hash(self.expr.get_id())` (`get_id` then `PyObject_Hash`).
+Both bodies are read directly: `__eq__` does `PyObject_RichCompare(self.expr, other.expr)`,
+`__hash__` does `hash(self.expr.get_id())` (`get_id` then `PyObject_Hash`).
 
 > **Why the split hash/eq matters.** `__hash__` hashes the **underlying `isl.Id`** (not
 > the `AstExpr` wrapper) while `__eq__` compares the wrapped exprs. So the *same*
@@ -616,7 +621,7 @@ body's duration only. Both restore on `__exit__`, so siblings see a clean state.
 
 ---
 
-## 8. Diagnostics (exact binary literals — all CONFIRMED)
+## 8. Diagnostics (exact binary literals)
 
 | Literal | Raised by | Condition |
 |---|---|---|
@@ -633,35 +638,27 @@ body's duration only. Both restore on `__exit__`, so siblings see a clean state.
 
 ---
 
-## 9. Adversarial self-verification
+## 9. Evidence anchors and limits
 
-The five strongest claims, re-challenged against the cp310 `.so`:
+Read byte-exact from the cp310 `.so`:
 
-1. **Docstring = "IslCodeGen -- Generate tensoriser IR from ISL AST".** ✔ CONFIRMED —
-   `strings | rg tensoriser` returns `__pyx_k_IslCodeGen_Generate_tensoriser`, the exact
-   British-spelling literal. (Not "tensorizer".)
-2. **The 10 diagnostics incl. the `unexprect` typo.** ✔ CONFIRMED — all ten present
-   verbatim, `__pyx_k_unexprect_user_op_type` carries the typo byte-for-byte.
-3. **`pdiv_q → floordiv`, `pdiv_r → mod`, `minus → neg`.** ✔ CONFIRMED — `pdiv_q`,
-   `pdiv_r`, `floordiv`, `minus`, `neg` all present; the `operator` module is imported.
-4. **The AST builder (`node_from_schedule`/`AstBuild`) is NOT in this module.** ✔
-   CONFIRMED — neither string appears; only read-side `for_get_*`/`block_get_children`/
-   `user_get_expr`/`get_op_arg` accessors are present. This module consumes, not builds.
-5. **`codegenUser` is abstract here (concrete re-emit is upstream).** ✔ CONFIRMED — 6
-   `NotImplementedError` refs cover the 4 base hooks; `IslCodeGen` overrides
-   `createAxis`/`codegenForInit`/`codegenForCond`/`codegenForBody` (all confirmed
-   symbols) but `codegenUser` has no `IslCodeGen`-prefixed override.
+- The module docstring, `__pyx_k_IslCodeGen_Generate_tensoriser` — note the British
+  spelling *tensoriser*, not "tensorizer".
+- All ten diagnostics in §8, including `__pyx_k_unexprect_user_op_type` with its typo.
+- The op-type mapping `pdiv_q → floordiv`, `pdiv_r → mod`, `minus → neg`: `pdiv_q`,
+  `pdiv_r`, `floordiv`, `minus` and `neg` are all in the pool and `operator` is imported.
+- The absence of the AST builder: neither `node_from_schedule` nor `AstBuild` appears,
+  and only read-side `for_get_*` / `block_get_children` / `user_get_expr` / `get_op_arg`
+  accessors are present. The module consumes an AST, it never builds one.
+- `codegenUser` staying abstract: 6 `NotImplementedError` references cover the 4 base
+  hooks, and while `createAxis` / `codegenForInit` / `codegenForCond` / `codegenForBody`
+  all carry `IslCodeGen`-prefixed override symbols, `codegenUser` does not.
 
-**Items that remain INFERRED (not byte-exact), tagged in-text:** the exact `Axis(...)`
-keyword names (`lb`/`ub`/`stride`/`id`/`name` — kwargs built dynamically via
-`PyDict_SetItem`); the precise `addNewBlock` argument (a `PyNumber_Multiply`/`Add` of
-axis id and depth); `codegenForCond`'s iterator-side selection expressed as
-`extractIdName` equality; and `scev` being imported-but-unused inside the codegen.
-
-> **CORRECTION (spelling, vs. the backing report's pseudocode).** The report's
-> reconstructed pseudocode writes the isl node-type members as `isl.ast_node_type.for`
-> and `.if`. These are Python keywords; the binary spells them **`for_`** and **`if_`**
-> (CONFIRMED `__pyx_k_for_`). This page uses the trailing-underscore form throughout.
+Reconstructed rather than read (flagged in-text where they appear): the `Axis(...)`
+keyword names `lb`/`ub`/`stride`/`id`/`name`, since the kwargs are built dynamically via
+`PyDict_SetItem`; the precise `addNewBlock` argument, a `PyNumber_Multiply`/`Add` of axis
+id and depth; `codegenForCond`'s iterator-side selection expressed as `extractIdName`
+equality; and the purpose of the imported-but-uncalled `scev`.
 
 ---
 

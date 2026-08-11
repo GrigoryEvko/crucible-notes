@@ -6,9 +6,9 @@
 
 This page (Part **4.32**) is the chapter opener for the **C-strand**: the MLIR pass pipeline that turns an *already-optimized* `xla::HloModule` into a textual Penguin Python module. Everything in Part 4.1–4.31 is the **B-strand** — passes that run on the `xla::HloModule` (the "112 HLO passes", driven through the `--passes` registry of [4.1](pass-registry.md)). The C-strand (4.32–4.45) is what happens *after* that: XLA's optimized HLO is imported into the `mhlo` MLIR dialect, then a fixed sequence of ~32 MLIR passes rewrites, schedules, and legalizes it before a terminal pass walks the IR and emits Python. The output of this pipeline is `penguin.py`, the input to [Part 5](../penguin/) — there is **no** Penguin C++ dialect; "Penguin IR" is the textual Python the final pass prints.
 
-The single most important finding here corrects a long-standing gap. Earlier analysis (S2-03) concluded the MLIR pass order "is built from a textual pipeline string parsed at runtime via `parsePassPipeline`" and "not recoverable from this binary alone." **That is false.** The pipeline is built **imperatively in C++**: a flat sequence of `OpPassManager::addPass(...)` / `addNestedPass<func::FuncOp>(...)` calls inside two functions — `hilo::registerMHLOPasses` @0x1ee12f0 and `hilo::registerStableHLOPasses` @0x1ee2120. There is no pipeline-spec literal, no comma-joined token list, and `mlir::parsePassPipeline` (statically linked) is never called on the Neuron compile path. Earlier analysis stopped one indirect tail-call short — at the 370-byte dispatcher `registerMLIRCompilePasses` @0x1ef12a0, which only logs and branches — and so never saw the `addPass` spine.
+The pass order is fully recoverable, and the mechanism is the first thing to get right: the pipeline is built **imperatively in C++**, as a flat sequence of `OpPassManager::addPass(...)` / `addNestedPass<func::FuncOp>(...)` calls inside two functions — `hilo::registerMHLOPasses` @0x1ee12f0 and `hilo::registerStableHLOPasses` @0x1ee2120. There is no pipeline-spec literal, no comma-joined token list, and `mlir::parsePassPipeline`, though statically linked, is never called on the Neuron compile path.
 
-> **CORRECTION (Part-4 reconciliation) —** several sibling pages referred to this C-strand opener as "4.33." Per the book's table of contents it is **4.32** (4.31 is the MLIR Dynamic-Shape Front-End; 4.33 is HLO → Native / NKI Kernel Lowering). The B-strand is therefore **4.1–4.31** and the C-strand **4.32–4.45**; references have been harmonized to that numbering across the Part.
+> **GOTCHA — the dispatcher is not the builder.** Tracing the entry flow into the 370-byte `registerMLIRCompilePasses` @0x1ef12a0 and stopping there shows only logging and a branch, which reads as evidence that the order must arrive as a runtime-parsed pipeline string. The `addPass` spine is one indirect tail-call further on.
 
 The pipeline forks into two near-identical paths — MHLO and StableHLO — selected by a single CompileConfig byte. Each pass in the MHLO path has a StableHLO twin at the same ordinal and gate; the StableHLO path inserts five extra bridge/legalize passes (`HloLegalizeToStablehlo`, `ConvertCustomCallToAllReduce`, `FusionToComposite`, `LegalizeSRA`, `LegalizeScatter`). The per-pass enable knobs are CompileConfig bytes populated from `cl::opt` globals; the *order* is hard-coded.
 
@@ -104,9 +104,9 @@ function registerMLIRCompilePasses(pm, module, modulePaths, cfg, outFile):
         return registerMHLOPasses(pm, module, cfg, modulePaths, outFile);       // TAIL-CALL @0x1ee12f0
 ```
 
-> **CORRECTION (S2-03) —** `registerMLIRCompilePasses` does **not** build the order. Its 5 callees are all logging/verifier; it only sets `enableVerifier(false)`, logs `MHLO`/`StableHLO`, and tail-calls the real builder. Earlier analysis inspected only this stub and inferred a runtime-textual `parsePassPipeline` mechanism. The `addPass` spine is one indirect call deeper. The two `…Lowering Enabled` strings (@0x255d80 / @0x2b1878) are the on-disk fingerprint of the fork.
+> **GOTCHA — `registerMLIRCompilePasses` does not build the pass order.** All five of its callees are logging or verifier calls; it sets `enableVerifier(false)`, logs `MHLO`/`StableHLO`, and tail-calls the real builder. Stopping at this stub makes the pipeline look like a runtime-textual `parsePassPipeline` mechanism — the `addPass` spine is one indirect call deeper. The two `…Lowering Enabled` strings (@0x255d80 / @0x2b1878) are the on-disk fingerprint of the fork.
 
-> **QUIRK —** the trailing `ArrayRef<std::string> modulePaths` and `std::string outFile` threaded through the dispatcher are **not** a pipeline spec. They are the import-module list and output `.py` path consumed only by the *terminal* `createMhloToPyPenguinPass(StringRef dir, StringRef file, ArrayRef<string> modules, MhloToPyPenguinPassConfig const&, bool)` (signature CONFIRMED at the mangled symbol of @0x20aa940). A reimplementer who treats them as a pass list will misread the whole entry flow.
+> **QUIRK —** the trailing `ArrayRef<std::string> modulePaths` and `std::string outFile` threaded through the dispatcher are **not** a pipeline spec. They are the import-module list and output `.py` path consumed only by the *terminal* `createMhloToPyPenguinPass(StringRef dir, StringRef file, ArrayRef<string> modules, MhloToPyPenguinPassConfig const&, bool)`, whose signature is legible in the mangled symbol at @0x20aa940. A reimplementer who treats them as a pass list will misread the whole entry flow.
 
 ### Function Map
 
@@ -120,7 +120,7 @@ function registerMLIRCompilePasses(pm, module, modulePaths, cfg, outFile):
 | `hilo::registerMLIRCompilePasses` | 0x1ef12a0 | 370 | log + branch on cfg[0x1CA]; tail-call the builder | CERTAIN |
 | `hilo::registerMHLOPasses` | 0x1ee12f0 | 3096 | the MHLO ordered pipeline | CERTAIN |
 | `hilo::registerStableHLOPasses` | 0x1ee2120 | 3142 | the StableHLO ordered pipeline | CERTAIN |
-| `hilo::initializeMLIRContext` | 0x1ee0500 | — | eager-load mhlo→stablehlo→func | CONFIRMED |
+| `hilo::initializeMLIRContext` | 0x1ee0500 | — | eager-load mhlo→stablehlo→func | CERTAIN |
 | `GetHiloCompileConfig` | 0x1ed7bd0 | 1454 | cl::opt globals → CompileConfig gate bytes | HIGH |
 
 All entry-flow symbols verified by demangled signature in `names.json` (e.g. `_ZN4hilo16ConvertHloToMLIRE…`, `_ZN4hilo23registerStableHLOPassesE…`).
@@ -183,7 +183,7 @@ function registerMHLOPasses(pm, module, cfg, modulePaths, outFile):
 
 ### CompileConfig gate-byte map (the ~17 pipeline gates)
 
-`GetHiloCompileConfig` @0x1ed7bd0 supplies these gate bytes (CERTAIN load→store pairs). The human-readable `--flag` spelling per global is a Strand-U follow-up; the config offset and source global are CONFIRMED.
+`GetHiloCompileConfig` @0x1ed7bd0 supplies these gate bytes, as matched load→store pairs. The config offset and source global for each are exact; the human-readable `--flag` spelling per global is not recovered here.
 
 | cfg byte | source `cl::opt` global | gates step(s) |
 |---|---|---|
@@ -209,7 +209,7 @@ function registerMHLOPasses(pm, module, cfg, modulePaths, outFile):
 
 ### Terminal-pass argument assembly
 
-The terminal `MhloToPyPenguin` pass is the only one that consumes `modulePaths`/`outFile`. Its arguments are packed @0x1ee152e–0x1ee18b0: `dir`/`file` strings are assembled from CompileConfig fields (`[cfg+0x20]`/`[cfg+0x28]` and `[cfg]`/`[cfg+8]`) joined with `"."` (@0x282e77); the `modulePaths` ArrayRef is passed in `r14`; a trailing `bool` = `!cfg[0xE4]`; and a `MhloToPyPenguinPassConfig` is packed from `cfg[0x174]/0x178/0x180/0x1C9` plus a vtable call `[cfg+0x1D0]→+0x30`. The pass signature `(StringRef, StringRef, ArrayRef<string>, MhloToPyPenguinPassConfig const&, bool)` is CONFIRMED against the mangled symbol at @0x20aa940. Penguin emission internals are owned by [4.43–4.45](../penguin/) (the printer / PyPenguin family).
+The terminal `MhloToPyPenguin` pass is the only one that consumes `modulePaths`/`outFile`. Its arguments are packed @0x1ee152e–0x1ee18b0: `dir`/`file` strings are assembled from CompileConfig fields (`[cfg+0x20]`/`[cfg+0x28]` and `[cfg]`/`[cfg+8]`) joined with `"."` (@0x282e77); the `modulePaths` ArrayRef is passed in `r14`; a trailing `bool` = `!cfg[0xE4]`; and a `MhloToPyPenguinPassConfig` is packed from `cfg[0x174]/0x178/0x180/0x1C9` plus a vtable call `[cfg+0x1D0]→+0x30`. The pass signature `(StringRef, StringRef, ArrayRef<string>, MhloToPyPenguinPassConfig const&, bool)` is legible in the mangled symbol at @0x20aa940. Penguin emission internals are owned by [4.43–4.45](../penguin/) (the printer / PyPenguin family).
 
 ---
 
@@ -265,7 +265,7 @@ These five leaf passes are owned by this chapter opener (their pipeline placemen
 | `ConvertFSPatternToCustomCalls` (`convert-fs-patterns-to-cc`) | `createConvertFSPatternToCustomCallsPass` 0x2093900 | 0x2094ee0 | `<func::FuncOp>` | walks `mhlo.add`, descends ~20× via `getDefiningOp` casting to `mhlo.mul` with `hasOneUse` SSA guards (`convertPattern5` @0x2093df0) → builds ONE `mhlo.custom_call` target `"AwsFSPattern5"` (@0x26e52c): 4 results, 6 operands, attr `"call_target_name"` (@0x25a1fb); `moveAfter`, erase matched ops | HIGH (mechanics); FS expansion UNRESOLVED |
 | `FoldIota` (`fold-iota`) | `createFoldIotaPass` 0x2097380 | 0x2098250 | `<func::FuncOp>` | walks `mhlo.power`; matcher `pow(broadcast(const_scalar), mul(iota, broadcast(const_scalar)))` → `foldIotaToPower(shape, iota_dim, base, scale)` @0x2097b90 precomputes a `DenseElementsAttr`, builds `mhlo.constant`, RAUW, `eraseOpIfNotUsed`. Logs `"Fold iota: The Pattern is found"` (@0x354b38) | HIGH |
 
-> **CORRECTION (S2-03 §3) —** `FoldIota` is **not** generic `mhlo.iota` constant-folding. Its root op is `mhlo.power`; iota appears only as a multiplicand inside the exponent. It folds a `pow(iota·scale)` exponential/geometric ramp into a constant. The matcher's reject diagnostics are verbatim in the binary: `"powOp arg0 is not a BroadcastInDimOp"` (@0x391a10), `"powOp arg1 is not a MulOp"` (@0x287061), `"mulOp arg0 is not a IotaOp"` (@0x24a547).
+> **GOTCHA — `FoldIota` is not generic `mhlo.iota` constant-folding.** Its root op is `mhlo.power`; iota appears only as a multiplicand inside the exponent. What it folds is a `pow(iota·scale)` exponential/geometric ramp. The matcher's reject diagnostics say so verbatim: `"powOp arg0 is not a BroadcastInDimOp"` (@0x391a10), `"powOp arg1 is not a MulOp"` (@0x287061), `"mulOp arg0 is not a IotaOp"` (@0x24a547).
 
 > **NOTE —** `LegalizeScatter` walks `stablehlo.scatter`, not `mhlo.scatter`, and there is **no** StableHLO-twin pass — the un-prefixed name is the only variant. Its action is F32 up-cast + canonical body regeneration, **not** a dim-numbers normalization or a multi-op decomposition: the scatter is rebuilt in place with its `ScatterDimensionNumbersAttr` threaded through unchanged.
 
@@ -290,7 +290,7 @@ The Neuron-authored MLIR passes are **not** a single `hilo::` namespace. They sp
 | `mlir::` / `mlir::hlo::` | ~4 | the terminal emitters — `mlir::hlo::MhloToPyPenguin`, `mlir::hlo::StableHLOToPyPenguin` (passes); `mlir::MhloToPythonPrinter`, `mlir::StableHLOToPythonPrinter` (printer helpers, no vtable) | AWS Neuron (into upstream ns) |
 | `xla::hilo::` | 28 | the **HLO-level** (B-strand) passes — verifiers, combiners, arch tags; run on `xla::HloModule`, *not* MLIR. See [4.1](pass-registry.md) | AWS Neuron |
 
-> **CORRECTION (census) —** the passes a casual reading attributes to `hilo::` — `CanonicalizeForTensorizer`, `TensorizerLegalization`, `PenguinizeFunctions`/`PenguinizeIO`, `CanonicalizeConv` — are actually **GLOBAL/anonymous-namespace** classes (mangled `_ZTI19PenguinizeFunctions`, `_ZTI25CanonicalizeForTensorizer`, `_ZTI16CanonicalizeConv`). They live in `hilo/MLIRPasses/Transforms/*.cc` but are emitted in each TU's anonymous namespace, so they mangle global while the fusion/instcombine/controldep authors used an explicit `namespace hilo {…}`. This is a per-file authoring inconsistency, not a semantic boundary.
+> **GOTCHA — not every pass in `hilo/` mangles under `hilo::`.** `CanonicalizeForTensorizer`, `TensorizerLegalization`, `PenguinizeFunctions`/`PenguinizeIO`, and `CanonicalizeConv` are **global / anonymous-namespace** classes (`_ZTI19PenguinizeFunctions`, `_ZTI25CanonicalizeForTensorizer`, `_ZTI16CanonicalizeConv`). They live in `hilo/MLIRPasses/Transforms/*.cc` but are emitted in each translation unit's anonymous namespace, while the fusion/instcombine/controldep authors wrote an explicit `namespace hilo {…}`. Per-file authoring inconsistency, not a semantic boundary — do not use the mangled namespace to partition the pass set.
 
 ### Class hierarchy
 
@@ -305,25 +305,23 @@ mlir::RewritePattern
       └ hilo::CollectiveBroadcastToAllGatherPattern (on {mhlo,stablehlo}.CollectiveBroadcastOp)
 ```
 
-The "hilo" prefix = **HIgh-Level Optimizer** (src tree `hilo/`); it is a **pass** namespace, never a dialect. There is no `hilo::*Dialect`, `neuron::*Dialect`, `penguin::*Dialect` (CONFIRMED negative). `initializeMLIRContext` @0x1ee0500 eager-loads exactly **3** dialects in order: `mhlo` → `stablehlo` → `func`; everything else is transitive or the linked-but-dead XLA-GPU/CPU cluster. The de-facto Neuron op set is **data on upstream `custom_call` ops** — 26 `AwsNeuron*` call-target strings plus `FusionKind`/`CompositeKind` attrs and 9 `neuron.*` attrs — not C++ op classes.
+The "hilo" prefix = **HIgh-Level Optimizer** (src tree `hilo/`); it is a **pass** namespace, never a dialect. There is no `hilo::*Dialect`, `neuron::*Dialect`, or `penguin::*Dialect` anywhere in the binary. `initializeMLIRContext` @0x1ee0500 eager-loads exactly **3** dialects in order: `mhlo` → `stablehlo` → `func`; everything else is transitive or the linked-but-dead XLA-GPU/CPU cluster. The de-facto Neuron op set is **data on upstream `custom_call` ops** — 26 `AwsNeuron*` call-target strings plus `FusionKind`/`CompositeKind` attrs and 9 `neuron.*` attrs — not C++ op classes.
 
-> **CORRECTION (Part-4 reconciliation) —** an earlier draft of this line cited **8** `neuron.*` attrs. The authoritative census ([4.40 Neuron Dialect Registry](neuron-dialect-registry.md)) enumerates and confirms **9** (`neuron.symName`, `actual_shape`, `CrossPassTensor`, `non_local`, `transposable`, `groupID`, `remat.value`, `no_opt`, `readthedocs`). The count is harmonized to 9 here.
+The nine `neuron.*` attributes are `neuron.symName`, `actual_shape`, `CrossPassTensor`, `non_local`, `transposable`, `groupID`, `remat.value`, `no_opt`, and `readthedocs`; [4.40 Neuron Dialect Registry](neuron-dialect-registry.md) enumerates them in full.
 
 > **NOTE —** the `OpRewritePattern<TargetOp>` template base of the two `hilo::` RewritePatterns is INFERRED — the pattern typeinfos exist but the exact `OpRewritePattern<>` instantiation was not pinned.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Anchors and Limits
 
-Five strongest claims, re-challenged against the binary:
+- **The order is imperative C++, not a `parsePassPipeline` string.** `registerMHLOPasses` @0x1ee12f0 (3096 B) and `registerStableHLOPasses` @0x1ee2120 (3142 B) carry the demangled `register{MHLO,StableHLO}Passes` signatures, and the two `…Lowering Enabled` strings (@0x255d80 / @0x2b1878) mark the fork. `parsePassPipeline` overloads are linked, but their callers are internal MLIR machinery.
+- **The terminal pass signature.** The mangled symbol at @0x20aa940 (`_ZN4mlir3hlo25createMhloToPyPenguinPassEN4llvm9StringRefES2_NS1_8ArrayRefI…EERKNS0_25MhloToPyPenguinPassConfigEb`) gives the five-argument shape verbatim, trailing `bool` included.
+- **Factory/body namespace split.** `_ZN4mlir23createLegalizeAliasPassEv` @0x209c380 versus `_ZN4hilo13LegalizeAlias14runOnOperationEv` @0x209d530; the same split holds for Scatter, SRA, FS, and Iota.
+- **`SixtyFourHack` prepended before `PenguinizeIO`** when global `qword_9C71338`==0. The `createSixtyFourHackPass` @0x2114000 and `createPenguinizeIOPass` @0x2087080 factories are exact; the *prepend semantics* rest on a single disassembly `jz`→altblk chain @0x1ee19a0, with no decompilation available, so that ordering is [INFERRED].
+- **Gate `cfg[0x11A]` (LowerComplex) is default-on** via a static init @0x1ed3606; the source global `qword_9C690D8` and the static-init store come from the `GetHiloCompileConfig` and static-init disassembly.
 
-1. **"The order is imperative C++, not a `parsePassPipeline` string."** Re-checked: `registerMHLOPasses` @0x1ee12f0 (3096 B) and `registerStableHLOPasses` @0x1ee2120 (3142 B) exist with the demangled `register{MHLO,StableHLO}Passes` signatures in `names.json`; the two `…Lowering Enabled` strings (@0x255d80 / @0x2b1878) confirm the fork. `parsePassPipeline` overloads are linked but their callers are internal MLIR machinery. **CONFIRMED.**
-2. **"Terminal pass signature is `(StringRef, StringRef, ArrayRef<string>, MhloToPyPenguinPassConfig const&, bool)`."** Re-checked against the mangled symbol at @0x20aa940 (`_ZN4mlir3hlo25createMhloToPyPenguinPassEN4llvm9StringRefES2_NS1_8ArrayRefI…EERKNS0_25MhloToPyPenguinPassConfigEb`). The five-argument shape, including the trailing `bool`, matches verbatim. **CONFIRMED.**
-3. **"The five misc factories are in `mlir::` and the bodies in `hilo::`."** Re-checked: `_ZN4mlir23createLegalizeAliasPassEv` @0x209c380 vs `_ZN4hilo13LegalizeAlias14runOnOperationEv` @0x209d530; same split for Scatter/SRA/FS/Iota. **CONFIRMED.**
-4. **"`SixtyFourHack` is prepended before `PenguinizeIO` when global `qword_9C71338`==0."** This rests on a single disasm `jz`→altblk @0x1ee19a0 chain (D-C22). The `createSixtyFourHackPass` @0x2114000 and `createPenguinizeIOPass` @0x2087080 factories are CONFIRMED; the *prepend semantics* are STRONG (disasm-only, control-flow MED per the NVOPEN_IDA_SKIP_DECOMPILE tag). Tagged **STRONG**, not CERTAIN.
-5. **"Gate `cfg[0x11A]` (LowerComplex) is default-on via a static init @0x1ed3606."** Source global `qword_9C690D8` and the static-init store are from `GetHiloCompileConfig`/static-init disasm (HIGH); the human-readable flag name is *not* recovered. Tagged **HIGH** for the default-on behavior; the `--flag` spelling is an explicit **gap** (Strand-U).
-
-Remaining gaps (stated, not papered over): per-`cl::opt`-global → `--flag` spelling for the ~17 gate bytes; the `MhloToPyPenguinPassConfig` field semantics; the partitioned path (`HiloPrePartitionCompile` @0x1efcb70) may register a different per-partition set; the `FS` expansion is unrecoverable from this build.
+**Limits.** The `--flag` spelling behind each of the ~17 gate bytes is not recovered — only the config offset and source global. The `MhloToPyPenguinPassConfig` field semantics are unresolved. The partitioned path (`HiloPrePartitionCompile` @0x1efcb70) may register a different per-partition set. The `FS` expansion is unrecoverable from this build.
 
 ---
 

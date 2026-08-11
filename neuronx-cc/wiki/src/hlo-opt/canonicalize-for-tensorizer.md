@@ -51,7 +51,7 @@ CanonicalizeForTensorizer::runOnOperation @0x20869d0 (629 B)
        8. replaceBroadcastInDimWithConstants(FuncOp&)  @0x20815f0  walks mhlo::BroadcastInDimOp
 ```
 
-> **NOTE —** the dispatch order is read verbatim from the `runOnOperation` disasm `0x2086a20`–`0x2086bda` (CERTAIN). The relative order of the last two rewriters is deliberate and not interchangeable: **#7 must precede #8.** `replaceBroadcastsWithBroadcastInDim` turns a legacy `mhlo.broadcast(const)` into `mhlo.broadcast_in_dim(const)`; only then can `replaceBroadcastInDimWithConstants` materialize it to a literal. Running them in the same sweep collapses `broadcast(const) → broadcast_in_dim(const) → const` in one `runOnOperation`. Reversing them would leave every legacy `broadcast` of a constant unfolded.
+> **NOTE —** the dispatch order is read verbatim from the `runOnOperation` disasm `0x2086a20`–`0x2086bda`. The relative order of the last two rewriters is deliberate and not interchangeable: **#7 must precede #8.** `replaceBroadcastsWithBroadcastInDim` turns a legacy `mhlo.broadcast(const)` into `mhlo.broadcast_in_dim(const)`; only then can `replaceBroadcastInDimWithConstants` materialize it to a literal. Running them in the same sweep collapses `broadcast(const) → broadcast_in_dim(const) → const` in one `runOnOperation`. Reversing them would leave every legacy `broadcast` of a constant unfolded.
 
 ### Algorithm — the collect-then-mutate skeleton
 
@@ -84,7 +84,7 @@ The match is always `TypeID` equality, never a string compare: `op->getName().ge
 | `mhlo::GetDimensionSizeOp` | `0x9d30668` | | `mhlo::ConstantOp` | `0x9d30748` |
 | `mhlo::RankedTensorType` | `0x9d3fa00` | | (null void-TypeID) | `0x9d3fb48` |
 
-> **QUIRK —** the operand/result accessors are raw struct offsets in this build, not virtual calls. A reimplementer reading the bodies must know the MLIR `Operation` layout this build uses: `[op+0x24]` = numResults, `[op+0x44]` = numOperands, `[op+0x48]` = `OperandStorage` base with OpOperand stride `0x20` and `operand[i].value` at `[+0x18 + i*0x20]` (so `operand[0].value=[+0x18]`, `operand[1].value=[+0x38]`). `[op+0x2E]` is an operand-storage flag whose **high bit must be set** before operands are readable (`cmp byte[op+2Eh],0 ; jns skip`); every rewriter guards on it. These offsets are consistent across all eight bodies (HIGH; no `Operation` struct in `_structures.json`, so the bitfield semantics of `+0x2E` are inferred, not declared).
+> **QUIRK —** the operand/result accessors are raw struct offsets in this build, not virtual calls. A reimplementer reading the bodies must know the MLIR `Operation` layout this build uses: `[op+0x24]` = numResults, `[op+0x44]` = numOperands, `[op+0x48]` = `OperandStorage` base with OpOperand stride `0x20` and `operand[i].value` at `[+0x18 + i*0x20]` (so `operand[0].value=[+0x18]`, `operand[1].value=[+0x38]`). `[op+0x2E]` is an operand-storage flag whose **high bit must be set** before operands are readable (`cmp byte[op+2Eh],0 ; jns skip`); every rewriter guards on it. These offsets are consistent across all eight bodies. There is no `Operation` struct in `_structures.json`, so the bitfield semantics of `+0x2E` are **[INFERRED]**, not declared.
 
 Every op the rewriters *build* is guarded by `RegisteredOperationName::lookup(TypeID<Op>, ctx)`; a NULL return triggers `llvm::report_fatal_error("Building op `<mnemonic>` but it isn't known in this MLIRContext: …")` (tail string @ `0x2df9e8`; e.g. mnemonic `mhlo.constant` @ `0x24a511`). This is the standard MLIR builder guard, not a Neuron diagnostic.
 
@@ -115,7 +115,7 @@ function fuseIotaSort(FuncOp f):
 
 The data operand (`operand[0]`) is unconstrained — only the second comparand must be an `iota`. The sort op is not recreated; only its operand list is shortened in place, so its SSA result and users are untouched. The iota is erased only if every one of its results is now `use_empty` (it may be shared with other consumers, in which case it stays).
 
-**Net:** `mhlo.sort(%data, mhlo.iota)` ⇒ `mhlo.sort(%data)` + conditional DCE of the iota. Match CERTAIN; the "argsort/top-k index tracking" intent is HIGH (inferred from the iota-as-second-comparand structure; no string anchor).
+**Net:** `mhlo.sort(%data, mhlo.iota)` ⇒ `mhlo.sort(%data)` + conditional DCE of the iota. The match itself is read from the body; the "argsort/top-k index tracking" intent is **[INFERRED]** from the iota-as-second-comparand structure — there is no string anchor.
 
 ---
 
@@ -158,7 +158,7 @@ function canonicalizeTupleOp(FuncOp f):
 
 The producer `DenseSet` (sentinels: empty `0xFFFF…F000`, tombstone `0xFFFF…E000`; backing freed via `llvm::deallocate_buffer`) holds the candidate `tuple` ops to recheck for deadness after the fold loop. Phase 2's index read `(i<<5)+[producer+0x48]` is the OpOperand-stride (`0x20`) arithmetic that reaches the i-th operand's `Value` at `+0x18`.
 
-**Net:** (a) `get_tuple_element(tuple(a0..an), i)` ⇒ `a_i`; (b) dead `mhlo.tuple` producers ⇒ erased; (b) subsumes `tuple(gte(x,*)) → x` as an emergent identity. Direction (a) CERTAIN; direction (b) HIGH (structural, no named matcher).
+**Net:** (a) `get_tuple_element(tuple(a0..an), i)` ⇒ `a_i`; (b) dead `mhlo.tuple` producers ⇒ erased; (b) subsumes `tuple(gte(x,*)) → x` as an emergent identity. Direction (a) is read off the body; direction (b) is **[INFERRED]** — structural, with no named matcher.
 
 ---
 
@@ -173,7 +173,7 @@ This is the central reason the pass exists: it is the one rewriter that turns a 
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::replaceGetDimensionSize @0x2080240 (1393 B) — CERTAIN
+// CanonicalizeForTensorizer::replaceGetDimensionSize @0x2080240 (1393 B)
 function replaceGetDimensionSize(FuncOp f):
     worklist = collect<mhlo::GetDimensionSizeOp>(f)   // seed cap 6 (0x600000000); TypeID cmp 0x9d30668
     kDynamic = 0x8000000000000000                     // ShapedType::kDynamic, loaded @0x2080383
@@ -201,7 +201,7 @@ function replaceGetDimensionSize(FuncOp f):
 
 The lazy `ShapedType` TypeID registration (`__cxa_guard` + `FallbackTypeIDResolver::registerImplicitTypeID("mlir::ShapedType")` @ `0x20806ba`) is one-time MLIR plumbing to recast the ranked operand as a `ShapedType` for the second `getShape`; it does not affect semantics.
 
-**Net:** `mhlo.get_dimension_size %t` (ranked, dim d static) ⇒ `mhlo.constant <i32 shape[d]>` + RAUW + erase. Dynamic dims and unranked operands are untouched. CERTAIN.
+**Net:** `mhlo.get_dimension_size %t` (ranked, dim d static) ⇒ `mhlo.constant <i32 shape[d]>` + RAUW + erase. Dynamic dims and unranked operands are untouched.
 
 > **GOTCHA —** the result is `i32`, not `index` or `i64`. `get_dimension_size` returns a 0-D `tensor<i32>` in MHLO, and the fold preserves that element width by reading `op.result`'s type (`cast<ShapedType>` @ `0x2080501`) rather than synthesizing a fresh scalar type. A reimplementer who hard-codes `i64` will produce a type-mismatched constant that fails verification downstream.
 
@@ -216,7 +216,7 @@ The lazy `ShapedType` TypeID registration (`__cxa_guard` + `FallbackTypeIDResolv
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::replaceConvertsWithConstants @0x20807c0 (3295 B, 168 BB) — CERTAIN
+// CanonicalizeForTensorizer::replaceConvertsWithConstants @0x20807c0 (3295 B, 168 BB)
 function replaceConvertsWithConstants(FuncOp f):
     for (cvt : collect<mhlo::ConvertOp>(f)):          // callback @0x2080879
         src = cvt.operand(0).getDefiningOp()          // 0x208092e
@@ -236,7 +236,7 @@ function replaceConvertsWithConstants(FuncOp f):
 
 Both element-type paths route through `DenseElementsAttr::getRawIntOrFloat` with `elemW=8`; the float path goes float → double → `getRawIntOrFloat`, which re-narrows to the destination element width. Splat and non-splat are both handled by per-element iteration. No size limit (unlike the broadcast folder).
 
-**Net:** constant-folds `convert(constant)` so the tensorizer sees only a literal. CERTAIN.
+**Net:** constant-folds `convert(constant)` so the tensorizer sees only a literal.
 
 ---
 
@@ -249,11 +249,11 @@ Both element-type paths route through `DenseElementsAttr::getRawIntOrFloat` with
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::replaceBroadcastsWithBroadcastInDim @0x2083f90 (7765 B, 326 BB) — CERTAIN
+// CanonicalizeForTensorizer::replaceBroadcastsWithBroadcastInDim @0x2083f90 (7765 B, 326 BB)
 function replaceBroadcastsWithBroadcastInDim(FuncOp f):
     for (b : collect<mhlo::BroadcastOp>(f)):          // cmp @0x2084098
         src = b.operand(0).getDefiningOp()            // 0x2084131
-        // CONSTANT-OPERAND CHECK IS ADVISORY (CORRECTION below): if src is not a
+        // CONSTANT-OPERAND CHECK IS ADVISORY ONLY: if src is not a
         // ConstantOp-with-DenseElementsAttr, emit NeuronLogger ERROR (level 4,
         // line 119, ErrorCode 3 via hilo::formatErrorMessage) and CONTINUE anyway.  // 0x2084196
         rty = dyn_cast_if_present<ShapedType>(b.result.type)   // 0x207d420
@@ -272,7 +272,7 @@ function replaceBroadcastsWithBroadcastInDim(FuncOp f):
 
 `broadcast_dimensions = [P, P+1, …, P+R−1]` is exactly the trailing-identity mapping that re-expresses the prepend semantics of `mhlo.broadcast` in `broadcast_in_dim` form.
 
-> **CORRECTION (D-C09) —** an earlier reading treated the "operand must be a constant `DenseElementsAttr`" check as a hard match gate. It is **advisory only**: a non-constant operand drives a `NeuronLogger` ERROR diagnostic (`setCurLogLevel(4)` @ `0x2084196`, source line 119, ErrorCode 3) but the broadcast→broadcast_in_dim conversion proceeds regardless (both branches fall through to `0x20843b9`). The conversion is purely structural; it never needs the operand to be a literal.
+> **GOTCHA — the "operand must be a constant `DenseElementsAttr`" check is not a match gate.** It is advisory: a non-constant operand drives a `NeuronLogger` ERROR diagnostic (`setCurLogLevel(4)` @ `0x2084196`, source line 119, ErrorCode 3), but the broadcast→broadcast_in_dim conversion proceeds regardless — both branches fall through to `0x20843b9`. The conversion is purely structural and never needs the operand to be a literal.
 
 ---
 
@@ -285,7 +285,7 @@ Once #7 has canonicalized broadcasts, this rewriter fully evaluates `broadcast_i
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::replaceBroadcastInDimWithConstants @0x20815f0 (5788 B, 257 BB) — CERTAIN
+// CanonicalizeForTensorizer::replaceBroadcastInDimWithConstants @0x20815f0 (5788 B, 257 BB)
 function replaceBroadcastInDimWithConstants(FuncOp f):
     for (bid : collect<mhlo::BroadcastInDimOp>(f)):   // cmp @0x20816e9
         src = bid.operand(0).getDefiningOp()          // 0x208177b
@@ -296,7 +296,7 @@ function replaceBroadcastInDimWithConstants(FuncOp f):
         if (any_dynamic_dim(rty.getShape())): continue   // __find_if<isDynamicShape> @0x207c6c0
         bdims = BroadcastInDimOp::getBroadcastDimensions(bid)    // 0x208184c @0x8f73ca0
 
-        // SIZE BUDGET GATE (CERTAIN):
+        // SIZE BUDGET GATE:
         nOut = ShapedType::getNumElements(rty)        // 0x20819ae
         if (broadcast-num-elements-to-fold < nOut         // 0x20819bc, cl::opt global @0x9c719f8
             || secondary_flag != 0): continue         // 0x20819ca — bail, leave broadcast intact
@@ -320,7 +320,7 @@ function replaceBroadcastInDimWithConstants(FuncOp f):
 |---|---|---|---|
 | `broadcast-num-elements-to-fold` | int (`cl::opt`) | **set by static init (not read here)** | Max output element count to materialize; a `broadcast_in_dim(const)` larger than this is left intact. Flag str @ `0x39e1a0`, help "Compute the number of elements to fold into the broadcast.", runtime global @ `0x9c719f8`. |
 
-> **NOTE —** the default value of `broadcast-num-elements-to-fold` is stamped by a static initializer this body does not read; it is recovered only as "a configurable budget" (MED). A reimplementer must pick a sane cap (e.g. a few thousand elements) — the gate is `threshold < numOutputElems → bail`, plus a secondary flag word at `var_4C8` that, if nonzero, also bails.
+> **NOTE —** the default value of `broadcast-num-elements-to-fold` is stamped by a static initializer this body does not read; it is recovered only as "a configurable budget" — **[INFERRED]**. A reimplementer must pick a sane cap (e.g. a few thousand elements) — the gate is `threshold < numOutputElems → bail`, plus a secondary flag word at `var_4C8` that, if nonzero, also bails.
 
 **Net:** fully evaluates `broadcast_in_dim(literal)` into a dense literal under an element-count budget; both int and float element types.
 
@@ -337,7 +337,7 @@ The dispatcher slot #5 is a two-stage collect-then-execute: a distinct collector
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::replaceInvalidBackendConfigs @0x2085df0 (isra.0, 3038 B) — CERTAIN
+// CanonicalizeForTensorizer::replaceInvalidBackendConfigs @0x2085df0 (isra.0, 3038 B)
 function replaceInvalidBackendConfigs(Operation* cc, FuncOp f):
     if (CustomCallOp::getCallTargetName(cc) != "AwsNeuronErf"): return   // 0x2085eaf, str @0x236819
     cfg = StringAttr::getValue(CustomCallOp::getBackendConfig(cc))       // @0x8f78ee0 / 0x9af0c80
@@ -356,7 +356,7 @@ function replaceInvalidBackendConfigs(Operation* cc, FuncOp f):
 
 "Invalid" means the config contains a byte that is neither alphanumeric nor a double-quote — i.e. any structured config with `{ } : , =`. The rewrite preserves target name, api_version, and output-operand aliasing; it only zeroes the config and forces `has_side_effect=false`.
 
-> **CORRECTION (D-C09) —** this is `AwsNeuronErf`-specific, not a generic backend-config rewriter, and the collector lambda `legalizeBackendConfig` is distinct from the worker `replaceInvalidBackendConfigs`. An earlier listing named only the worker and implied it ran on all custom-calls.
+> **GOTCHA — this rewriter is `AwsNeuronErf`-specific, not a generic backend-config cleaner.** It does not run on all custom-calls. Note also that the collector lambda `legalizeBackendConfig` is a distinct symbol from the worker `replaceInvalidBackendConfigs`; naming only the worker hides the filter that selects which ops reach it.
 
 ---
 
@@ -369,7 +369,7 @@ function replaceInvalidBackendConfigs(Operation* cc, FuncOp f):
 ### Algorithm
 
 ```c
-// CanonicalizeForTensorizer::lowerResizeNearestGrad lambda @0x207df40 (isra.0, 5451 B) — CERTAIN
+// CanonicalizeForTensorizer::lowerResizeNearestGrad lambda @0x207df40 (isra.0, 5451 B)
 function lowerResizeNearestGrad(CustomCallOp cc) -> WalkResult:
     name = CustomCallOp::getCallTargetName(cc)        // @0x8f78e40
     if (name.size() != 17 || name != "ResizeNearestGrad"): return advance   // imm cmp @0x207df80
@@ -402,7 +402,7 @@ function lowerResizeNearestGrad(CustomCallOp cc) -> WalkResult:
 
 The window stride equals the window size (non-overlapping tiles), padding is 0, dilations are 1 — exactly the geometry of a per-tile sum over each upsampling window. The divide-by-volume converts the sum to a mean.
 
-> **CORRECTION (D-C09) —** `ResizeNearestGrad` is **not** a scatter/gather lowering (an early task hypothesis). It is an average-pool: `Div(ReduceWindow_sum(grad, window=scale), Broadcast(Π scale))`. The reduce-window region body is an `AddOp` (sum), confirmed at `0x207edad`.
+> **GOTCHA — `ResizeNearestGrad` is an average-pool, not a scatter/gather lowering.** It expands to `Div(ReduceWindow_sum(grad, window=scale), Broadcast(Π scale))`, and the reduce-window region body is an `AddOp` (sum) at `0x207edad`.
 
 > **NOTE —** the four `emitOpError` legality strings ("only one operand allowed", "only one output allowed", "input and output have different rank", "output dim … is not an integral multiple …") are verbatim in `.rodata` and confirm this rewriter is the only consumer of `ResizeNearestGrad` in the MHLO pipeline. A separate downstream diagnostic ("op ResizeNearestGrad operation should be lowered to supported operations before reaching this stage", routed through `hilo::lookup_cause(ErrorCode)` @ a different site) fires only if a `ResizeNearestGrad` survives *past* this pass — i.e. it is this rewriter's safety net, not part of its body.
 
@@ -418,7 +418,7 @@ The class is `CanonicalizeForTensorizer`, the source file is `CanonicalizeForTen
 
 ### The StableHLO twin
 
-`StableHLOCanonicalizeForTensorizer::runOnOperation` @ `0x21266b0` (pass-arg `stablehlo-canonicalize-for-penguin`) carries the same rewriter set over `stablehlo::*` op TypeIDs — `fuseIotaSort`, `canonicalizeTupleOp`, `replaceGetDimensionSize`, `replaceConvertsWithConstants`, `legalizeBackendConfig`/`replaceInvalidBackendConfigs`, `lowerResizeNearestGrad`, and both broadcast rewriters — each confirmed as a distinct symbol. It has **one additional rewriter the MHLO side lacks**: `removeDeadZeroSizedTensorOps` @ `0x2121530` (callback @ `0x211e9b0`), which DCEs ops producing zero-element tensors. The StableHLO bodies were not separately disassembled here; structural identity to the MHLO twin is HIGH (matched symbol-for-symbol), but the per-body offsets above are the MHLO copy only.
+`StableHLOCanonicalizeForTensorizer::runOnOperation` @ `0x21266b0` (pass-arg `stablehlo-canonicalize-for-penguin`) carries the same rewriter set over `stablehlo::*` op TypeIDs — `fuseIotaSort`, `canonicalizeTupleOp`, `replaceGetDimensionSize`, `replaceConvertsWithConstants`, `legalizeBackendConfig`/`replaceInvalidBackendConfigs`, `lowerResizeNearestGrad`, and both broadcast rewriters — each confirmed as a distinct symbol. It has **one additional rewriter the MHLO side lacks**: `removeDeadZeroSizedTensorOps` @ `0x2121530` (callback @ `0x211e9b0`), which DCEs ops producing zero-element tensors. The StableHLO bodies were not separately disassembled here; structural identity to the MHLO twin is **[INFERRED]** from a symbol-for-symbol match, and the per-body offsets above are the MHLO copy only.
 
 ---
 
@@ -439,21 +439,17 @@ The class is `CanonicalizeForTensorizer`, the source file is `CanonicalizeForTen
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| The pass-arg is `canonicalize-for-penguin` | the strings table contains only `canonicalize-for-penguin` (@ `0x21a240`) and `stablehlo-canonicalize-for-penguin` (@ `0x348f10`); no `canonicalize-for-tensorizer` string exists. The former's sole xref is `CanonicalizeForTensorizer::getArgument` @ `0x207c500` | CERTAIN |
+| Eight rewriters, broadcasts last | all eight `_ZN25CanonicalizeForTensorizer…` symbols and addresses match the function index exactly (`fuseIotaSort` `0x207ffb0` … `replaceBroadcastInDimWithConstants` `0x20815f0`); the intra-`runOnOperation` order comes from the disasm at `0x2086a20`–`0x2086bda`, which was not re-walked instruction-by-instruction | CERTAIN (membership), HIGH (order) |
+| `replaceGetDimensionSize` folds to `i32` via the `op.result` type | the `kDynamic` sentinel `0x8000000000000000`, the `RankedTensorType` TypeID gate (`0x9d3fa00`), and `getRawIntOrFloat(..., dataEltSize=4, isInt=true)` are all in the disasm; the `i32` conclusion follows from reading `op.result`'s type (`cast<ShapedType>` @ `0x2080501`) plus the 4-byte element width | CERTAIN |
+| `lowerResizeNearestGrad` is an average-pool with an `AddOp` region body | the four `emitOpError` strings are verbatim in `.rodata`; the builder calls are `ReduceWindowOp::build` @ `0x8f98cb0`, `AddOp::build` @ `0x8fb6750`, `DivOp::build` @ `0x8fb6960`; the lambda sits at `0x207df40` | CERTAIN |
+| `replaceInvalidBackendConfigs` is `AwsNeuronErf`-only | the string `AwsNeuronErf` (@ `0x236819`) is referenced by exactly `replaceInvalidBackendConfigs` (both the mhlo and StableHLO copies) plus two cost-analysis/checker functions, and by no other rewriter; the `"None"` replacement and `has_side_effect=false` come from the disasm | CERTAIN |
 
-1. **Pass-arg is `canonicalize-for-penguin`, not `canonicalize-for-tensorizer`.** Re-checked: the strings table contains only `canonicalize-for-penguin` (@ `0x21a240`) and `stablehlo-canonicalize-for-penguin` (@ `0x348f10`); no `canonicalize-for-tensorizer` exists. The former's sole xref is from `CanonicalizeForTensorizer::getArgument` @ `0x207c500`. CONFIRMED — this **corrects** both backing reports, which named `canonicalize-for-tensorizer` as the pass-arg.
-
-2. **Eight rewriters in the stated order, broadcasts last.** All eight `_ZN25CanonicalizeForTensorizer…` symbols and their addresses match `_function_addresses.json` exactly (`fuseIotaSort` `0x207ffb0` … `replaceBroadcastInDimWithConstants` `0x20815f0`). The intra-`runOnOperation` order (`0x2086a20`–`0x2086bda`) is from disasm. CONFIRMED for the symbol set; the relative call order is CERTAIN per the backing disasm trace (I did not re-walk the 629-byte driver instruction-by-instruction here — STRONG on order, CERTAIN on membership).
-
-3. **`replaceGetDimensionSize` folds to `i32` via `op.result` type.** The `kDynamic` sentinel `0x8000000000000000`, the `RankedTensorType` TypeID gate (`0x9d3fa00`), and `getRawIntOrFloat(..., dataEltSize=4, isInt=true)` are all in the backing disasm with addresses. The `i32` claim rests on reading `op.result`'s type (`cast<ShapedType>` @ `0x2080501`) and the 4-byte element width. CONFIRMED.
-
-4. **`lowerResizeNearestGrad` is average-pool, region body is `AddOp`.** The four `emitOpError` strings are verbatim in `.rodata` (`_strings.json`); `ReduceWindowOp::build` @ `0x8f98cb0`, `AddOp::build` @ `0x8fb6750`, `DivOp::build` @ `0x8fb6960` are the builder calls. The lambda addr `0x207df40` is confirmed in `_function_addresses.json`. CONFIRMED.
-
-5. **`replaceInvalidBackendConfigs` is `AwsNeuronErf`-only.** The string `AwsNeuronErf` (@ `0x236819`) is referenced by exactly `replaceInvalidBackendConfigs` (both mhlo and StableHLO copies) plus two cost-analysis/checker functions, never by any other rewriter. The `"None"` replacement and `has_side_effect=false` are from the backing disasm. CONFIRMED.
-
-No claim required downgrading to SPECULATIVE. The one genuine **CORRECTION** surfaced by re-verification is the pass-arg name (claim 1). The `broadcast-num-elements-to-fold` default value and the `+0x2E` bitfield semantics remain the honest gaps (MED / inferred).
+Two things remain open: the `broadcast-num-elements-to-fold` default value, and the `+0x2E` bitfield semantics. Both are **[INFERRED]** rather than read.
 
 ---
 

@@ -35,7 +35,9 @@ For reimplementation, the contract is:
 | **Failure mode** | `std::runtime_error("Data race detected:\n…")` @ `0xab0f8`; aborts compile |
 | **Source path** | `…/neuronxcc/walrus/ir/lib/Racecheck/Graph.cpp` @ `0xb28d0` (from asserts) |
 
-> **CORRECTION (RACE-CLK) —** the task framing called the clock "CRoaring/int32 vector clocks". Binary evidence refutes the CRoaring half: there is **no** roaring symbol or string anywhere in `libBIRRacecheck.so` (`strings`/`nm` both empty), while the substring `roaring` appears 120× in `libwalrus.so` — CRoaring is used *elsewhere* in the backend, not by the race checker. The race-checker clock is a plain `std::vector<int32>`: `less_than`/`concurrent`/`maximize` all read `Op+0x38`/`Op+0x40` as an `int32*` begin/end pair and compute `size = (end-begin) >> 2` (a 4-byte stride — confirmed in all three bodies). The rest of this page documents the `int32`-vector clock.
+The clock is a plain `std::vector<int32>`. `less_than`, `concurrent`, and `maximize` all read `Op+0x38`/`Op+0x40` as an `int32*` begin/end pair and compute `size = (end-begin) >> 2` — a 4-byte stride, in all three bodies.
+
+> **GOTCHA — CRoaring is in the backend, but not in the race checker.** The substring `roaring` appears 120× in `libwalrus.so`, so a symbol sweep across the backend will suggest the clocks are Roaring bitmaps. They are not: there is **no** roaring symbol or string anywhere in `libBIRRacecheck.so` — `strings` and `nm` both come back empty. CRoaring is used elsewhere in the backend.
 
 ---
 
@@ -61,7 +63,7 @@ Every memory-touching instruction (after the BC180 gate, below) becomes one `rac
 
 The clock length equals the engine count (`Graph+0x40`). Two facts pin the representation as a plain `std::vector<int32>` rather than any bitmap: every reader computes `size = (timestamps.end − timestamps.begin) >> 2` (4-byte element), and every reader asserts the two operands' sizes are equal against the literal string `"this->timestamps.size() == other->timestamps.size()"` (`Graph.cpp` @ `0xb2948`).
 
-> **NOTE —** `engineId` (`+0x00`) is a per-graph sequence id assigned by `addEngine` in first-seen order, *not* the architectural `EngineType` (Pool=1, Act=2, PE=3, DMA=4, DVE=5, SP=6 — see [Execution & Sync Model](../arch/execution-sync-model.md)). The clock-component column for an Op's own engine is read separately as `*(uint32*)(engine + 0x20)` — a column index stored four bytes ahead of the engine's op-vector pointer. (CONFIRMED from `computeTimestamps`' `++*(int*)(ts.begin + 4*col)` where `col = *(uint*)(engine+32)`.)
+> **NOTE —** `engineId` (`+0x00`) is a per-graph sequence id assigned by `addEngine` in first-seen order, *not* the architectural `EngineType` (Pool=1, Act=2, PE=3, DMA=4, DVE=5, SP=6 — see [Execution & Sync Model](../arch/execution-sync-model.md)). The clock-component column for an Op's own engine is read separately as `*(uint32*)(engine + 0x20)` — a column index stored four bytes ahead of the engine's op-vector pointer. *Anchor: `computeTimestamps`' `++*(int*)(ts.begin + 4*col)` with `col = *(uint*)(engine+32)`.*
 
 ### Algorithm — clock advance
 
@@ -278,7 +280,7 @@ function fromBasicBlock(bb, op2inst) -> Graph:
     return G
 ```
 
-The memory-op gate is a 49-byte table at `0xbc180` indexed by `opcode-19`; the set bytes are at indices `{0,3,13,22,23,24,25,26,27,48}` (xxd-confirmed: the first row reads `01 00 00 01 …`, the `22..27` run reads six consecutive `01`s), which decode to opcodes `{19,22,32,41,42,43,44,45,46,67}`, plus opcode 18 hard-coded. Opcode 81 is dropped before the gate; the skip mask `0xFFBFDFFFFFFFFFFE` over `(opcode-33)` clears bits for `{33,78,87}`. The sync edges are exactly the post-synchronizer dependency edges — the `& ~7` strips the 3-bit `EdgeKind` from the `llvm::PointerIntPair` documented on the [Dependence Graph](dependence-graph.md) page; racecheck *consumes* that graph, it does not re-derive sync from `SyncInfo` values.
+The memory-op gate is a 49-byte table at `0xbc180` indexed by `opcode-19`; the set bytes are at indices `{0,3,13,22,23,24,25,26,27,48}` — read out of the table with `xxd`, where the first row is `01 00 00 01 …` and the `22..27` run is six consecutive `01`s — which decode to opcodes `{19,22,32,41,42,43,44,45,46,67}`, plus opcode 18 hard-coded. Opcode 81 is dropped before the gate; the skip mask `0xFFBFDFFFFFFFFFFE` over `(opcode-33)` clears bits for `{33,78,87}`. The sync edges are exactly the post-synchronizer dependency edges — the `& ~7` strips the 3-bit `EdgeKind` from the `llvm::PointerIntPair` documented on the [Dependence Graph](dependence-graph.md) page; racecheck *consumes* that graph, it does not re-derive sync from `SyncInfo` values.
 
 > **GOTCHA —** the sync edges are wired only *across different engines*. Same-engine ordering is added separately as the program-order chain. A reimplementation that adds every dependency edge regardless of engine double-counts the same-engine timeline and corrupts the clock — the `engineOf(target) != engineOf(inst)` guard is mandatory.
 
@@ -367,7 +369,7 @@ concurrent(A, B)                              // clocks incomparable — no sync
 
 ```c
 // bir::PhysicalAccessPattern::doAccessesOverlap(const PhysicalAccessPattern& other)  // libBIR 0x3add90
-//   field shorthand (D-E12 AP layout): location@+0x38, Dtype@+0x30,
+//   field shorthand (the BIR AP layout): location@+0x38, Dtype@+0x30,
 //   Pattern.data@+0x50 ([0].step,[+8]=[0].num), offset@+0xD0, DynamicAPINFO*@+0x1D8.
 function doAccessesOverlap(this, other) -> bool:
     // Step 0 — FAST BAILOUT (cheap, sound bounding box)
@@ -473,7 +475,7 @@ function run(mod):
     // ⇒ in practice the first race throws inside check()'s TBB body before this point
 ```
 
-The `RaceChecker` ctor (`0x762b0`) walks `mod.functions → basicBlocks` and accumulates `raceCount += check(bb)`. Because `check`'s TBB body throws on the first overlapping concurrent pair, the live abort is the `"Data race detected:\n…"` from the engine, not the ctor's count-and-`printRaces` fallback — the latter is a non-throwing collect-all mode that the wired flow never reaches (`HIGH`: the collect path is present in the class API but dead in this build).
+The `RaceChecker` ctor (`0x762b0`) walks `mod.functions → basicBlocks` and accumulates `raceCount += check(bb)`. Because `check`'s TBB body throws on the first overlapping concurrent pair, the live abort is the `"Data race detected:\n…"` from the engine, not the ctor's count-and-`printRaces` fallback — the latter is a non-throwing collect-all mode that the wired flow never reaches. That collect path is present in the class API but appears dead in this build.
 
 ### Related Knobs
 

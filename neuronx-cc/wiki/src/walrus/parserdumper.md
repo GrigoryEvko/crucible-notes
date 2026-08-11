@@ -34,11 +34,11 @@ There are two independent BIR serializers in this build, and the task's two bina
 
 **S1 — canonical brace-JSON (`libBIR`).** `adl_serializer<bir::Module>::from_json` / `::to_json` is the symmetric nlohmann (de)serializer: `from_json` is the two-pass `createFromJson` loader; `to_json` is the per-`Instruction` `toJson` emitter. The C++ object graph *is* the wire schema (JSON and CBOR are two encodings of one schema). This is what `bir_roundtrip` uses, and the only re-ingestible format. See [json-loader](../bir/json-loader.md) and [json-writer](../bir/json-writer.md).
 
-**S2 — flat text debug dump (`bir::Dumper`, `libBIRParserDumper`).** A CRTP visitor that emits `<name>: <type>, key=value, …` — *not* braces. It owns its own per-field emission (a roster of `, key=`-prefixed literals in `.rodata`) but **delegates enum→string** to `libBIR`: 25 UND `bir::to_json(json&, <Enum>)` imports (`ActivationFunctionType`, `AluOpType`, `AxisListType`, `DGEType`, `DMAQoSClass`, `MatmultPerfMode`, `PoolFunctionType`, `RandomAlgorithmKind`, `TSCMode`, `TransposeOps`, `CollectiveKind`, … — confirmed: exactly 25 UND `to_json` enum symbols in the dynsym). Its sole linker consumer is `walrus_driver`.
+**S2 — flat text debug dump (`bir::Dumper`, `libBIRParserDumper`).** A CRTP visitor that emits `<name>: <type>, key=value, …` — *not* braces. It owns its own per-field emission (a roster of `, key=`-prefixed literals in `.rodata`) but **delegates enum→string** to `libBIR`: 25 UND `bir::to_json(json&, <Enum>)` imports (`ActivationFunctionType`, `AluOpType`, `AxisListType`, `DGEType`, `DMAQoSClass`, `MatmultPerfMode`, `PoolFunctionType`, `RandomAlgorithmKind`, `TSCMode`, `TransposeOps`, `CollectiveKind`, … — exactly 25 UND `to_json` enum symbols in the dynsym). Its sole linker consumer is `walrus_driver`.
 
-> **CORRECTION (D-G10 / S2-10 §4b) —** an earlier pass recorded "Roundtrip driver: `bir_roundtrip` uses `libBIRParserDumper`." That is wrong. `bir_roundtrip`'s `DT_NEEDED` lists `libBIR.so` and **not** `libBIRParserDumper.so`; both `adl_serializer<bir::Module>::from_json` and `::to_json` are UND→`libBIR`; and the binary has **zero** `bir::Dumper` symbols (`.symtab` is stripped, dynsym has 1304 entries, none `bir::Dumper`). The Dumper's only consumer is `walrus_driver`. CERTAIN.
+The text emitter is a full second serializer, not a thin wrapper: `libBIRParserDumper` carries roughly 110 real `Dumper::visitInst<X>` bodies (`visitInstCustomOp @0xaffd0`, `visitInstNKIKLIRKernel @0xb21d0`, …), each emitting one op's fields in the flat `, key=value` syntax. What it does *not* carry is the canonical brace-JSON `toJson`, which stays in `libBIR`.
 
-> **CORRECTION (D-E06) —** an earlier note claimed `libBIRParserDumper` "has only `bir::Dumper`/`Parser`, no per-op serializers." In fact it carries ~110 real `Dumper::visitInst<X>` bodies (e.g. `visitInstCustomOp @0xaffd0`, `visitInstNKIKLIRKernel @0xb21d0`), each emitting one op's fields. These are a *second* text-format emitter, distinct from the canonical brace-JSON `toJson` that stays in `libBIR`. CERTAIN.
+`bir_roundtrip` links only the canonical path. Its `DT_NEEDED` lists `libBIR.so` and not `libBIRParserDumper.so`; both `adl_serializer<bir::Module>::from_json` and `::to_json` are UND and resolve into `libBIR`; and the binary contains zero `bir::Dumper` symbols (`.symtab` is stripped, and none of the 1304 dynsym entries name `bir::Dumper`).
 
 There is no BIR-JSON *parser* in `libBIRParserDumper` at all. Parsing is entirely `libBIR`'s `adl_serializer<bir::Module>::from_json`; the only "Parser" classes physically present are the `llvm::cl::parser<Enum>` command-line instantiations (see [Command-Line Enum Parsers](#command-line-enum-parsers)).
 
@@ -168,7 +168,7 @@ Enum-valued fields route through the 25 imported `bir::to_json(json&, <Enum>)` s
 
 ## The Version-Triplet
 
-Three provenance keys live in `libBIRParserDumper` `.rodata` and are emitted **per-instruction**, not in a module header. The keys are confirmed by xxd at their offsets; the separators (`", key="`) sit just past each key string.
+Three provenance keys live in `libBIRParserDumper` `.rodata` and are emitted **per-instruction**, not in a module header. Each separator (`", key="`) sits just past its key string.
 
 | Key | Key `@` | Separator `, key=` `@` | Carried on | Field offset | Emitter |
 |---|---|---|---|---|---|
@@ -202,7 +202,7 @@ function main():                                // 0x427dc0 (889 B)
     return 0
 ```
 
-`from_json` and `to_json` are both **UND** in the dynsym and resolve to `libBIR` — confirmed. The harness is a **serialize-determinism / schema-fidelity** check: it re-emits the model (`json → Module → json → stdout`) so an *external* diff (the test fixture) compares input vs output JSON. Any field the loader drops, reorders non-canonically, or the emitter mis-spells shows as a diff. It exercises the full `createFromJson↔toJson` pair (both passes, all opcodes, pelican v1/v2 by the doc's `"version"`) on real BIR-JSON fed on stdin. It does **not** itself assert equality — there is no internal compare call; equivalence is judged by the driver comparing re-emitted stdout to the canonical expected output.
+`from_json` and `to_json` are both **UND** in the dynsym and resolve to `libBIR`. The harness is a **serialize-determinism / schema-fidelity** check: it re-emits the model (`json → Module → json → stdout`) so an *external* diff (the test fixture) compares input vs output JSON. Any field the loader drops, reorders non-canonically, or the emitter mis-spells shows as a diff. It exercises the full `createFromJson↔toJson` pair (both passes, all opcodes, pelican v1/v2 by the doc's `"version"`) on real BIR-JSON fed on stdin. It does **not** itself assert equality — there is no internal compare call; equivalence is judged by the driver comparing re-emitted stdout to the canonical expected output.
 
 > **GOTCHA —** `bir_roundtrip` uses `libBIR`'s `to_json` + `nlohmann::dump(indent=2)`, **not** `bir::Dumper`. The two produce different output formats (brace-JSON vs flat `, key=value` text). A reimplementer who routes the round-trip through the text Dumper will never reproduce the wire-canonical JSON that the test diffs against.
 
@@ -214,7 +214,7 @@ The only "Parser" classes physically in `libBIRParserDumper` are `llvm::cl::pars
 
 The algorithm is the stock LLVM `generic_parser_base::parse`: linearly scan the parser's `Values` vector (`OptionEnumValue` entries `{name_ptr@+0, name_len@+8, desc, enum_val(int)@+40, Valid(byte)@+44}`), compare the input `StringRef` by memcmp, on match write `*out = entry[+40]` (assert `"Valid && \"invalid option value\""`), on miss emit `"Cannot find option named '<x>'!"`. The accepted-name roster is built at static-init via `cl::values(...)`.
 
-> **NOTE —** the exact static-init `cl::values()` name roster (the spelled-out accepted strings) for the simulator's `MemSimMode`/`SyncMode` parsers was not dumped — the `Values` table is built in static ctors and indexed by `getOption(i)`. The enum *ordinals* are documented in the D-D03/D-D05/D-D09/D-D12 enum strands; the command-line *spellings* need an `.init_array` walk. (MEDIUM — gap.)
+> **NOTE —** the exact static-init `cl::values()` name roster (the spelled-out accepted strings) for the simulator's `MemSimMode`/`SyncMode` parsers is [UNRESOLVED] — the `Values` table is built in static ctors and indexed by `getOption(i)`, so recovering the spellings needs an `.init_array` walk. The enum *ordinals* are documented on the BIR enum pages.
 
 ---
 

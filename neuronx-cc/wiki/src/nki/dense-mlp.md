@@ -1,6 +1,6 @@
 # Dense (non-MoE) MLP
 
-> *All symbols, line numbers, and enum values on this page apply to `neuronx_cc` **2.24.5133.0+58f8de22**, the `cp310` wheel. The `cp310`/`cp311`/`cp312` copies of every dense-MLP file are byte-identical (`diff -q` over `mlp/` and `mlp_tkg/`), so `cp310` is the source of truth. Other releases will differ — see the version-mismatch correction in the Abstract.*
+> *All symbols, line numbers, and enum values on this page apply to `neuronx_cc` **2.24.5133.0+58f8de22**, the `cp310` wheel. The `cp310`/`cp311`/`cp312` copies of every dense-MLP file are byte-identical (`diff -q` over `mlp/` and `mlp_tkg/`), so `cp310` is the source of truth. Other releases will differ, and the file layout in particular is not stable across releases — see the Abstract.*
 
 ## Abstract
 
@@ -8,7 +8,9 @@ The dense MLP is the plain feed-forward block of a transformer layer: one gate p
 
 The public entry is `fused_mlp_isa_kernel` in `_pre_prod_kernels/mlp/mlp.py`. It builds an immutable `MLPParameters` tuple, then dispatches on a single scalar threshold: `is_mlp_tkg(B, S)` returns `True` when `B·S ≤ 96`, routing decode-shaped work to the **TKG** path (`_pre_prod_kernels/mlp_tkg/mlp_tkg_isa.py`) and everything larger to the **CTE** path (`_pre_prod_kernels/mlp/mlp_cte.py`). The two paths share the parameter model, the activation-function map, and the SwiGLU algebra, but differ completely in tiling, sharding axis, and matmul operand orientation. CTE tiles the `B·S` rows and shards on the **intermediate** axis `I` (or on `B·S`); TKG keeps a tiny `T = B·S` and shards on the **hidden** axis `H` by default, falling back to `I` only when `I > 2048`. That single difference drives the cross-core asymmetry that is the centerpiece of this page: under H-sharding gate/up **reduce** (H is their contraction) while down **gathers** (H is its output).
 
-> **CORRECTION (DENSE-MLP-1) —** the D-O18 backing report describes a *different, later* refactor (`nkilib/core/mlp/` with `mlp_cte_utils.py`, `mlp_tkg_mx.py`, `gate_up_projection_mx_shard_H.py`, `projection_mx_constants.py`, and a six-member `QuantizationType` including `MX`/`STATIC_MX`/`ROW_MX`). **None of that exists in 2.24.5133.0.** This wheel ships the dense MLP under `_pre_prod_kernels/mlp/` (17 files) + `_pre_prod_kernels/mlp_tkg/` (16 files); `QuantizationType` (`common_types.py:41-44`) has exactly `NONE=0, STATIC=1, ROW=2`; `build_mlp_quant_params` (`mlp_parameters.py:51-82`) `raise`s an `AssertionError` on anything else; and `rg -ni mx` over `mlp/` returns **zero hits**. The MX (microscaling / per-block-E8M0) primitives the report calls `*_mx_shard_H` are, in this build, the MoE-only `gate_up_projection_mx_shard_I.py` / `down_projection_mx_shard_I.py`, reached **solely** through `expert_mlp_tkg_all_expert_mx_impl.py`. Every claim below is re-grounded against the files that actually ship.
+Two structural facts about *this* build bound everything below. The dense MLP ships under `_pre_prod_kernels/mlp/` (17 files) and `_pre_prod_kernels/mlp_tkg/` (16 files) — there is no `nkilib/core/mlp/` tree here. And the dense path has **no microscaling (MX) support at all**: `QuantizationType` as this path sees it (`common_types.py:41-44`) has exactly `NONE=0, STATIC=1, ROW=2`, `build_mlp_quant_params` (`mlp_parameters.py:51-82`) raises an `AssertionError` on anything else, and the string `mx` appears nowhere under `mlp/`. The MX (per-block-E8M0) projection primitives that do exist — `gate_up_projection_mx_shard_I.py`, `down_projection_mx_shard_I.py` — belong to the MoE side and are reached solely through `expert_mlp_tkg_all_expert_mx_impl.py`.
+
+> **GOTCHA — there are two different `common_types.py`.** The dense MLP imports the truncated `_pre_prod_kernels/common_types.py`, whose `QuantizationType` has three members. A separate `nkilib/core/utils/common_types.py:56` defines a six-member enum that adds `MX` / `STATIC_MX` / `ROW_MX`. Reading the six-member enum and assuming the dense path can request `MX` produces an `AssertionError`, not an MX matmul.
 
 For reimplementation, the contract is:
 
@@ -161,7 +163,7 @@ function cte_pipeline(batch_idx, bxs_tile_idx):           // mlp_cte.py:190-416
       else:                          store_hidden_tensor_tile(...)        // :416
 ```
 
-> **CORRECTION (DENSE-MLP-2) —** D-O18 §2 cites `SbufManager`, a `top_level_interleave_degree` knob, and a `STATIC_MX` inlined matmul for CTE. In 2.24.5133.0 **none of these exist**: `rg SbufManager` and `rg top_level_interleave_degree` over `mlp_cte.py` return zero hits (SBUF is allocated through `constants.alloc_info.*_alloc.get_allocator()` + `nki.compiler.allocation_scope()`), and there is no MX matmul anywhere in `mlp_cte_projection.py`. The only special matmul mode is `perf_mode='double_row_gen3'` for FP8 (`mlp_cte_projection.py:266,617`).
+CTE has no SBUF manager object and no interleave-degree knob: buffers are allocated through `constants.alloc_info.*_alloc.get_allocator()` inside an `nki.compiler.allocation_scope()`. Nor does it carry any MX matmul — the one special matmul mode in `mlp_cte_projection.py` is `perf_mode='double_row_gen3'` for FP8 (`:266`, `:617`).
 
 ### Algorithm — gate/up and down matmul orientation
 
@@ -265,7 +267,7 @@ if num_shards > 1:
 out = nl.multiply(gate, up)                                                // :1091  SwiGLU
 ```
 
-> **CORRECTION (DENSE-MLP-3) —** D-O18 §3/§7 describes a gate/up **clamp** (`tensor_scalar(min upper, max lower)`) on the dense decode path. In 2.24.5133.0 the clamp lives **only** in `process_fused_gate_up_projection` (`gate_up_projection.py:576`, the *fused* MoE-shaped path, clamps at `:746-766`/`:806-827`). The dense entry `nki_mlp_tkg_isa_kernel` calls the **non-fused** `process_gate_up_projection` (`mlp_tkg_isa.py:345`), which has **no clamp** — its activation and multiply are unconditional. The clamp limits (`gate_clamp_*`, `up_clamp_*`) default to `None` (`constants.py:185-188`); the dense kernel never sets them. Treat clamp as a fused-path / MoE feature, not a dense-MLP feature.
+> **GOTCHA — the gate/up clamp is a fused-path feature, not a dense-MLP one.** A `tensor_scalar(min upper, max lower)` clamp does exist in this file tree, but only inside `process_fused_gate_up_projection` (`gate_up_projection.py:576`, clamping at `:746-766` and `:806-827`) — the fused, MoE-shaped path. The dense entry `nki_mlp_tkg_isa_kernel` calls the **non-fused** `process_gate_up_projection` (`mlp_tkg_isa.py:345`), whose activation and multiply are unconditional. The clamp limits `gate_clamp_*` / `up_clamp_*` default to `None` (`constants.py:185-188`) and the dense kernel never sets them.
 
 ### Algorithm — the H-shard reduce-vs-gather asymmetry
 
@@ -378,19 +380,33 @@ MLPTKGConstants.set_attributes(                       // mlp_tkg_isa.py:129
 | TKG shard | H (default) or I (`I>2048`) | per the expert kernel |
 | Output | single `[B,S,H]` to HBM (or SBUF tile) | per-expert planes / token-scatter |
 
-> **CORRECTION (DENSE-MLP-4) —** D-O18 §8 states the dense MLP and selective-MoE **share** the same `mx_shard_H` projection primitives. In 2.24.5133.0 the dense `nki_mlp_tkg_isa_kernel` imports **only** `process_gate_up_projection` and `process_down_projection` from the non-MX `gate_up_projection.py`/`down_projection.py` (`mlp_tkg_isa.py:14-15`). The MX `fused_gate_up_projection_mx_shard_I` / `fused_down_projection_mx_shard_I` are imported **only** by `expert_mlp_tkg_all_expert_mx_impl.py` (`:18-24`). The two paths share the *attribute model and the SwiGLU algebra*, but the dense path does **not** call the MX shard kernels — those are MoE-only. The shared-subkernel claim holds for the non-MX projection *shape*, not for the MX primitives.
+> **GOTCHA — dense and MoE share the projection *shape*, not the MX primitives.** The dense `nki_mlp_tkg_isa_kernel` imports only `process_gate_up_projection` and `process_down_projection`, both from the non-MX `gate_up_projection.py` / `down_projection.py` (`mlp_tkg_isa.py:14-15`). The MX variants `fused_gate_up_projection_mx_shard_I` and `fused_down_projection_mx_shard_I` are imported by `expert_mlp_tkg_all_expert_mx_impl.py` (`:18-24`) and by nothing else. What the two paths genuinely share is the attribute model and the SwiGLU algebra.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-Five strongest claims, re-challenged against the binary-derived `.py`:
+Each of the page's structural claims lands on a specific line of shipped source.
 
-1. **"`B·S ≤ 96` picks TKG."** `is_mlp_tkg` (`mlp_helpers.py:17`) = `batch*seq_len <= TKG_BS_SEQLEN_THRESHOLD`; `TKG_BS_SEQLEN_THRESHOLD = 96` (`:8`). CONFIRMED.
-2. **"No MX in the dense MLP."** `QuantizationType` has only `NONE/STATIC/ROW` (`common_types.py:41-44`); `build_mlp_quant_params` raises otherwise (`mlp_parameters.py:77`); `rg -ni mx mlp/` = 0 hits; TKG sets `is_mxfp4_kernel=False` (`mlp_tkg_isa.py:135`). The MX `*_mx_shard_I` files are imported only by `expert_mlp_tkg_all_expert_mx_impl.py`. CONFIRMED — and DENSE-MLP-1/4 correct the report.
-3. **"Gate/up reduce (add), down gather (no add), under H-shard."** Gate/up `sendrecv` + `tensor_tensor(...,op=nl.add)` at `gate_up_projection.py:1065/1072, 1085/1088`; `down_projection.py` has **no** `sendrecv` (grep = 0); the only down `add` is the `ShardDim.I` branch at `mlp_tkg_isa.py:392-394`. CONFIRMED — and the axis-keyed framing (QUIRK above) refines the report's "gate/up reduce / down gather" into the threshold-driven H/I rule.
-4. **"CTE folds γ/β at transpose, ε inside sqrt."** Transpose fold `tensor_scalar(op0=multiply(gamma), op1=add(beta))` at `mlp_cte_transpose.py:154-168`; RMSNorm `rsqrt(Σx²/H + ε)` at `mlp_cte_norm.py:77-83`; LayerNorm `rsqrt(var + ε)` at `:166-171`. CONFIRMED.
-5. **"Dense clamp is fused-path-only."** Dense calls `process_gate_up_projection` (`mlp_tkg_isa.py:345`), which has no clamp; clamp is in `process_fused_gate_up_projection` (`gate_up_projection.py:576`), and limits default `None` (`constants.py:185-188`). CONFIRMED — DENSE-MLP-3 corrects the report.
+The `B·S ≤ 96` dispatch is `is_mlp_tkg` (`mlp_helpers.py:17`) testing
+`batch*seq_len <= TKG_BS_SEQLEN_THRESHOLD`, with the threshold defined as `96` at `:8`.
+
+The absence of MX from the dense path is over-determined: `QuantizationType` carries only
+`NONE`/`STATIC`/`ROW` (`common_types.py:41-44`), `build_mlp_quant_params` raises on anything
+else (`mlp_parameters.py:77`), `mx` appears nowhere under `mlp/`, and TKG explicitly sets
+`is_mxfp4_kernel=False` (`mlp_tkg_isa.py:135`). The `*_mx_shard_I` files have exactly one
+importer, `expert_mlp_tkg_all_expert_mx_impl.py`.
+
+The reduce-vs-gather asymmetry is visible as a presence/absence pair: gate/up carry
+`sendrecv` plus `tensor_tensor(..., op=nl.add)` at `gate_up_projection.py:1065/1072` and
+`1085/1088`, while `down_projection.py` contains no `sendrecv` at all. The only `add` on the
+down side belongs to the `ShardDim.I` branch at `mlp_tkg_isa.py:392-394` — which is what
+makes the rule axis-keyed rather than projection-keyed.
+
+The norm folding is likewise explicit: the γ/β fold rides the transpose as
+`tensor_scalar(op0=multiply(gamma), op1=add(beta))` (`mlp_cte_transpose.py:154-168`), and ε
+sits inside the square root for both RMSNorm (`mlp_cte_norm.py:77-83`) and LayerNorm
+(`:166-171`).
 
 **Re-verification ceiling.** All evidence is readable, binary-derived Python from the wheel (`mlp/` + `mlp_tkg/`), cross-checked across `cp310`/`cp311`/`cp312` byte-identity and triangulated by three independent reads. Not traced to the BIR/penguin/BIR-kernel level: the `use_bir_tkg_kernel=True` fork into `_private_kernels.mlp` (an alternate TKG backend) was identified but its internals are out of scope. The `tile_position`/`tile_size` "up-to-4× parallel matmul" claim is taken from the call-site arguments and the [PE matmul encoding](../isa/pe-matmul-encoding.md); the exact PE-array parallelism factor was not measured against emitted BIR.
 

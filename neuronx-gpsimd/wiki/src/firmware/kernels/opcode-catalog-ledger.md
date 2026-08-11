@@ -28,7 +28,7 @@ These three counts (140, 17, 55) differ *by construction*;
 opcodes appear in which source.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string read from the shipped image this session; `INFERRED` =
+`OBSERVED` = a byte / string read from the shipped image; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor
 at its original confidence. The recovered `common.h` enums, firmware log strings, and
 ELF section bytes **are** binary-derived facts and are cited as such throughout.
@@ -46,7 +46,7 @@ honestly in [§4](#4-per-generation-presence) and [§5](#5-phantom-and-wall-call
 ### 1.1 The roster — four enums, one union
 
 Each shipped generation ships exactly one `typedef enum NEURON_ISA_TPB_OPCODE { … }`
-block in its `aws_neuron_isa_tpb_common.h`. Re-parsed this session from all four
+block in its `aws_neuron_isa_tpb_common.h`. Parsed from all four
 headers under
 
 ```
@@ -55,26 +55,25 @@ extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/gpsimd/
   aws_neuron_isa_tpb_common.h
 ```
 
-with the regex `NEURON_ISA_TPB_OPCODE_(\w+)\s*=\s*(0x..)` and the trailing `// Y` /
-`// n` flag capture:
+counting `NEURON_ISA_TPB_OPCODE_<NAME> = 0x..` assignments with their trailing `// Y` /
+`// n` flag: `[HIGH/OBSERVED]`
 
-| Gen | NC version | Enum assignment lines | Confidence |
-| --- | --- | --- | --- |
-| SUNDA | v2 | **145** | `[HIGH/OBSERVED]` |
-| CAYMAN | v3 | **150** | `[HIGH/OBSERVED]` |
-| MARIANA | v4 (+ M+ v4+) | **159** | `[HIGH/OBSERVED]` |
-| MAVERICK | v5 | **165** | `[HIGH/OBSERVED]` |
-| **UNION** | — | **172 distinct values** | `[HIGH/OBSERVED]` |
+| Gen | NC version | Enum assignment lines |
+| --- | --- | --- |
+| SUNDA | v2 | **145** |
+| CAYMAN | v3 | **150** |
+| MARIANA | v4 (+ M+ v4+) | **159** |
+| MAVERICK | v5 | **165** |
+| **UNION** | — | **172 distinct values** |
 
 The chain is a **strict superset** for the shared band (`sunda ⊂ cayman ⊂ mariana ⊂
 maverick`), plus a small set of SUNDA-exclusive ops the later gens dropped (the BF16
 cluster `0x8A–0x8F`, the dual-ptr pair `0x87`/`0x88`). **Zero opcode *value* maps to
-two different *names* across gens** — re-checked this session; the union is therefore
-unambiguous. `[HIGH/OBSERVED]`
+two different *names* across gens**, so the union is unambiguous.
 
-> **NOTE — counts grounded.** `rg -c 'NEURON_ISA_TPB_OPCODE_\w+\s*=\s*0x'` returns
-> 145 / 150 / 159 / 165 per header (SUNDA/CAYMAN/MARIANA/MAVERICK); the Python union
-> over the four parsed dicts yields **172** distinct values. M+ (MARIANA_PLUS) reuses
+> **NOTE — counts grounded.** The four headers carry
+> 145 / 150 / 159 / 165 opcode assignments (SUNDA/CAYMAN/MARIANA/MAVERICK); their union
+> is **172** distinct values. M+ (MARIANA_PLUS) reuses
 > the MARIANA enum (the `kernel_info_table` key set is byte-identical, sha `9f2ce049`),
 > so it is folded into the MARIANA roster.
 
@@ -91,8 +90,7 @@ carries the governing `FIXME` comment directly on the first pseudo entry:
 These are **compiler-emitted scheduling/marshalling tokens** that NRT lowers into the
 real HW ops *before* the stream reaches the device. The GPSIMD device firmware never
 decodes them; they have **no dispatch surface** (no SEQ slot, no `kernel_info_table`
-row). All 31 (verified this session: every `0xC1`–`0xDF` entry is named `PSEUDO_*`,
-none escapes the band):
+row). All 31 — every `0xC1`–`0xDF` entry is named `PSEUDO_*`, none escapes the band:
 
 | Op | Pseudo name | Op | Pseudo name | Op | Pseudo name |
 | --- | --- | --- | --- | --- | --- |
@@ -108,7 +106,7 @@ none escapes the band):
 | `0xCA` | `EMBEDDING_UPDATE` | `0xD4` | `DMA_DIRECT2D` | `0xDE` | `TENSOR_COMPLETION` |
 | | | | | `0xDF` | `INST` |
 
-`[HIGH/OBSERVED — band re-parsed; FIXME comment read from maverick header.]`
+`[HIGH/OBSERVED]`
 
 > **GOTCHA — pseudo vs. real namesakes.** Several pseudo names collide with real-op
 > names (`0xCA PSEUDO_EMBEDDING_UPDATE` vs. real `0x79 EMBEDDING_UPDATE`; `0xCD/0xCE
@@ -121,7 +119,7 @@ none escapes the band):
 
 `NEURON_ISA_TPB_OPCODE_INVALID = 0xFF` is a **sentinel**, not an instruction (it is the
 "no opcode" / error marker). There is no `0x00` opcode in any enum (the band starts at
-`0x01 LDWEIGHTS`). One value subtracted. `[HIGH/OBSERVED]`
+`0x01 LDWEIGHTS`). One value subtracted.
 
 ### 1.4 The metric
 
@@ -136,7 +134,7 @@ none escapes the band):
 **The metric is: distinct opcode VALUES in the union of the four shipped-generation
 `NEURON_ISA_TPB_OPCODE` enums, minus the NRT-pseudo band, minus the INVALID
 sentinel.** This is the denominator every per-kernel page in this cluster is measured
-against. `[HIGH/OBSERVED — re-derived byte-exact this session.]`
+against. `[HIGH/OBSERVED]`
 
 ---
 
@@ -207,7 +205,7 @@ interior, out-of-corpus container, or header-OBSERVED-only on MAVERICK). They ar
 | `0xE3` | QUANTIZE_MX | DVE | — | MX block quant | `--YYY` | [mx-dequant](mx-dequant.md) |
 
 > **NOTE — `0x30 EXPONENTIAL` presence.** The header carries it present-but-unflagged
-> (`.`) in **all four** generations (`[HIGH/OBSERVED]`). Its DVE compute *body* is a
+> (`.`) in **all four** generations. Its DVE compute *body* is a
 > MARIANA realization (per the cross-gen matrix); the `.....` reflects the header
 > roster, the DVE engine attribution reflects the runtime.
 
@@ -349,7 +347,7 @@ positions in [§2.4](#24-pool--q7-compute-core-the-bulk-of-the-kernel-lane).)
 > dormant on CAYMAN+), listed in its numeric position in
 > [§2.4](#24-pool--q7-compute-core-the-bulk-of-the-kernel-lane). The pseudo `0xD7
 > PSEUDO_JPEG_DECODE` is a *different* opcode
-> ([§1.2](#12-the-31-pseudo-opcodes-subtracted-0xc10xdf)). `[HIGH/OBSERVED]`
+> ([§1.2](#12-the-31-pseudo-opcodes-subtracted-0xc10xdf)).
 
 **Row count: 140** — PE 10 · ACT 6 · DVE-vector 8 · POOL band 56 · batchnorm 10
 (`0x60–0x66` + `0x82`/`0x8E`/`0x94`) · NX 49 · `0x81`. Every real HW opcode appears
@@ -422,11 +420,11 @@ The presence column reads `[SUNDA·CAYMAN·MARIANA·M+·MAVERICK]`. The byte-gro
 
 - **MARIANA (v4) adds DVE + PE.** 159 entries: `+0x08`/`0x09`/`0x0A` (PE seed/MX),
   `+0x25` (Activate2), `+0xE0`–`0xE3` (sparsity/Rand2/QuantizeMx), `+0xB4` (TestEventSem).
-  The `--YYY` rows. `[HIGH/OBSERVED]`
+  The `--YYY` rows.
 
 - **MARIANA_PLUS (v4+) reuses the MARIANA enum.** No opcode-space delta; the M+ column
   mirrors MARIANA. The v4+ change is the DGE fast-path, not the opcode roster (KIT sha
-  `9f2ce049`, byte-identical to MARIANA). `[HIGH/OBSERVED]`
+  `9f2ce049`, byte-identical to MARIANA).
 
 - **MAVERICK (v5) +6, mostly header-OBSERVED.** 165 entries. **Three byte-pinned**
   `[HIGH/OBSERVED]`: `0xB6 COMPACT_CONTROL_INST`, `0xB9 DMA_MEMCPY2`,
@@ -439,7 +437,6 @@ The presence column reads `[SUNDA·CAYMAN·MARIANA·M+·MAVERICK]`. The byte-gro
 > `0x6C/0x6D/0x6E/0x6F` (`YYYYY`) are **pre-existing MARIANA DVE opcodes**, not v5
 > additions; at MAVERICK they are merely *PROF-armed* onto the DVE engine (a
 > profile-table change, not opcode growth). Do not double-count them as MAVERICK-new.
-> `[HIGH/OBSERVED]`
 
 The **MED per-gen device-body tail** carried explicitly (these rows are dispatch-placed
 + named HIGH, body MED): SUNDA RELEASE/zero-log + out-of-corpus EXTISA container (the
@@ -459,8 +456,7 @@ FLIX-desync device interiors of the `0xBD`/`0xF1` SEQ FLIX-inline DMA-transpose 
 > elsewhere only as the unrelated `UPDATE_MODE_SEM_SUB_REG_COMPLETE = 0x97` in a
 > *different* enum), and `0x98` is the real `TENSOR_SCALAR_SELECT`
 > ([ts-select](ts-select.md)). SortMerge is named-but-never-shipped. See
-> [confidence-model §4.5](../../reference/confidence-model.md). `[HIGH/OBSERVED — maverick
-> header line read this session.]`
+> [confidence-model §4.5](../../reference/confidence-model.md). `[HIGH/OBSERVED]`
 
 > **QUIRK — MAVERICK `0xF3`/`0xF4` are header-OBSERVED only (INFERRED placement).** The
 > INT_WIDE pair is named in the maverick enum but has **no POOL DEBUG image** carrying a
@@ -496,8 +492,7 @@ genuine compute/DMA/ACT gap** (the true remaining kernel-lane decode debt — th
 > **NOTE — dormant reconciliation.** There are **20** dormant (`// n`) opcodes total;
 > 8 are `NONE` (`0x04`, `0x05`, `0x4A`, `0x4B`, `0x4C`, `0x73`, `0x81`, `0x9C`) and 12 are
 > `dormant; covered` (`0x44`, `0x4F`, `0x54`, `0x5F`, `0x60`, `0x63`, `0x64`, `0x70`,
-> `0x71`, `0x76`, `0x87`, `0x88`). Re-verified this session: `8 + 12 = 20`, exactly the
-> dormant set. `[HIGH/OBSERVED]`
+> `0x71`, `0x76`, `0x87`, `0x88`). `8 + 12 = 20`, exactly the dormant set.
 
 ---
 

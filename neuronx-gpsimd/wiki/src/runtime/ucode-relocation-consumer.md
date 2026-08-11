@@ -167,7 +167,7 @@ Byte-exact layout, decoded from the writes in `0x9b6ed0`:
 | `+0x38` | `max_p_align` | the staging alignment (`a7+56`) | §2 (callers) |
 | `+0x3c` | `split_flag` | `*(validate_struct+8)` (3-phdr split) | `reloc_addr` `di[15]`; `*(di+0x3c)` (§5) |
 
-> **CORRECTION.** The backing inventory (DX-IDA-03 §7) placed `dt_init` at
+> **CORRECTION.** An earlier inventory placed `dt_init` at
 > dyn_info `+0x24`; the writes in `0x9b6ed0` put **`case 12` (DT_INIT) at
 > `a7+24` (`+0x18`)** and **`case 13` (DT_FINI) at `a7+28` (`+0x1c`)**, while the
 > `rela_table` (`case 7`) lands at `a7+32` (`+0x20`) and `rela_count`

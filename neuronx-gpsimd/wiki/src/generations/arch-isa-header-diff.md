@@ -20,12 +20,12 @@ The five generation trees are:
 | MARIANA_PLUS | v4+ | `0x1c`       | `29`         | *(shares MARIANA — no own ISA tree)* | — |
 | MAVERICK | v5     | `0x24` *(INFERRED)* | `37` *(OBSERVED)* | `neuron_maverick_arch_isa/` | `ISA header for NC-v5.` |
 
-`[HIGH/OBSERVED — banners read this session from each tree's tpb/aws_neuron_isa_tpb_common.h:1-4; arch_id/coretype carried from`
+`[HIGH/OBSERVED — banners read from each tree's tpb/aws_neuron_isa_tpb_common.h:1-4; arch_id/coretype carried from`
 [`codename-generation-map.md`](codename-generation-map.md)`.]`
 
 > **NOTE — MAVERICK confidence split.** The MAVERICK *headers* are present and
 > readable, so every v5 **struct layout / enum value** on this page is **HIGH ×
-> OBSERVED** (compiled this session). What is *not* observed is the v5 **runtime**
+> OBSERVED** (compile-verified). What is *not* observed is the v5 **runtime**
 > envelope: `arch_id 0x24` is **INFERRED** (no shipped v5 NCFW image), `coretype 37`
 > is **OBSERVED**. Treat "header-observed v5 layout" and "v5 firmware interior" as
 > two different confidence classes.
@@ -68,9 +68,9 @@ generation — a capability signature.
 | `neuron_maverick_arch_isa` | **123** | 3 | 1 |
 | `arch-isa/` (TONGA)        | **40** `tpb` + 20 `sp` + 2 `common` | — | *(none — no JSON)* |
 
-`[HIGH/OBSERVED — fd --no-ignore -e h per tree, this session.]`
+`[HIGH/OBSERVED — fd --no-ignore -e h per tree.]`
 
-> **NOTE — header count vs. report.** SX-GEN-05 §2 cited "~62 tpb headers" for SUNDA;
+> **NOTE — header count vs. report.** GEN-05 §2 cited "~62 tpb headers" for SUNDA;
 > the filesystem reports **99** `.h` files in `neuron_sunda_arch_isa/tpb`. The "~62"
 > was a count of operand-struct headers only (excluding `_enums.h`, `_assert.h`,
 > sub-include helpers, etc.). The authoritative figure for *every `.h` in the tpb dir*
@@ -110,7 +110,7 @@ basename sets — not from any report. `●` = present, `–` = absent.
 | `…_ctrl_cci.h` / `_dma_copy2d.h` / `_dma_immediate.h` | – | – | – | ● | CCI / copy2d / immediate |
 | `…_s1s2d2_am.h` / `_s2d2d2_ts_wide.h` / `_s2s2d2d2_tt.h` | – | – | – | ● | AM / TS-wide / TT |
 
-**Transition counts (basename `comm`, this session):**
+**Transition counts (basename `comm`):**
 
 | Step | added | removed |
 |------|:-----:|:-------:|
@@ -120,7 +120,7 @@ basename sets — not from any report. `●` = present, `–` = absent.
 
 `[HIGH/OBSERVED — comm -13/-23 over fd-derived basename lists.]`
 
-> **CORRECTION — SUNDA→CAYMAN removals are 3 header files, not 2.** SX-GEN-05 §9
+> **CORRECTION — SUNDA→CAYMAN removals are 3 header files, not 2.** GEN-05 §9
 > lists "−2" removals (`CUSTOM_OP_HEADER`, `CUSTOM_OP_PAYLOAD`). The filesystem shows
 > **three** removed `.h` files — the report missed `aws_neuron_isa_tpb_nx_map.h`. The
 > "−2" is correct *for the `instruction_mapping.json` struct2opcode keys* (`nx_map.h`
@@ -149,7 +149,7 @@ Every operand struct carries its own `ISA_STATIC_ASSERT(sizeof(...) == 64, ...)`
 `NEURON_ISA_PACKED = __attribute__((__packed__))`, and
 `ISA_STATIC_ASSERT → _Static_assert` (C11) / `static_assert` (C++11).
 
-**Compiled this session** (`gcc 16.1.1`, `-std=c11`). The probe — one TU per tree,
+**Compile-verified** (`gcc 16.1.1`, `-std=c11`). The probe — one TU per tree,
 including only the per-shape header + `aws_neuron_isa_tpb_common.h`:
 
 ```c
@@ -330,7 +330,7 @@ per gen is which **field type** an operand uses:
 | `S4D4_PL`, `S4D4_CR`            | `TENSOR4D` | `TENSOR4D` | `TENSOR4D` | `TENSOR4D` *(no indirect)* |
 
 > **CORRECTION — the `MEM_PATTERN4D/3D/2D` union exists from CAYMAN, not MARIANA.**
-> SX-GEN-05 §3c states the union evolution happens "at MARIANA" (`mariana common.h:832`).
+> GEN-05 §3c states the union evolution happens "at MARIANA" (`mariana common.h:832`).
 > The **union *type definitions* are already in CAYMAN** (`cayman common.h:741/745/749`,
 > with the `INDIRECT20B/16B/12B` arms). What changes at MARIANA is that the *operand
 > structs* (`S4D4_TR`, `S3D3_MM`, `S3_LW`) **switch their field type** from `TENSOR4D/3D`
@@ -354,7 +354,7 @@ are reserved — a code never changes meaning, later gens only *add*. This is th
 canonical input to [`../firmware/kernels/dtype-model.md`](../firmware/kernels/dtype-model.md);
 the table below is fully consistent with it.
 
-The enum bodies were extracted verbatim from each `common.h` this session:
+The enum bodies were extracted verbatim from each `common.h`:
 
 | code | name | SUNDA | CAYMAN | MARIANA | MAVERICK | line (maverick) | note |
 |------|------|:-----:|:------:|:-------:|:--------:|---|---|
@@ -443,7 +443,7 @@ header add/removes of §1.2.
 
 **`struct2opcode` key counts** (`jq '.struct2opcode | keys | length'`):
 SUNDA **89**, CAYMAN **99**, MARIANA **108**, MAVERICK **114**.
-`[HIGH/OBSERVED — jq this session.]`
+`[HIGH/OBSERVED — jq '.struct2opcode | keys | length'.]`
 
 **Core operand bindings** (cayman JSON; stable across gens that carry the struct):
 
@@ -490,7 +490,7 @@ package" on its `NEURON_CORE_VERSION_V2` enumerator. TONGA has **zero runtime id
 (no coretype, no arch_id) — it is purely the historical ISA-header ancestor.
 
 It is a **naming + organization rewrite**, not a width change. Both `TONGA_ISA_TPB_…`
-operands compile to 64B this session.
+operands compile to 64B.
 
 | axis | TONGA (V1, legacy "L") | MODERN (SUNDA..MAVERICK, V2..V5) |
 |------|-------------------------|----------------------------------|
@@ -518,7 +518,7 @@ FP32R/FP8_E3/E4/E5`) are exactly the SUNDA/CAYMAN-base additions.
 > `S3D3_MM` replaced this with the generic `TENSOR3D`/`MEM_PATTERN3D` mem-pattern + the
 > `transpose_mode`/`flags`/`tile_*` evolution of §2.4. The V1→V2 mnemonic→shape rename is
 > **not** a field-preserving rename: the operand semantics were re-modeled.
-> `[HIGH/OBSERVED — TONGA matmul body vs sunda S3D3_MM body, both sed'd this session.]`
+> `[HIGH/OBSERVED — TONGA matmul body vs sunda S3D3_MM body.]`
 
 So the V1→V2 step was: per-mnemonic `*_INST` → shape-coded `*_STRUCT`; `TONGA_` →
 `NEURON_`; `INST_EVENTS` 4B → `EVENTS` 8B (the `uint32 semaphore_value`); `MEM_ACCESS_3D`
@@ -528,7 +528,7 @@ bridge to SUNDA is scoped to the V1→V2 lineage work, not this header diff.
 
 ---
 
-## 6. Reproduction (commands run this session)
+## 6. Reproduction (commands)
 
 ```sh
 INC=…/extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/gpsimd/custom_op/c10/include
@@ -555,7 +555,7 @@ values above are printed by the compiled probe, not hand-computed.
 
 ## 7. Confidence ledger
 
-**HIGH × OBSERVED** (header-exact + compiled this session): the header-availability grid
+**HIGH × OBSERVED** (header-exact + compile-verified): the header-availability grid
 (99/108/117/123 tpb; +12/−3, +9/−0, +6/−0); all core operand `sizeof == 64` across all 5
 gens incl. TONGA; the `S4D4_TR` offset table (in_dtype@32/out_dtype@33 all gens); the
 `S3D3_MM`/`S3_LW` field reworks; the `TENSOR4D`→`MEM_PATTERN4D` field-type switch at

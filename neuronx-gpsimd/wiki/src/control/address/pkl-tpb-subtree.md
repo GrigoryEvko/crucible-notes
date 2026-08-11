@@ -39,7 +39,7 @@ recovered here feeds [`block-schema-xref.md`](./block-schema-xref.md).
 
 ---
 
-## 1. Provenance and the two artifacts (HIGH · OBSERVED)
+## 1. Provenance and the two artifacts
 
 Two shipped, RTL-generated files, both binary-derived and citeable:
 
@@ -67,7 +67,7 @@ backing schema file), so the *root record alone* shows 22 keys — the 23rd
 
 ---
 
-## 2. Where the TPB engine block lives (HIGH · OBSERVED)
+## 2. Where the TPB engine block lives
 
 The canonical TPB-engine root is **`USER_INT_SENG_0_TPB_0`**:
 
@@ -159,7 +159,7 @@ node.)
 | 1 | `SUNDA_POOL_RSVD` | `reserved.json` |
 
 > **GOTCHA — no PSUM node anywhere.** A name match for `"PSUM"` returns **0
-> records across all 323,198** (HIGH negative · OBSERVED). Cayman's flat YAML has
+> records across all 323,198** (negative result). Cayman's flat YAML has
 > an explicit `TPB_0_PSUM_BUF` (4 MiB @ `0x2802000000`); the Maverick DB carries
 > **no PSUM leaf**. On Maverick the PE-array accumulator is not a named
 > address-map region — it is driven from the PE-array sequencer host-visible CSRs
@@ -168,7 +168,7 @@ node.)
 
 ---
 
-## 4. Per-engine sub-block breakdown (HIGH · OBSERVED — parent-relative)
+## 4. Per-engine sub-block breakdown (parent-relative)
 
 Every Xtensa-driven engine (PE / DVE / SP / POOL) carries the **same canonical
 front-matter**: a sequencer IRAM, an Xtensa-NX core pair (`NX_IRAM` + `NX_DRAM`),
@@ -335,7 +335,7 @@ Base `0x1000000`, size `0x80000` = **512 KiB**, params
 
 ---
 
-## 5. The array / instance-expansion model — the dims the YAML lost (HIGH · OBSERVED)
+## 5. The array / instance-expansion model — the dims the YAML lost
 
 The flat YAML pre-expanded every array into underscore-joined names with **no
 dimension metadata**. The pkl carries the full nested-array geometry per node:
@@ -350,7 +350,7 @@ dimension metadata**. The pkl carries the full nested-array geometry per node:
 | `TPB_POOL` | 1 | `"1"` | 2 | 0 | `"0x0"` | `"1*1*4*2"` |
 | `POOL_Q7_CORE0_DRAM` | 1 | `"1"` | 1 | 68721573888 | `"0x0"` | `"1*1*4*2*1"` |
 
-Reading (HIGH · OBSERVED):
+Reading:
 
 - **`parent_array_size`** is the cumulative array dims of the ancestor path. The
   TPB root has `"1*1*4"` = `ROOT(1) · user_int(1) · seng(4)`. Below it every node
@@ -371,7 +371,7 @@ Reading (HIGH · OBSERVED):
   `TPB_POOL`'s absolute base (the per-core stride base).
 
 **Full expansion:** 4 SENG × 2 TPB = 8 TPBs; per TPB, 16 SP / 4 PE / 4 DVE
-explicit array members + 1 POOL with 8 Q7 cores. *Tiling/contiguity* is verified:
+explicit array members + 1 POOL with 8 Q7 cores. *Tiling/contiguity*:
 the 70 direct children fill the window with 0 gaps / 0 overlaps, and on every
 spot-checked leaf the parent-relative `offset` equals `base − parent_base` (e.g.
 `POOL_Q7_CORE0_DRAM` at `0x1000300000` − `TPB_POOL` `0x1000200000` = `0x100000`).
@@ -397,7 +397,7 @@ giving the RTL hierarchy path:
 (SP/POOL `LOCAL_REG` nodes carry no `HDL_PATH` in this subtree.) The TPB root
 carries the multi-die tag `{'DIE_NAME':'C_DIE'}`.
 
-### 5a. Block → CSR-schema bindings (HIGH · OBSERVED)
+### 5a. Block → CSR-schema bindings
 
 Every non-root node's `json` field names its backing schema. The 604-record
 subtree references exactly **13 distinct schema files**, all on disk in the
@@ -422,9 +422,9 @@ maverick `vpc-mirror/arch-regs/src/` tree:
 (Plus `tpb_user_address_map.json` on the root itself; the `STATE_BUF` leaf binds
 `memory.json`.)
 
-**Binding semantics** (HIGH · OBSERVED): the node's `type` matches the bound
+**Binding semantics:** the node's `type` matches the bound
 schema's `RegFile.Type`, and the node's `size` matches the schema's
-`SizeInBytes` — verified for `TPB_PE` (`0x100000`), `TPB_DVE` (`0x700000`),
+`SizeInBytes` — for `TPB_PE` (`0x100000`), `TPB_DVE` (`0x700000`),
 `TPB_POOL` (`0x8C0000`), `TPB_SBUF` (`0x8000000`), and the REGFILE bindings
 (`tpb_xt_local_reg` `0x10000`, `tpb_coll_sync`/`tpb_gpsimd_sync` `0x80000`). The
 `reserved.json` schema declares `SizeInBytes = RESERVED_SIZE`, and the pkl node
@@ -453,16 +453,15 @@ and it has no Cayman flat-YAML equivalent:
   `tpb_coll_sync.json`) with parameters **`NUM_SEMAPHORES=64`,
   `WATCHERS_PER_AGENT=16`, `NUM_AGENTS=8`**.
 
-> **CORRECTION vs SX-ADDR-11 §5a.** The backing report states *both* the
-> TPB-wide `COLLECTIVE_SYNC` and the POOL `GPSIMD_SYNC` expose "64 semaphores / 16
-> watchers-per-agent / 8 agents." The shipped DB shows that this is true **only of
-> the POOL `GPSIMD_SYNC`** — the **TPB-wide `COLLECTIVE_SYNC` is 32× larger:
-> 2048 semaphores / 64 watchers-per-agent / 16 agents**. The report conflated the
-> two parameter sets; the per-block sizings are genuinely different. Verified by
-> streaming all four `tpb_coll_sync.json`-bound records (the REAL and `LOCAL_*`
-> copies of each block). Both blocks bind the same `tpb_coll_sync.json` schema
-> (which is parameterized; the size differences come from the per-node parameter
-> overrides). HIGH · OBSERVED.
+> **CORRECTION — the two coll-sync blocks have different parameter sets.** It is
+> wrong to give *both* the TPB-wide `COLLECTIVE_SYNC` and the POOL `GPSIMD_SYNC`
+> "64 semaphores / 16 watchers-per-agent / 8 agents." The shipped DB shows that is
+> true **only of the POOL `GPSIMD_SYNC`** — the **TPB-wide `COLLECTIVE_SYNC` is
+> 32× larger: 2048 semaphores / 64 watchers-per-agent / 16 agents**. The per-block
+> sizings are genuinely different, and all four `tpb_coll_sync.json`-bound records
+> (the REAL and `LOCAL_*` copies of each block) agree. Both blocks bind the same
+> `tpb_coll_sync.json` schema (which is parameterized; the size differences come
+> from the per-node parameter overrides).
 
 ---
 
@@ -619,7 +618,7 @@ PE → `PE_x_y`; ACT → `ACT_CONTROL_TABLE` inside DVE; POOL(GPSIMD) → `TPB_P
 DVE → `DVE_x_y`; TPB_SP → `SP_n`. Whether Maverick firmware still treats ACT as a
 distinct engine_idx 1 base is an image-corpus question (MED · INFERRED).
 
-**Node-count reconciliation** (HIGH · OBSERVED): `user_int` TPB-name records =
+**Node-count reconciliation:** `user_int` TPB-name records =
 15,048, `secure_int` = 27,312, total 42,360. The engine-data subtree = 4,832
 (8 chains × 604). The exact numeric Cayman-YAML ↔ Maverick-pkl prune mapping is
 **not** re-derived (different SoC instance); the relationship is *structural*
@@ -630,7 +629,7 @@ numeric prune).
 
 ## 9. Confidence ledger
 
-**HIGH · OBSERVED** (re-verified by independent streaming of the shipped `.json`):
+**HIGH · OBSERVED** (independent streaming of the shipped `.json`):
 root = `USER_INT_SENG_0_TPB_0` (256 GiB window, 4 SENG × 2 TPB = 8 TPBs);
 70-child gap-free tiling (Σ == window, 0 gaps / 0 overlaps); per-engine sub-block
 breakdowns (PE 7 / DVE 22 / SP 6 / POOL 27 / EVT_SEM 8 / SP_SHARED_RAM 8 / SBUF 1
@@ -652,14 +651,6 @@ Cayman↔Maverick prune mapping (structural, not 1:1).
 
 **LOW · NOTED**: `engine_idx` values are firmware-boot-computed (image corpus),
 not address-map fields.
-
-> **CORRECTION summary vs SX-ADDR-11.** One factual correction was made on this
-> page: the report's §5a states the TPB-wide `COLLECTIVE_SYNC` exposes
-> 64 sema / 16 wpa / 8 agents — the shipped DB shows that is the **POOL
-> `GPSIMD_SYNC`** sizing, while the **TPB-wide `COLLECTIVE_SYNC` is 2048 sema /
-> 64 wpa / 16 agents** ([§5b](#5b-collective_sync--gpsimd_sync--a-new-maverick-fabric-high--observed)).
-> All other report claims reproduced byte-exact against an independent stream of
-> the `.json` mirror.
 
 ---
 

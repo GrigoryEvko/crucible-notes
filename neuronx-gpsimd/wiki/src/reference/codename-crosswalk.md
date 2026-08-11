@@ -25,7 +25,7 @@ for four rows and inferred for one.
 > whose uniform invariant is `coretype = arch_id + 1`."
 
 Every cell carries a confidence tag: **HIGH / MED / LOW** crossed with
-**OBSERVED** (read from bytes / disassembly / a shipped header this session),
+**OBSERVED** (read from bytes / disassembly / a shipped header),
 **INFERRED** (deduced from the stride, naming, or structure with no contradicting
 evidence), or **CARRIED** (taken from a cross-referenced sibling surface at its
 stated confidence). The starred `36*` on the MAVERICK `arch_id` is the single most
@@ -53,8 +53,7 @@ outlier (TONGA)**. The five form a single arithmetic family keyed on a
 
 - The five codenames; `coretype {6,13,21,29,37}`; `arch_id {5,12,20,28}`;
   `coretype = arch_id + 1`; the +8 stride; the NCFW selector bytes
-  `{0x05,0x0c,0x14,0x1c}` — all **HIGH / OBSERVED**, re-disassembled and
-  re-`nm`-listed against the shipped binaries this session.
+  `{0x05,0x0c,0x14,0x1c}` — all **HIGH / OBSERVED**.
 - MAVERICK `coretype 37` — **HIGH / OBSERVED** (two independent firmware reads,
   §3).
 - MAVERICK `arch_id 36*` — **MED / INFERRED** (the `coretype − 1` extrapolation;
@@ -101,14 +100,13 @@ The selector set is **exactly** `{0x1c, 0x14, 0x05, 0x0c}`. There is **no**
 branch on `0x24` (= 36) and **no** branch on `0x25` (= 37). A hypothetical
 MAVERICK `arch_id 0x24` falls through the `ja` arm to the `return 2` default —
 the NCFW image→generation map is a *total function on the four shipped
-generations and undefined for MAVERICK*. **[HIGH / OBSERVED — re-disassembled
-this session; the absent `0x24` is OBSERVED-negative.]**
+generations and undefined for MAVERICK*. **[HIGH / OBSERVED — the absent `0x24`
+is OBSERVED-negative.]**
 
 > **Adversarial self-verify.** The ladder is *unordered* (`0x1c` first, then a
 > `ja` guard, then `0x14`, `0x05`, `0x0c`), which makes the codename↔v# pairing
-> easy to mis-read — and a prior cross-reference wave did exactly that (it
-> crossed the CAYMAN/MARIANA labels on the v3/v4 rows). The canonical pairing is
-> triple-anchored and re-checked here: the `je` targets resolve in firmware-blob
+> easy to mis-read. The canonical pairing is triple-anchored: the `je` targets
+> resolve in firmware-blob
 > address order (`v2 < v3 < v4 < v4+`), the four `.c` source strings are
 > `sunda.c < cayman.c < mariana.c < mariana_plus.c`, and the eight
 > `v{2,3,4,4_plus}_ncfw_{iram,dram}_bin` blob symbols sit at strictly increasing
@@ -137,7 +135,7 @@ not by the +8 stride alone:
    `movabs $0x2020202000` (bit 37 set → `{13,21,29,37}`), and
    `opset_get_library_index` does `cmp $0x25` with `movabs $0x2020202040`
    (bit 37 set → `{6,13,21,29,37}`). Both accept `coretype 37`. The shipped
-   front lib rejects it. **[HIGH / OBSERVED — bitmasks decoded this session.]**
+   front lib rejects it. **[HIGH / OBSERVED]**
 
 **`arch_id 36*` is INFERRED** — there is *no* firmware byte for it:
 
@@ -185,7 +183,7 @@ also carries the SUNDA weak-undef plus the four MAVERICK-only Q7 ELFs.
 
 The split is sharp in the string tallies: a `maverick` literal appears **189
 times** in `libnrtucode_internal.so` and **0 times** in the shipped front
-`libnrtucode.so` (re-counted this session). Whether a field deployment links the
+`libnrtucode.so`. Whether a field deployment links the
 4-gen front or a 5-gen internal build is out of scope of these binaries.
 **[HIGH / OBSERVED; the "internal twin = newer 5-gen build" reading is
 MED / INFERRED.]**
@@ -208,8 +206,7 @@ identity:
   (`INVALID, UINT8, UINT16, BFLOAT16, FP16, INT32, FP32, INT64`) — a strict
   subset of the 16-code `NEURON_ISA_TPB_DTYPE_*` set the five GPSIMD generations
   use. A different enum *name family* (`TONGA_` vs `NEURON_`) means a different,
-  older ISA, not a GPSIMD generation. **[HIGH / OBSERVED — header read this
-  session.]**
+  older ISA, not a GPSIMD generation. **[HIGH / OBSERVED]**
 - On disk, `arch-headers/` has **six** dirs (the five codenames + `tonga`), but
   `neuron_*_arch_isa/` has only **four** ISA dirs `{sunda, cayman, mariana,
   maverick}`. TONGA appears only in the legacy `arch-isa/` tree, never as a
@@ -298,7 +295,7 @@ lib). **[HIGH / OBSERVED]**
 
 ---
 
-## 8 · Provenance and spot-checks (re-run this session)
+## 8 · Provenance and spot-checks
 
 ```
 NCFW = neuronx-runtime/.../opt/aws/neuron/lib/libncfw.so

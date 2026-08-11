@@ -71,7 +71,7 @@ validators that enforce this are `neff_get_header_from_buffer` @`0x4ca2c0` and `
 ## 1. The 1024-byte header — `neff_header_t`  `[HIGH × OBSERVED]`
 
 IDA ordinal **5896**, size **1024**. Every offset below is exact (`libnrt.so_structures.json`)
-and was re-read byte-for-byte out of the embedded fixture at `0xC07E20`:
+and is read byte-for-byte out of the embedded fixture at `0xC07E20`:
 
 | off | C type | name | role / observed value in the fixture |
 |---:|:---|:---|:---|
@@ -193,7 +193,7 @@ while (archive_read_next_header(a, &e) != ARCHIVE_EOF) { // 0x4e3ba0
 }
 ```
 
-> **CORRECTION (vs DX-NEFF-01 §2).** The 18-byte suffix the loader skips is **`wavegraph-bin.json`**,
+> **CORRECTION.** The 18-byte suffix the loader skips is **`wavegraph-bin.json`**,
 > *not* `"checksum"`. The comparison anchor is the byte string at `0x84986c` (`"wavegraph-bin.json"`,
 > exactly 18 chars, terminated at `byte_84987e`); `neff_parse` does `memcmp(name_tail,
 > 0x84987e − 0x12, 18)`. So the per-graph **debug wavegraph IR** is the entry dropped at load — the
@@ -367,7 +367,7 @@ key `ext_isa_ucode_lib_def` (@`0x84963b`) with `flags = 6`, capped at **18** Ext
 > **NOTE.** `CSWTCH.113` @`0x86ada8` = `{ 6, 13, 21 }` (LE `u32`, indexed by `arch_type − 2`) is a
 > **third** numbering distinct from both `arch_type` (2/3/4) and the hardware `arch_id`
 > (`0x05`/`0x0c`/`0x14`): these are **ExtISA library identifiers** handed to
-> `ucode_lib_get_ext_isa`. (DX-NEFF-01 cited "`CSWTCH_94`"; the live symbol in this build is
+> `ucode_lib_get_ext_isa`. (An earlier reading cited "`CSWTCH_94`"; the live symbol in this build is
 > `CSWTCH.113`.)
 
 **(B) NEFF-supplied library.** `def.json` key `ucode_lib` names a JSON manifest inside the tar
@@ -437,7 +437,7 @@ sourced from `KaenaHal-2.31.0.0/.../common/q7/aws_hal_q7.c`.
 > **Pool** engine's stdio queues. The per-`(gen × engine)` firmware images this references are the
 > same blobs catalogued in the [images Part](../images/image-catalog-index.md).
 >
-> **CORRECTION (vs DX-NEFF-01 §6).** The GPSIMD cores are **not** Pool-only: this build exposes both
+> **CORRECTION.** The GPSIMD cores are **not** Pool-only: this build exposes both
 > `…_NX_POOL` *and* `…_NX_DVE` getters for all four codenames. The *host driver* path documented
 > here (stdio queues, `pooling_q7_nrtucode_core`) is the **POOL** attachment; the **DVE** attachment
 > is a parallel host engine. The single-core (`total_cpus == 1`) case targets one Vision-Q7 core;
@@ -531,7 +531,7 @@ type %s"` (@`0x82d020`). The `sb_carveout` struct (size 40): `+0x00 type`, `+0x0
 `+0x10 size`, `+0x18 start_partition`, `+0x20 num_partitions`. These reserve on-chip State-Buffer
 regions so the runtime's own allocator stays out of compiler-claimed SB space.
 
-> **CORRECTION (vs DX-NEFF-01 §7).** The carveout type literal is **`evtaccel`** (8 chars, with the
+> **CORRECTION.** The carveout type literal is **`evtaccel`** (8 chars, with the
 > `t`), matching both the qword `0x6C65636361747665` and the enum `KBIN_SB_CARVEOUT_TYPE_EVTACCEL`
 > — *not* `"evaccel"` (7 chars). An 8-byte qword compare only makes sense for an 8-byte string. The
 > fixture's `runtime_statebuffer_reservation` is `[]` (no carveouts).
@@ -559,7 +559,7 @@ nrt_load → nrt_load_util → neff_parse @0x4ca3f0
 emits `neff.json` + `def.json`, `NeffFileWriter::initializeNeffHeader` fills the 1024-B header,
 `writeArchiveFile` gzips the tar with an incremental MD5 — the exact mirror of the consumer above.
 The packager round-trip is detailed in [version-compat](version-compat.md); the byte-for-byte
-re-carve of this fixture is [concrete-carve](concrete-carve.md); the consolidated container view is
+carve of this fixture is [concrete-carve](concrete-carve.md); the consolidated container view is
 [container-capstone](container-capstone.md). The host `nrt_load` call spine is
 [runtime/callgraph-spine](../runtime/callgraph-spine.md) and the loader surface is
 [runtime/libnrt-surface](../runtime/libnrt-surface.md).
@@ -589,9 +589,9 @@ re-carve of this fixture is [concrete-carve](concrete-carve.md); the consolidate
 
 ---
 
-### Corrections logged vs DX-NEFF-01 (for sibling consistency)
+### Corrections logged (for sibling consistency)
 
-| § | DX-NEFF-01 claim | binary truth (this page) |
+| § | prior claim | binary truth (this page) |
 |:---:|:---|:---|
 | §2 | skipped 18-byte suffix = `"checksum"` | **`wavegraph-bin.json`** (`memcmp` vs `0x84986c`) |
 | §6 | default-lib table = `CSWTCH_94` | live symbol = **`CSWTCH.113`** @`0x86ada8` = `{6,13,21}` |

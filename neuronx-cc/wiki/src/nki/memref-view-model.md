@@ -51,13 +51,13 @@ For reimplementation, the contract is:
 | **AP emitter** | `MemrefTile.generate_access_impl` @ `0xa8550` → `AffineExpr` → `ap_cls(...)` |
 | **Bounds check** | `check_buffer_overflow` @ `0x970b0` — SBUF/PSUM per-partition limit |
 | **Down-map target** | `neuronxcc.starfish.penguin.ir` — `Neuron{SB,PSUM,Local}Tensor`, `Neuron{,Nordset,Indirect}AP`, `NeuronIndirectRMW`, `AffineExpr`, `Axis` |
-| **Address spaces** | `sbuf`, `psum`, `hbm`, `internal` (CONFIRMED string table) |
+| **Address spaces** | `sbuf`, `psum`, `hbm`, `internal` (string table) |
 
 ---
 
 ## The Two Class Families
 
-Before the mechanism, fix the taxonomy. The inheritance edges below are STRONG (not byte-CONFIRMED):
+Before the mechanism, fix the taxonomy. The inheritance edges below are read from override patterns and `super().__init__` chains rather than from a byte-level class layout:
 they are inferred from which class overrides which abstract method, from the `super().__init__` call
 chains, and from the `"base ref tile"` / `"base data tile"` `NotImplementedError` diagnostics that
 mark the abstract roots.
@@ -83,13 +83,13 @@ The split matters: a `MemrefTile` is **pure address metadata** — it forbids `b
 backed — whereas a `DataTile` is a **value operand** that carries a predicate (mask) set and is what
 operator overloads (`@`, `+`, `astype`, `broadcast_to`) act on. The bare `DataTile` is itself
 abstract for the IR handle: it ships the diagnostics `"buffer not implemented for base data tile"`
-and `"ir not implemented for base data tile"` (CONFIRMED, string table) — the concrete IR handle
+and `"ir not implemented for base data tile"` (both string-table literals) — the concrete IR handle
 arrives only via its `tile` or via the `InstTile` subclass.
 
 > **NOTE —** the Penguin tensor classes `NeuronSBTensor` / `NeuronPSUMTensor` / `NeuronLocalTensor`
 > named here are *the same classes* documented in [5.2 — Tensor / Buffer Node](../penguin/tensor-buffer-node.md);
 > `tensors.so` does not redefine them, it constructs them by module-global name lookup. The names are
-> CONFIRMED identical on both pages (verified against `tensor-buffer-node.md`).
+> Identical on both pages (cross-checked against `tensor-buffer-node.md`).
 
 ---
 
@@ -104,7 +104,7 @@ left as `NotImplementedError` in `tensor.so`.
 
 ### Construction
 
-The `__init__` signature is CONFIRMED from the ordered `__pyx_pyargnames` table of the Cython
+The `__init__` signature is read from the ordered `__pyx_pyargnames` table of the Cython
 wrapper (`__pyx_pw_..._12KernelTensor_1__init` @ `0xb95f0`):
 
 ```c
@@ -115,13 +115,13 @@ KernelTensor(self, tile_shape, block_shape, block_indices, dtype, buffer,
 //   tile_shape     : per-tile logical shape — the unit one instruction accesses
 //   block_shape    : outer block tiling factor; multi-buffer / double-buffer count lives here
 //   block_indices  : symbolic indices into the block grid (loop ivars)
-//   buffer         : address-space kind ∈ {sbuf, psum, hbm, internal}   (CONFIRMED strings)
+//   buffer         : address-space kind ∈ {sbuf, psum, hbm, internal}   (strings)
 //   parent_scope   : owning NKI scope (nki_ctx)
 //   tensor         : optional pre-built Penguin IR tensor (wrap an existing one)
 //   vnc_addr_space : Virtual-NeuronCore address-space partitioning attribute
 ```
 
-Instance fields set in the body (CONFIRMED — `PyObject_SetAttr` targets): `self.dtype`,
+Instance fields set in the body (`PyObject_SetAttr` targets): `self.dtype`,
 `self.buffer`, `self.tensor` (the Penguin IR tensor), `self.init_value`, `self.parent_scope`,
 `self.allocation`, `self.volatile`, `self.vnc_addr_space`. Crucially the body also performs
 `self.tensor.name = self.name`, propagating the Python-level name down into the IR node. When the
@@ -131,7 +131,7 @@ Instance fields set in the body (CONFIRMED — `PyObject_SetAttr` targets): `sel
 
 `create_tensor` is the bridge that lowers a `KernelTensor` into a `starfish.penguin` buffer node. It
 is a classmethod with a 3-way dispatch on the buffer kind. The dispatch order and line numbers below
-are CONFIRMED directly from the decompiled wrapper
+are read directly from the decompiled wrapper
 (`__pyx_pw_..._12KernelTensor_23create_tensor` @ `0xa3a00`): the module-global name lookups
 `NeuronLocalTensor` (line 965), `NeuronSBTensor` (line 1402), `NeuronPSUMTensor` (line 1553) appear
 in exactly that order.
@@ -151,7 +151,7 @@ function create_tensor(cls, ..., buffer, ...):
     elif buffer == psum:
         ir_tensor = NeuronPSUMTensor(...)                    // line 1553 [5.2]
 
-    // ctor receives (CONFIRMED __pyx_n_s_* attr keys present in this wrapper):
+    // ctor receives (__pyx_n_s_* attr keys present in this wrapper):
     //   access_shape, block_shape, sizeinbytes, dtype, name, parent_scope,
     //   init_value, allocation, volatile, vnc_addr_space, backend, target,
     //   opt_level (OptLevel), enable_scalar_expansion, skip_allocators,
@@ -160,7 +160,7 @@ function create_tensor(cls, ..., buffer, ...):
 ```
 
 The eight `__pyx_n_s_*` keys `access_shape`, `block_shape`, `sizeinbytes`, `vnc_addr_space`,
-`opt_level`, `enable_scalar_expansion`, `skip_allocators`, `resetAllocation` are CONFIRMED present in
+`opt_level`, `enable_scalar_expansion`, `skip_allocators`, `resetAllocation` are present in
 the wrapper's identifier table. `access_shape` comes from `KernelTensor.compute_access_shape` (folds
 `tile_shape` into the per-partition access footprint); `block_shape` comes from
 `extract_allocated_block_shape`, whose nested `extract_multi_buffer_factor()` helper pulls the
@@ -168,12 +168,12 @@ multi-buffer (double-/N-buffer) factor out of the block dims.
 
 `KernelTensor.tensor_ir_class` returns the chosen `NeuronSBTensor`/`NeuronPSUMTensor` class — the
 abstract hook `tensor.so` left unimplemented. `KernelTensor.backend` is typed
-`Optional[Union[Tonga, Sunda]]` (CONFIRMED string), selecting the ISA family (Tonga vs Sunda) that
+`Optional[Union[Tonga, Sunda]]` (string), selecting the ISA family (Tonga vs Sunda) that
 the lowered tensor and access pattern eventually target.
 
 ### Reshape / expand_dims restrictions
 
-Two override methods carry hard, CONFIRMED diagnostics that constrain the data model:
+Two override methods carry hard diagnostics that constrain the data model:
 
 - `KernelTensor.reshape` / `_reshape_impl`: `"reshape tensor cannot change the number of elements.
   Old shape: "` and `"Can only reshape tensors in HBM"`. Reshape is **restricted to DRAM/HBM
@@ -188,7 +188,7 @@ Two override methods carry hard, CONFIRMED diagnostics that constrain the data m
 
 ### KernelBlockTensor
 
-`KernelBlockTensor` (STRONG) is a `KernelTensor` whose outer block dimension is explicit — a grid /
+`KernelBlockTensor` is a `KernelTensor` whose outer block dimension is explicit — a grid /
 array of tiles, e.g. a `multi_buffer`'d SBUF region. It contributes exactly one distinct symbol,
 `KernelBlockTensor.create_tensor`, an override that builds the blocked IR-tensor variant; all other
 behaviour is inherited from `KernelTensor`.
@@ -206,13 +206,13 @@ N-dimensional index tuple, and is the workhorse produced when you slice a `Kerne
 ### Construction
 
 ```c
-// MemrefTile.__init__  @ 0x9abe0   (CONFIRMED ordered __pyx_pyargnames)
+// MemrefTile.__init__  @ 0x9abe0   (ordered __pyx_pyargnames)
 MemrefTile(self, tensor, tile, dtype, access_shape, ap_cls)
 //   tensor       : the underlying Penguin IR tensor (from KernelTensor.tensor)
 //   tile         : the logical tile object (shape unit; ties back to the KernelTensor)
 //   access_shape : per-access footprint (partition × free dims) this view reads/writes
 //   ap_cls       : THE ACCESS-PATTERN CLASS to instantiate when emitting the AP
-// fields set (CONFIRMED SetAttr): self.tensor, self.tile, self.dtype,
+// fields set (SetAttr): self.tensor, self.tile, self.dtype,
 //                                 self.access_shape, self.ap_cls, self.shape
 
 // MemrefTileND.__init__  @ 0xb0690
@@ -227,7 +227,7 @@ MemrefTileND(self, indices):
 
 `ap_cls` is the polymorphism knob: the *same* view machinery emits different Penguin AP node types
 purely by swapping this class — `NeuronAP` (default ND), `NeuronNordsetAP` (no-reorder set),
-`NeuronIndirectAP` / `NeuronIndirectRMW` (indirect). All four names are CONFIRMED in the module
+`NeuronIndirectAP` / `NeuronIndirectRMW` (indirect). All four names are present in the module
 string table.
 
 `MemrefTile.buffer` delegates to `self.tensor.buffer`; `MemrefTile.ir` returns the lowered Penguin
@@ -262,7 +262,7 @@ function generate_access_impl(self, addrs, ctor):     // ctor == ap_cls
     for addr in addrs:
         if addr is None:
             raise "NoneType address encountered while generating access for " + self.name
-            //  ^ CONFIRMED string — fires on an unbound symbol
+            //  ^ string-table literal — fires on an unbound symbol
 
     ap = ctor(tensor=self.tensor, npartitions=npart, partition_size=pstride,
               index_exprs=idx_exprs, dtype=self.dtype, sema=...)   // ap_cls(...) → Neuron…AP node
@@ -270,10 +270,10 @@ function generate_access_impl(self, addrs, ctor):     // ctor == ap_cls
     return ap
 ```
 
-Inputs are CONFIRMED attrs of the wrapper: `addrs`, `ctor` (the AP constructor), `tensor`, `dtype`,
+Inputs are attrs of the wrapper: `addrs`, `ctor` (the AP constructor), `tensor`, `dtype`,
 `access_shape`, `shape`, `partition_size`, `npartitions`, `sema`. The canonicalisation helpers
 `keep_ap_indicies_linear_expr` and `drop_ap_indicies` and the diagnostic
-`"NoneType address encountered while generating access for "` are all CONFIRMED in the string table.
+`"NoneType address encountered while generating access for "` are all in the string table.
 
 > **NOTE —** the exact affine arithmetic *inside* `generate_access_impl` (how `addrs` and the loop
 > ivars are combined into each `AffineExpr`) is fully inlined/obfuscated by Cython. This page reports
@@ -288,7 +288,7 @@ Inputs are CONFIRMED attrs of the wrapper: `addrs`, `ctor` (the AP constructor),
 followed by `substitute(...)` to bind symbolic loop indices into the AP, respecting `in_cur_scope`.
 This is the concrete tile-level AP that instruction emission consumes.
 
-`MemrefTileND.nordset_ap` @ `0x42510` defines a nested `nordset_ap_ctor()` (CONFIRMED nested symbol)
+`MemrefTileND.nordset_ap` @ `0x42510` defines a nested `nordset_ap_ctor()` (nested symbol)
 that drives `nd_indices` through `generate_access_impl` with `NeuronNordsetAP` substituted for the
 default `NeuronAP`. A "no-reorder set" AP forbids reordering of the set elements — used where DMA or
 compute ordering across the set must be preserved, e.g. in-order reductions or ordered writes.
@@ -296,10 +296,10 @@ compute ordering across the set must be preserved, e.g. in-order reductions or o
 
 `MemrefTileND.ndim_subtensor_access` carves a sub-region of the tile via a nested `tile_access_ctor()`
 whose inner `check_stride()` guard enforces `"Access in dimension must be interval with 0 offset"`
-and rejects non-contiguous strides for sub-tensor access (CONFIRMED nested symbols + string).
+and rejects non-contiguous strides for sub-tensor access (nested symbols + string).
 
 `MemrefTileND._dynamic_index` builds a runtime-valued index entry, tying to `DynamicIndexTile` /
-`DynamicScalar` (below). It enforces `"slice with variable size is not supported"` (CONFIRMED): only
+`DynamicScalar` (below). It enforces `"slice with variable size is not supported"` : only
 the slice **offset** may be dynamic — the extent stays static.
 
 ---
@@ -315,7 +315,7 @@ scatter (store), or indirect read-modify-write.
 ### Construction and validation
 
 ```c
-// IndirectMemrefTileND.__init__  @ 0x99800   (CONFIRMED ordered args)
+// IndirectMemrefTileND.__init__  @ 0x99800   (ordered args)
 IndirectMemrefTileND(self, indices, generic_dims, generic_addrs):
     super().__init__(indices)             // MemrefTileND
     //   generic_dims  : the dimension(s) addressed indirectly ("generic")
@@ -326,16 +326,16 @@ IndirectMemrefTileND(self, indices, generic_dims, generic_addrs):
 // IndirectMemrefTileND.check_generic_indices  @ 0xba9a0
 function check_generic_indices(self):
     if indirect_dim is the partition dim:
-        raise err_indirect_indices_free_dim     // CONFIRMED — indirect dim must be a FREE dim
+        raise err_indirect_indices_free_dim     // indirect dim must be a FREE dim
     if address_tile not in required address space:
-        raise err_indirect_indices_sbuf         // CONFIRMED — checks address-tile residency
+        raise err_indirect_indices_sbuf         // checks address-tile residency
     if count(self.generic_dims) > 1:
-        raise "Multiple indirect dim access is not supported!"   // CONFIRMED — at most ONE
+        raise "Multiple indirect dim access is not supported!"   // at most ONE
 ```
 
 > **GOTCHA —** at most **one** indirect dimension per access. `last_generic_dim` simply reads
 > `self.generic_dims` and returns the single entry — trivial precisely because the hard limit
-> `"Multiple indirect dim access is not supported!"` (CONFIRMED string) forbids more. A reimplementer
+> `"Multiple indirect dim access is not supported!"` (string) forbids more. A reimplementer
 > who allows a two-axis gather will diverge from the hardware's addressing model.
 
 ### Lowering — offset-DMA vs indirect RMW
@@ -353,17 +353,17 @@ function is_offset_dma(self, inst_cls):
     if generic_addrs.is_scalar():             // single base + runtime offset
         return OFFSET_DMA                      // cheaper: one base + runtime offset
     if inst_cls is the RMW form:
-        use NeuronIndirectRMW                  // CONFIRMED — scatter-with-read-modify-write
+        use NeuronIndirectRMW                  // scatter-with-read-modify-write
     // a plain copy may NOT carry dynamic indirect indices:
-    //   err_copy_dynamic_indirect_indices_not_natively_supported  (CONFIRMED)
+    //   err_copy_dynamic_indirect_indices_not_natively_supported  
 ```
 
-The `ap_cls` map for indirect access is CONFIRMED by name: plain gather/scatter →
+The `ap_cls` map for indirect access is pinned by name: plain gather/scatter →
 `NeuronIndirectAP`; indirect RMW / scatter-add → `NeuronIndirectRMW`. The offset-DMA branch is the
 cheap form (a single base plus a runtime offset, no per-element address vector); the RMW branch is
 the read-modify-write scatter (e.g. indirect accumulate / scatter-add). A plain `copy` instruction
 cannot carry dynamic indirect indices and must route through the DMA/RMW path
-(`err_copy_dynamic_indirect_indices_not_natively_supported`, CONFIRMED).
+(`err_copy_dynamic_indirect_indices_not_natively_supported`).
 
 ---
 
@@ -395,7 +395,7 @@ it is wrapped as a tile so it can flow through the tile algebra and be reference
 //   to compute base+offset, then calls DynamicIndexTile.make_in_cur_scope.
 ```
 
-All four offsets and the helper names (`match_par_dim`, `make_in_cur_scope`) are CONFIRMED.
+All four offsets and the helper names (`match_par_dim`, `make_in_cur_scope`) resolve in the binary.
 `make_in_cur_scope` is the step that converts a *Python-time* dynamic index into a *scheduled* IR
 value, so that the indirect AP emitted later by `indirect_tensor_ref` has a concrete tile to point
 its `par_addr` at.
@@ -411,17 +411,17 @@ address-view side above.
 // DataTile.__init__(self, dtype, predicates, tile, parent_scope)  @ 0x49390
 //   self.dtype, self.predicates (predicate/mask list), self.tile, self.parent_scope
 //   abstract for the IR handle:
-//     "buffer not implemented for base data tile"   (CONFIRMED)
-//     "ir not implemented for base data tile"        (CONFIRMED)
+//     "buffer not implemented for base data tile"   
+//     "ir not implemented for base data tile"        
 
 // InstTile.__init__(self, inst, tile, buffer, name, pending_allocation)  @ 0xaef10
 //   subclass of DataTile — a tile that is the OUTPUT of an instruction (`inst`)
 //   self.inst, self.tile, self.buffer, self.name, self.pending_allocation
 //   (allocation deferred until scheduling)
-//   guards: "Unexpected change of dtype in InstTile!", "Unexpected dst type!"  (CONFIRMED)
+//   guards: "Unexpected change of dtype in InstTile!", "Unexpected dst type!"  
 ```
 
-The `DataTile` tile-algebra surface (all CONFIRMED symbols) is what makes it the operand object:
+The `DataTile` tile-algebra surface (all live symbols) is what makes it the operand object:
 `_unary_op`, `_binop`, `_binop_scalar`, `_matmul` (`self @ other` — emits a matmul where `self` is
 the stationary operand unless transposed), `_astype_impl` (dtype cast), `_broadcast_to_impl` /
 `broadcast_to_target_tile` (guarded by `"Not a broadcast!"` and `"Can only broadcast when the rank
@@ -431,7 +431,7 @@ of src and dst shape match!"`), `expand_dims`, `copy`, and `mask_tile`. Its prop
 `InstTile` is the lvalue/rvalue the IRBuilder threads between ops: `generate_dst_ap_tile` builds the
 destination AP tile for an instruction, and `add_missing_dst` / `update_free_shape` wire its output
 into the dataflow. The two guards `"Unexpected change of dtype in InstTile!"` and `"Unexpected dst
-type!"` (CONFIRMED) catch dtype/destination invariant violations when wiring instruction outputs.
+type!"`  catch dtype/destination invariant violations when wiring instruction outputs.
 
 ---
 
@@ -445,7 +445,7 @@ kernel-function argument, or a non-local tensor.
 ```c
 // TensorRef.__init__(self, tensor, access_shape, dtype)  @ 0x3c290
 //   self.tensor, self.access_shape, self.dtype, self.shape
-//   most operations are DELIBERATELY unimplemented (CONFIRMED strings):
+//   most operations are DELIBERATELY unimplemented (strings):
 //     "indexing not supported on referenced tensor, use load to get tile."
 //     "tile not implemented for base ref tile"
 //     "nd_indices not implemented for base ref tile"
@@ -453,7 +453,7 @@ kernel-function argument, or a non-local tensor.
 ```
 
 > **GOTCHA —** a `TensorRef` must be `load()`'d into a real SBUF/PSUM tile before any compute. The
-> `"indexing not supported on referenced tensor, use load to get tile."` guard (CONFIRMED) is not a
+> `"indexing not supported on referenced tensor, use load to get tile."` guard is not a
 > bug — it enforces that kernel arguments live in DRAM/HBM and are explicitly DMA'd on-chip before
 > the tile algebra touches them.
 
@@ -497,7 +497,7 @@ function build_memref_tile(tensor, access_shape, def_scope, dtype, indices):
                                                          //   prevents cross-scope dangling refs
     offset, name = compute_offset(indices), tensor.name  // offset_2 in the body
 
-    // dispatch on the SHAPE of the index tuple (all four class names CONFIRMED present):
+    // dispatch on the SHAPE of the index tuple (all four class names present):
     if indices contain an indirect / address tile:
         return IndirectMemrefTileND(indices, generic_dims, generic_addrs)
     elif indices contain a dynamic (runtime) scalar index:
@@ -510,7 +510,7 @@ function build_memref_tile(tensor, access_shape, def_scope, dtype, indices):
 
 This is what `KernelTensor._index_tensor`, `KernelTensor.__setitem__`, and `TensorView.slice`
 ultimately call to turn `tensor[...]` into a concrete view. All four target class names
-(`IndirectMemrefTileND`, `DynamicIndexTile`, `MemrefTileND`, `DataTile`) are CONFIRMED present as
+(`IndirectMemrefTileND`, `DynamicIndexTile`, `MemrefTileND`, `DataTile`) are present as
 `__pyx_n_s_*` module-global lookups in the wrapper, as are the scope helpers `get_cur_scope`,
 `in_cur_scope`, `check_reference_def_in_scope`.
 
@@ -524,27 +524,26 @@ footprint** against the hardware limits of the `target` (the Tonga/Sunda backend
 function check_buffer_overflow(tensor, target):
     if isinstance(tensor, NeuronSBTensor):
         if tensor.partition_size_in_bytes > target.statebuf_par_size_in_bytes:   // (1)
-            print_error("SB tensor overflow: ...")                               // CONFIRMED string
+            print_error("SB tensor overflow: ...")                               // string-table literal
     elif isinstance(tensor, NeuronPSUMTensor):
         if tensor.partition_size_in_bytes > target.psum_par_size_in_bytes:       // (2)
-            print_error("PSUM tensor overflow: ...")                             // CONFIRMED string
-        // PSUM additionally bounded by target.psum_num_banks (bank count)        // CONFIRMED attr
+            print_error("PSUM tensor overflow: ...")                             // string-table literal
+        // PSUM additionally bounded by target.psum_num_banks (bank count)        // attr
 ```
 
 The class branches (`NeuronSBTensor` / `NeuronPSUMTensor`, ×2 each), the size attrs
 (`partition_size_in_bytes` ×7, `statebuf_par_size_in_bytes` ×6, `psum_par_size_in_bytes` ×5,
-`psum_num_banks` ×1), and both overflow message strings are CONFIRMED in the decompiled wrapper and
+`psum_num_banks` ×1), and both overflow message strings are present in the decompiled wrapper and
 the module string table.
 
-> **CORRECTION (W07-1) —** the backing report (`SECTION 5`) presents the comparison as a literal
-> `>` against `statebuf_par_size_in_bytes` / `psum_par_size_in_bytes`. The size attributes and the
-> `"... tensor overflow:"` strings are CONFIRMED in the binary, but Cython compiles richcompare into
-> a helper call, so the *operator direction* (`>` overflow) is **INFERRED from the message semantics**,
-> not literally readable in the disassembly. The bound itself — per-partition bytes must fit one SBUF
-> partition (`statebuf`) or one PSUM bank's partition size — is the verified claim.
+> **NOTE —** the *bound* is the solid part of this check: per-partition bytes must fit one SBUF
+> partition (`statebuf`) or one PSUM bank's partition size, and the size attributes plus the
+> `"... tensor overflow:"` strings are all present in the binary. The comparison *operator* is not
+> literally readable — Cython compiles richcompare into a helper call — so the `>` direction shown
+> above is [INFERRED] from the message semantics.
 
 `extract_buffer_shape(shape)` @ `0x59550` is the partner shape probe: it normalises a user shape into
-a buffer shape, recognising `ParDim` (the partition-dimension marker, CONFIRMED attr) entries via
+a buffer shape, recognising `ParDim` (the partition-dimension marker attr) entries via
 `nki_assert`, so `create_tensor` can separate the partition dim from the free dims and size the
 per-partition footprint correctly.
 
@@ -552,7 +551,7 @@ per-partition footprint correctly.
 
 ## End-to-End: from `tensor[...]` to a Penguin AP
 
-The CONFIRMED call edges, assembled:
+The call edges, assembled:
 
 ```text
 KernelTensor[idx]  /  TensorView.slice                          [this page]
@@ -573,7 +572,7 @@ Allocation safety (parallel edge):
        └─ check_buffer_overflow(ir_tensor, target)  @ 0x970b0  → SBUF/PSUM per-partition bound
 ```
 
-The down-map, restated as a table (all names CONFIRMED from `__pyx_n_s_*` lookups + the module string
+The down-map, restated as a table (all names read from `__pyx_n_s_*` lookups + the module string
 table):
 
 | Python view / tensor | Penguin IR node | Built by |
@@ -592,35 +591,30 @@ backend target is `Optional[Union[Tonga, Sunda]]`, selecting the ISA (`TongaISAI
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Anchors
 
-The five strongest claims on this page, re-challenged against the binary:
+- **`create_tensor` dispatches Local→SB→PSUM at lines 965/1402/1553.** The decompiled wrapper shows
+  `__pyx_n_s_NeuronLocalTensor` (965/969), `NeuronSBTensor` (1402/1406), and `NeuronPSUMTensor`
+  (1553/1557) in that order.
+- **The Penguin tensor names match [5.2].** `tensor-buffer-node.md` carries `NeuronLocalTensor` (×16),
+  `NeuronPSUMTensor` (×11), and `NeuronSBTensor` (×10) — identical spellings.
+- **Both overflow strings and the four size constants exist.** `"SB tensor overflow: "` and
+  `"PSUM tensor overflow: "` sit in the string-init table; `partition_size_in_bytes`,
+  `statebuf_par_size_in_bytes`, `psum_par_size_in_bytes`, and `psum_num_banks` are all present in the
+  `check_buffer_overflow` wrapper. (The comparison operator itself is not readable — see the NOTE in §5.)
+- **`build_memref_tile` references all four view classes plus the scope helpers.**
+  `__pyx_n_s_{MemrefTileND, IndirectMemrefTileND, DynamicIndexTile, DataTile}` and
+  `__pyx_n_s_{get_cur_scope, in_cur_scope, check_reference_def_in_scope}` all resolve.
+- **The four `ap_cls` AP-node names and the AP-canonicalisation helpers exist.** `NeuronAP`,
+  `NeuronNordsetAP`, `NeuronIndirectAP`, `NeuronIndirectRMW`, plus `keep_ap_indicies_linear_expr`,
+  `drop_ap_indicies`, `generate_subst_map`, `substitute`, `cached_combine_index_tiles`,
+  `match_par_dim`, and the indirect error helpers `err_indirect_indices_sbuf` /
+  `err_indirect_indices_free_dim` are all in the string table.
 
-1. **`create_tensor` dispatches Local→SB→PSUM at lines 965/1402/1553.** Verified: `rg -n` on the
-   decompiled wrapper shows `__pyx_n_s_NeuronLocalTensor` (965/969), `NeuronSBTensor` (1402/1406),
-   `NeuronPSUMTensor` (1553/1557) in that order. **CONFIRMED.**
-2. **The Penguin tensor names match [5.2].** Verified: `tensor-buffer-node.md` contains
-   `NeuronLocalTensor` (×16), `NeuronPSUMTensor` (×11), `NeuronSBTensor` (×10) — identical spellings.
-   **CONFIRMED.**
-3. **Both overflow strings + the four size constants exist.** Verified: `"SB tensor overflow: "` and
-   `"PSUM tensor overflow: "` in the string-init table; `partition_size_in_bytes`,
-   `statebuf_par_size_in_bytes`, `psum_par_size_in_bytes`, `psum_num_banks` all present in the
-   `check_buffer_overflow` wrapper. **CONFIRMED.** The `>` operator direction is **INFERRED** (see
-   CORRECTION W07-1).
-4. **`build_memref_tile` references all four view classes + scope helpers.** Verified:
-   `__pyx_n_s_{MemrefTileND, IndirectMemrefTileND, DynamicIndexTile, DataTile}` and
-   `__pyx_n_s_{get_cur_scope, in_cur_scope, check_reference_def_in_scope}` all present. **CONFIRMED.**
-5. **The four `ap_cls` AP-node names + the AP-canonicalisation helpers exist.** Verified:
-   `NeuronAP`, `NeuronNordsetAP`, `NeuronIndirectAP`, `NeuronIndirectRMW`, plus
-   `keep_ap_indicies_linear_expr`, `drop_ap_indicies`, `generate_subst_map`, `substitute`,
-   `cached_combine_index_tiles`, `match_par_dim`, and the indirect error helpers
-   `err_indirect_indices_sbuf` / `err_indirect_indices_free_dim` all present in the string table.
-   **CONFIRMED.**
-
-The opaque parts, marked honestly: the precise affine arithmetic inside `generate_access_impl` and
-`ap_tile` is inlined by Cython and is **not** reconstructed here (inputs/helpers/outputs only); the
-overflow comparison *operator* is INFERRED; the inheritance edges are STRONG (override-pattern +
-`super().__init__` chains + abstract-base diagnostics), not byte-CONFIRMED.
+Two things this page does **not** reconstruct: the precise affine arithmetic inside
+`generate_access_impl` and `ap_tile`, which Cython inlines (only inputs, helpers, and outputs are
+recovered); and the byte-level class layout behind the inheritance edges, which are read from
+override patterns, `super().__init__` chains, and abstract-base diagnostics instead.
 
 ---
 

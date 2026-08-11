@@ -28,14 +28,14 @@ The headline a reimplementer must replicate exactly is **the three-part dedup ke
 
 ## 1 — HLO stage: `xla::InlineWeights`
 
-`xla::InlineWeights::Run(HloModule*, const absl::flat_hash_set<string_view>&)` is a standard XLA `HloPassInterface` pass, registered through `hilo::RegisterInlineWeights` (the `_Function_handler` thunk for it is at `0x1e714a0` in hlo-opt). Its `name()` (`0x1fb7220`) returns the 14-byte string `"inline-weights"` (fileoff `0x46463` in hlo2penguin) — `[VERIFIED: the bytes at `0x46463` read `inline-weights`]`.
+`xla::InlineWeights::Run(HloModule*, const absl::flat_hash_set<string_view>&)` is a standard XLA `HloPassInterface` pass, registered through `hilo::RegisterInlineWeights` (the `_Function_handler` thunk for it is at `0x1e714a0` in hlo-opt). Its `name()` (`0x1fb7220`) returns the 14-byte string `"inline-weights"`, stored at fileoff `0x46463` in hlo2penguin.
 
-**The pass exists in *both* front-end ELFs.** It is compiled into `hlo2penguin` (the F0 `HLOToTensorizer` job) at `0x1fb8f30` and again into `hlo-opt` (the F2 `Frontend` job) at `0x1ee8c60`. The two are the same source pass at different link bases. The deep pass-internals (the `metadata.json` reader, the diagnostic family) are documented on the Part-4 sibling that owns the `hlo-opt` instance — [HLO misc-cleanup sweep §3.1](../hlo-opt/hlo-misc-cleanup-sweep.md); this page pins the `hlo2penguin` instance because it is the HLO→Penguin lowering that feeds the BIR const-tensor model below. `[CONFIRMED — both `_ZN3xla13InlineWeights3RunE…` symbols present, one per ELF.]`
+**The pass exists in *both* front-end ELFs.** It is compiled into `hlo2penguin` (the F0 `HLOToTensorizer` job) at `0x1fb8f30` and again into `hlo-opt` (the F2 `Frontend` job) at `0x1ee8c60`. The two are the same source pass at different link bases. The deep pass-internals (the `metadata.json` reader, the diagnostic family) are documented on the Part-4 sibling that owns the `hlo-opt` instance — [HLO misc-cleanup sweep §3.1](../hlo-opt/hlo-misc-cleanup-sweep.md); this page pins the `hlo2penguin` instance because it is the HLO→Penguin lowering that feeds the BIR const-tensor model below. Both ELFs carry their own `_ZN3xla13InlineWeights3RunE…` symbol.
 
 The body of `Run` (`0x1fb8f30`, ends at `0x1fbb6f0`) calls, in order — every callee demangled from the disassembly:
 
 ```c
-// xla::InlineWeights::Run  —  hlo2penguin 0x1fb8f30   [CONFIRMED — call graph]
+// xla::InlineWeights::Run  —  hlo2penguin 0x1fb8f30
 HloPassResult InlineWeights_Run(HloModule *m, const flat_hash_set<string_view> &allow)
 {
     // The pass reads an out-of-band model directory: "<dir>/metadata.json"
@@ -57,7 +57,7 @@ HloPassResult InlineWeights_Run(HloModule *m, const flat_hash_set<string_view> &
 
 The `flat_hash_set<string_view>` argument is the allow-set of computations/instructions the pass is permitted to touch; it is not the weight list. **Net effect:** after `InlineWeights`, the HLO module carries `kConstant` instructions whose `Literal` data came from `.npy` files, and has no weight *parameters* left. Those constants are what the BIR stage (§2) lowers into device constant buffers.
 
-> **CORRECTION — the `.npy` path is not `frontend_attributes["weight_file"]`.** An earlier internal note placed the weight path under an HLO `frontend_attributes["weight_file"]` key, citing a string at `0x66996`. The bytes at hlo2penguin `0x66996` are in fact `"binary_op_name"`, not `"weight_file"`; there is **no** `weight_file` (singular) string in the binary. The real source is the model-directory JSON: `/metadata.json` (`0x4a2e6`) listing `model_files` (`0x324fe`) and `weight_files` (`0x669d6`), with the hard-error `"Corrupted input dir, model file does not exist!"` (`0xf65b8`) and `"Please ensure metadata.json exists and has read permissions."` (`0xb1fb0`) guarding it. The `frontend_attributes` strings that *do* exist (`0x1a2c7`, `mhlo.frontend_attributes` @ `0x11aa3`) belong to unrelated MHLO attribute plumbing. `[CONFIRMED — string-offset reads disagree with the prior note.]`
+> **GOTCHA — the weight path comes from the model directory, not from an HLO attribute.** There is no `weight_file` (singular) string anywhere in the binary; the bytes at `0x66996`, where one might expect it, read `"binary_op_name"`. The `frontend_attributes` strings that do exist (`0x1a2c7`, `mhlo.frontend_attributes` @ `0x11aa3`) belong to unrelated MHLO attribute plumbing. The real source is `<dir>/metadata.json` (`0x4a2e6`), which lists `model_files` (`0x324fe`) and `weight_files` (`0x669d6`); `"Corrupted input dir, model file does not exist!"` (`0xf65b8`) and `"Please ensure metadata.json exists and has read permissions."` (`0xb1fb0`) guard it.
 
 ---
 
@@ -81,9 +81,9 @@ A lowered constant becomes a `bir` tensor whose **buffer family** is named by th
 | 11 | `NeuronPSUMTensor` (`0x70b686`) | PSUM resident |
 | **12** | **`ImmutableParameter`** (`0x70b697`) | **read-only constant** — the inlined weight/const data |
 
-`[CONFIRMED — jump table @ 0x78a524 decoded: ordinal 3→0x3ca870→`lea 0x70b5f3`, ordinal 4→0x3ca880→`lea 0x70b606`, ordinal 12→0x3ca828→`lea 0x70b697`; all 13 strings present at the listed offsets.]`
+*Anchors: jump table @ `0x78a524` — ordinal 3 → `0x3ca870` → `lea 0x70b5f3`, ordinal 4 → `0x3ca880` → `lea 0x70b606`, ordinal 12 → `0x3ca828` → `lea 0x70b697`.*
 
-> **CORRECTION — there are THREE distinct const/weight classes, not two.** Prior siblings listed "`ImmutableParameter` / `IdentityWeightTensor`" as if those were the const classes, conflating roles. The enum cleanly separates **three** members: `NeuronWeightTensor` (3, a tensor flagged as a weight), `IdentityWeightTensor` (4, the identity/passthrough weight), and `ImmutableParameter` (12, the read-only constant data the inliner planted). They are distinct ordinals, not synonyms. `[CONFIRMED — three separate jump-table cases.]`
+> **NOTE — three const/weight classes, not two.** The enum separates `NeuronWeightTensor` (3, a tensor flagged as a weight), `IdentityWeightTensor` (4, the identity/passthrough weight), and `ImmutableParameter` (12, the read-only constant data the inliner planted). They are three distinct jump-table cases, not synonyms for one another.
 
 `TensorClass` round-trips through BIR's JSON by **name string**, never by ordinal — `nlohmann::adl_serializer<bir::TensorClass>::to_json` @ libBIR `0x484f90` / `from_json` @ `0x483f80`, plus the symmetric `string2TensorClass` @ `0x3ca940`. The serializer is reached only from `MemoryLocationSet::{toJson,createFromJson}`, i.e. the class is a **Set-level** property of the logical tensor (see [BIR MemoryLocation §TensorClass](../bir/memory-location.md) for the Set/Location split and the full roster, and the [Penguin tensor/buffer nodes](../penguin/tensor-buffer-node.md) page for the Python-side class hierarchy).
 
@@ -95,7 +95,7 @@ The const-bearing tensor carries three extra JSON fields (tensor-level schema cl
 | `const_sub_tensor_id` | id of the sub-tensor a const tensor references — lets several tensors share one const file by index, decoupling the logical tensor from the physical blob |
 | `is_regloc_offset` | whether the offset is register-relative |
 
-The physical bytes live behind a `klr::SharedConstantFile` (serialized into the KLIR/BIR stream): `klr::SharedConstantFile_ser(FILE*, shared_ptr<…>)` @ libwalrus `0xf46400`, `…_des(FILE*)` @ `0xf4ec40`, the `List_` variants @ `0xf49ab0` / `0xf6a810`, `to_string` @ `0xf82440`. A function carries a **list** of these (each a `shared_ptr`); "Shared" means one physical const file can back several tensors — the in-memory precursor to the on-NEFF dedup of §4. `[CONFIRMED — all symbols defined at the listed addresses.]`
+The physical bytes live behind a `klr::SharedConstantFile` (serialized into the KLIR/BIR stream): `klr::SharedConstantFile_ser(FILE*, shared_ptr<…>)` @ libwalrus `0xf46400`, `…_des(FILE*)` @ `0xf4ec40`, the `List_` variants @ `0xf49ab0` / `0xf6a810`, `to_string` @ `0xf82440`. A function carries a **list** of these (each a `shared_ptr`); "Shared" means one physical const file can back several tensors — the in-memory precursor to the on-NEFF dedup of §4.
 
 ---
 
@@ -108,7 +108,7 @@ Before NEFF packaging, the const data is materialized on disk as a standalone fi
 Disassembled control flow:
 
 ```c
-// copyConstFileToArtifact  —  libwalrus 0xf08980   [CONFIRMED — disasm]
+// copyConstFileToArtifact  —  libwalrus 0xf08980
 void copyConstFileToArtifact(InstNKIKLIRKernel &k, Function &fn, const string &constFileName)
 {
     // 1. Walk the function's memory locations, filtering for const-bearing ones.
@@ -133,11 +133,11 @@ void copyConstFileToArtifact(InstNKIKLIRKernel &k, Function &fn, const string &c
 }
 ```
 
-`copyConstFileToArtifact` is invoked once per NKI-KLIR kernel instruction that owns const files: the direct call site is `0xf0b2c9` (through PLT `0x5f2b30`), with inlined clones at `0xf1145f` / `0xf1178f` / `0xf11aef` / `0xf11e4f` inside the kernel-lowering neighbourhood (`lowerKernelInst` @ `0xf0b610`). `[CONFIRMED — call sites in disasm.]`
+`copyConstFileToArtifact` is invoked once per NKI-KLIR kernel instruction that owns const files: the direct call site is `0xf0b2c9` (through PLT `0x5f2b30`), with inlined clones at `0xf1145f` / `0xf1178f` / `0xf11aef` / `0xf11e4f` inside the kernel-lowering neighbourhood (`lowerKernelInst` @ `0xf0b610`).
 
-`neuronxcc::backend::copyFileToFolder(const string& file, const string& from, const string& to)` @ libwalrus **`0xf98340`** composes the destination path with `std::filesystem::path` machinery — `path::_M_split_cmpts` (plt `0x627a50`), `path::_List` ctor/deleter, and the `'/'` separator (`0x1c82442`) appended via `basic_string::_M_append`. The byte copy is `std::filesystem::copy_file` (imported `_ZNSt10filesystem9copy_fileE…@GLIBCXX_3.4.26`, PLT stub `0x5f4a80`). `[CONFIRMED — path machinery + copy_file import.]`
+`neuronxcc::backend::copyFileToFolder(const string& file, const string& from, const string& to)` @ libwalrus **`0xf98340`** composes the destination path with `std::filesystem::path` machinery — `path::_M_split_cmpts` (plt `0x627a50`), `path::_List` ctor/deleter, and the `'/'` separator (`0x1c82442`) appended via `basic_string::_M_append`. The byte copy is `std::filesystem::copy_file` (imported `_ZNSt10filesystem9copy_fileE…@GLIBCXX_3.4.26`, PLT stub `0x5f4a80`).
 
-> **CORRECTION — the literal `copy_file` *call site* is not inside `copyFileToFolder`.** The single direct call to `std::filesystem::copy_file` (PLT `0x5f4a80`) in the whole of `libwalrus` is at `0x16d2ca6`, inside `LncSplitter::concretizeInstruction` (`0x16d23d0`) — not in `copyFileToFolder` (`0xf98340`). `copyFileToFolder`'s own PLT call set is purely path-composition (`_M_split_cmpts`, `_List` ctor, `_M_append`, `_M_replace`, `memcpy`, `__assert_fail`); the actual data move it performs reaches the filesystem layer through internal (non-PLT) helpers rather than the imported `copy_file` overload. The earlier note's "copy_file inlined into copyFileToFolder" is imprecise: a reimplementer should model `copyFileToFolder` as *path composition + a filesystem copy*, but should not expect the `copy_file@GLIBCXX_3.4.26` symbol to be reached from this function specifically. `[CONFIRMED — only call site of PLT 0x5f4a80 is at 0x16d2ca6.]`
+> **GOTCHA — `copyFileToFolder` does not call `copy_file@plt`.** The only direct call to `std::filesystem::copy_file` (PLT `0x5f4a80`) in all of `libwalrus` is at `0x16d2ca6`, inside `LncSplitter::concretizeInstruction` (`0x16d23d0`). `copyFileToFolder`'s own PLT call set is purely path composition (`_M_split_cmpts`, `_List` ctor, `_M_append`, `_M_replace`, `memcpy`, `__assert_fail`); it reaches the filesystem layer through internal, non-PLT helpers. Model it as *path composition plus a filesystem copy*, but do not expect to find the imported `copy_file` overload on its call graph.
 
 ---
 
@@ -150,7 +150,7 @@ This is the page's headline. Two cooperating classes in `neuronxcc::backend` ded
 The key is assembled across **two** functions joined by the public entry. Confirmed by disassembly:
 
 ```c
-// FileDeDuper::getHash(vector<char>&)  —  libwalrus 0x10b4130   [CONFIRMED — disasm]
+// FileDeDuper::getHash(vector<char>&)  —  libwalrus 0x10b4130
 // Computes ONLY the content MD5 of the byte blob. Does NOT touch dtype/memtype.
 string FileDeDuper_getHash(const vector<char> &bytes) {
     uint8_t digest[16];
@@ -159,7 +159,7 @@ string FileDeDuper_getHash(const vector<char> &bytes) {
     return getMd5String(digest);                 // 0x1088df0 (plt 0x606f30, call @ 0x10b439b) → 32-hex string
 }
 
-// MemlocFileDeDuper::getHash(const bir::MemoryLocation&)  —  libwalrus 0x10b45c0   [CONFIRMED — disasm]
+// MemlocFileDeDuper::getHash(const bir::MemoryLocation&)  —  libwalrus 0x10b45c0
 // Produces the dtype + memtype SUFFIX. Does NOT read the file or compute MD5.
 string MemlocFileDeDuper_getHash(const MemoryLocation &ml) {
     bir::Dtype      dt = ml.getDtype();                       // plt 0x5f99a0, call @ 0x10b45e1/0x10b479b
@@ -170,7 +170,7 @@ string MemlocFileDeDuper_getHash(const MemoryLocation &ml) {
     return s;                     // joined via basic_string::_M_append (plt 0x600aa0)
 }
 
-// MemlocFileDeDuper::getUniqFileName  —  libwalrus 0x10b7480   [CONFIRMED — disasm]
+// MemlocFileDeDuper::getUniqFileName  —  libwalrus 0x10b7480
 // THE PUBLIC ENTRY. Joins the two halves and looks up the canonical unique file.
 string getUniqFileName(const MemoryLocation &ml, const string &path) {
     string suffix = MemlocFileDeDuper_getHash(ml);            // plt 0x61ddf0, call @ 0x10b74b0
@@ -188,16 +188,16 @@ So the composite dedup key is:
 | `Dtype2string(dtype)` | `bir::Dtype2string` (fed by `MemoryLocation::getDtype` @ plt `0x5f99a0`) | libBIR `0x2641e0` |
 | `MemoryType2string(memtype)` | `bir::MemoryType2string` (memtype @ `MemoryLocation+0xd8`) | libBIR `0x3ca040` |
 
-`MemoryType` (stringifier @ libBIR `0x3ca040`, rodata roster @ `0x70b52c…`) covers `REG`, `Unallocated`, `DRAM`, `RNGSTATE`, `ExternalInput`/`ExternalInputParameter`, `ExternalOutput`/`ExternalOutputParameter`, `Const`, `Internal`, `Pointer`, `InternalInterface`. **Consequence:** a const blob in `DRAM` versus `SB` with byte-identical contents hashes to a *different* key and is **not** merged. Identical bytes + identical dtype + identical memtype is the only thing the deduper collapses. `[CONFIRMED — all three append sites in disasm.]`
+`MemoryType` (stringifier @ libBIR `0x3ca040`, rodata roster @ `0x70b52c…`) covers `REG`, `Unallocated`, `DRAM`, `RNGSTATE`, `ExternalInput`/`ExternalInputParameter`, `ExternalOutput`/`ExternalOutputParameter`, `Const`, `Internal`, `Pointer`, `InternalInterface`. **Consequence:** a const blob in `DRAM` versus `SB` with byte-identical contents hashes to a *different* key and is **not** merged. Identical bytes + identical dtype + identical memtype is the only thing the deduper collapses.
 
-> **CORRECTION — which function appends dtype/memtype.** An earlier note attributed the dtype/memtype append to `FileDeDuper::getHash(vector<char>&)` (`0x10b4130`). Firsthand that overload calls **only** `getMd5String` (no `Dtype2string`/`MemoryType2string` calls in its body) — it produces the pure content MD5. The dtype+memtype suffix is produced by the *memloc-aware* specialization `MemlocFileDeDuper::getHash` (`0x10b45c0`), which is the one that calls `Dtype2string` (plt `0x5f6530`) and `MemoryType2string` (plt `0x5ee060`). The two halves are joined by `getUniqFileName` (`0x10b7480`). The **resulting key is identical** (`MD5 + dtype + memtype`); only the attribution of *where* each part is computed is corrected. `[CONFIRMED — call-target sets of the two getHash bodies differ exactly as described.]`
+> **GOTCHA — the two `getHash` overloads compute different halves of the key.** `FileDeDuper::getHash(vector<char>&)` (`0x10b4130`) calls only `getMd5String`: it is the pure content MD5, with no dtype or memtype in it. The dtype+memtype suffix comes from the memloc-aware `MemlocFileDeDuper::getHash` (`0x10b45c0`), the only one that calls `Dtype2string` (plt `0x5f6530`) and `MemoryType2string` (plt `0x5ee060`). Neither alone is the dedup key; `getUniqFileName` (`0x10b7480`) joins them.
 
 ### 4b — The dedup map and the lookup
 
 `FileDeDuper::addFileAndFindUniq(const std::string&)` @ libwalrus **`0x10b4c30`** is the worker:
 
 ```c
-// addFileAndFindUniq  —  libwalrus 0x10b4c30   [CONFIRMED — disasm]
+// addFileAndFindUniq  —  libwalrus 0x10b4c30
 string addFileAndFindUniq(const string &path /* carries the dtype+memtype suffix */) {
     // 1. stat + read the file bytes into a vector<char>:
     //    istream::tellg (0x60fa20) → seekg (0x5f3160) → read (0x6179d0).
@@ -220,7 +220,7 @@ std::unordered_map< std::string,                                 // key = MD5(by
                     std::vector<FileDeDuper::FileData> >          // bucket: MD5-collision tolerant
 ```
 
-— confirmed by the demangled `_Map_base<…basic_string…, pair<…string, vector<FileDeDuper::FileData>>…>::operator[]` @ `0x10b9490` and the hashtable nodes @ `0x10b9270`. The collision *vector* is the reason the value is `vector<FileData>` and not a bare `FileData`: two distinct blobs sharing an MD5 stay separable. `[CONFIRMED — map type demangled.]`
+— confirmed by the demangled `_Map_base<…basic_string…, pair<…string, vector<FileDeDuper::FileData>>…>::operator[]` @ `0x10b9490` and the hashtable nodes @ `0x10b9270`. The collision *vector* is the reason the value is `vector<FileData>` and not a bare `FileData`: two distinct blobs sharing an MD5 stay separable.
 
 Diagnostic strings (libwalrus `.rodata`, human-readable):
 
@@ -235,14 +235,14 @@ Diagnostic strings (libwalrus `.rodata`, human-readable):
 | `0x1d382a8` | `MemlocFileDeDuper found match for ` |
 | `0x1c8689d` | `Const File de-dup saved ` (… `KB of memory footprint`) |
 
-Savings counters: `MemlocFileDeDuper::getBytsDedupedTotal()` @ `0x10b45a0`, `FileDeDuper::getNumUniqFiles()` @ `0x10b4560`. The user-visible `"Const File de-dup saved <N> KB"` line is emitted from `writeVarDefinitions` (§4d). `[CONFIRMED — strings at listed offsets.]`
+Savings counters: `MemlocFileDeDuper::getBytsDedupedTotal()` @ `0x10b45a0`, `FileDeDuper::getNumUniqFiles()` @ `0x10b4560`. The user-visible `"Const File de-dup saved <N> KB"` line is emitted from `writeVarDefinitions` (§4d).
 
 ### 4c — In-DRAM alignment vs on-NEFF padding
 
 Two different alignments apply, and conflating them is a classic error:
 
-- **`const_ap_offset`** (the tensor's byte position inside the const `.bin`, and its in-DRAM/SBUF placement) is set by `neuronxcc::backend::getAlignmentSize(bir::MemoryLocation*, const PassOptions&, bool)` @ libwalrus `0x1091890`. Alignment is *not* a global constant: it is derived per memory-location from the tensor's `Dtype` and its `PhysicalAccessPattern` (one branch forces an 8-element alignment, another uses `0xc0` = 192), via `isValidTileSize` and `PhysicalAccessPattern::getOffsetInBasePartition`. `[STRONG]`
-- **On-NEFF tar padding** is libarchive's PAX default — each member's data is padded to a 512-byte tar record. There is no extra walrus-imposed per-member alignment in `writeArchiveFile`. See [NEFF container §determinism](./neff-container.md). `[CONFIRMED — no `archive_write_set_bytes_per_block` override in the writer.]`
+- **`const_ap_offset`** (the tensor's byte position inside the const `.bin`, and its in-DRAM/SBUF placement) is set by `neuronxcc::backend::getAlignmentSize(bir::MemoryLocation*, const PassOptions&, bool)` @ libwalrus `0x1091890`. Alignment is *not* a global constant: it is derived per memory-location from the tensor's `Dtype` and its `PhysicalAccessPattern` (one branch forces an 8-element alignment, another uses `0xc0` = 192), via `isValidTileSize` and `PhysicalAccessPattern::getOffsetInBasePartition`.
+- **On-NEFF tar padding** is libarchive's PAX default — each member's data is padded to a 512-byte tar record. There is no extra walrus-imposed per-member alignment in `writeArchiveFile`. The writer contains no `archive_write_set_bytes_per_block` override. See [NEFF container §determinism](./neff-container.md).
 
 A weight's NEFF byte offset is therefore the tile/partition-aligned `const_ap_offset` from `getAlignmentSize`; the tar member itself only carries 512-B PAX block padding.
 
@@ -260,7 +260,7 @@ Multiple `var_id`s sharing one deduped blob point at the same `referenced_var_id
 
 ### 4e — Why dedup feeds reproducibility
 
-`NeffFileWriter::writeArchiveFile` (`0x153e030`) builds the NEFF as a **deterministic** gzip-filtered PAX tar: `archive_write_set_format_pax`, `archive_write_add_filter_gzip` with `compression-level=1` and `timestamp=false`, owner `"nobody"`, and `mtime/ctime/atime` all zeroed (full detail on [NEFF container](./neff-container.md)). Because `MemlocFileDeDuper`'s key is a pure function of `(bytes, dtype, memtype)` — no timestamps, no allocation addresses, no iteration-order nondeterminism in the *key* itself — the **set of unique const members** is identical across two compiles of the same IR. The deduper is the component that makes the *constant section* of the reproducible-tar guarantee hold: two builds dedupe to the same members, which the deterministic tar then packs to the same bytes. `[STRONG — key is content+dtype+memtype only; tar determinism is CONFIRMED separately.]`
+`NeffFileWriter::writeArchiveFile` (`0x153e030`) builds the NEFF as a **deterministic** gzip-filtered PAX tar: `archive_write_set_format_pax`, `archive_write_add_filter_gzip` with `compression-level=1` and `timestamp=false`, owner `"nobody"`, and `mtime/ctime/atime` all zeroed (full detail on [NEFF container](./neff-container.md)). Because `MemlocFileDeDuper`'s key is a pure function of `(bytes, dtype, memtype)` — no timestamps, no allocation addresses, no iteration-order nondeterminism in the *key* itself — the **set of unique const members** is identical across two compiles of the same IR. The deduper is the component that makes the *constant section* of the reproducible-tar guarantee hold: two builds dedupe to the same members, which the deterministic tar then packs to the same bytes.
 
 ---
 
@@ -296,15 +296,15 @@ NEFF  writeVarDefinitions (0x1526530) wires var_id → referenced_var_id / const
 
 ## Adversarial self-verification
 
-The five strongest claims, re-checked against the binaries:
+The five strongest claims on this page, and what pins each:
 
-1. **Dedup key = `MD5(bytes) + dtype + memtype`.** `MemlocFileDeDuper::getHash` (`0x10b45c0`) disassembles to calls of `MemoryLocation::getDtype` (plt `0x5f99a0`), `Dtype2string` (plt `0x5f6530`), and `MemoryType2string` (plt `0x5ee060`), joined with `_M_append`; `FileDeDuper::getHash` (`0x10b4130`) calls `getMd5String` (plt `0x606f30`) over the byte blob. **CONFIRMED.**
-2. **The dedup map is `unordered_map<string, vector<FileDeDuper::FileData>>`.** `operator[]` symbol @ `0x10b9490` demangles to exactly that `_Map_base<basic_string, pair<…, vector<FileDeDuper::FileData>>>`. **CONFIRMED.**
-3. **Three distinct const/weight `TensorClass` ordinals: 3, 4, 12.** Jump table @ libBIR `0x78a524` decoded entry-by-entry: ordinal 3→`NeuronWeightTensor`, 4→`IdentityWeightTensor`, 12→`ImmutableParameter`; bounds `cmp $0xc / ja`. **CONFIRMED.**
-4. **`copyConstFileToArtifact` (`0xf08980`) → `getArtifactAbsPath` → `copyFileToFolder`.** Call sites at `0xf08dc6` (plt `0x5fadf0`) and `0xf08ddb` (plt `0x5fa0b0`) in the disasm. **CONFIRMED.**
-5. **`InlineWeights` exists in both hlo2penguin (`0x1fb8f30`) and hlo-opt (`0x1ee8c60`); chain is `npy2literal → CreateConstant → AddInstruction → RemoveParameter`.** Both `Run` symbols present; the four callees demangle out of the hlo2penguin body. **CONFIRMED.**
+1. **Dedup key = `MD5(bytes) + dtype + memtype`.** `MemlocFileDeDuper::getHash` (`0x10b45c0`) disassembles to calls of `MemoryLocation::getDtype` (plt `0x5f99a0`), `Dtype2string` (plt `0x5f6530`), and `MemoryType2string` (plt `0x5ee060`), joined with `_M_append`; `FileDeDuper::getHash` (`0x10b4130`) calls `getMd5String` (plt `0x606f30`) over the byte blob.
+2. **The dedup map is `unordered_map<string, vector<FileDeDuper::FileData>>`.** `operator[]` symbol @ `0x10b9490` demangles to exactly that `_Map_base<basic_string, pair<…, vector<FileDeDuper::FileData>>>`.
+3. **Three distinct const/weight `TensorClass` ordinals: 3, 4, 12.** Jump table @ libBIR `0x78a524` decoded entry-by-entry: ordinal 3→`NeuronWeightTensor`, 4→`IdentityWeightTensor`, 12→`ImmutableParameter`; bounds `cmp $0xc / ja`.
+4. **`copyConstFileToArtifact` (`0xf08980`) → `getArtifactAbsPath` → `copyFileToFolder`.** Call sites at `0xf08dc6` (plt `0x5fadf0`) and `0xf08ddb` (plt `0x5fa0b0`).
+5. **`InlineWeights` exists in both hlo2penguin (`0x1fb8f30`) and hlo-opt (`0x1ee8c60`); chain is `npy2literal → CreateConstant → AddInstruction → RemoveParameter`.** Both `Run` symbols are present, and the four callees demangle out of the hlo2penguin body.
 
-**Honest verification ceiling.** What is *not* fully pinned: (a) the exact predicate that selects which entry parameters `InlineWeights` treats as weights (the `metadata.json` schema parse is owned by the [Part-4 sibling](../hlo-opt/hlo-misc-cleanup-sweep.md), not re-derived here); (b) the precise internal helper inside `copyFileToFolder` that performs the byte copy — the function composes the path and reaches the filesystem layer, but the single PLT `copy_file` call lives in `LncSplitter::concretizeInstruction`, so the exact copy mechanism `copyFileToFolder` uses is `[INFERRED]` (filesystem copy via internal helper) rather than a confirmed `copy_file@plt` call; (c) the `FileData` struct layout (the `matches`/equality fields beyond the hash bucket) is `[INFERRED]` from the collision-vector shape, not field-decoded; (d) `getAlignmentSize`'s full per-dtype alignment table is `[STRONG]` (two branches read: 8-element and `0xc0`), not exhaustively enumerated.
+**Honest verification ceiling.** What is *not* fully pinned: (a) the exact predicate that selects which entry parameters `InlineWeights` treats as weights (the `metadata.json` schema parse is owned by the [Part-4 sibling](../hlo-opt/hlo-misc-cleanup-sweep.md), not re-derived here); (b) the precise internal helper inside `copyFileToFolder` that performs the byte copy — the function composes the path and reaches the filesystem layer, but the single PLT `copy_file` call lives in `LncSplitter::concretizeInstruction`, so the exact copy mechanism it uses is [INFERRED] to be a filesystem copy via an internal helper rather than a `copy_file@plt` call; (c) the `FileData` struct layout — the `matches`/equality fields beyond the hash bucket — is [INFERRED] from the collision-vector shape, not field-decoded; (d) `getAlignmentSize`'s full per-dtype alignment table, of which only two branches were read (8-element and `0xc0`), is not exhaustively enumerated.
 
 ---
 

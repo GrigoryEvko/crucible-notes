@@ -32,7 +32,7 @@ consolidated view on [`data-movement-reference.md`](data-movement-reference.md).
 
 The firmware emit/descriptor strings are addressed dram0-relative; interpreting them
 requires the device VMA layout. From the `ncore2gp` app-board `memmap.xmm`
-(`tools/ncore2gp/xtensa-elf/lib/app-board/memmap.xmm`, byte-read this session):
+(`tools/ncore2gp/xtensa-elf/lib/app-board/memmap.xmm`, byte-read):
 
 | segment | VMA base | size | sections |
 |---------|----------|------|----------|
@@ -44,7 +44,7 @@ The reset vector is at iram0 base `0x4` (the carved IRAM begins `06 76 00 00` = 
 then `86 77 00 00` = `j 0x1e8` at `+0x6` — the native ncore2gp disassembly of the carved
 image). The `[0x80000, 0x90000)` dram0 window is the Q7 NX-local dataram aperture; the DGE
 log/format strings live in `.dram0.rodata` at `0x80000 + blob_offset`.
-**[HIGH/OBSERVED — `memmap.xmm` + carved-image reset vector this session.]**
+**[HIGH/OBSERVED — `memmap.xmm` + carved-image reset vector.]**
 
 ---
 
@@ -56,7 +56,7 @@ casual reader sees as `0x10b8` is `{opcode 0xb8, len 0x10}` — **not** a 16-bit
 
 ### 1.1 The instruction-opcode byte (byte0)
 
-From `aws_neuron_isa_tpb_common.h` `enum NEURON_ISA_TPB_OPCODE` (byte-exact, this session):
+From `aws_neuron_isa_tpb_common.h` `enum NEURON_ISA_TPB_OPCODE` (byte-exact):
 
 | opcode | byte0 | resolved struct | DGE kind |
 |--------|-------|-----------------|----------|
@@ -102,7 +102,7 @@ tail pointers when the descriptors are ready."*
 | 62 | 1 | `in_dtype` | `NEURON_ISA_TPB_DTYPE` (src) |
 | 63 | 1 | `out_dtype` | (dst) |
 
-**[HIGH/OBSERVED — `aws_neuron_isa_tpb_dma_direct2d.h:24–45`, this session.]**
+**[HIGH/OBSERVED — `aws_neuron_isa_tpb_dma_direct2d.h:24–45`.]**
 
 > **The fields the DGE emits from (the L1→L2 map):** `GENERATE` reads
 > `{src_start_addr / dst_start_addr → addr, src_elem_size / dst_elem_size → elem_size,
@@ -123,7 +123,7 @@ The `is_valid_dma_cce` arm adds aligned-start / aligned-step constraints when
 ### 1.3 `ADDR8` / `PSEUDO_ADDR8` — the marker byte
 
 `NEURON_ISA_TPB_ADDR8` is a union keyed by the **high byte** (marker), `MASK = 0xFC`. From
-`common.h:508–534` (byte-exact, this session):
+`common.h:508–534` (byte-exact):
 
 | marker | value | addr source / shape source | bit |
 |--------|-------|----------------------------|-----|
@@ -202,8 +202,7 @@ comes from: instruction-immediate / register / table-address / compiler-variable
 
 > **CORRECTION / GOTCHA — do not over-generalize "+15 = dge_op-or-compute_op".** Offset +15
 > holds a *different field in every resolved DGE struct*, and the resolved words are **four
-> separate 64-byte layouts**, not the DIRECT2D template with field swaps. Verified byte-exact
-> this session:
+> separate 64-byte layouts**, not the DIRECT2D template with field swaps. Verified byte-exact:
 >
 > | resolved struct | byte0 | +15 field | other deltas vs DIRECT2D |
 > |-----------------|-------|-----------|--------------------------|
@@ -228,7 +227,7 @@ resolves the `PSEUDO_ADDR8` variable ids to absolute `ADDR8`, picks the target s
 
 These are the device DGE's descriptor-**program** push primitives — the internal calls that
 build a `$S[]` shape-register descriptor and the BD stream. They are **not** 64-byte slots.
-Their format strings were carved this session from the `CAYMAN_NX_POOL_DEBUG` dram0 `.rodata`
+Their format strings were carved from the `CAYMAN_NX_POOL_DEBUG` dram0 `.rodata`
 blob inside `libnrtucode_internal.so` (image base symbol `CAYMAN_NX_POOL_DEBUG_DRAM_get.data`
 @ host file-offset `0x1cdc40`, blob size **28448 B**) and decoded against the §1 struct:
 
@@ -239,7 +238,7 @@ blob inside `libnrtucode_internal.so` (image base symbol `CAYMAN_NX_POOL_DEBUG_D
 | `0x386a` | `0x8386a` | `RD\0` then `WR\0` (the GENERATE `%s` direction tags, inline) |
 | `0x3870` | `0x83870` | `S: push REGWRITE to DMA[%d]` |
 
-**[HIGH/OBSERVED — carved + offset-verified this session: `DIMPUSH 0x37ea`, `GENERATE 0x3821`,
+**[HIGH/OBSERVED — carved + offset-verified: `DIMPUSH 0x37ea`, `GENERATE 0x3821`,
 `RD 0x386a` / `WR 0x386d`, `REGWRITE 0x3870`; the bytes between elem_size string end and the
 REGWRITE string are `… 0a 00 52 44 00 57 52 00 …` = `…\n\0RD\0WR\0…`.]**
 
@@ -248,7 +247,7 @@ REGWRITE string are `… 0a 00 52 44 00 57 52 00 …` = `…\n\0RD\0WR\0…`.]**
 ```c
 // "push GENERATE to DMA[%d]: %s : addr=0x%llx, elem_size=%d, sem_num=%i"
 // Pushes ONE data-transfer descriptor onto channel DMA[d]. [HIGH/OBSERVED string;
-// field map HIGH/INFERRED over the §1 DIRECT2D struct + DX-DMA-01/02.]
+// field map HIGH/INFERRED over the §1 DIRECT2D struct.]
 void push_GENERATE(int d,               // %d : target DMA channel (MEMCOPY_DMA_CFG index space)
                    const char *dir,      // %s : "RD" (M2S/read, src→buf_ptr) | "WR" (S2M/write, dst→buf_ptr)
                    uint64_t addr,        // %llx: 64-bit SoC addr -> SDMA_CME_BD_DESC.buf_ptr (+8);
@@ -306,7 +305,7 @@ void push_REGWRITE(int d);
 ### 3.4 The descriptor-dump log = the emitted `$S[]` shape-register descriptor — and the dim count
 
 Each backend dumps the descriptor it built; **the field count IS the dim count** (§5.1). All
-three carved byte-exact this session from the NX_POOL dram0 blob:
+three carved byte-exact from the NX_POOL dram0 blob:
 
 ```
 Pool (2-dim, the default firmware backend):
@@ -329,7 +328,7 @@ likewise; `cast = in_dtype → out_dtype`; the Pool dump's two `bounds:` pairs a
 mode. **The bracketed `[steps][nums]` per leg are exactly the `DIMPUSH`-pushed values** — this
 dump is the authoritative cross-check on the §1 struct arrays. Only the Pool line carries
 `bounds:` and `compute_op:`; RTL is pure wide transport; software carries `indirection_dim` /
-`reshape_kind`. **[HIGH/OBSERVED — all three strings carved this session from the NX_POOL dram0
+`reshape_kind`. **[HIGH/OBSERVED — all three strings carved from the NX_POOL dram0
 blob.]**
 
 ---
@@ -354,7 +353,7 @@ The composed descriptors **expand** into 16-byte `SDMA_CME_BD_DESC` entries in t
 **Three bound layers** gate every build: per-descriptor ADDRESS bound (`BOUND_CHECK_REG`, the
 §3.4 `bounds:` pairs); total-BYTE equality (`src_num*src_elem == dst_num*dst_elem`); and
 descriptor-COUNT vs ring (the Q7 `"ERROR: DescriptorStream wrote %d descriptors, expected %d"`,
-§5.5). **[HIGH/OBSERVED — the doorbell + count-check strings carved this session; the assembly
+§5.5). **[HIGH/OBSERVED — the doorbell + count-check strings carved; the assembly
 order CARRIED + firmware-grounded.]** The device-side control flow of this loop is on
 [`../firmware/dge/dge-emit.md`](../firmware/dge/dge-emit.md).
 
@@ -377,11 +376,11 @@ register file is **4 deep** (`NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS = 4U`, `com
 The working `dge_shape { elem_size:u16, num_elem[4]:u16, step_elem[4]:i32, is_src:bool }` is
 filled by the reshape engine BEFORE emit. The Pool 2-D form folds into the DIRECT2D struct's
 `src/dst_step_elem[2] + num_elem[2]`; the 4-D / 5+2-D forms are the extension-instruction
-descriptors. **[HIGH/OBSERVED — §3.4 field counts + `NUM_DGE_SHAPE_REGISTERS` this session.]**
+descriptors. **[HIGH/OBSERVED — §3.4 field counts + `NUM_DGE_SHAPE_REGISTERS`.]**
 
 ### 5.2 The order (reshape → emit)
 
-1. **Reshape analysis** (carved NX_POOL dram0, byte-exact this session):
+1. **Reshape analysis** (carved NX_POOL dram0, byte-exact):
    ```
    S: DGE Reshape: Analyzed tensor (nelem_target = %u, step_target = 0x%X (%dP),
       base = 0x%X (%dP)): Reshape Strategy = %d, Requested Reshape Kind = %d,
@@ -401,7 +400,7 @@ descriptors. **[HIGH/OBSERVED — §3.4 field counts + `NUM_DGE_SHAPE_REGISTERS`
    (a 5-D counted nest, §5.5). The inner two dims may fold into a single 2-D strided BD via the
    DIRECT2D `step/num[2]`.
 
-**[HIGH/OBSERVED — the reshape + loop strings carved this session; the one-DIMPUSH-per-dim
+**[HIGH/OBSERVED — the reshape + loop strings carved; the one-DIMPUSH-per-dim
 mapping HIGH/INFERRED over the OBSERVED `$S` dump arity.]**
 
 ### 5.3 Transpose = signed-stride permutation
@@ -424,7 +423,7 @@ map INFERRED-HIGH over §3.2 + §1.]** See [`dge-builder-qos.md`](dge-builder-qo
 
 ### 5.5 The Q7 SW-DGE descriptor-gen pipeline
 
-Carved Q7_POOL dram0, every string byte-exact this session (the SWDGE realization of the §4
+Carved Q7_POOL dram0, every string byte-exact (the SWDGE realization of the §4
 stream for the indirect/transpose case):
 
 | string | role |
@@ -442,7 +441,7 @@ stream for the indirect/transpose case):
 | `Q7: rdma_desc_gen [%s] …` / `Q7: rdma_desc_start [%s] ring_num=%d, num_descriptors=%d, sdma_bcast_base=0x%08x` | the P2P RDMA gen/start pair (cross-core, the local/remote sema BDs) — see [`rdma-cross-die.md`](rdma-cross-die.md) |
 | `ERROR: DescriptorStream wrote %d descriptors, expected %d` | the descriptor-COUNT bound check (§4) |
 
-**[HIGH/OBSERVED — every string carved this session from `CAYMAN_Q7_POOL_DEBUG` dram0; the
+**[HIGH/OBSERVED — every string carved from `CAYMAN_Q7_POOL_DEBUG` dram0; the
 IRAM disassembles clean under native ncore2gp (windowed `l32e`/`s32e` prologue, `rsr.excvaddr`
 exception handler, `entry`/`retw`/`rfwo`/`rfwu` × 1553 instances counted). The per-bundle FLIX
 encoding of the gen loop sits in a literal-desynced region (MED) — see §7.]**
@@ -458,7 +457,7 @@ maverick headers (`ISA_STATIC_ASSERT == 64`).
 > **v5 WALL — the inline-descriptor *interior* is header-OBSERVED only.** The struct field
 > layouts below are byte-exact in the shipped maverick headers, but a carved MAVERICK firmware
 > image to disassemble the `DMA_IMMEDIATE` dispatch handler and confirm the runtime BD packing
-> was **not** decoded this session. Claims about how `DESCRIPTOR_RAW[16]` maps onto the 16-B
+> was **not** decoded. Claims about how `DESCRIPTOR_RAW[16]` maps onto the 16-B
 > SDMA BD at runtime, and whether v5 still emits `DIMPUSH` internally, are **INFERRED**.
 
 ### 6.1 `DMA_IMMEDIATE` (opcode 0xba) — "send 1–3 immediate descriptors to DGE"
@@ -505,7 +504,7 @@ Header prose: *"Next-generation DMA copy … with explicit semaphore wait/update
 DMA engine selection, and loop-friendly address modes."* The 2-D `step/num` arrays are the same
 loop nest the `DIMPUSH` stream carried, now native fields. **[HIGH/OBSERVED — header.]**
 
-### 6.3 The v5 descriptor enums/structs (maverick `common.h`, byte-exact this session)
+### 6.3 The v5 descriptor enums/structs (maverick `common.h`, byte-exact)
 
 | symbol | definition | source |
 |--------|-----------|--------|
@@ -549,13 +548,13 @@ let a v5 `DMA_MEMCPY2` advance its address from registers per loop iteration wit
 
 So a v5 DMA's read-done and write-done **each independently** increment a semaphore OR a
 collective-sync block, **locally OR at a remote peer** — the v5 successor to the cayman RDMA
-gen/start local/remote sema BDs. **[HIGH/OBSERVED — every enum/struct read this session.]**
+gen/start local/remote sema BDs. **[HIGH/OBSERVED — every enum/struct read.]**
 
 ### 6.4 v5 firmware confirms the model
 
 The maverick Q7_POOL DEBUG image still carries `DGE DIRECT2D`/`INDIRECT`/`GATHER` + the
 descriptor-generation loop strings — the SW-DGE descriptor *classes* persist (`DGE DIRECT2D`
-counts **7** occurrences across the embedded images, this session). What changed at v5 is the
+counts **7** occurrences across the embedded images). What changed at v5 is the
 **instruction-side** encoding: the inline `DMA_IMMEDIATE`/`DMA_MEMCPY2` descriptors over the
 cayman SDMA-ring + `DIMPUSH`-emit model, plus the `REGWRITE` retirement (§3.3) and the EVENT
 primitive retirement. The `push DIMPUSH/GENERATE/REGWRITE` strings are CAYMAN/MARIANA only —
@@ -584,7 +583,7 @@ The CAYMAN NX_POOL DEBUG IRAM image (`CAYMAN_NX_POOL_DEBUG_IRAM_get.data` @ host
   ...                                 ; rsr.excvaddr exception handler present
 ```
 
-(native ncore2gp output, this session — `entry`/`retw`/`rfwo`/`rfwu`/`rsr.excvaddr` ×1553).
+(native ncore2gp output — `entry`/`retw`/`rfwo`/`rfwu`/`rsr.excvaddr` ×1553).
 The DGE emit machinery is byte-PRESENT in the paired dram0 blob: the `GENERATE`/`DIMPUSH`/
 `REGWRITE` push strings (§3), the Pool/RTL/software `$S[]` dumps (§3.4), the reshape
 analyze/assess strings (§5.2), and the DGE-context-setup strings
@@ -599,7 +598,7 @@ descriptor-generation pipeline.
 > **string-level program + the struct/enum encodings are byte-OBSERVED**; the per-instruction
 > emit body is MED. **[HIGH/OBSERVED image + strings; per-instruction body MED.]**
 
-> **NOTE — sha drift.** The IRAM image carved this session hashes differently from the value a
+> **NOTE — sha drift.** The IRAM image carved hashes differently from the value a
 > prior pass recorded for the same getter symbol; the **structure** (reset-vector `j`, windowed
 > prologue, dram0 blob string offsets `0x37ea`/`0x3821`/`0x3870`) matches exactly, so this is a
 > rebuild/version delta, not a different image. Pin the image by getter symbol + dram0 string
@@ -684,7 +683,7 @@ count 128) becomes dst's slow axis (y, count 128). §5.3.
 > `dma_configs@63` (`dma_direct2d_xpose.h:24–42`). The tile geometry — not just swapped strides —
 > drives the `axi2sram` crossbar. The §3.4 `$S[]` dump still shows the `[steps][nums]` axis-swap
 > because the DGE's internal shape register captures the post-permute walk. **[HIGH/OBSERVED —
-> the XPOSE struct header this session.]**
+> the XPOSE struct header.]**
 
 **DEVICE DGE EMIT (L2, Pool backend, 2 dims):**
 

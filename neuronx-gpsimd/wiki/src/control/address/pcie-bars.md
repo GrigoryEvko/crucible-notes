@@ -9,9 +9,9 @@ inbound-address-translation decoder produce."
 
 All facts here are recovered from the RTL-generated address-map artifacts shipped
 in the `cayman-arch-regs` package (header macros + structured YAML + the
-SystemVerilog header that *is* the host↔SoC translation table). Confidence tags:
-HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED. NC-v3 (Cayman) byte-grounded; v5
-(Maverick) class behavior is INFERRED from the same generator schema.
+SystemVerilog header that *is* the host↔SoC translation table). Claims that depart
+from the page default `HIGH/OBSERVED` carry an explicit tag. NC-v3 (Cayman)
+byte-grounded; v5 (Maverick) class behavior is INFERRED from the same generator schema.
 
 **Primary artifacts** (all under
 `extracted/nested/cayman-arch-regs_tgz/output/address_map/`, gitignored):
@@ -38,7 +38,7 @@ programming via the HAL).
 
 The main host PCIe function exposes the chip through two BARs only; the observed
 `host_bar[]` values across all 68 host windows are `0` and `4`
-(`pcie_host_address_mapping.svh`). **(HIGH/OBSERVED)**
+(`pcie_host_address_mapping.svh`).
 
 | BAR | Role | Span | Windows | Source |
 |---|---|---|---|---|
@@ -54,10 +54,9 @@ sizes/roles are OBSERVED; the "single ioremap" intent is INFERRED.)**
 Two further BARs belong to the **PEB** (PCIe-Engine-Block / DFT) functions
 `amzn0` / `amzn1`, *not* the main host data-plane function (see §3):
 `BAR0` carries `PEB_HSIO2DFT_{0,1}` (4 MiB each), `BAR3` carries
-`PEB_APB_IO_{0,1}` (512 MiB each). **(HIGH/OBSERVED,
-`pcie_amzn_address_mapping.svh`)**
+`PEB_APB_IO_{0,1}` (512 MiB each). (`pcie_amzn_address_mapping.svh`)
 
-> NOTE (HIGH/OBSERVED). Every `host_offset` value in `pcie_bar_defines.h` is
+> NOTE. Every `host_offset` value in `pcie_bar_defines.h` is
 > byte-identical to the `host_offset[]` value in `pcie_host_address_mapping.svh`
 > (64/64 BAR0 + 4/4 BAR4 match). The `.h`, the `.yaml`, and the `.svh` are three
 > renders of one generator table.
@@ -69,7 +68,7 @@ Two further BARs belong to the **PEB** (PCIe-Engine-Block / DFT) functions
 This is the page's spine: for every BAR window, the `.svh` carries the host view
 (`host_bar`, `host_offset`, size) *and* the SoC-absolute `cayman_address`. The
 SoC bases were cross-checked against the flat master map
-([`soc-master-map.md`](soc-master-map.md)); all match. **(HIGH/OBSERVED)**
+([`soc-master-map.md`](soc-master-map.md)); all match.
 
 The `cayman_address` field is a 58-bit SoC address. Its high bits decode via
 `cayman_addr_decode.h`:
@@ -89,8 +88,7 @@ behind every `*_1`/`*_2`/`*_4`/`*_10` window below.
 
 ### 2a. BAR4 — HBM aperture (4 windows)
 
-`host_addr` = `host_offset` within BAR4. **(HIGH/OBSERVED,
-`pcie_host_address_mapping.svh:201–216`)**
+`host_addr` = `host_offset` within BAR4. (`pcie_host_address_mapping.svh:201–216`)
 
 | window | host_bar | host_addr (BAR4) | size | size (human) | cayman_address (SoC) | DIE | LOCAL |
 |---|---|---|---|---|---|---|---|
@@ -100,13 +98,13 @@ behind every `*_1`/`*_2`/`*_4`/`*_10` window below.
 | HBM_3 | 4 | `0x3000000000` | `0x1000000000` | 64 GiB | `0x804000000000` | 1 | `0x4000000000` |
 
 Total BAR4 span = `4 × 0x1000000000 = 0x4000000000` = **256 GiB**, fully packed
-(stride == size == `0x1000000000`, zero gaps; re-verified numerically). **(HIGH/OBSERVED)**
+(stride == size == `0x1000000000`, zero gaps).
 
 ### 2b. BAR0 — APB I/O and APB SE windows
 
 `host_addr` = `host_offset` within BAR0. APB windows expose the **full** SoC
-region (BAR size == SoC region size — *not* windowed). **(HIGH/OBSERVED,
-`pcie_host_address_mapping.svh:1–24`)**
+region (BAR size == SoC region size — *not* windowed).
+(`pcie_host_address_mapping.svh:1–24`)
 
 | window | host_bar | host_addr (BAR0) | size | size (human) | cayman_address (SoC) | DIE | note |
 |---|---|---|---|---|---|---|---|
@@ -117,7 +115,7 @@ region (BAR size == SoC region size — *not* windowed). **(HIGH/OBSERVED,
 | APB_SE_2 | 0 | `0xA0000000` | `0xC800000` | 200 MiB | `0x801000000000` | 1 | = APB_SE_0 \| bit47 |
 | APB_SE_3 | 0 | `0xB0000000` | `0xC800000` | 200 MiB | `0x805000000000` | 1 | = APB_SE_1 \| bit47 |
 
-> QUIRK (HIGH/OBSERVED). **APB_SE stride ≠ size.** SE windows are placed on a
+> QUIRK. **APB_SE stride ≠ size.** SE windows are placed on a
 > `0x10000000` (256 MiB) host stride but each is only `0xC800000` (200 MiB),
 > leaving a `0x3800000` (56 MiB) unmapped gap between adjacent SE windows in
 > BAR0. A driver that walks SE windows by `size` will land mid-gap; walk by
@@ -125,8 +123,7 @@ region (BAR size == SoC region size — *not* windowed). **(HIGH/OBSERVED,
 
 ### 2c. BAR0 — PREPROC windows (WINDOWED)
 
-`host_addr` = `host_offset` within BAR0. **(HIGH/OBSERVED,
-`pcie_host_address_mapping.svh:25–40`)**
+`host_addr` = `host_offset` within BAR0. (`pcie_host_address_mapping.svh:25–40`)
 
 | window | host_bar | host_addr (BAR0) | size | size (human) | cayman_address (SoC) | DIE | leaf schema |
 |---|---|---|---|---|---|---|---|
@@ -135,7 +132,7 @@ region (BAR size == SoC region size — *not* windowed). **(HIGH/OBSERVED,
 | PREPROC_2 | 0 | `0xC8000000` | `0x34C0000` | 52.75 MiB | `0x801200000000` | 1 | = PP_0 \| bit47 |
 | PREPROC_3 | 0 | `0xCC000000` | `0x34C0000` | 52.75 MiB | `0x805200000000` | 1 | = PP_1 \| bit47 |
 
-> QUIRK (HIGH/OBSERVED). **PREPROC is WINDOWED.** The SoC PREPROC region is
+> QUIRK. **PREPROC is WINDOWED.** The SoC PREPROC region is
 > `0x40000000` (1 GiB; master map), but the BAR window exposes only `0x34C0000`
 > (52.75 MiB, ≈1/19th). The BAR stride is `0x4000000` (64 MiB) with a `0xB40000`
 > gap. The host sees only a CSR/control *slice* of each PREPROC engine, not its
@@ -145,7 +142,7 @@ region (BAR size == SoC region size — *not* windowed). **(HIGH/OBSERVED,
 
 `host_addr` = `host_offset` within BAR0. Each TPB engine contributes two BAR
 windows: the `TPB_n` state-buffer slice and a `TPB_n_PSUM_BUF` reserved-SBUF
-slice. **(HIGH/OBSERVED, `pcie_host_address_mapping.svh:41–104`)**
+slice. (`pcie_host_address_mapping.svh:41–104`)
 
 | window | host_bar | host_addr (BAR0) | size | size (human) | cayman_address (SoC) | DIE | SoC leaf it lands on |
 |---|---|---|---|---|---|---|---|
@@ -166,7 +163,7 @@ slice. **(HIGH/OBSERVED, `pcie_host_address_mapping.svh:41–104`)**
 | TPB_7 | 0 | `0xEC000000` | `0x2000000` | 32 MiB | `0x807000000000` | 1 | |
 | TPB_7_PSUM_BUF | 0 | `0xEE000000` | `0x2000000` | 32 MiB | `0x807800000000` | 1 | |
 
-> GOTCHA (HIGH/OBSERVED). **The `.svh` window label `TPB_n_PSUM_BUF` is a
+> GOTCHA. **The `.svh` window label `TPB_n_PSUM_BUF` is a
 > misnomer.** It maps to SoC base `0x2800000000` = `TPB_0_TPB_RESERVED_SBUF`
 > (size `0x2000000`, 32 MiB), *not* the master-map leaf literally named
 > `TPB_0_PSUM_BUF`, which is at SoC `0x2802000000`, size `0x400000` (a 4 MiB
@@ -181,7 +178,7 @@ slice. **(HIGH/OBSERVED, `pcie_host_address_mapping.svh:41–104`)**
 
 20 windows, packed (stride == size == `0x400000`), BAR size == SoC region size
 (not windowed). `TOP_SP_0..9` are die0, `TOP_SP_10..19` are die1 (bit47).
-**(HIGH/OBSERVED, `pcie_host_address_mapping.svh:105–184`)**
+(`pcie_host_address_mapping.svh:105–184`)
 
 | window | host_addr (BAR0) | cayman_address (SoC) | DIE | | window | host_addr (BAR0) | cayman_address (SoC) | DIE |
 |---|---|---|---|---|---|---|---|---|
@@ -204,8 +201,8 @@ binding is the dominant leaf, not an explicit `.svh` field.)**
 ### 2f. BAR0 — RDM and INTC windows (top of BAR0)
 
 Small control blocks; both pairs follow the die-bit47 second-copy pattern. The
-`INTC_1` end (`0xF5204000`) is the highest byte used in BAR0. **(HIGH/OBSERVED,
-`pcie_host_address_mapping.svh:185–200`)**
+`INTC_1` end (`0xF5204000`) is the highest byte used in BAR0.
+(`pcie_host_address_mapping.svh:185–200`)
 
 | window | host_bar | host_addr (BAR0) | size | size (human) | cayman_address (SoC) | DIE | schema |
 |---|---|---|---|---|---|---|---|
@@ -227,7 +224,6 @@ see [`../interrupt/pcie-hbm-tpb-d2d-triggers.md`](../interrupt/pcie-hbm-tpb-d2d-
 distinct from the main host data-plane function. `pcie_bar_mapping.yaml` tags
 these under separate documents `type: amzn0` and `type: amzn1` (vs `type: host`),
 confirming distinct PCIe functions, each with its own `BAR0` and `BAR3`.
-**(HIGH/OBSERVED)**
 
 | window | function | host_bar | host_addr | size | size (human) | cayman_address (SoC) | DIE | CAYMAN_ID |
 |---|---|---|---|---|---|---|---|---|
@@ -258,7 +254,7 @@ SoC decode of the PEB high bits (via `cayman_addr_decode.h`):
 
 The decisive distinction for a reimplementor is whether a BAR window exposes the
 *whole* SoC region or only a control slice, and whether `host_offset` equals the
-SoC `LOCAL` low bits. **(HIGH/OBSERVED)**
+SoC `LOCAL` low bits.
 
 - **FULL aperture** (BAR window size == SoC region size; whole region exposed):
   `APB_IO_{0,1}`, `APB_SE_{0..3}`, `TOP_SP_{0..19}`, `RDM_{0,1}`, `INTC_{0,1}`.
@@ -272,11 +268,10 @@ SoC `LOCAL` low bits. **(HIGH/OBSERVED)**
   BAR4 `HBM_{0..3}` (four 64 GiB stacks flattened from die-split SoC bases into one
   contiguous `0 .. 256 GiB` host region).
 
-> QUIRK (HIGH/OBSERVED) — the non-identity windows are the interesting ones.
+> QUIRK — the non-identity windows are the interesting ones.
 > Even `HBM_0` and the "first" APB window are not a trivial identity: only
 > `HBM_0` (offset 0 → SoC 0) coincides; **for every other window
-> `host_offset ≠ cayman_address` low bits.** Examples re-checked against the
-> `.svh`:
+> `host_offset ≠ cayman_address` low bits.** Examples from the `.svh`:
 > - `APB_IO_0`: `host_offset = 0x0` but `cayman_address = 0x8000000000`
 >   (`LOCAL = 0x8000000000`). Even the "first" BAR0 window is fully remapped.
 > - `TPB_0`: `host_offset = 0xD0000000` → SoC `0x2000000000`.
@@ -286,11 +281,11 @@ SoC `LOCAL` low bits. **(HIGH/OBSERVED)**
 > The translation is *not* a single global add — each window has its own base.
 > Never assume `cayman_address = bar_base + host_offset`; always look the window up.
 
-> CORRECTION (HIGH/OBSERVED) vs SX-ADDR-03 §1/§3f. The backing report states the
-> BAR0 highest byte (`INTC_1` end `0xF5204000`) is "~3.92 GiB". The exact value is
-> `0xF5204000 / 2^30 = 3.830 GiB` (the "~3.92" figure appears to divide by `10^9`
-> → ≈4.11 GB, or is a rounding estimate). The byte value `0xF5204000` itself is
-> correct and < 4 GiB, so BAR0 rounding up to a 4 GiB power-of-two is unaffected.
+> CORRECTION — the BAR0 highest byte in GiB. The BAR0 highest byte (`INTC_1` end
+> `0xF5204000`) is **`0xF5204000 / 2^30 = 3.830 GiB`**, not "~3.92 GiB" — that
+> figure divides by `10^9` (→ ≈4.11 GB), or is a rounding estimate. The byte value
+> `0xF5204000` itself is correct and < 4 GiB, so BAR0 rounding up to a 4 GiB
+> power-of-two is unaffected.
 
 ### HBM compaction detail
 
@@ -300,9 +295,9 @@ apart (bit 47) — a deliberately sparse layout. BAR4 lays the four 64 GiB stack
 back-to-back at `0 / 64 / 128 / 192 GiB`. Sizes are byte-identical
 (`0x1000000000` each), so the flattening is a pure base remap, not a resize. The
 PCIe inbound-address-translation hardware re-expands a BAR4 offset into the
-correct sparse SoC HBM address (die-bit + intra-die stride). **(HIGH/OBSERVED,
-confirms [`soc-master-map.md`](soc-master-map.md) and
-[`unified-soc-memory-map.md`](unified-soc-memory-map.md).)**
+correct sparse SoC HBM address (die-bit + intra-die stride). This confirms
+[`soc-master-map.md`](soc-master-map.md) and
+[`unified-soc-memory-map.md`](unified-soc-memory-map.md).
 
 ---
 
@@ -371,7 +366,7 @@ int cayman_to_host(const cayman_bar_window_t *tbl, size_t n,
  */
 ```
 
-> NOTE (HIGH/OBSERVED). The 58-bit `cayman_address` can additionally carry
+> NOTE. The 58-bit `cayman_address` can additionally carry
 > `PCIE_ATTR_RELAXED_ORDERING` (bit 56) and `OK_TO_FAIL` (bit 57) from
 > `cayman_addr_decode.h`. The `.svh` base values in this page have those bits
 > clear; a driver that ORs them in for posted-write tuning must mask them off

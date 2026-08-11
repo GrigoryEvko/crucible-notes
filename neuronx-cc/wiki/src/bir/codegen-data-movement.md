@@ -1,6 +1,6 @@
 # KlirToBirCodegen: the data-movement leaf family — copy / DMA / load-store / gather / select / BN / transpose
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 ABI twins, drifting VAs). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` (md5 `1d93972b81e619ce6d178a0e4b9003b3`, 64,973,024 B) — the **Strand-I** back-end shared object that holds the `KlirToBirCodegen` bodies. `VA == file offset` for `.text` (`0x62d660+`) and `.rodata` (`0x1c72000+`), so every jump table and string literal below is read by file offset. `nki_klr_sim` is stripped and carries only PLT stubs for these symbols; every address cited here is the **real body** (an `nm -DC` `T`/`W` row `> 0xf00000`), not a thunk alias — beware the two-VA-frame artifact (each leaf has a sibling sidecar at a low `0x6xxxxx` internal frame; the real body is the `0xf2xxxx`/`0xf1xxxx` one). All evidence is `nm`, `objdump -d`, `strings`, and `.rodata` table decode against this binary. Tags: CONFIRMED (read directly) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 ABI twins, drifting VAs). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` (md5 `1d93972b81e619ce6d178a0e4b9003b3`, 64,973,024 B) — the **Strand-I** back-end shared object that holds the `KlirToBirCodegen` bodies. `VA == file offset` for `.text` (`0x62d660+`) and `.rodata` (`0x1c72000+`), so every jump table and string literal below is read by file offset. `nki_klr_sim` is stripped and carries only PLT stubs for these symbols; every address cited here is the **real body** (an `nm -DC` `T`/`W` row `> 0xf00000`), not a thunk alias — beware the two-VA-frame artifact (each leaf has a sibling sidecar at a low `0x6xxxxx` internal frame; the real body is the `0xf2xxxx`/`0xf1xxxx` one). All evidence is `nm`, `objdump -d`, `strings`, and `.rodata` table decode against this binary.*
 
 ## Abstract
 
@@ -89,8 +89,7 @@ fact about each node:
 
 The wrapper layer (`codegenOperator<Op>Wrapper`) is a thin refcount shim that unwraps the inner
 klr node and tail-calls the leaf; all naming / `OpDebugInfo` / device-print lives one level up in
-`codegenStmtOperWrapper` (7.21), not here. [CONFIRMED — call sites read verbatim from each leaf's
-disasm sidecar.]
+`codegenStmtOperWrapper` (7.21), not here.
 
 ---
 
@@ -98,13 +97,13 @@ disasm sidecar.]
 
 `klr::NcCopy` is the **same-memory-space** copy (SBUF→SBUF / on-engine), distinct from a DMA. The
 node carries four fields (`to_string` @ `0xf8d760`): `dst` @+0, `src` @+16, `dtype` @+32
-(present-flag @+36), `engine` @+40. [CONFIRMED]
+(present-flag @+36), `engine` @+40.
 
 The leaf first probes both operands with `neuronxcc::backend::isAccessDynamic` and forks on a
 two-bit dynamic-ness signature:
 
 ```c
-// codegenNcCopy @0xf2d120 — the dynamic-ness fork  [CONFIRMED]
+// codegenNcCopy @0xf2d120 — the dynamic-ness fork
 bool dyn_dst = isAccessDynamic(NcCopy.dst);   // r15
 bool dyn_src = isAccessDynamic(NcCopy.src);
 if (dyn_dst && dyn_src)
@@ -138,10 +137,10 @@ Two notes that matter for reimplementation:
 - **It never emits `GenericCopy` (IT 1).** The klr `NcCopy` path *always* lands on `TensorCopy`
   (23) or a `TensorCopyDynamic{Src,Dst}` (24/25). `GenericCopy` is an internal
   `InstAbstractCopy`-family node used by *other* lowerings and later passes; it is not a
-  `codegen<NcCopy>` output. [STRONG]
+  `codegen<NcCopy>` output.
 - **`codegenNcCopy` sets engine and nothing else DMA-ish.** No `DGEType`, no QoS, no
   `compute_op` — it is an on-engine copy with no `InstDMA` base. The only post-binding writes are
-  the engine-id at `+0x90` and (dynamic path) the size/affine reset. [CONFIRMED]
+  the engine-id at `+0x90` and (dynamic path) the size/affine reset.
 
 The verbatim disasm confirms both string labels and the `addTensorCopyCustom` target:
 `0xf2d3f3 lea rsi, "TensorCopyDynamicSrc_"`, `0xf2d40b call …insertElement<InstTensorCopyDynamicSrc>`,
@@ -155,7 +154,7 @@ The verbatim disasm confirms both string labels and the `addTensorCopyCustom` ta
 
 `klr::NcDmaCopy` is the DRAM↔SBUF transfer. Seven `to_string` fields (`0xf8c550`): `dst` @+0,
 `src` @+16, `compute_op` @+32 (`DgeComputeOp`: 1=`none`, 2=`add`), `oobMode` @+40, `dgeMode` @+56
-(`Nat`), `uniqueIndices` @+60 (`Bool`), `engine` @+64. [CONFIRMED]
+(`Nat`), `uniqueIndices` @+60 (`Bool`), `engine` @+64.
 
 ### 3.1 The top-level fork — main DMA vs scatter
 
@@ -174,7 +173,7 @@ else  node = codegenGenericIndirectSave(klr);    // @0xf2fa61 fork; call @0xf302
 
 So an *accumulating, non-unique-index* DMA is not a DMA at all — it is rerouted to the indirect
 scatter leaf. `codegenNcDmaCopy` is the **only** caller of `codegenGenericIndirectSave`.
-[CONFIRMED — fork bytes + the `call …codegenGenericIndirectSave` at `0xf30268`.]
+*Anchors: the fork bytes above, plus `call …codegenGenericIndirectSave` @ `0xf30268`.*
 
 ### 3.2 `DGEType` is resolved here — `translateDGEMode`
 
@@ -182,7 +181,7 @@ The decisive correctness fact: the leaf **sets** the DMA's `DGEType` at lowering
 left `Unassigned` for a later DGE pass.
 
 ```c
-// translateDGEMode @0xf14b60   [CONFIRMED]
+// translateDGEMode @0xf14b60
 int translateDGEMode(uint m) {
     if (m > 3) fatal;
     static const uint tbl[4] = {3, 1, 2, 0};   // .rodata @ 0x1DE9730
@@ -195,7 +194,7 @@ int translateDGEMode(uint m) {
 `bir::DGEType` = {`None`0, `SWDGE`1, `HWDGE`2, `Unassigned`3}. The `+0xF8` field is the `InstDMA`
 base `dge_type` (ctor default 3); a JSON-loaded DMA fills the *same* offset, so a codegen'd DMA and
 a wire-loaded DMA are structurally identical at `+0xF8`. A later pass (H33) assigns only the DGE
-*engine-id*, never the DGE *type*. [CONFIRMED]
+*engine-id*, never the DGE *type*.
 
 ### 3.3 Dynamic-access legality, then build
 
@@ -213,7 +212,7 @@ if (neither side dynamic) {                              // STATIC path
                codegen+0xE0, name, dst.MemLoc, src.MemLoc, src.AP, dst.AP,
                dst.size, src.size, dstDtype, srcDtype, srcLoc);
     // if src.getShape() != dst.getShape(): set both operand PhysicalAccessPatterns
-    //   to getCanonicalPattern (canonicalize a same-shape DMA's AP)              [STRONG]
+    //   to getCanonicalPattern (canonicalize a same-shape DMA's AP)
 } else {                                                 // DYNAMIC path (exactly one side)
     DynamicAPINFO dyn = tc_new(248); zero-init; dyn[+30] = 0xFFFFFFFF;  // sentinel
     assembleDynamicInfo(&dyn, dynamic-side TensorRef, InstArg);          // @0xf20230 (7.23)
@@ -245,8 +244,7 @@ The engine gate is the central asymmetry vs `NcCopy`: an explicit engine is **on
 HW-DGE; SW/None DMAs leave engine-id at 0 for H33's `assign_*_engine` pass. **QoS is not set here**
 — the `InstDMACopy` QoS lives at `+0x1D8` and stays at the ctor default `Unassigned`; on the
 dynamic path `+0x1D8` is *repurposed* as the `DynamicAPINFO` holder before any QoS could be set, so
-QoS is unconditionally a downstream concern. [CONFIRMED for `+0xF8`/`+0x178`/`+0x90`/`+0x130`
-writes; STRONG for the QoS-default reasoning.]
+QoS is unconditionally a downstream concern. The `+0xF8`/`+0x178`/`+0x90`/`+0x130` writes are byte-anchored; the QoS-default conclusion follows from the absence of any write to `+0x1D8` on the static path.
 
 ---
 
@@ -255,10 +253,10 @@ writes; STRONG for the QoS-default reasoning.]
 `klr::DmaCompute` is the **DMA-FMA**: a copy that also applies a fused scaled accumulate as the
 descriptors stream. Four `to_string` fields (`0xf94020`): `dst` @+0, `srcs` @+16 (a
 `std::list<TensorRef>`), `scales` @+40 (a `std::list<float-Immediate>`), `reduceOp` @+64
-(`klr::AluOp`). [CONFIRMED]
+(`klr::AluOp`).
 
 ```c
-// codegenDmaCompute @0xf1d9e0   [CONFIRMED]
+// codegenDmaCompute @0xf1d9e0
 if (codegenAluOp(DmaCompute.reduceOp) != 4)
     throw "dma_compute currently only supports nl.add as its reduce op!";   // hard-pinned to add(4)
 
@@ -279,18 +277,19 @@ return node;
 Semantics: `dst = Σ_i ( scales[i] · srcs[i] )` with the reduce op pinned to `add`. The
 `DgeComputeOp=add` single-source accumulate of §3.4 is the degenerate case; `DmaCompute` is the
 multi-source scaled-sum generalization. The builder owns IT/engine/DGE assignment — the leaf
-stamps **none** of `+0xF8`/`+0x90`/`+0x128`. [CONFIRMED — `addDmaCopyFma` signature read verbatim:
-`(string const&, llvm::ArrayRef<InstArg>, InstArg, llvm::ArrayRef<float>, source_location const&)`.]
+stamps **none** of `+0xF8`/`+0x90`/`+0x128`.
+
+*Anchor: `addDmaCopyFma` signature — `(string const&, llvm::ArrayRef<InstArg>, InstArg, llvm::ArrayRef<float>, source_location const&)`.*
 
 ---
 
 ## 5. Descriptor transpose — `codegenDmaTranspose` → `InstDMACopy` + transpose markers
 
 `klr::DmaTranspose` is the **DMA-descriptor** transpose (HBM↔SB, rank-4). Six `to_string` fields
-(`0xf85ed0`): `dst` @+0, `src` @+16, `axes`, `dtype`, `dgeMode` @+44, `oobMode` @+48. [CONFIRMED]
+(`0xf85ed0`): `dst` @+0, `src` @+16, `axes`, `dtype`, `dgeMode` @+44, `oobMode` @+48.
 
 ```c
-// codegenDmaTranspose @0xf2dd10   [CONFIRMED — all four tail writes byte-anchored]
+// codegenDmaTranspose @0xf2dd10 — all four tail writes byte-anchored
 InstArg dst = codegenTensorRef(DmaTranspose.dst);
 InstArg src = codegenTensorRefImpl(DmaTranspose.src, 1);
 if (dst.AP.rank != 4 || src.AP.rank != 4)
@@ -323,7 +322,7 @@ return node;                                                 // bir::InstDMACopy
 outermost-vs-innermost axes. The engine is **pinned to Pool** directly — `codegenDmaTranspose` does
 not call `codegenEngine`. The DGEType passes through whatever `dgeMode` maps to; the verifier
 forbids HW-DGE on a transpose, so in practice it realises as None/SWDGE, but that is enforced
-downstream, not hard-written here. [CONFIRMED — `0xf2e0c6`/`0xf2e0d2`/`0xf2e719` byte-exact.]
+downstream, not hard-written here.
 
 ---
 
@@ -344,7 +343,7 @@ The DMA-descriptor path is §5. The other two share one leaf, `codegenTranspose`
 **destination dtype**:
 
 ```c
-// codegenTranspose @0xf28fb0   [CONFIRMED — PE-guard, fork, both targets read verbatim]
+// codegenTranspose @0xf28fb0
 if (klr.Transpose.engine == 5 /*pe*/)                       // cmp [rsi+28h],5  @0xf28fd1
     throw "TransposeOp should only happen on DVE. The PE variant should have been legalized by the FE!";
 
@@ -376,9 +375,9 @@ return node;
 The guard is the linchpin: a `klr::Transpose` tagged `engine==pe(5)` is **illegal** here — the
 front-end must already have rewritten a PE transpose into an explicit `nc_matmul`. So
 `codegenTranspose` only ever emits the DVE stream form or the auto matmul-against-identity fallback;
-neither touches `InstDMACopy`, `CopyMode`, or `TransposeOps`. [CONFIRMED — `getIdentityMatrix`,
-`addMatmult`, `insertElement<InstStreamTranspose>`, `_validateLegalStreamTranspose` all read
-verbatim from the `0xf28fb0` sidecar.]
+neither touches `InstDMACopy`, `CopyMode`, or `TransposeOps`.
+
+*Anchors: `codegenTranspose` @ `0xf28fb0` — the PE-guard, `getIdentityMatrix`, `addMatmult`, `insertElement<InstStreamTranspose>`, and `_validateLegalStreamTranspose` call sites.*
 
 ### 6.1 `getIdentityMatrix` @`0xf28910` — the lazy 128×128 identity
 
@@ -402,7 +401,7 @@ return Id;
 
 The identity is `memset(0)` + an affine-select that fills the `p==e` diagonal with `1.0f`, then
 reused across every matmul-transpose of the same dtype in the function. `Identity·inputᵀ` ⇒ `inputᵀ`
-on the PE systolic array. [CONFIRMED.]
+on the PE systolic array.
 
 ---
 
@@ -413,7 +412,7 @@ takes the same `klr::NcDmaCopy` node, but treats `dst` as an index-addressed sca
 `src` as the data being scattered.
 
 ```c
-// codegenGenericIndirectSave @0xf2eb10   [CONFIRMED — offsets byte-anchored]
+// codegenGenericIndirectSave @0xf2eb10 — offsets byte-anchored
 name = returnAndIncrementId();
 strcpy(name, "IndirectSaveAccumulate-");                    // NOTE: name prefix is the INTENT tag,
                                                             //   not the IT — the node is GenericIndirectSave(44)
@@ -449,8 +448,7 @@ structural-compare fields (`+0x128` container, `+0x140` dword) and the JSON wire
 `indirect_dims` / `op` — codegen and the wire reader agree byte-for-byte. The leaf produces only the
 **generic** scatter; H06 `lower_generic_indirect` (`codegenIndirectLoadSave` @`0xb580e0`) later
 expands it into `ReadVarAddr(41)` → `TensorScalarPtr` → `Memset` → `TensorScalarPtr` →
-`InstIndirectSave(45)` (or `IndirectSaveAccumulate(46)` when `op != default`). [CONFIRMED for
-offsets; STRONG for the exact operand-to-arg mapping.]
+`InstIndirectSave(45)` (or `IndirectSaveAccumulate(46)` when `op != default`). The offsets are byte-anchored; the exact operand-to-arg mapping is read off the call-site argument order.
 
 ---
 
@@ -470,7 +468,7 @@ are byte-symmetric (both 815 B); the only differences flip read→write:
 | AP bind | `addArgument` (source AP) | `addOutput` (dest AP) |
 
 ```c
-// codegenTensorLoad @0xf26a60 (Store is symmetric)   [CONFIRMED]
+// codegenTensorLoad @0xf26a60 (Store is symmetric)
 if (!Function::getRegisterByName(regName))
     codegenRegister(regName, EngineType);              // @0xf141e0 — declare-or-mint named scalar reg
 codegenTensorRef(srcRef);
@@ -487,8 +485,9 @@ return node;
 ```
 
 Engine `ALL`(7) marks these as pre-lowering placeholders not yet engine-pinned; the register
-supplies the dynamic offset, the AP only describes the region. [CONFIRMED — `mov [r12+90h],7`, the
-`Argument::setType` comparison, and both `insertElement` targets read verbatim.]
+supplies the dynamic offset, the AP only describes the region.
+
+*Anchors: `mov [r12+90h],7` @ `0xf26b94`, the `Argument::setType` comparison @ `0xf26c14`, and both `insertElement` targets.*
 
 ---
 
@@ -505,7 +504,7 @@ geometry and a runtime u16 offset vector. Node layout: `out` @+0, `data` @+16, `
 `num_valid_indices` (Immediate) @+48.
 
 ```c
-// codegenNcLocalGather @0xf2a9c0   [CONFIRMED — geometry asserts + insertElement read verbatim]
+// codegenNcLocalGather @0xf2a9c0
 out_ap   = codegenTensorRef(node[+0]);
 data_ap  = codegenTensorRef(node[+16]);
 index_ap = codegenTensorRef(node[+32]);
@@ -530,12 +529,11 @@ return ic;
 The `DTYPE_STRIDE_LUT` @`0x1de98c0` = `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` is byte-identical
 to the simulator's stride table — codegen and the executable agree on element widths. Past
 `num_valid_indices`, the sim fills `-1` and skips (the `readIndirect`→`doCopyIndirect` path).
-[CONFIRMED.]
 
 ### 9.2 `codegenNcNGather` @`0xf2a590` → `InstGather` (92) — per-partition int32 gather
 
 ```c
-// codegenNcNGather @0xf2a590   [CONFIRMED]
+// codegenNcNGather @0xf2a590
 out_ap   = codegenTensorRef(node[+0]);
 data_ap  = codegenTensorRef(node[+16]);    // params / data source
 index_ap = codegenTensorRef(node[+32]);    // int32 indices
@@ -547,7 +545,7 @@ return g;                                   // out[p][i] = params[p][indices[p][
 
 `LocalGather` vs `NGather` is the two-flavor split: `IndirectCopy`(26) is a **u16 offset vector**,
 16-partition blocks, compile-time `num_valid_indices` + geometry assert, `-1`-skip OOB; `Gather`(92)
-is an **int32 index tensor**, per-partition, runtime bounds-assert, no valid count. [CONFIRMED.]
+is an **int32 index tensor**, per-partition, runtime bounds-assert, no valid count.
 
 ### 9.3 `codegenNcRangeSelect` @`0xf1c210` → `InstRangeSelect` (63) — dual-bound band-keep + reduce
 
@@ -555,7 +553,7 @@ The only one of the four that uses a typed builder. The demangled `addRangeSelec
 *is* the operand contract:
 
 ```c
-// InstBuilder::addRangeSelectReduce — signature read verbatim @0xf1c633  [CONFIRMED]
+// InstBuilder::addRangeSelectReduce — signature read verbatim @0xf1c633
 addRangeSelectReduce(
     InstArg in, variant<InstArg,float> bound0, variant<InstArg,float> bound1,
     InstArg rangeTensor, optional<InstArg> fill, int mode,
@@ -571,20 +569,20 @@ rs = addRangeSelectReduce(in, {bound0}, {bound1}, rangeT, fill?, mode, redOp, sr
 
 Semantics (the windowing / attention-mask primitive): below `bound0` → `fill`; inside the
 `[bound0,bound1]` band → keep `in[i]`; above → `fill`; with a `max` reduce over survivors. The
-`int mode` parameter is stored at `InstRangeSelect+0xF0` (CONFIRMED store; its precise semantic role
-is INFERRED to be the reduce/affine selector by analogy to the `+0xF0` field on `IndirectCopy`).
-[CONFIRMED for the builder + IT 63; INFERRED for `mode`'s meaning.]
+`int mode` parameter is stored at `InstRangeSelect+0xF0`. The store is pinned; what `mode` *means* is [INFERRED] — most plausibly the reduce/affine selector, by analogy to the `+0xF0` field on `IndirectCopy`.
 
 ### 9.4 `codegenSelectReduce` @`0xf270a0` → `InstCopyPredicated` (52) — predicated select + reduce
 
-> **Correction worth flagging:** `SelectReduce` does **not** lower to `RangeSelect`. It builds
-> `InstCopyPredicated` (52) — a predicated copy fused with a second-output reduce. The "select +
-> reduce" fusion exists at two levels: `RangeSelect`(63) bundles the dual-bound compare with a
-> max-reduce; `CopyPredicated`(52) is the predicate-select that `SelectReduce` then pairs with a
-> reduce-into output.
+Despite the name, `SelectReduce` builds `InstCopyPredicated` (52) — a predicated copy fused with a
+second-output reduce. The "select + reduce" fusion exists at two levels, and the two are separate
+nodes: `RangeSelect`(63) bundles the dual-bound compare with a max-reduce, while `CopyPredicated`(52)
+is the predicate-select that `SelectReduce` then pairs with a reduce-into output.
+
+> **GOTCHA —** `SelectReduce` does **not** lower to `RangeSelect`, even though both are "select plus
+> reduce". Route it to `InstCopyPredicated`(52).
 
 ```c
-// codegenSelectReduce @0xf270a0   [CONFIRMED]
+// codegenSelectReduce @0xf270a0
 t0 = codegenTensorRef(node[+0]);    // dst of the predicated copy
 t1 = codegenTensorRef(node[+16]);   // onTrue src
 t2 = codegenTensorRef(node[+32]);   // predicate
@@ -599,12 +597,11 @@ return cp;
 `CopyPredicated` is `out ← preds ? src : out`. Codegen emits it directly (rather than `Select`(51))
 because `Select`(51) has **no machine emitter** — the `lower_select` pass exists precisely to split
 `Select`→`GenericCopy`+`CopyPredicated`, so `codegenSelectReduce` takes the shortcut of emitting the
-encodable form up front. [CONFIRMED — `insertElement<InstCopyPredicated>` read verbatim; the
-`Select`-not-encodable rationale cross-checked to the lower_select pass.]
+encodable form up front. The `Select`-not-encodable rationale is cross-checked against the `lower_select` pass.
 
 These four are the indexed-access primitives behind MoE expert routing: the routed-token/expert
 gather (`Gather`/`IndirectCopy`), the token mask (`RangeSelect`), and the predicated expert-output
-combine (`CopyPredicated`); the scatter side is the `IndirectSaveAccumulate`(46) family. [STRONG.]
+combine (`CopyPredicated`); the scatter side is the `IndirectSaveAccumulate`(46) family.
 
 ---
 
@@ -635,14 +632,12 @@ executor, not the codegen. The geometry the builder records matches the sim cont
 - **BNStatsAggregate**: input AP `%3==0` (K Welford triples to merge), output AP **exactly 2
   elements/partition** (mean, population variance). Carries no own JSON field.
 
-[CONFIRMED — distinct builders + identical signatures read verbatim; STRONG for the
-`apply_transpose`/`dtypeFlag` decomposition of the two `uint` args, which is inferred from the BN
-wire schema since the builder bodies are extern in `libBIR`.]
+The two distinct builders and their identical signatures are read directly. The `apply_transpose` / `dtypeFlag` decomposition of the two `uint` args is [INFERRED] from the BN wire schema, because the builder bodies are extern in `libBIR`.
 
 ### 10.2 `codegenShuffle` @`0xf28130` → `InstStreamShuffle` (39) — the 32-entry partition mask
 
 ```c
-// codegenShuffle @0xf28130   [CONFIRMED]
+// codegenShuffle @0xf28130
 dst = codegenTensorRef(klr.shuffle.dst);   src = codegenTensorRef(klr.shuffle.src);
 vector<uint> mask;
 for (Operand op : klr.shuffle.shuffleMask /*list @+32*/) {
@@ -661,7 +656,7 @@ return node;
 (`out_part[block+i] = in_part[block+mask[i]]`); the sim asserts a 32-entry mask, no dtype cast, each
 entry `<32`. The mask must be static (the immediate-only assert) — that is the codegen's enforcement
 of the "compile-time permutation" requirement. The `+240` / 40-byte-stride container is exactly the
-`InstStreamShuffle::sameInst` structural-compare field. [CONFIRMED.]
+`InstStreamShuffle::sameInst` structural-compare field.
 
 ---
 
@@ -684,8 +679,7 @@ of the "compile-time permutation" requirement. The `+240` / 40-byte-stride conta
 
 The `+0xF8` / `+0x128` / `+0x158` offsets byte-coincide with the JSON wire keys
 `dge_type` / `mode` / `transpose_op` — a codegen'd op and a JSON-loaded op are structurally identical
-at those offsets. [CONFIRMED for every DMA/transpose/scatter/copy write; register-chain `+0x160`/`+0x192`
-STRONG.]
+at those offsets. Every DMA / transpose / scatter / copy write in the table is byte-anchored; the register-chain heads at `+0x160`/`+0x192` are read from the splice sites rather than a direct store.
 
 ---
 
@@ -710,53 +704,29 @@ The `DGEType` written here (§3.2, §5) decides SW (compiler-emitted descriptor)
 (engine-generated) at `lower_dma`; the engine-id and QoS are filled by H33/J as noted. The indexed
 ops (`Gather`/`IndirectCopy`/`RangeSelect`/`CopyPredicated`) emitted here are already *concrete*
 (single resolved index axis), so they bypass the H06 generic-indirect expansion that only
-`GenericIndirectSave`(44) needs. [STRONG.]
+`GenericIndirectSave`(44) needs.
 
 ---
 
-## 13. Adversarial self-verification
+## 13. Evidence anchors and limits
 
-The five strongest claims, re-checked directly against the cp310 `libwalrus.so` disasm sidecars (not
-the backing reports):
+The byte anchors behind the page's structural claims, collected so the sections above can stay prose:
 
-1. **Three distinct transposes** — *CONFIRMED.* `codegenTranspose` @`0xf28fb0`: PE-guard `cmp [rsi+28h],5`
-   @`0xf28fd1`; `call getIdentityMatrix` @`0xf29098`; `call addMatmult` @`0xf292f9`;
-   `insertElement<InstStreamTranspose>` @`0xf2947d`; `_validateLegalStreamTranspose` @`0xf29554`.
-   `codegenDmaTranspose` @`0xf2dd10`: `mov [r12+128h],1` @`0xf2e0c6`, `mov [r12+158h],0Bh` @`0xf2e0d2`,
-   `mov [r12+90h],1` @`0xf2e719`. Three nodes (StreamTranspose / Matmult / DMACopy), three engines.
-2. **Gather → dynamic-AP path** — *CONFIRMED for the operand binds; INFERRED for the per-dim coefficient.*
-   `insertElement<InstGather>` @`0xf2a6d7`, `insertElement<InstIndirectCopy>` @`0xf2abda`,
-   `insertElement<InstTensorCopyDynamicSrc>` @`0xf2d40b` read verbatim. The `IndirectDim` itself is
-   carried in the AP (`DynamicAPINFO+0x74`) built by `codegenTensorRef`, *not* set in these leaves —
-   so "gather binds the dynamic AP" is true at the binding level; the coefficient arithmetic is
-   resolved by the AP grammar (7.23) / sim, which I did not re-derive byte-by-byte (INFERRED there).
-3. **BN-stats / aggregate split** — *CONFIRMED.* `codegenBatchNormStats` @`0xf1add0` calls
-   `bir::InstBuilder::addBNStats` @`0xf1af6f`; `codegenBatchNormAggregate` @`0xf1b0d0` calls
-   `bir::InstBuilder::addBNAggr` @`0xf1b26f`; both with the identical 7-arg
-   `(MemoryLocation*, MemoryLocation*, SmallVector<APPair,4>, SmallVector<APPair,4>, uint, uint, source_location const&)`
-   signature. The 6-vs-2 element/partition geometry is a verifier/sim contract (STRONG, not read from
-   the extern builder body).
-4. **GenericIndirectSave** — *CONFIRMED.* Reached only as the `NcDmaCopy` fall-through
-   (`cmp [rsi+20h],1` / `cmp [rsi+3Ch],0` @`0xf2fa61`/`0xf2fa67`, `call codegenGenericIndirectSave`
-   @`0xf30268`); `lea rdi,[r12+128h]` @`0xf2ec8d` (indirect_dims); `mov [r12+140h],4` @`0xf2f240`
-   (op=add). Node name prefix is literally `"IndirectSaveAccumulate-"` though the IT is 44.
-5. **DMA leaf node targets** — *CONFIRMED.* `NcDmaCopy` static →
-   `addUnaryInstruction<InstDMACopy>` @`0xf309c9`; `DmaCompute` → `addDmaCopyFma` @`0xf1e054`
-   (signature `(string const&, ArrayRef<InstArg>, InstArg, ArrayRef<float>, source_location const&)`);
-   `NcCopy` static → `addTensorCopyCustom` @`0xf2d7d0`; `RangeSelect` → `addRangeSelectReduce` @`0xf1c633`;
-   `SelectReduce` → `insertElement<InstCopyPredicated>` @`0xf271ef`; `TensorLoad` →
-   `insertElement<InstTensorLoad>` + `mov [r12+90h],7` @`0xf26b94`.
+| Claim | Anchors |
+|---|---|
+| **Three distinct transposes** (§6) | `codegenTranspose` @`0xf28fb0`: PE-guard `cmp [rsi+28h],5` @`0xf28fd1`; `call getIdentityMatrix` @`0xf29098`; `call addMatmult` @`0xf292f9`; `insertElement<InstStreamTranspose>` @`0xf2947d`; `_validateLegalStreamTranspose` @`0xf29554`. `codegenDmaTranspose` @`0xf2dd10`: `mov [r12+128h],1` @`0xf2e0c6`, `mov [r12+158h],0Bh` @`0xf2e0d2`, `mov [r12+90h],1` @`0xf2e719` |
+| **Gather operand binds** (§9) | `insertElement<InstGather>` @`0xf2a6d7`; `insertElement<InstIndirectCopy>` @`0xf2abda`; `insertElement<InstTensorCopyDynamicSrc>` @`0xf2d40b` |
+| **BN stats / aggregate split** (§10.1) | `codegenBatchNormStats` @`0xf1add0` → `addBNStats` @`0xf1af6f`; `codegenBatchNormAggregate` @`0xf1b0d0` → `addBNAggr` @`0xf1b26f`; identical 7-arg `(MemoryLocation*, MemoryLocation*, SmallVector<APPair,4>, SmallVector<APPair,4>, uint, uint, source_location const&)` signature |
+| **GenericIndirectSave reached only via the DMA fall-through** (§7) | `cmp [rsi+20h],1` / `cmp [rsi+3Ch],0` @`0xf2fa61`/`0xf2fa67`; `call codegenGenericIndirectSave` @`0xf30268`; `lea rdi,[r12+128h]` @`0xf2ec8d`; `mov [r12+140h],4` @`0xf2f240` |
+| **DMA leaf node targets** (§§3–5, 8–9) | `addUnaryInstruction<InstDMACopy>` @`0xf309c9`; `addDmaCopyFma` @`0xf1e054`; `addTensorCopyCustom` @`0xf2d7d0`; `addRangeSelectReduce` @`0xf1c633`; `insertElement<InstCopyPredicated>` @`0xf271ef`; `insertElement<InstTensorLoad>` + `mov [r12+90h],7` @`0xf26b94` |
 
-**Honest re-verify ceiling.** All `insertElement<…>` / `InstBuilder::add…` call targets and the
-field-stamp `mov`/`lea` instructions in §11 were read verbatim from the cp310 disasm — these are
-CONFIRMED. What is **not** independently re-derived from the binary on this page: (a) the *exact*
-struct-field semantics of the extern builder bodies (`addBNStats`, `addBNAggr`, `addRangeSelectReduce`,
-`addDmaCopyFma`, `addTensorCopyCustom`, `addMatmult`) — these live in `libBIR.so` and their internal
-field stores are inferred from the wire schema, hence the 6/2 BN geometry and the two-`uint` BN arg
-split are STRONG, not CONFIRMED; (b) the precise klr-node byte offsets of the RangeSelect/SelectReduce
-*reduce-half* operands, which are read at the call-site stack-slot level and a couple alias (STRONG);
-(c) the semantic role of `InstRangeSelect+0xF0`'s `int mode` (INFERRED). Everything that determines
-*which BIR node a klr op becomes* and *which engine/DGEType/transpose-marker it carries* is CONFIRMED.
+Three things on this page are **not** derived from the binary directly:
+
+1. **The extern builder bodies.** `addBNStats`, `addBNAggr`, `addRangeSelectReduce`, `addDmaCopyFma`, `addTensorCopyCustom`, and `addMatmult` live in `libBIR.so`; their internal field stores are read off the wire schema, not disassembled. That is why the 6-vs-2 BN element/partition geometry and the two-`uint` BN argument split are flagged as inferred.
+2. **The gather coefficient arithmetic.** These leaves bind the dynamic AP; the `IndirectDim` coefficient itself is resolved by the AP grammar ([7.23](codegen-dynamic-ap.md)) and the simulator, not re-derived here.
+3. **`InstRangeSelect+0xF0`'s `int mode`.** The store is pinned, the semantic is not (§9.3).
+
+Everything that determines *which BIR node a klr op becomes* and *which engine / DGEType / transpose-marker it carries* is read directly from the disassembly.
 
 ---
 

@@ -1,7 +1,7 @@
 # DMA / Transpose Opcode Cluster — `0xb8` · `0xb9` · `0xba` · `0xbd` · `0xf1` · `0xb4` · `0xb6`
 
 This page is the **kernel-opcode view of GPSIMD data movement**. It decodes the seven TPB
-instruction opcodes that GX-OP-08's TIER-D grouped under "DMA / transpose" by enum-byte
+instruction opcodes grouped under "DMA / transpose" by enum-byte
 adjacency, and then assembles the **complete GPSIMD data-movement opcode map** by folding in
 `DMA_INDIRECT (0xbb)`, the sequencer scalar load/store pair (`0xaa`/`0xab`), the
 Descriptor-Generation Engine (DGE), and the `al_udma` M2S/S2M SDMA hardware.
@@ -17,13 +17,13 @@ those — it documents the instruction-word front door.
 > are **NX SEQUENCER control-spine** ops (a semaphore/event batch test-update; a packed
 > scalar-bytecode bundle). They sit in the `0xb0..0xb6` sem/branch/control sub-band, *adjacent
 > to* but *distinct from* the `0xb8..0xbd` DMA sub-band. The genuine DMA/transpose cluster is the
-> **five** `{0xb8, 0xb9, 0xba, 0xbd, 0xf1}`. Both control ops are still fully decoded below. `[HIGH/OBSERVED]`
+> **five** `{0xb8, 0xb9, 0xba, 0xbd, 0xf1}`. Both control ops are still fully decoded below.
 
 > **PREMISE CORRECTION — there are three transposes, not one.** `0xbd`/`0xf1` are
 > *descriptor-level* DMA-xbar transposes (the crossbar transposes during the transfer). They are
 > **not** the DVE datapath transpose `0x6b STREAM_TRANSPOSE` (lane-permute in the vector pipe;
 > see [StreamTranspose](./stream-transpose.md)). Any hypothesis equating `0x6b` with one of the
-> `0xb9/0xba/0xbd/0xb4/0xb6` bytes is false — the opcode bytes are disjoint. `[HIGH/OBSERVED]`
+> `0xb9/0xba/0xbd/0xb4/0xb6` bytes is false — the opcode bytes are disjoint.
 
 > **NOTE — provenance.** Primary facts derive from the shipped customop-lib package
 > `aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64`: the four per-gen arch-isa C headers under
@@ -38,7 +38,7 @@ those — it documents the instruction-word front door.
 > so MAVERICK dispatch interiors are flagged **INFERRED**.
 
 Confidence convention: `[HIGH/OBSERVED]` = read directly from byte / header / `struct2opcode` /
-compile-verify this pass; `[MED/INFERRED]` = reasoned over an OBSERVED fact; `[…/CARRIED]` =
+compile-verify; `[MED/INFERRED]` = reasoned over an OBSERVED fact; `[…/CARRIED]` =
 re-used from a sibling firmware decode at its confidence without re-tracing the artifact here.
 
 ---
@@ -59,11 +59,11 @@ authoritative mnemonic, **not** inferred from the opcode number.
 | `0xb4` | `TEST_EVENT_SEM`                       | —        | —         | **Y**      | **Y**       | MARIANA   | `common.h:264` |
 | `0xb6` | `COMPACT_CONTROL_INST`                 | —        | —         | —          | **Y**       | MAVERICK  | `common.h:266` |
 
-Per-gen enum line refs (`rg -n 'OPCODE_<x> ' aws_neuron_isa_tpb_common.h`, all four gens this pass):
+Per-gen enum line refs (`rg -n 'OPCODE_<x> ' aws_neuron_isa_tpb_common.h`, all four gens):
 SUNDA `0xb8@260`; CAYMAN `0xb8@257`, `0xbd@260`, `0xf1@302`; MARIANA `0xb4@261`, `0xb8@263`,
 `0xbd@266`, `0xf1@312`; MAVERICK as tabled. SUNDA's `common.h` has **zero** hits for any of
 `DMA_MEMCPY2 / DMA_IMMEDIATE / DMA_TRANSPOSE / DMA_GATHER_TRANSPOSE / TEST_EVENT_SEM /
-COMPACT_CONTROL_INST` — confirming SUNDA carries only `DMAMEMCPY` in this cluster. `[HIGH/OBSERVED]`
+COMPACT_CONTROL_INST` — confirming SUNDA carries only `DMAMEMCPY` in this cluster.
 
 The contiguous DMA sub-band (MAVERICK superset; `0xb7` is the band boundary, **absent**):
 
@@ -79,7 +79,7 @@ The contiguous DMA sub-band (MAVERICK superset; `0xb7` is the band boundary, **a
 > MARIANA into MARIANA + MARIANA_PLUS (v4 / v4+). This page uses the **four** byte-grounded header
 > directories (SUNDA / CAYMAN / MARIANA / MAVERICK); MARIANA_PLUS is a v4 sub-step that ships the
 > same ISA contract. The two are consistent — `0xb8` is `Y` in every gen; `0xbd`/`0xf1` add at v3;
-> `0xb4` at v4; `0xb6`/`0xb9`/`0xba` at v5. `[HIGH/OBSERVED]`
+> `0xb4` at v4; `0xb6`/`0xb9`/`0xba` at v5.
 
 ---
 
@@ -87,7 +87,7 @@ The contiguous DMA sub-band (MAVERICK superset; `0xb7` is the band boundary, **a
 
 `instruction_mapping.json`'s `struct2opcode` table is the authoritative opcode→operand-struct
 binding. Each struct's **defining-gen set matches the opcode's presence set exactly** — the ISA
-adds the opcode and its struct together. Every struct is 64 bytes by `gcc` compile-verify this pass.
+adds the opcode and its struct together. Every struct is 64 bytes by `gcc` compile-verify.
 
 | op     | operand struct (`NEURON_ISA_TPB_…`) | `struct2opcode` key (JSON) | `sizeof` | defining gens |
 | ------ | ----------------------------------- | -------------------------- | :------: | ------------- |
@@ -102,13 +102,13 @@ adds the opcode and its struct together. Every struct is 64 bytes by `gcc` compi
 > **GOTCHA — the JSON key for `0xb8` is `OPCODE_DMA_MEMCPY`, the enum is `OPCODE_DMAMEMCPY`.** Same
 > `0xb8` opcode, two spellings of the *name* (no underscore in the enum, underscore in the JSON key
 > and in the struct's docstring: *"DmaMemcpy Instruction"*). Resolve by the opcode byte, not the
-> string. `[HIGH/OBSERVED]`
+> string.
 
 > **NOTE — the compiler-side pseudo.** A `PSEUDO_DMA_DIRECT2D = 0xd4` opcode
 > (`common.h:294`, struct `PSEUDO_DMA_DIRECT2D_STRUCT`) is the symbolic, unresolved-address form of
 > `0xb8` that the compiler emits and NRT lowers to the real `0xb8 DMA_DIRECT2D` at bind time —
 > exactly the pseudo/real relationship `0xce → 0xaa` has on the [TensorLoad](./tensorload.md) page.
-> `0xd4` is not in this cluster's byte band and is not decoded here. `[HIGH/OBSERVED]`
+> `0xd4` is not in this cluster's byte band and is not decoded here.
 
 Compile-verify (`gcc -I …/neuron_maverick_arch_isa/tpb`, all seven structs):
 
@@ -129,9 +129,9 @@ NEURON_ISA_TPB_CTRL_CCI_STRUCT               sizeof=64   insts +4
 All offsets below are the in-header `( lo - hi )` byte annotations, cross-checked against
 `offsetof`. `ADDR8` is the 8-byte full-Neuron-address union; `ADDR4` is its 4-byte form;
 `EVENTS` (8 B) is the standard wait/update-semaphore sync block; `DMA_CONFIGS` (1 B) is
-`priority_class:3` + reserved.
+`priority_class:3` + reserved. `[HIGH/OBSERVED]`
 
-### 3a. `0xb8 DMA_DIRECT2D_STRUCT` — the canonical 2-D mover `[HIGH/OBSERVED]`
+### 3a. `0xb8 DMA_DIRECT2D_STRUCT` — the canonical 2-D mover
 
 Header docstring (`dma_direct2d.h`): *"DmaMemcpy … will generate DMA descriptors to initiate a
 Memcpy. The descriptors will be supplied by the DGE block and the TPB engine will update the DMA
@@ -163,9 +163,9 @@ reduce (`compute_op`), bounds-checked. The `compute_op` enum (`common.h:1000`) i
 ops: `NONE=0 (B=A) / ADD=1 (B+=A) / MULTIPLY=2 / MAX=3 / MIN=4` — this is the **scatter/reduce-add
 DMA** the DGE Pool backend implements. The validity contract gates a CCE (compute-DMA) path
 (`is_valid_dma_cce`: aligned start addresses + aligned steps + element-size check) when
-`compute_op != NONE`. `[HIGH/OBSERVED]`
+`compute_op != NONE`.
 
-### 3b. `0xb9 DMA_COPY2D_STRUCT` — the "next-gen" mover (MAVERICK) `[HIGH/OBSERVED]`
+### 3b. `0xb9 DMA_COPY2D_STRUCT` — the "next-gen" mover (MAVERICK)
 
 Header docstring (`dma_copy2d.h`): *"Next-generation DMA copy instruction with explicit semaphore
 wait/update, configurable DMA engine selection, and loop-friendly address modes."*
@@ -199,11 +199,11 @@ DMA-engine bank selection** (`start_id` + `engine_count` of 1/2/4/8 from `DMA_EN
 no separate address-compute instruction); **separate `rd_done` / `wr_done` completion semaphores**
 (`DMA_SEMA_UPDATE_MODE`: `NONE / LOCAL_SEM_INC / LOCAL_SEM_INC_COUNTER / LOCAL_COLLSYNC_INC /
 REMOTE_SEM_INC / REMOTE_SEM_INC_COUNTER / REMOTE_COLLSYNC_INC` — local **or remote** sem/collsync
-increment); and **`remote_core_id`** — cross-core DMA into a peer NeuronCore's memory. `[HIGH/OBSERVED]`
+increment); and **`remote_core_id`** — cross-core DMA into a peer NeuronCore's memory.
 
 > **GOTCHA — `dma_flags.queue_id` is 3 bits, not 4.** `DMA_FLAGS` (`common.h:1041`) is
 > `tdg:1 / wr_done_sync:1 (SEMA_SYNC) / queue_id:3 / reserved:3` — eight DMA queues, not sixteen.
-> (The struct's inline comment "4b queue ID" is stale; the field is 3 bits.) `[HIGH/OBSERVED]`
+> (The struct's inline comment "4b queue ID" is stale; the field is 3 bits.)
 
 The 12-entry `DMA_ADDR_MODE` enum (`common.h:1061`) per addressing leg (`addr_mode` packs src in
 the low nibble, dst in the high):
@@ -214,7 +214,7 @@ REG_REG_OFFSET64=0x6 / …64I=0x7 / REG_REG_IMM_SCALE=0x8 / …_I=0x9 / REG_REG_
 EQ/LT/LE/GT/GE_REG=0x81..0x85 / …_REG_OFFSET=0x91..0x95` (immediate / register / register-offset
 threshold compares).
 
-### 3c. `0xba DMA_IMMEDIATE_STRUCT` — raw-descriptor injection (MAVERICK) `[HIGH/OBSERVED]`
+### 3c. `0xba DMA_IMMEDIATE_STRUCT` — raw-descriptor injection (MAVERICK)
 
 Header docstring (`dma_immediate.h`): *"send 1-3 immediate descriptors to DGE"*, with
 `dma_engines.engine_count` *"must be 1"* and `dma_flags.tdg` / `wr_done_sync` *"must be zero"*.
@@ -236,14 +236,14 @@ injects them **straight into one DGE queue**, bypassing the GENERATE/DIMPUSH des
 (the bytes live in the instruction word at off 16-63). `DESCRIPTOR_RAW` is `uint8_t bytes[16]`;
 `DESC_FLAGS.num_descriptors` selects 1/2/3 and each `descN_src` bit selects per-descriptor source
 via `DMA_DESC_MODE { IMMEDIATE = 0 (16 B in-instruction), REGISTER = 1 (assembled from 4×32-bit
-registers, `descN_src..descN_src+3`) }`. This is the low-level / hand-tuned DMA path. `[HIGH/OBSERVED]`
+registers, `descN_src..descN_src+3`) }`. This is the low-level / hand-tuned DMA path.
 
 > **NOTE — the `0xba` constraints are prose, not predicates.** `engine_count == 1`,
 > `num_descriptors ∈ {1,2,3}`, `tdg == 0`, `wr_done_sync == 0` are stated only in the header
 > docstring — the in-header `is_valid_dma_immediate` checks just header + opcode. A decoder must
-> enforce them itself. `[HIGH/OBSERVED]`
+> enforce them itself.
 
-### 3d. `0xbd DMA_DIRECT2D_XPOSE_STRUCT` — non-indexed DMA-xbar transpose (v3+) `[HIGH/OBSERVED]`
+### 3d. `0xbd DMA_DIRECT2D_XPOSE_STRUCT` — non-indexed DMA-xbar transpose (v3+)
 
 Header docstring (`dma_direct2d_xpose.h`): *"This instruction will generate DMA descriptors to
 initiate a xbar transpose in Neuron+. The descriptors will be supplied by the DGE block …"*
@@ -271,7 +271,7 @@ initiate a xbar transpose in Neuron+. The descriptors will be supplied by the DG
 > **GOTCHA — the `out_dtype` size comment in-header reads `// 5`.** That is a typo in the shipped
 > header; `out_dtype` is a **1-byte** `DTYPE` at offset 15. The struct still
 > `ISA_STATIC_ASSERT(…==64)`, and `offsetof(src_start_addr)==16` proves the field is one byte.
-> Do not read it as a 5-byte field. `[HIGH/OBSERVED]`
+> Do not read it as a 5-byte field.
 
 Validity predicates (in-header `is_valid_dma_transpose`, OBSERVED): `nc >= V3`
 (`has_valid_dma_transpose_nc`); `tile_src_rows == 16` (`has_valid_xpose_tile_rows_temporary`);
@@ -279,9 +279,9 @@ Validity predicates (in-header `is_valid_dma_transpose`, OBSERVED): `nc >= V3`
 `in_dtype == out_dtype` (no cast); `dst_start_addr` **32 B-aligned** and a **SBUF** address;
 `dst_step_elem` 32 B-aligned unless `dst_num_elem == 1` (xbar HW). A **non-indexed** bulk transpose:
 the DMA crossbar transposes a 2-D strided src in 16×N tiles while it streams to the dst; src/dst are
-full Neuron addresses (HBM↔SBUF or SB↔SB). `[HIGH/OBSERVED]`
+full Neuron addresses (HBM↔SBUF or SB↔SB).
 
-### 3e. `0xf1 DMA_GATHER_XPOSE_STRUCT` — gather-by-index + transpose (v3+) `[HIGH/OBSERVED]`
+### 3e. `0xf1 DMA_GATHER_XPOSE_STRUCT` — gather-by-index + transpose (v3+)
 
 Header docstring (`dma_gather_xpose.h`): *"DmaGatherTranspose performs a gather operation from HBM
 or SBUF using dynamic indices, followed by xbar transpose, and writes the result to SBUF. This
@@ -318,9 +318,9 @@ only** (`type_size_check(…,2)` on both legs) and `dtype_lo == dtype_hi` (*no c
 cross-field `src_num_elem[1] == dst_num_elem[0]` (both = #indices). The gather dim **must == Y**
 (`gather_dim == INDIRECT_DIM_Y`, the slowest dim, *"initially"* to simplify ucode) —
 `INDIRECT_DIM { X=0, Y=1, Z=2, W=3 }`. **Gather (dynamic UINT32 indices, bounds-predicated) + xbar
-transpose** in one instruction, src in HBM or SBUF, dst in SBUF, 16×128 tile. `[HIGH/OBSERVED]`
+transpose** in one instruction, src in HBM or SBUF, dst in SBUF, 16×128 tile.
 
-### 3f. `0xb4 CTRL_TEST_ES_STRUCT` — TestEventSem (control, *not* a DMA) `[HIGH/OBSERVED]`
+### 3f. `0xb4 CTRL_TEST_ES_STRUCT` — TestEventSem (control, *not* a DMA)
 
 Header docstring (`ctrl_test_es.h`): *"TestEventSem — Read (read each semaphore into corresponding
 register) / Update (update each semaphore from corresponding register) / ConditionalUpdate (if
@@ -346,9 +346,9 @@ instruction. The validity contract bars immediate-value update modes (`SEM_ADD_I
 `SEM_SUB_IMM_*` / `SEM_WR_IMM_*`) — only register-sourced updates are legal here — and enforces
 `num_evt_sem ∈ [1,16]`, slot uniqueness, and zeroed unused slots. NX SEQUENCER control-spine; no
 POOL kernel, no DGE descriptor. See [TPB Event/Semaphore Regions (EVT_SEM)](../../control/address/evt-sem-regions.md)
-for the addressed HW block (planned, Part 12). `[HIGH/OBSERVED]`
+for the addressed HW block (planned, Part 12).
 
-### 3g. `0xb6 CTRL_CCI_STRUCT` — CompactControlInst (control, *not* a DMA, MAVERICK) `[HIGH/OBSERVED header / interior INFERRED]`
+### 3g. `0xb6 CTRL_CCI_STRUCT` — CompactControlInst (control, *not* a DMA, MAVERICK) `[HIGH/OBSERVED header; INFERRED interior]`
 
 `CTRL_CCI_STRUCT` is `header (4) + insts[15]` (`NEURON_ISA_TPB_CCINST`, **4 B each = 60 B**). The
 "compact control instruction" carries its own `CCIHEADER { opcode; reserved[1]; debug_cmd;
@@ -375,8 +375,8 @@ sequence by the NX sequencer — a code-density / inner-loop optimization, MAVER
 
 Validity (in-header `is_valid_ctrl_cci`): `has_valid_neuron_header && has_tile_idx_zero &&
 has_cci_opcode` (`opcode == CompactControlInst`). The structural contract is byte-grounded; the
-MAVERICK device-side *interpreter* that walks `insts[15]` is **not** disassembled this pass, so the
-execution interior is flagged **INFERRED**. `[HIGH/OBSERVED header → INFERRED interior]`
+MAVERICK device-side *interpreter* that walks `insts[15]` is **not** disassembled, so the
+execution interior is flagged **INFERRED**. `[HIGH/OBSERVED header; INFERRED interior]`
 
 ---
 
@@ -413,7 +413,7 @@ and the single `DIRECT2D` kind.
 > funcVA; MED for the CAYMAN+ exact decode-arm VA — FLIX-desynced, carried]`
 
 > **GOTCHA — the FLIX-inline VAs `0x2faf`/`0x3020` are CARRIED, not re-byte-traced here.** No Q7
-> Vision FLIX code-stream was disassembled this pass; the struct/enum facts above never cross the
+> Vision FLIX code-stream was disassembled; the struct/enum facts above never cross the
 > ncore2gp FLIX bundle decoder, so the byte-grounded facts are unaffected, but the per-gen handler
 > VAs are MED. The MAVERICK NX decode arms for `0xb9`/`0xba`/`0xb6` are not carved — their chains
 > are INFERRED from the struct fields. `[honesty ledger]`
@@ -452,7 +452,7 @@ This is **distinct** from the DVE `0x6b STREAM_TRANSPOSE` (32×32 lane-permute i
 datapath, in-SBUF/PSUM, all ≤32-bit) — see [StreamTranspose](./stream-transpose.md). The transpose
 **family** is therefore three mechanisms: `(a) 0xbd` DMA-xbar non-indexed, `(b) 0xf1` DMA-xbar
 gather-by-index, `(c) 0x6b` DVE lane-permute. `(a)`/`(b)` live on the DGE/POOL descriptor path;
-`(c)` on the DVE compute engine. `[HIGH/OBSERVED]`
+`(c)` on the DVE compute engine.
 
 ---
 
@@ -469,10 +469,10 @@ gather-by-index, `(c) 0x6b` DVE lane-permute. `(a)`/`(b)` live on the DGE/POOL d
 | `0xb6` | —        | —         | —          | Y           | v5-new packed control bundle |
 
 The **opcode-present set == the struct-defining set == the `// Y` flag set**, per gen
-(triple-confirmed this pass). The transposes add at CAYMAN (v3 = the header's `nc >= V3` "Neuron+"
+(triple-confirmed). The transposes add at CAYMAN (v3 = the header's `nc >= V3` "Neuron+"
 predicate). Of MAVERICK's six new opcodes, **three** are in this cluster (`0xb6`/`0xb9`/`0xba`); the
 other three (`0x26 ACTIVATE_MULTIPASS`, `0xf3 TENSOR_TENSOR_INT_WIDE`, `0xf4 TENSOR_SCALAR_INT_WIDE`)
-are not. `[HIGH/OBSERVED]`
+are not.
 
 ---
 
@@ -481,21 +481,21 @@ are not. `[HIGH/OBSERVED]`
 Folding the seven with the already-decoded movers gives the full picture. GPSIMD data movement is
 **four layers** plus the orthogonal DVE datapath transpose and the NX control-spine.
 
-| layer | opcode | mnemonic | struct / kind | role | gens | confidence |
+| layer | opcode | mnemonic | struct / kind | role | gens | conf (all HIGH) |
 | ----- | ------ | -------- | ------------- | ---- | ---- | ---------- |
-| **L1 — sequencer scalar mem↔reg** (not bulk DMA) | `0xaa` | `TENSOR_LOAD` | `MEM_2D` | memory → ≤32 sequencer GPRs, 1 window ([TensorLoad](./tensorload.md)) | su ca ma mv | `[HIGH/OBSERVED]` |
-| | `0xab` | `TENSOR_STORE` | `MEM_2D` | GPR/immediate → memory, mirror of load ([TensorStore](./tensorstore.md)) | su ca ma mv | `[HIGH/OBSERVED]` |
-| **L2 — bulk tensor DMA** (DGE-emitter band) | `0xb8` | `DMAMEMCPY` | `DMA_DIRECT2D` / kind `0x0` | 2-D copy (+ reduce); canonical mover | su ca ma mv | `[HIGH/OBSERVED]` |
-| | `0xb9` | `DMA_MEMCPY2` | `DMA_COPY2D` / kind `0x0` | next-gen copy: sema/engine/addr-mode + remote-core | mv | `[HIGH/OBSERVED]` |
-| | `0xba` | `DMA_IMMEDIATE` | `DMA_IMMEDIATE` / kind `0x0` | inject 1-3 raw 16 B descriptors | mv | `[HIGH/OBSERVED]` |
-| | `0xbb` | `DMA_INDIRECT` | `DMA_INDIRECT1D` / kind `0x1` | gather/scatter-by-index DMA (1-D + index tensors; scatter-add via `DGE_COMPUTE_OP`) — [Indirection Engine](./indirection-gather.md) | su ca ma mv | `[HIGH/CARRIED]` |
-| | `0xbd` | `DMA_TRANSPOSE` | `DMA_DIRECT2D_XPOSE` / kind `0x2` | 2-D copy + xbar transpose, non-indexed, 16×N | ca ma mv | `[HIGH/OBSERVED]` |
-| | `0xf1` | `DMA_GATHER_TRANSPOSE` | `DMA_GATHER_XPOSE` / kind `0x3` | gather(UINT32 idx) + xbar transpose → SBUF, 16×128, 2 B | ca ma mv | `[HIGH/OBSERVED]` |
-| **L3 — the DGE** | — | (Descriptor-Generation Engine) | GENERATE / DIMPUSH / REGWRITE | expands each 64 B descriptor → 16 B SDMA BDs; 3 backends (Pool 2-dim / RTL 5+2-dim / software 4-dim) — [DGE Emit](../dge/dge-emit.md), [Selector](../dge/dge-backend-selector.md), [Reshape](../dge/dge-reshape.md) | all | `[HIGH/CARRIED]` |
-| **L4 — the SDMA HW** | — | `al_udma` M2S / S2M | SDMA BD rings | M2S reads source (AXI read + stream push); S2M writes dest (AXI write + stream accept); one pair = one channel | all | `[HIGH/CARRIED]` |
-| **orthogonal — DVE datapath transpose** | `0x6b` | `STREAM_TRANSPOSE` | `S4D4_TR` | 32×32 lane-permute in the DVE vector pipe, in-SBUF/PSUM, ≤32-bit — [StreamTranspose](./stream-transpose.md) | su ca ma mv | `[HIGH/CARRIED]` |
-| **control-spine** (not data movement) | `0xb4` | `TEST_EVENT_SEM` | `CTRL_TEST_ES` | sem/event batch test-read-update (≤16) | ma mv | `[HIGH/OBSERVED]` |
-| | `0xb6` | `COMPACT_CONTROL_INST` | `CTRL_CCI` | 15 packed scalar control/ALU/branch/mem/sem micro-ops | mv | `[HIGH/OBSERVED]` |
+| **L1 — sequencer scalar mem↔reg** (not bulk DMA) | `0xaa` | `TENSOR_LOAD` | `MEM_2D` | memory → ≤32 sequencer GPRs, 1 window ([TensorLoad](./tensorload.md)) | su ca ma mv | OBSERVED |
+| | `0xab` | `TENSOR_STORE` | `MEM_2D` | GPR/immediate → memory, mirror of load ([TensorStore](./tensorstore.md)) | su ca ma mv | OBSERVED |
+| **L2 — bulk tensor DMA** (DGE-emitter band) | `0xb8` | `DMAMEMCPY` | `DMA_DIRECT2D` / kind `0x0` | 2-D copy (+ reduce); canonical mover | su ca ma mv | OBSERVED |
+| | `0xb9` | `DMA_MEMCPY2` | `DMA_COPY2D` / kind `0x0` | next-gen copy: sema/engine/addr-mode + remote-core | mv | OBSERVED |
+| | `0xba` | `DMA_IMMEDIATE` | `DMA_IMMEDIATE` / kind `0x0` | inject 1-3 raw 16 B descriptors | mv | OBSERVED |
+| | `0xbb` | `DMA_INDIRECT` | `DMA_INDIRECT1D` / kind `0x1` | gather/scatter-by-index DMA (1-D + index tensors; scatter-add via `DGE_COMPUTE_OP`) — [Indirection Engine](./indirection-gather.md) | su ca ma mv | CARRIED |
+| | `0xbd` | `DMA_TRANSPOSE` | `DMA_DIRECT2D_XPOSE` / kind `0x2` | 2-D copy + xbar transpose, non-indexed, 16×N | ca ma mv | OBSERVED |
+| | `0xf1` | `DMA_GATHER_TRANSPOSE` | `DMA_GATHER_XPOSE` / kind `0x3` | gather(UINT32 idx) + xbar transpose → SBUF, 16×128, 2 B | ca ma mv | OBSERVED |
+| **L3 — the DGE** | — | (Descriptor-Generation Engine) | GENERATE / DIMPUSH / REGWRITE | expands each 64 B descriptor → 16 B SDMA BDs; 3 backends (Pool 2-dim / RTL 5+2-dim / software 4-dim) — [DGE Emit](../dge/dge-emit.md), [Selector](../dge/dge-backend-selector.md), [Reshape](../dge/dge-reshape.md) | all | CARRIED |
+| **L4 — the SDMA HW** | — | `al_udma` M2S / S2M | SDMA BD rings | M2S reads source (AXI read + stream push); S2M writes dest (AXI write + stream accept); one pair = one channel | all | CARRIED |
+| **orthogonal — DVE datapath transpose** | `0x6b` | `STREAM_TRANSPOSE` | `S4D4_TR` | 32×32 lane-permute in the DVE vector pipe, in-SBUF/PSUM, ≤32-bit — [StreamTranspose](./stream-transpose.md) | su ca ma mv | CARRIED |
+| **control-spine** (not data movement) | `0xb4` | `TEST_EVENT_SEM` | `CTRL_TEST_ES` | sem/event batch test-read-update (≤16) | ma mv | OBSERVED |
+| | `0xb6` | `COMPACT_CONTROL_INST` | `CTRL_CCI` | 15 packed scalar control/ALU/branch/mem/sem micro-ops | mv | OBSERVED |
 
 > **NOTE — SUNDA also has POOL software gather kernels.** On SUNDA the index-tensor movers
 > `0x68 GATHER`, `0xe7 INDIRECT_COPY`, `0x79 EMBEDDING_UPDATE`, `0x74 TENSOR_SCALAR_ADDR` are POOL
@@ -620,7 +620,7 @@ void dma_gather_transpose_emit(const NEURON_ISA_TPB_DMA_GATHER_XPOSE_STRUCT *i) 
 }
 ```
 
-### 8f. `0xb4` — the event/semaphore batch test `[HIGH/OBSERVED]`
+### 8f. `0xb4` — the event/semaphore batch test
 
 ```c
 // TEST_EVENT_SEM (0xb4) -> CTRL_TEST_ES_STRUCT. NX control-spine; no DGE.
@@ -667,7 +667,7 @@ void compact_control_inst(const NEURON_ISA_TPB_CTRL_CCI_STRUCT *i) {
 
 ## 9. Adversarial self-verification ledger
 
-The five strongest claims, re-challenged against the binary this pass:
+The five strongest claims, re-challenged against the binary:
 
 1. **All seven opcode bytes + per-gen `// Y`** — `rg -n 'OPCODE_…'` over all four `common.h`: SUNDA
    `0xb8@260` (and **zero** hits for the six others); CAYMAN `0xb8@257 / 0xbd@260 / 0xf1@302`;
@@ -687,7 +687,7 @@ The five strongest claims, re-challenged against the binary this pass:
    table `@0x02000380` (17 entries) omits `0xb8`; none of the other six appear in any carved table.
    ✓ **CONFIRMED** (SUNDA funcVA HIGH; CAYMAN+ decode-arm VA MED/CARRIED — FLIX-desynced).
 
-**Corrections recorded this pass:** (a) `0xb4`/`0xb6` are NX control-spine, not DMA; (b) `0x6b`
+**Corrections recorded:** (a) `0xb4`/`0xb6` are NX control-spine, not DMA; (b) `0x6b`
 StreamTranspose is the disjoint DVE op, not one of these bytes; (c) `dma_flags.queue_id` is **3
 bits** (8 queues), not 4 — the struct's inline "4b queue ID" comment is stale; (d) the `0xb6` CCOP
 space is a full scalar bytecode (branches, load/store, semaphore ops), not a bare ALU; (e) the

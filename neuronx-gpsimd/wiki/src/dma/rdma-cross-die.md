@@ -5,7 +5,7 @@ streams State-Buffer bytes into a *peer* NeuronCore's State-Buffer when the peer
 **other die of the same Cayman package** or a **different package in the multi-die mesh**.
 It is the data-plane leg every collective (all-reduce / reduce-scatter / all-gather /
 send-recv) is built from. Five concerns are reconstructed, each anchored to a shipped
-artifact byte-read this session:
+artifact byte-read:
 
 | | concern | deliverable | grounding |
 |---|---|---|---|
@@ -27,7 +27,7 @@ sequencer leg) and the
 byte-exact `gen`/`start` decode) — which it does not re-derive but **routes**.
 
 Confidence/evidence tags follow the [confidence model](../reference/confidence-model.md):
-`OBSERVED` = byte/string/instruction/struct read from a shipped artifact this session;
+`OBSERVED` = byte/string/instruction/struct read from a shipped artifact;
 `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page
 anchor; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
@@ -75,7 +75,7 @@ local/remote semaphore pair chained step-to-step by the NCFW counted barrier.**
 
 ---
 
-## 1. The two primitives + the carve (re-confirmed this session)
+## 1. The two primitives + the carve
 
 Carve container: `…/custom_op/c10/lib/libnrtucode_internal.so`. The Q7 POOL DEBUG images are
 `.rodata`-resident `_get.data` symbols, so **file offset == device VA** (`.rodata`
@@ -88,7 +88,7 @@ device VAs.
 | `CAYMAN_Q7_POOL_DEBUG_DRAM` | `…_get.data` | `0x267a60` / `0x15d00` (89 344 B) | `226f4254d475` | the log strings + role/queue tokens |
 | `CAYMAN_NX_POOL_DEBUG_IRAM` | `…_get.data` | `0x1b1420` / `0x1c820` (116 768 B) | (SEQ `0xBF` handler) | sequencer anchor `@0xD1E4` |
 
-**[HIGH / OBSERVED — `nm -S` + `sha256sum` this session; shas reproduce the FW-29/FW-30
+**[HIGH / OBSERVED — `nm -S` + `sha256sum`; shas reproduce the FW-29/FW-30
 anchors exactly; reset vector `06 7f 00 00` = `j 0x1fc`.]**
 
 The two ExtendedInst primitives (sub-opcodes **8** / **9** of the Q7 ExtendedInst space,
@@ -103,14 +103,14 @@ The two ExtendedInst primitives (sub-opcodes **8** / **9** of the Q7 ExtendedIns
 | critical path | **off** — "RdmaDescGen can happen earlier without waiting" (header) | **on** — carries the `events` wait/update that gates the launch |
 
 **[HIGH / OBSERVED — entry bytes `36 81 4a` @`0x161f4` (= `entry a1,0x2540`) and `36 01 02`
-@`0x1723c` (= `entry a1,0x100`) read this session; the struct field offsets and the
+@`0x1723c` (= `entry a1,0x100`) read; the struct field offsets and the
 `EXTENDED_RDMA_DESC_GEN=8`/`…START=9` enum byte-read from the ISA header. The full byte-exact
 decode of both primitives is on the [gen/start page](../firmware/kernels/rdma-desc-gen-start.md);
 this page consumes that decode and routes it.]**
 
 > **NOTE — `gen` and `start` are reusable P2P primitives, not phases of `0xBF`.** They are
 > *called* by the SB2SB(op-6) driver — the call edge `0x3742 → 0x161f4` (bytes `25 ab 12` =
-> `call8 0x161f4`, decoded this session) — but they are *also* their own ExtendedInst ops
+> `call8 0x161f4`, decoded) — but they are *also* their own ExtendedInst ops
 > with their own 64-byte words. A reimplementer exposes all three: `0xBF` is the collective,
 > `gen`/`start` are the transport any kernel can issue directly. **[HIGH / OBSERVED.]**
 
@@ -156,7 +156,7 @@ Re-purposes `[53:48]` (where `CAYMAN_ID` sat) as a routing-path overlay:
 | `[54]` | `ID_VALID` | `(a>>54)&0x1` | routing-id valid (**same bit** as `CAYMAN_ID_VALID`) |
 | `[55..57]` | `PCIE_U_RSVD` / `PCIE_ATTR_RELAXED_ORDERING` / `OK_TO_FAIL` | (unchanged) | |
 
-**[HIGH / OBSERVED — all 11 macro pairs read verbatim this session; the `EXIT_*`/`ROUTE`/`PEB`
+**[HIGH / OBSERVED — all 11 macro pairs read verbatim; the `EXIT_*`/`ROUTE`/`PEB`
 SEMANTICS are named-only (no behavioural prose in the header) — MED.]**
 
 > **GOTCHA — bit 54 is shared.** `CAYMAN_ID_VALID` (local view) and `ID_VALID` (neighbor view)
@@ -212,7 +212,7 @@ the exact branch (chip-id vs neighbor) that fires per peer is host-topology-deci
 
 `remote_copy.cpp` carries the runtime inverse of §2.1's GET macros, a helper that takes the
 peer's `engine_base_addr` + `tpb_base_addr` and classifies the peer, logged byte-exact
-(DRAM `0x0f98`, OBSERVED this session):
+(DRAM `0x0f98`, OBSERVED):
 
 ```
 P%i: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u
@@ -229,7 +229,7 @@ pinned by the named log fields + the §2.1 macro positions.]**
 
 The Q7 cores address SBUF through a **32-bit NX-local window**, so a REMOTE SBUF SoC address
 must first be programmed into a remapper window before the Q7 iDMA can reach it.
-`remote_copy.cpp` logs this byte-exact (DRAM `0x0ffd` / `0x1856`, OBSERVED this session):
+`remote_copy.cpp` logs this byte-exact (DRAM `0x0ffd` / `0x1856`, OBSERVED):
 
 ```
 R: program_window: num=%d, vld=%d, xt_addr=0x%llx, soc_addr=0x%llx, u_mask=0x%llx, l_mask=0x%llx
@@ -259,7 +259,7 @@ The `io_d2d` link is a **hybrid IP**: a Synopsys DesignWare PCIe protocol **cont
 a **Marvell XSR** die-to-die SerDes PHY, with a Marvell **MPCS x16** PIPE coding layer
 (ULFEC = ultra-low-latency FEC). The CSR units (`extracted/nested/cayman-arch-regs_tgz/csrs/d2d/`):
 
-| unit (JSON) | what it is | OBSERVED proof (this session) |
+| unit (JSON) | what it is | OBSERVED proof |
 |---|---|---|
 | `snps_ctrl` | **DWC-PCIe controller** repurposed as the die-to-die link controller | PCIe cap suite present: `PF0_PCIE_CAP`, `PF0_AER_CAP`, `RAS_DES`, `PF0_PORT_LOGIC`, `PF0_PTM_CAP`, `PF0_ATU_CAP`, `LTSSM_VARIABLE` |
 | `d2d_ctrl_axi_cfg` | the Amazon AXI-domain wrapper — **the source of the cross-die AXI transactions the SDMA descriptors hit** | **269** registers (`rg -c '"Name":'`) |
@@ -294,7 +294,7 @@ under `PEB_APB_IO` (176 `PEB_APB_IO` hits in `address_map.yaml`), and the bit-`[
 mirror doubles them across the two dies.
 
 **[HIGH / OBSERVED — the 4 snps_ctrl/4 mrvl_xsr_phy instance counts + the `PEB_APB_IO` anchor
-read this session; the 64-die `CAYMAN_ID` mesh follows from the 6-bit field width.]**
+read; the 64-die `CAYMAN_ID` mesh follows from the 6-bit field width.]**
 
 > **NOTE — "8 subsys/die" vs "4 controllers".** A broader SoC-level enumeration counts 8 D2D
 > *subsystems* per die (each with 2 controllers); the customop-shipped Cayman CSR view exposes
@@ -319,8 +319,7 @@ carries **ZERO** doorbell / tail-pointer / semaphore / collective triggers
 > taxonomy carries zero data-plane triggers; header prose byte-read from the ISA header.]**
 
 See the [CSR — HBM / D2D / PCIe blocks](../control/csr/hbm-d2d-pcie-blocks.md) page for the full
-register-level decode of `snps_ctrl` / `d2d_ctrl_axi_cfg` / `mrvl_xsr_phy`. *(Part 12 — planned;
-forward link.)*
+register-level decode of `snps_ctrl` / `d2d_ctrl_axi_cfg` / `mrvl_xsr_phy`.
 
 ---
 
@@ -342,10 +341,10 @@ Both queue groups are `M2S_Q` / `S2M_Q` at group base `0x01000`, `BundleSizeInBy
 within-group offset, the 24-bit `val` width, the 16-queue array — see the
 [gen/start page §4.7](../firmware/kernels/rdma-desc-gen-start.md).]**
 
-### 4.1 Role → queue binding (the DRAM token block, re-confirmed this session)
+### 4.1 Role → queue binding (the DRAM token block)
 
 `rdma_desc_start` determines this core's role by a PRID-derived parity bit, then prints a `[%s]`
-role token and, for the trigger, a `%s` queue token. The DRAM token layout (`xxd` this session):
+role token and, for the trigger, a `%s` queue token. The DRAM token layout (`xxd`):
 
 ```
 0x487f "TX\0RX\0"     (TX@0x487f, RX@0x4882)   ← the [%s] role token
@@ -356,12 +355,12 @@ role token and, for the trigger, a `%s` queue token. The DRAM token layout (`xxd
 The adjacency `…cpu_id=%d\0 TX\0 RX\0` and `…n_desc=%d\0 M2S\0 S2M\0` PINS, byte-exact, that
 **role TX prints "M2S"** (drives the M2S / `TDRTP_inc` queue) and **role RX prints "S2M"**
 (drives the S2M / `RDRTP_inc` queue) — no inference needed, the binding is the NUL-terminated
-token adjacency. **[HIGH / OBSERVED — token positions read this session via `xxd`.]**
+token adjacency. **[HIGH / OBSERVED — token positions read via `xxd`.]**
 
 ### 4.2 The role split + doorbell stores (byte-exact, native `ncore2gp` objdump)
 
 With `a3` = `num_descriptors` (the tail-inc COUNT), `a4` = the per-role doorbell MMIO address,
-`a6` = the role flag (`0`=RX, `≠0`=TX), disassembled fresh this session:
+`a6` = the role flag (`0`=RX, `≠0`=TX), disassembled:
 
 ```
 0x1736b  7807    l32i.n a7, a7, 0     ; a7 = the role/parity word
@@ -386,7 +385,7 @@ With `a3` = `num_descriptors` (the tail-inc COUNT), `a4` = the per-role doorbell
 Both tail-inc stores are the **identical** `s32i.n a3,a4,0` (bytes `39 04`) — the **DmaTrigger**
 primitive — differing ONLY in the `a4` doorbell value (M2S `TDRTP_inc` for TX, S2M `RDRTP_inc`
 for RX). **[HIGH / OBSERVED — the `extui`/`bne`/`beqz.n` role logic + both `39 04` stores +
-the `[TX]`/`[RX]` log sequence + `retw.n` re-disassembled this session with native
+the `[TX]`/`[RX]` log sequence + `retw.n` disassembled with native
 `xtensa-elf-objdump XTENSA_CORE=ncore2gp`; the `bne`→`0x173ec` and `beqz.n`→`0x173a0` targets
 decode exactly. The absolute `a4` doorbell VALUE is a negative PC-relative literal (image loads
 at a non-zero IRAM base) so it is bound by §4.4's NCFW `dma_apb_bcast` SoC addrs — MED.]**
@@ -442,12 +441,11 @@ struct dma_apb_bcast {
 
 A single tail-inc write to the **broadcast** doorbell (`sdma_bcast_base`; `start` logs
 `Trigger DMA; sdma_bcast_base = 0x%08x, trigger addr = 0x%08x, mask = 0x%08x n_desc=%d`, DRAM
-`0x47f4`, OBSERVED this session) advances the tails of the **group** of queues `mask` selects,
+`0x47f4`, OBSERVED) advances the tails of the **group** of queues `mask` selects,
 launching the multi-engine move with one trigger. **[HIGH / OBSERVED — the bcast log this image
 (DRAM `0x47f4`); the `dma_apb_bcast` struct CARRIED from the NCFW ring-channel config; the exact
 bcast-group cut MED.]** The NCFW supplier is the
 [NCFW DMA reprogram + APB broadcast](../collectives/ncfw/dma-reprogram-apb-bcast.md) page.
-*(Part 10 — planned; forward link.)*
 
 ---
 
@@ -456,7 +454,7 @@ bcast-group cut MED.]** The NCFW supplier is the
 Completion is a **two-semaphore** model over the EVT_SEM atomic-increment window, plus a 16-B
 SDMA BD generation-tag busy-poll. The two semaphores are named in the RDMA_DESC_GEN word
 (`local_sem`@14, `remote_sem`@15) and bumped by two extra semaphore-increment BDs that
-`rdma_desc_gen` pushes into each engine's ring (gen logs OBSERVED this session):
+`rdma_desc_gen` pushes into each engine's ring (gen logs OBSERVED):
 
 ```
 0x4bd6  P%i: Q7: rdma_desc_gen [%s] Pushing local  semaphore descriptor, tpb_idx=%d, sem=%d
@@ -471,7 +469,7 @@ SDMA BD generation-tag busy-poll. The two semaphores are named in the RDMA_DESC_
 ### 5.1 The EVT_SEM engine (the increment target)
 
 `TPB_*_EVT_SEM` exposes per instance **256** hardware semaphores through four 4-B-stride
-operation windows (`csrs/tpb/tpb_events_semaphores_axi.json`, read byte-exact this session):
+operation windows (`csrs/tpb/tpb_events_semaphores_axi.json`, read byte-exact):
 
 | window | `AddressOffset` | access | role |
 |---|---|---|---|
@@ -480,7 +478,7 @@ operation windows (`csrs/tpb/tpb_events_semaphores_axi.json`, read byte-exact th
 | `tpb_semaphores_inc` | **`0x1800`** | WO | **atomic +=** ← the sema-increment BD writes HERE |
 | `tpb_semaphores_dec` | `0x1C00` | WO | atomic -= |
 
-(`ArraySize 256`, `BundleSizeInBytes 0x4` confirmed this session.) The LOCAL sema BD writes the
+(`ArraySize 256`, `BundleSizeInBytes 0x4` confirmed.) The LOCAL sema BD writes the
 LOCAL core's `EVT_SEM +0x1800[local_sem*4]`; the REMOTE sema BD writes the PEER core's
 `EVT_SEM +0x1800[remote_sem*4]`, the peer aperture carrying the §2.3 `CAYMAN_ID`/`EXIT_DIE` high
 bits. The firmware materializes the `+0x1800` window in the gen-helper region
@@ -534,7 +532,7 @@ one 3-D SRC tensor, one 3-D DST tensor). It is hosted by **two** engines:
 
 - the **SEQ** (`NX_POOL`) control/sequencer: `0xBF` → handler `@IRAM 0xD1E4`
   (`entry a1,32`, then `const16 a10,8`/`const16 a10,0x2d50` → LOG `"S: SB2SB_Collective"` @VA
-  `0x82d50`, bytes `36 41 00 … a4 08 00 a4 50 2d` OBSERVED this session); it reads the 64-B word
+  `0x82d50`, bytes `36 41 00 … a4 08 00 a4 50 2d` OBSERVED); it reads the 64-B word
   and **kicks** the Q7 iDMA path;
 - the **POOL/Q7** data-plane (`remote_copy.cpp`): `decode_extended_inst_sb2sb` performs the
   actual cross-die SBUF→SBUF move.
@@ -571,8 +569,8 @@ compiler pseudo-op (TRIGGER_COLLECTIVE 0xC8 / ALL_REDUCE / SENDRECV / …)
 
 The HOST library (neuronx-collectives `libnccom`) builds the topology graph and decides WHICH
 peers are reached over WHICH edge; the NCFW firmware sequences the STEPS within a phase; the Q7
-`gen`/`start` primitives execute each step's byte movement. **[CARRIED — SX-CCL lane synthesis;
-the device legs §2–§6 are this page's OBSERVED contribution.]**
+`gen`/`start` primitives execute each step's byte movement. **[CARRIED — the collective
+lane synthesis; the device legs §2–§6 are this page's OBSERVED contribution.]**
 
 ### 7.2 The host topology graph (`topo_neuron_*.cc`)
 
@@ -595,12 +593,12 @@ DIE-bit fold §2.3); each rank's `routing_id` is the value the host passes down 
 
 | arch_id / gen | codename | cross-die RDMA orchestration |
 |---|---|---|
-| `0x05` = v2 | **SUNDA** | ships the cross-die RDMA `gen`/`start` legs + sendrecv, but **NOT** the on-engine `0xBF` SB2SB collective — SUNDA's `Q7_POOL_DEBUG_DRAM` has **0** hits for `rdma_desc_gen`/`SB2SB_Collective`/`remote_copy.cpp` (carved + counted this session). → cross-die RDMA via raw `gen`/`start` + sendrecv, no on-engine collapse |
+| `0x05` = v2 | **SUNDA** | ships the cross-die RDMA `gen`/`start` legs + sendrecv, but **NOT** the on-engine `0xBF` SB2SB collective — SUNDA's `Q7_POOL_DEBUG_DRAM` has **0** hits for `rdma_desc_gen`/`SB2SB_Collective`/`remote_copy.cpp` (carved + counted). → cross-die RDMA via raw `gen`/`start` + sendrecv, no on-engine collapse |
 | `0x0c` = v3 | **CAYMAN** | the full reference — pseudo-ops + `0xBF` SB2SB + the NCFW dispatch. `0xBF` rides `gen`/`start`; the NCFW ring/mesh/hier firmware drives per-step peer selection + the counted barrier (§5.2) |
 | `0x14` = v4 | **MARIANA** ≡ `0x1c` = v4+ **MARIANA_PLUS** at the collective level — the SB2SB handler set is byte-for-name identical to CAYMAN; M+ adds a credit-gated fast-path (firmware, not ISA) |
 | coretype 37 = v5 | **MAVERICK** | `0xBF` + `gen`/`start` UNCHANGED (ISA enum identical), **transport re-IP'd** (below) |
 
-**[HIGH / OBSERVED — the SUNDA absence (0/0/0 string hits, archive carve this session) + the
+**[HIGH / OBSERVED — the SUNDA absence (0/0/0 string hits, archive carve) + the
 CAYMAN reference decode; the arch_id ↔ codename binding CARRIED.]**
 
 > **WALL — Maverick (v5) interiors are INFERRED.** Maverick's `0xBF` SB2SB op + the
@@ -624,7 +622,7 @@ What **is** OBSERVED for Maverick is the **transport re-IP**, byte-grounded in t
   the PCIe-derived one.
 
 **[the Maverick UCIe re-IP HIGH / OBSERVED at IP level (the `al_address_map_db.pkl` UCIe-instance
-enumeration + the `amzn_ucie_*` arch-headers, both read this session; zero snps/mrvl in the pkl);
+enumeration + the `amzn_ucie_*` arch-headers, both read; zero snps/mrvl in the pkl);
 the **PHY / process node** is INFERRED (the customop artifacts name the IP `ucie` but do not name
 the SerDes PHY); the same-protocol-over-UCIe claim is INFERRED from the unchanged ISA contract.]**
 
@@ -670,7 +668,7 @@ dst_soc = CAYMAN_ADDR_DECODE_SET_ID_VALID(dst_soc, 1);       // bit54 -> 0x00588
 > **CORRECTION — the routed dst_soc is `0x58800000100000`, not `0x588000100000`.** The
 > backing prose for this worked example transcribed the result with two hex zeros dropped
 > (`0x588000100000` sets bits `{20, 39, 43, 44, 46}` — **wrong**). The macro-exact SET-chain
-> above (verified this session bit-by-bit against the shipped `cayman_addr_decode_neighbor.h`
+> above (verified bit-by-bit against the shipped `cayman_addr_decode_neighbor.h`
 > macros) yields **`0x58800000100000`**, setting exactly `LOCAL[20]` + `DIE[47]` +
 > `EXIT_DIE[51]` + `NEIGHBOR_ROUTE[52]` + `ID_VALID[54]`. The firmware's
 > `after remote_routing_id=$18, dst_addr=0x58800000100000` log (DRAM `0x497b`) prints this
@@ -716,25 +714,25 @@ is bit-verified above.]**
 
 | fact | source | status |
 |---|---|---|
-| `rdma_desc_gen @0x161f4` / `start @0x1723c` (entry bytes `36 81 4a` / `36 01 02`) | `q7_iram.bin` this session | CONFIRMED byte-exact |
-| role parity `extui`/`bne`/`beqz.n` + both `39 04` stores | native `ncore2gp` objdump this session | CONFIRMED byte-exact |
-| `call8 0x161f4` @`0x3742` (bytes `25 ab 12`) | decoded this session | CONFIRMED (imm18→0x161f4) |
-| TX="M2S"/RX="S2M" DRAM tokens @`0x487f`/`0x4d8c` | `q7_dram.bin` `xxd` this session | CONFIRMED byte-exact |
-| gen logs routing_id / local+remote sema BDs @`0x497b`/`0x4bd6`/`0x4c2a` | `q7_dram.bin` this session | CONFIRMED byte-exact |
-| `is_die_0`/`engine_idx` die-decode str @`0x0f98` | `q7_dram.bin` this session | CONFIRMED |
-| `program_window`/`update_window` strs @`0x0ffd`/`0x1856` | `q7_dram.bin` this session | CONFIRMED + soc_addr/mask |
-| SoC local `{DIE[47],CAYMAN_ID[53:48],_VALID[54]}` | `cayman_addr_decode.h` macros this session | CONFIRMED (macro-exact) |
+| `rdma_desc_gen @0x161f4` / `start @0x1723c` (entry bytes `36 81 4a` / `36 01 02`) | `q7_iram.bin` | CONFIRMED byte-exact |
+| role parity `extui`/`bne`/`beqz.n` + both `39 04` stores | native `ncore2gp` objdump | CONFIRMED byte-exact |
+| `call8 0x161f4` @`0x3742` (bytes `25 ab 12`) | decoded | CONFIRMED (imm18→0x161f4) |
+| TX="M2S"/RX="S2M" DRAM tokens @`0x487f`/`0x4d8c` | `q7_dram.bin` `xxd` | CONFIRMED byte-exact |
+| gen logs routing_id / local+remote sema BDs @`0x497b`/`0x4bd6`/`0x4c2a` | `q7_dram.bin` | CONFIRMED byte-exact |
+| `is_die_0`/`engine_idx` die-decode str @`0x0f98` | `q7_dram.bin` | CONFIRMED |
+| `program_window`/`update_window` strs @`0x0ffd`/`0x1856` | `q7_dram.bin` | CONFIRMED + soc_addr/mask |
+| SoC local `{DIE[47],CAYMAN_ID[53:48],_VALID[54]}` | `cayman_addr_decode.h` macros | CONFIRMED (macro-exact) |
 | neighbor `{EXIT_SENG[50],EXIT_DIE[51],NEIGHBOR_ROUTE[52],PEB[53],ID_VALID[54]}` | `cayman_addr_decode_neighbor.h` macros | CONFIRMED (macro-exact) |
-| `io_d2d` = DWC-PCIe (`snps_ctrl`) + Marvell XSR + iATU OUTBOUND | `csrs/d2d/*.json` this session | CONFIRMED (PCIe caps + iATU regs) |
-| d2d INTC carries 0 data-plane triggers (216 total) | `intc/d2d_triggers.yaml` this session | CONFIRMED |
+| `io_d2d` = DWC-PCIe (`snps_ctrl`) + Marvell XSR + iATU OUTBOUND | `csrs/d2d/*.json` | CONFIRMED (PCIe caps + iATU regs) |
+| d2d INTC carries 0 data-plane triggers (216 total) | `intc/d2d_triggers.yaml` | CONFIRMED |
 | `TDRTP_inc`/`RDRTP_inc` `+0x038` doorbells, `ArraySize 16` | CSR JSON (gen/start page §4.7) | CONFIRMED |
 | `dma_apb_bcast{m2s_tail_ptr,s2m_tail_ptr,mask}` | NCFW ring-channel config | CARRIED |
-| EVT_SEM inc window `+0x1800` / 256 sema | `csrs/tpb/tpb_events_semaphores_axi.json` this session | CONFIRMED (offset in JSON + fw) |
-| `0xBF` SB2SB → `call8 0x161f4` ; SEQ handler @`0xD1E4` | `nx_iram.bin`/`q7_iram.bin` this session | CONFIRMED byte-exact |
+| EVT_SEM inc window `+0x1800` / 256 sema | `csrs/tpb/tpb_events_semaphores_axi.json` | CONFIRMED (offset in JSON + fw) |
+| `0xBF` SB2SB → `call8 0x161f4` ; SEQ handler @`0xD1E4` | `nx_iram.bin`/`q7_iram.bin` | CONFIRMED byte-exact |
 | `EdgeRemoteMLA` / `C2CPortsPerMla=4` / d2d peer = `seng^2` | `topo_neuron_*.cc` (libnccom) | CARRIED |
-| SUNDA lacks `0xBF` (0/0/0 string hits) | archive carve this session | CONFIRMED |
-| Maverick UCIe re-IP (`amzn_ucie_*`, `D2D_TL/LL_PHY_WRAPPER`, 0 snps/mrvl) | `al_address_map_db.pkl` + arch-headers this session | CONFIRMED (IP level); PHY INFERRED |
-| worked `dst_soc = 0x58800000100000` | recomputed from macros this session | **CORRECTED** (source prose dropped 2 hex zeros) |
+| SUNDA lacks `0xBF` (0/0/0 string hits) | archive carve | CONFIRMED |
+| Maverick UCIe re-IP (`amzn_ucie_*`, `D2D_TL/LL_PHY_WRAPPER`, 0 snps/mrvl) | `al_address_map_db.pkl` + arch-headers | CONFIRMED (IP level); PHY INFERRED |
+| worked `dst_soc = 0x58800000100000` | recomputed from macros | **CORRECTED** (source prose dropped 2 hex zeros) |
 
 ---
 
@@ -742,7 +740,7 @@ is bit-verified above.]**
 
 **HIGH / OBSERVED** — the SoC field codec (both decoders, macro-exact); the `gen`/`start` entries
 + role-parity split + both `s32i.n a3,a4,0` tail-inc stores + the `[TX]`/`[RX]` logs + the DRAM
-`TX`/`RX`/`M2S`/`S2M` tokens (native objdump this session); the gen local/remote sema-descriptor
+`TX`/`RX`/`M2S`/`S2M` tokens (native objdump); the gen local/remote sema-descriptor
 logs (routing_id on the remote one); the die-decode + program_window logs; the `io_d2d` IP makeup
 (DWC-PCIe + Marvell XSR + MPCS/ULFEC, iATU OUTBOUND, 216-trigger INTC carrying zero data-plane
 triggers); the EVT_SEM `+0x1800` 256-sema INC window; the `0xBF` SB2SB → `gen`/`start`
@@ -777,14 +775,13 @@ block names; the same-protocol-over-UCIe claim is INFERRED from the unchanged IS
 - [CCE (Compute-DMA) In-Transfer Compute](cce-in-transfer.md) — the sibling in-transfer-compute
   DMA path.
 - [S3D3 Collective (SB2SB, 0xBF)](../collectives/ops/s3d3-collective.md) — the host-side
-  collective-op view. *(Part 10 — planned; forward link.)*
+  collective-op view.
 - [The Unified Collective-Communication Architecture](../collectives/ops/architecture-synthesis.md)
-  — the algorithm-selection / per-step orchestration synthesis. *(Part 10 — planned.)*
+  — the algorithm-selection / per-step orchestration synthesis.
 - [NCFW DMA Reprogram + APB Broadcast](../collectives/ncfw/dma-reprogram-apb-bcast.md) — supplies
   the `dma_apb_bcast{m2s_tail_ptr,s2m_tail_ptr,mask}` doorbell SoC addrs + per-step peers.
-  *(Part 10 — planned.)*
 - [CSR — HBM / D2D / PCIe Blocks](../control/csr/hbm-d2d-pcie-blocks.md) — the register-level
-  `snps_ctrl` / `d2d_ctrl_axi_cfg` / `mrvl_xsr_phy` decode + the d2d triggers. *(Part 12 — planned.)*
+  `snps_ctrl` / `d2d_ctrl_axi_cfg` / `mrvl_xsr_phy` decode + the d2d triggers.
 - [pkl PCIe / D2D / Fabric Subtree](../control/address/pkl-pcie-d2d-fabric.md) — the
-  `al_address_map_db.pkl` UCIe/D2D address-map subtree. *(Part 12 — planned.)*
+  `al_address_map_db.pkl` UCIe/D2D address-map subtree.
 - [Confidence & Walls Model](../reference/confidence-model.md) — the tag system used throughout.

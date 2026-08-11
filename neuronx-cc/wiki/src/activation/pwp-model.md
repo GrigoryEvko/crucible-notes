@@ -23,7 +23,7 @@ Three facts shape everything and are easy to get wrong. First, **`saturation_poi
 | **Clamp** | 4-way: `sat_point_{pos,neg}_{high,low}`, each a full `{x, d0..d3}` poly |
 | **Source path** | `/tmp/packages/KaenaPWP/pwp_sim/activation_pwp_simulation.cpp` (rodata `0x17058`) |
 
-This page is the model. The opcode dispatch that *reaches* this evaluator — `visitInstActivation` → `PWPSim::Simulator::simulate` — is the simulator walk and lives in [7.40 (sim activation/PWP)](../bir/sim-activation-pwp.md). The engine datapath that runs the same math in silicon is [1.10 (Activation engine datapath)](../arch/activation-engine.md). The pre-baked binary blobs the *hardware* LUT generator emits (`bkt.bin` / `ctrl.bin`) are decoded in [10.4 (bkt/ctrl blob)](bkt-ctrl-blob.md). Evidence is tagged **CONFIRMED** (shipped-JSON value or disasm-proven), **STRONG** (cross-checked across two sources), **INFERRED** (a rule verified across all 40 profiles but not independently proven), and **SPECULATIVE** (flagged).
+This page is the model. The opcode dispatch that *reaches* this evaluator — `visitInstActivation` → `PWPSim::Simulator::simulate` — is the simulator walk and lives in [7.40 (sim activation/PWP)](../bir/sim-activation-pwp.md). The engine datapath that runs the same math in silicon is [1.10 (Activation engine datapath)](../arch/activation-engine.md). The pre-baked binary blobs the *hardware* LUT generator emits (`bkt.bin` / `ctrl.bin`) are decoded in [10.4 (bkt/ctrl blob)](bkt-ctrl-blob.md). Values below come from the shipped JSON or the disassembly unless marked [INFERRED] or [SPECULATIVE].
 
 ---
 
@@ -50,13 +50,13 @@ The IEEE-754 single-precision bit layout of the (fold-selected) input is split i
 
 > **NOTE — Why two levels and not a flat table.** A flat `mant`-only table would need a fixed number of buckets per the *entire* fp32 range; a flat `exp`-only table would have no sub-octave resolution. The two-level scheme spends buckets proportional to where the function actually curves, in fp32-relative terms. This is the same geometry the silicon Activation engine's LUT addressing uses; the simulator mirrors it bit-for-bit so its output matches hardware when a profile is loaded.
 
-The total bucket count across all octaves (positive + negative) is the profile's `lut_size` — the physical memory footprint of the table. For `exp_400p` that is 371 positive + 406 negative = 777 segments; verified `lut_size == Σ stored exponent_sections` for all 40 profiles (CONFIRMED, §4).
+The total bucket count across all octaves (positive + negative) is the profile's `lut_size` — the physical memory footprint of the table. For `exp_400p` that is 371 positive + 406 negative = 777 segments; `lut_size == Σ stored exponent_sections` holds for all 40 profiles (§4).
 
 ---
 
 ## 2. The 24-key profile schema
 
-Every `pwp_jsons/*.json` profile has **exactly 24 top-level keys** — verified by `jq 'keys | length'` returning 24 on all 40 files, with an identical key *set* on every file (CONFIRMED). The keys group into seven roles. The "live?" column states whether `evaluate_generic` / `initialize_pwptable` actually consume the key; the rest are generator/HW-LUT metadata that the numeric kernel ignores.
+Every `pwp_jsons/*.json` profile has **exactly 24 top-level keys** — verified by `jq 'keys | length'` returning 24 on all 40 files, with an identical key *set* on every file. The keys group into seven roles. The "live?" column states whether `evaluate_generic` / `initialize_pwptable` actually consume the key; the rest are generator/HW-LUT metadata that the numeric kernel ignores.
 
 ### 2.1 Identity & precision metadata
 
@@ -69,7 +69,7 @@ Every `pwp_jsons/*.json` profile has **exactly 24 top-level keys** — verified 
 | `max_diff` | int | **no** | Generator's precision budget `N` — equals the filename suffix and the `act_info` budget value. Drove bucket density (higher `N` ⇒ tighter ULP ⇒ more buckets). Not read by the evaluator. |
 | `lut_size` | int | **no** | Total physical bucket count `= Σ stored exponent_sections (pos+neg)`. `0` for the 13 hardwired funcs. Metadata only. |
 
-> **GOTCHA — `max_diff` and `lut_size` are inert in the evaluator.** They are the most tempting fields to wire into a reimplementation (they look like sizing parameters), but `initialize_pwptable` never reads them — the loaded table is *already* the expanded bucket list, so the evaluator iterates the actual `exponent_sections` vector lengths, not a declared count. `lut_size` is a footprint report; `max_diff` is a generator knob. (CONFIRMED: the binary string pool contains no read site, and the `AFTable` struct has no field for either.)
+> **GOTCHA — `max_diff` and `lut_size` are inert in the evaluator.** They are the most tempting fields to wire into a reimplementation (they look like sizing parameters), but `initialize_pwptable` never reads them — the loaded table is *already* the expanded bucket list, so the evaluator iterates the actual `exponent_sections` vector lengths, not a declared count. `lut_size` is a footprint report; `max_diff` is a generator knob. The binary string pool contains no read site for either, and the `AFTable` struct has no field for them.
 
 ### 2.2 Symmetry (the half-domain fold)
 
@@ -93,7 +93,7 @@ The four short-circuit returns (`AFTable +8..+20`), each a float-box (§2.6):
 | `pinf_result` | `+16` | `|v| > FLT_MAX` and `v > 0` | `+inf` / `0` |
 | `ninf_result` | `+20` | `|v| > FLT_MAX` and `v ≤ 0` | `0` / `0` |
 
-> **GOTCHA — `nan_result` is loaded but the evaluator has no NaN branch.** `evaluate_generic` short-circuits only on `v == 0` and `|v| > FLT_MAX` (±inf). A NaN input compares false to `FLT_MAX` and is `!= 0`, so it falls **through** to the bit-decompose → bucket → poly path. `nan_result` is parsed into the `AFTable` but is never returned by a dedicated NaN branch in the evaluator (it is presumably consumed by the silicon LUT). A reimplementation that adds a NaN guard will diverge from this evaluator. (CONFIRMED: only the zero/±inf trio appears in the body; tagged a known sim-vs-silicon gap.)
+> **GOTCHA — `nan_result` is loaded but the evaluator has no NaN branch.** `evaluate_generic` short-circuits only on `v == 0` and `|v| > FLT_MAX` (±inf). A NaN input compares false to `FLT_MAX` and is `!= 0`, so it falls **through** to the bit-decompose → bucket → poly path. `nan_result` is parsed into the `AFTable` but is never returned by a dedicated NaN branch in the evaluator (it is presumably consumed by the silicon LUT). A reimplementation that adds a NaN guard will diverge from this evaluator. Only the zero/±inf trio appears in the body; treat this as a known sim-vs-silicon gap.
 
 ### 2.4 Domain bounds & float-decomposition control (metadata)
 
@@ -121,10 +121,10 @@ Each octave entry in `pos_exponents`/`neg_exponents` has **6 keys**:
 | `pos` | bool | no | Sign-of-region flag (`true` in `pos_exponents`). Not loaded into the region struct. |
 | `num_sections` | int | yes | Addressing span `= 2^extract_size` (the bucket count this octave subdivides into). |
 | `extract_size` | int | yes | Number of top mantissa bits used to index the inner bucket. |
-| `extract_lsb` | int | **no** | LSB position of the extraction `= 23 − extract_size`. **Shipped in the JSON but not read by the evaluator** — the bucket search recomputes `23 − extract_size` at runtime (see CORRECTION below). |
+| `extract_lsb` | int | **no** | LSB position of the extraction `= 23 − extract_size`. **Shipped in the JSON but not read by the evaluator** — the bucket search recomputes `23 − extract_size` at runtime (see the note below). |
 | `exponent_sections` | array | yes | The per-bucket degree-3 segments (§2.6). |
 
-> **CORRECTION — `extract_lsb` is a stored key the simulator ignores.** D-M05 listed `extract_lsb` as **INFERRED** (`= 23 − extract_size`). In fact it is an **explicit JSON key present on every octave entry** (the octave object has 6 keys: `exponent`, `exponent_sections`, `extract_lsb`, `extract_size`, `num_sections`, `pos`), and its value equals `23 − extract_size` for **all 1422 octaves** with `num_sections > 0` (0 violations). But the binary string pool contains `extract_size`, `num_sections`, `exponent_sections` and **not** `extract_lsb` — so `parse_nonsat` never reads it. Instead `find_pwp_nonsat_section` computes the shift live: `0x936a: sub ecx, [region+8]` (where `ecx = 23`, `[region+8] = extract_size`), then `0x936d: sar eax, cl`. So `extract_lsb` is redundant generator output, in the same inert class as `lut_size`. Upgraded **CONFIRMED** (stored), and **the simulator-ignores-it fact is new** vs D-M05's "inferred rule". (CONFIRMED — string-pool absence + disasm.)
+> **GOTCHA — `extract_lsb` is shipped in every octave but never read.** It is an explicit JSON key on every octave entry, and its value equals `23 − extract_size` for all 1422 octaves with `num_sections > 0`, with zero violations. The binary's string pool nonetheless contains `extract_size`, `num_sections`, and `exponent_sections` but **not** `extract_lsb`: `parse_nonsat` skips it, and `find_pwp_nonsat_section` recomputes the shift live (`sub ecx, [region+8]` @ `0x936a` with `ecx = 23`, then `sar eax, cl` @ `0x936d`). Treat `extract_lsb` as redundant generator output, in the same inert class as `lut_size`.
 
 The `exponent_sections[]` segment has **5 keys** — one breakpoint and four coefficients, laid out in the in-memory `exponent_sect` (20 bytes) as `x@+0, d0@+4, d1@+8, d2@+12, d3@+16`:
 
@@ -150,7 +150,7 @@ The `exponent_sections[]` segment has **5 keys** — one breakpoint and four coe
 
 The loader (`parse_xd` @ `0xa550`) reads **only the `.int` member** and stores it as the raw 32-bit pattern (`LODWORD` store of `json_object_get_int64(obj["d3"]["int"])`). The `"float"` string is rounded and must **never** be used by a bit-exact reimplementation — e.g. `d3.float = "0.166667"` but the true value is `0x3e2aaacb = 0.16666667163…`.
 
-> **GOTCHA — `sat_point` and `mantissa_point` are true integers, not bit-boxes.** Inside `saturation_points`, the two threshold fields `sat_point` and `mantissa_point` are plain JSON integers compared *directly* against the input's biased exponent and mantissa (`parse_sat` @ `0xab50`: `json_object_get_int64` with no `["...","int"]` nesting). Only the `x`/`d0..d3` of each clamp region are float-boxes. Mixing these up — bit-reinterpreting `sat_point` — breaks the clamp comparison. (CONFIRMED via `parse_sat` body.)
+> **GOTCHA — `sat_point` and `mantissa_point` are true integers, not bit-boxes.** Inside `saturation_points`, the two threshold fields `sat_point` and `mantissa_point` are plain JSON integers compared *directly* against the input's biased exponent and mantissa (`parse_sat` @ `0xab50`: `json_object_get_int64` with no `["...","int"]` nesting). Only the `x`/`d0..d3` of each clamp region are float-boxes. Mixing these up — bit-reinterpreting `sat_point` — breaks the clamp comparison.
 
 ### 2.7 FMA / multipass control (metadata)
 
@@ -165,7 +165,7 @@ The loader (`parse_xd` @ `0xa550`) reads **only the `.int` member** and stores i
 
 ## 3. The in-memory table: `AFTable` and its sub-structs
 
-`initialize_pwptable` (`0xb040`) parses one profile JSON into one `AFTable` (184 bytes), keyed by activation name in the simulator's `tables` map. The layout is proven by the struct database and corroborated by the field offsets `evaluate_generic` actually dereferences (CONFIRMED).
+`initialize_pwptable` (`0xb040`) parses one profile JSON into one `AFTable` (184 bytes), keyed by activation name in the simulator's `tables` map. The layout comes from the struct database and is corroborated by the field offsets `evaluate_generic` actually dereferences.
 
 ```c
 // PWPSim::AFTable — 184 bytes. Only these fields exist; the 9 metadata keys
@@ -212,13 +212,13 @@ struct exponent_sect {                 // 20 B — one BUCKET (degree-3 Taylor)
 };
 ```
 
-> **NOTE — the region vector is indexed by biased exponent.** `parse_nonsat` (`0xae90`) does *not* `push_back` octaves in array order; it writes `region[exponent + 127] = {…}` into a vector pre-sized to span the octave range. So `pos_region.sections` is addressable directly by `bits(sel) >> 23` with no search — the "search" in `find_pwp_nonsat_section` is only the inner mantissa-bucket pick, an O(1) shift. (CONFIRMED via `parse_nonsat` body.)
+> **NOTE — the region vector is indexed by biased exponent.** `parse_nonsat` (`0xae90`) does *not* `push_back` octaves in array order; it writes `region[exponent + 127] = {…}` into a vector pre-sized to span the octave range. So `pos_region.sections` is addressable directly by `bits(sel) >> 23` with no search — the "search" in `find_pwp_nonsat_section` is only the inner mantissa-bucket pick, an O(1) shift.
 
 ---
 
 ## 4. Two-level index derivation — `find_pwp_nonsat_section` @ `0x9340`
 
-Given a region vector (positive or negative) and the fold-selected float `sel`, the bucket search is pure bit-arithmetic (CONFIRMED — every line below is a named disasm anchor):
+Given a region vector (positive or negative) and the fold-selected float `sel`, the bucket search is pure bit-arithmetic — every line below carries its disasm anchor:
 
 ```c
 // find_pwp_nonsat_section(vector<pwp_nonsat_region>& region, float sel) @0x9340
@@ -252,9 +252,9 @@ const exponent_sect* find_pwp_nonsat_section(region_vec, float sel) {
 }
 ```
 
-> **NOTE — the bounds count comes from the vector byte-size, not `num_sections`.** The assert divides `(finish − start)` by `sizeof(exponent_sect) = 20`. This matters because an octave can store **fewer** segments than its declared `num_sections`: where the function has already saturated, the generator truncates the tail. For example `exp_400p` octave `+6` declares `num_sections = 256` (`extract_size = 8`) but stores only **99** segments (the rest overflow to `+inf` and are handled by the high clamp). So `num_sections` is the *addressing span*; the vector length is the *physical* count. A reimplementation must size the bounds check off the stored length. (CONFIRMED: `jq` shows octave `+6` has 256 declared / 99 stored; `lut_size = 777 = Σ stored`.)
+> **NOTE — the bounds count comes from the vector byte-size, not `num_sections`.** The assert divides `(finish − start)` by `sizeof(exponent_sect) = 20`. This matters because an octave can store **fewer** segments than its declared `num_sections`: where the function has already saturated, the generator truncates the tail. For example `exp_400p` octave `+6` declares `num_sections = 256` (`extract_size = 8`) but stores only **99** segments (the rest overflow to `+inf` and are handled by the high clamp). So `num_sections` is the *addressing span*; the vector length is the *physical* count. A reimplementation must size the bounds check off the stored length. Octave `+6` declares 256 and stores 99; `lut_size = 777 = Σ stored`.
 
-> **QUIRK — `lut_size == Σ stored sections`, exactly, for all 40.** Verified by summing `pos_exponents[].exponent_sections | length + neg_exponents[]…` and comparing to `lut_size`: zero mismatches across all 40 profiles (the 13 hardwired funcs have `lut_size = 0` and zero stored sections). So `lut_size` is a faithful post-truncation footprint — it counts the *stored* buckets, not the *declared* `Σ num_sections` span. (CONFIRMED.)
+> **QUIRK — `lut_size == Σ stored sections`, exactly, for all 40.** Verified by summing `pos_exponents[].exponent_sections | length + neg_exponents[]…` and comparing to `lut_size`: there are zero mismatches across all 40 profiles, and the 13 hardwired funcs have `lut_size = 0` with zero stored sections. So `lut_size` is a faithful post-truncation footprint: it counts the *stored* buckets, not the *declared* `Σ num_sections` span.
 
 The octave-density invariant, verified across all **1422** octaves with `num_sections > 0` (0 violations):
 
@@ -262,7 +262,7 @@ The octave-density invariant, verified across all **1422** octaves with `num_sec
   num_sections == 2^extract_size          AND          extract_lsb == 23 − extract_size
 ```
 
-This is what makes the inner index a single shift: `2^extract_size` uniform buckets, addressed by the top `extract_size` mantissa bits. (CONFIRMED — exhaustive over the shipped data; the second clause is a *stored* key the evaluator nonetheless recomputes, §2.5.)
+This is what makes the inner index a single shift: `2^extract_size` uniform buckets, addressed by the top `extract_size` mantissa bits. Both clauses hold exhaustively over the shipped data; the second is a *stored* key the evaluator nonetheless recomputes (§2.5).
 
 ---
 
@@ -296,9 +296,9 @@ if (bits(sel) >= 0) {
 
 The threshold comparison is a **two-level** test: compare the biased exponent first, and on an exponent tie, compare the mantissa — `mantissa_point` is the mantissa value at which the clamp engages within the boundary octave. The `_high` branches use `>=` on the mantissa tie (clamp when at-or-above), the `_low` branches use `<=` (clamp when at-or-below).
 
-> **CORRECTION — `saturation_points` is a 4-way clamp, not a range→segment map.** A natural misreading of the name is that `saturation_points` maps input *ranges* to LUT segments. It does not. It is exactly four corner-clamps. Each clamp carries a *complete* degree-3 polynomial (not a bare constant) so the out-of-range behavior can be a slope, not just a flat value. The clamp poly is evaluated by the **same** Horner path as an in-range bucket — there is no special "return constant" code. (CONFIRMED via `evaluate_generic` body and the `saturation_points` object having exactly the 4 keys.)
+> **GOTCHA — `saturation_points` is a 4-way clamp, not a range→segment map.** The name invites the reading that it maps input *ranges* to LUT segments. It does not: the object has exactly four keys, one per corner. Each clamp carries a *complete* degree-3 polynomial rather than a bare constant, so out-of-range behaviour can be a slope, not just a flat value — and the clamp poly runs through the **same** Horner path as an in-range bucket, with no "return constant" shortcut anywhere in `evaluate_generic`.
 
-Worked clamp values (CONFIRMED from shipped JSON):
+Worked clamp values, from the shipped JSON:
 
 | Profile | corner | `sat_point` | `mantissa_point` | poly | effect |
 |---|---|---|---|---|---|
@@ -310,7 +310,7 @@ Worked clamp values (CONFIRMED from shipped JSON):
 | `gelu` | pos_high | 129 | 1926024 | `d0=0, d1=1` | large `+x` → `gelu(x) → x` |
 | `relu` | pos | — | — | `d0=0, d1=1` | the entire relu (`f = x`) lives in a clamp poly |
 
-> **NOTE — the hardwired (lut=0) functions express their whole shape through the clamp polys.** The 13 functions with `lut_size = 0` (`relu`, `copy`, `abs`, `sign`, `square`, `identity`, the three `derivative_*`, `leaky_relu`, `parametric_relu`, `memset_zero`, `is_finite`) carry empty `exponent_sections` and encode `f(x)` entirely in the four `saturation_points` (often degenerate linear/constant): `relu` is `pos {d0=0,d1=1} → x`, `neg {d0=0,d1=0} → 0`; `copy` is all-four `{d0=0,d1=1} → x`. `parametric_relu` is the sole exception with no LUT path — its slope `alpha` is supplied at runtime, not from the table. (CONFIRMED.)
+> **NOTE — the hardwired (lut=0) functions express their whole shape through the clamp polys.** The 13 functions with `lut_size = 0` (`relu`, `copy`, `abs`, `sign`, `square`, `identity`, the three `derivative_*`, `leaky_relu`, `parametric_relu`, `memset_zero`, `is_finite`) carry empty `exponent_sections` and encode `f(x)` entirely in the four `saturation_points` (often degenerate linear/constant): `relu` is `pos {d0=0,d1=1} → x`, `neg {d0=0,d1=0} → 0`; `copy` is all-four `{d0=0,d1=1} → x`. `parametric_relu` is the sole exception with no LUT path — its slope `alpha` is supplied at runtime, not from the table.
 
 ---
 
@@ -336,7 +336,7 @@ if (v != absv && T.symmetry_en) {                     // v was negative (sel = |
 return result;
 ```
 
-The four flag combinations `(symmetry_en, invert_sign_opt, opt_use_neg_region, symmetry_point)` partition all 40 functions into symmetry families (CONFIRMED across the shipped profiles):
+The four flag combinations `(symmetry_en, invert_sign_opt, opt_use_neg_region, symmetry_point)` partition all 40 functions into symmetry families:
 
 | `(en, inv, negreg, sympt)` | family | functions |
 |---|---|---|
@@ -345,9 +345,9 @@ The four flag combinations `(symmetry_en, invert_sign_opt, opt_use_neg_region, s
 | `(T, F, F, 0)` | **even** / eval-on-`|x|`, store pos (no negate) | `square`, `abs_reciprocal_sqrt`, `derivative_erf`, `derivative_sigmoid`, `derivative_tanh`, `sign`, `is_finite`, `memset_zero` |
 | `(T, T, T, 1)` | **point-symmetric** about `(0, ½)`, `f(x)=1−f(−x)` — store **neg** (`sel=−|v|`), negate, `+1` | `sigmoid`, `derivative_gelu`, `derivative_gelu_apprx_sigmoid`, `derivative_silu` |
 
-> **CORRECTION — `sigmoid` is point-symmetric, not asymmetric.** An earlier reading (D-F18 §3.3) listed `sigmoid` with `symmetry_en = false`. The shipped `sigmoid_40p.json` is `(T, T, T, sympt=1)`: `symmetry_en = true`, `invert_sign_opt = true`, `opt_use_neg_region = true`, `symmetry_point = 1.0`, with `pos_exponents` empty and 11 negative octaves. It stores the **negative** region and reflects positive inputs via `1 − f(−x)`. (CONFIRMED from JSON; corrects the family label only — the rest of the evaluator description is accurate.)
+> **NOTE — `sigmoid` is point-symmetric, and it stores the *negative* half.** `sigmoid_40p.json` is `(T, T, T, sympt=1)`: `symmetry_en = true`, `invert_sign_opt = true`, `opt_use_neg_region = true`, `symmetry_point = 1.0`, with `pos_exponents` empty and 11 negative octaves. Positive inputs are reconstructed via `1 − f(−x)`, so a reimplementation that fills the positive octaves for sigmoid is building a table the evaluator will never index.
 
-Worked odd example — `1/(−4)` on `reciprocal`: `symmetry_en` ⇒ `sel = |−4| = 4`; octave/bucket → `r ≈ 0.25`; `invert_sign_opt` ⇒ `r = −0.25`; `+ symmetry_point (0)` → `−0.25`. The negative reciprocal table is never stored (`neg_exponents = []`); the odd fold supplies it. (CONFIRMED.)
+Worked odd example — `1/(−4)` on `reciprocal`: `symmetry_en` ⇒ `sel = |−4| = 4`; octave/bucket → `r ≈ 0.25`; `invert_sign_opt` ⇒ `r = −0.25`; `+ symmetry_point (0)` → `−0.25`. The negative reciprocal table is never stored (`neg_exponents = []`); the odd fold supplies it.
 
 ---
 
@@ -405,11 +405,11 @@ float evaluate_generic(AFTable& T, float v, float alpha) {
 > - **`d2·t²` and `d3·t³` accumulate in `double`** — `d2` and `d3` are promoted via `cvtss2sd` (`0x9b17`/`0x9b1c`), and the running sum `r` is a `double` until the final `cvtsd2ss` (`0x9b83`).
 > - **the cube uses libm `pow(t, 3.0)`, not `t*t*t`** (`call _pow` @ `0x9b5b`) — these can differ in the last ULP.
 >
-> A reimplementation that does straight `float` Horner, or computes `t*t*t`, will mismatch this evaluator on some inputs. The exact sequence is: `r_double = (double)((float)(t·d1 + d0)) + (double)(t·t·d2); r_double = pow((double)t,3)·(double)d3 + r_double; return (float)r_double`. (CONFIRMED — instruction-level.)
+> A reimplementation that does straight `float` Horner, or computes `t*t*t`, will mismatch this evaluator on some inputs. The exact sequence is: `r_double = (double)((float)(t·d1 + d0)) + (double)(t·t·d2); r_double = pow((double)t,3)·(double)d3 + r_double; return (float)r_double`.
 
-> **QUIRK — saturation `+inf` rides the normal poly path.** When the input lands in `exp.sat_point_pos_high` (`d0 = +inf`, `d1 = d2 = d3 = 0`), there is no special "return inf" branch. The clamp's poly is evaluated like any bucket: `(t·0 + inf) + … = +inf`. The clamp is a section selection, not a separate return code. (CONFIRMED.)
+> **QUIRK — saturation `+inf` rides the normal poly path.** When the input lands in `exp.sat_point_pos_high` (`d0 = +inf`, `d1 = d2 = d3 = 0`), there is no special "return inf" branch. The clamp's poly is evaluated like any bucket: `(t·0 + inf) + … = +inf`. The clamp is a section selection, not a separate return code.
 
-Worked in-range example — `exp(t)` near zero. `exp_400p` octave `−19` (`num_sections=1`, `extract_size=0`) section 0: `x = 2.86e-06 (0x363fffff)`, `d0 = 0x3f800018 ≈ 1.0000003`, `d1 = 0x3f800018 ≈ 1.0000003`, `d2 = 0x3f000018 ≈ 0.500001`, `d3 = 0x3e2aaacb ≈ 0.16666667`. That is exactly the Maclaurin series `eᵗ ≈ 1 + t + t²/2 + t³/6` baked into `{d0, d1, d2, d3}` — the evaluator's Horner form reproduces it. (CONFIRMED from JSON + the `parse_xd` cross-check.)
+Worked in-range example — `exp(t)` near zero. `exp_400p` octave `−19` (`num_sections=1`, `extract_size=0`) section 0: `x = 2.86e-06 (0x363fffff)`, `d0 = 0x3f800018 ≈ 1.0000003`, `d1 = 0x3f800018 ≈ 1.0000003`, `d2 = 0x3f000018 ≈ 0.500001`, `d3 = 0x3e2aaacb ≈ 0.16666667`. That is exactly the Maclaurin series `eᵗ ≈ 1 + t + t²/2 + t³/6` baked into `{d0, d1, d2, d3}` — the evaluator's Horner form reproduces it.
 
 ---
 
@@ -437,11 +437,11 @@ The single most important non-obvious fact: **only 15 of the 24 keys are live in
 
 ## 9. Gaps & open questions
 
-- **G1 — generator metadata semantics.** `imm_bias`, `fma_const0/1`, and `exponent_offset` are parsed by neither `evaluate_generic` nor `initialize_pwptable`. Their role is in the offline KaenaPWP LUT generator (not in the wheel). SPECULATIVE: `fma_const0/1` may be a post-poly affine `f' = fma1·f + fma0` applied by silicon, exercised only by `parametric_relu` (`fma_const0 = 1.0`). Confirm against the `bkt.bin`/`ctrl.bin` blob decode ([10.4](bkt-ctrl-blob.md)).
+- **G1 — generator metadata semantics.** `imm_bias`, `fma_const0/1`, and `exponent_offset` are parsed by neither `evaluate_generic` nor `initialize_pwptable`. Their role is in the offline KaenaPWP LUT generator (not in the wheel). [SPECULATIVE] `fma_const0/1` may be a post-poly affine `f' = fma1·f + fma0` applied by silicon, exercised only by `parametric_relu` (`fma_const0 = 1.0`). Confirm against the `bkt.bin`/`ctrl.bin` blob decode ([10.4](bkt-ctrl-blob.md)).
 - **G2 — NaN.** `nan_result` is loaded into the `AFTable` but the evaluator has no NaN branch (§2.3). Whether a NaN ever reaches a bucket whose poly reproduces `nan_result` is data-dependent; the silicon may dispatch it. A real sim-vs-silicon divergence on NaN inputs is possible. Needs a NaN trace.
-- **G3 — multipass `ln`.** `use_multipass = true` only for `ln_4p_0mp`/`ln_4p_1mp` (a 2-pass `ln`: `ln(x) = ln(mant) + exp·ln2`). The simulator's FuncMap loads single-pass `ln_40p.json` instead (CONFIRMED: the binary string pool contains `ln_40p.json` but **not** `ln_4p_0mp.json`), so `evaluate_generic` does one bucket eval — a known `ln` sim-vs-silicon divergence. The pass-combination logic is a generator/HW concern.
+- **G3 — multipass `ln`.** `use_multipass = true` only for `ln_4p_0mp`/`ln_4p_1mp` (a 2-pass `ln`: `ln(x) = ln(mant) + exp·ln2`). The simulator's FuncMap loads single-pass `ln_40p.json` instead (the binary string pool contains `ln_40p.json` but **not** `ln_4p_0mp.json`), so `evaluate_generic` does one bucket eval — a known `ln` sim-vs-silicon divergence. The pass-combination logic is a generator/HW concern.
 - **G4 — negative-side `sat_point` intent.** The negative branch reads `expo` as `(u8)` and compares against `sat_point_neg_{high,low}.sat_point`; the bodies are explicit (§5), but whether the JSON author intends neg tables to key off the magnitude's exponent is inferred, not proven against a negative-region trace.
 
 ---
 
-*Cross-references: opcode dispatch and the `simulate` pre-scale operand swap — [7.40 (sim activation/PWP)](../bir/sim-activation-pwp.md); the silicon Activation engine datapath — [1.10 (activation engine)](../arch/activation-engine.md); the pre-baked hardware-LUT blobs (`bkt.bin`/`ctrl.bin`) — [10.4 (bkt/ctrl blob)](bkt-ctrl-blob.md). Backing reports: D-M05 (profile schema + 4 full transcriptions), D-F03 (simulator per-opcode kernels + numeric model), D-F18 (full `PWPSim::Simulator` class + LUT loading + `evaluate_generic`).*
+*Cross-references: opcode dispatch and the `simulate` pre-scale operand swap — [7.40 (sim activation/PWP)](../bir/sim-activation-pwp.md); the silicon Activation engine datapath — [1.10 (activation engine)](../arch/activation-engine.md); the pre-baked hardware-LUT blobs (`bkt.bin`/`ctrl.bin`) — [10.4 (bkt/ctrl blob)](bkt-ctrl-blob.md).*

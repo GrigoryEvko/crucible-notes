@@ -35,7 +35,7 @@ Tooling: `nm`, `nm -D`, `objdump -d`, `readelf -SW` by absolute path. `.text` an
 delta (confirm per-section with `readelf -SW` — see the keystone §6). Every address
 below is a VMA into `.text` unless noted. Tags: **HIGH/MED/LOW** ×
 **OBSERVED** (read off disasm/bytes) / **INFERRED** (derived) / **CARRIED**
-(from a prior report, re-checked here).
+(from a prior report).
 
 ---
 
@@ -71,9 +71,7 @@ The two-phase model, with the real cas symbols on each edge:
 `cas` owns the boxes' **latency and the gr→drain bypass interlock**; `fiss` owns
 the **values flowing through the edges** (the `base + Voff[lane]` arithmetic, the
 predicate mask, the drained datum). The seam between them is the `nx_GS*` host
-port group at the EXECUTE stage. *(HIGH · OBSERVED — both issue symbols and their
-addresses read off `nm`/`objdump`; firmware pairing per the firmware page and
-[ISA Batch 19](../isa/ref/b19-scatter-gather.md).)*
+port group at the EXECUTE stage.
 
 > **NOTE — "SuperGather".** The mnemonic family is `ivp_sem_vec_scatter_gather`
 > (the semantic class name baked into the `my_gvr_0_opnd_ivp_sem_vec_scatter_gather_*`
@@ -100,7 +98,6 @@ opnd_sem_gvr_addr @0x17aa2b0 :
 
 The operand field is masked `& 0x7`, i.e. **exactly 8 gather registers,
 gr0..gr7**. The mask *is* the regfile size (the keystone's §4 convention).
-*(HIGH · OBSERVED — three bytes, `83 e0 07`.)*
 
 **(b) 512-bit stride — `my_gvr_commit_data @0x17a9ed0`:**
 
@@ -114,19 +111,17 @@ my_gvr_commit_data @0x17a9ed0 :
 
 The per-register stride is `1 << 6 = 0x40 = 64 bytes = **512 bits**`. The gather
 register holds 16 lanes × 32 bit = 512 bit — one lane per gathered element.
-*(HIGH · OBSERVED — `48 c1 e6 06` is the `shl $0x6`.)*
 
 **(c) 64-byte copy — `my_gvr_set_stage_value @0x17a9a20`** copies the full
 gather-register value with eight 8-byte moves (0x00..0x38), i.e. 64 bytes,
-byte-exact. *(HIGH · OBSERVED.)*
-
+byte-exact.
 > **GOTCHA — `gvr` is in the ISS but not the public `tie.h`.** The 8-entry
 > SuperGather file is confirmed by `opnd_sem_gvr_addr` (`& 0x7`), the `gvr`
 > regfile-name string in `.rodata`, and the `my_gvr_*` accessor bodies — even
 > though the public TIE header omits it. The keystone left its *width* "LOW"
 > pending a state-table read; **this page resolves it to 512-bit** from the
 > `my_gvr_commit_data` `shl $0x6` stride and the `my_gvr_set_stage_value`
-> 64-byte copy. *(HIGH · OBSERVED — width now upgraded from LOW to HIGH.)*
+> 64-byte copy.
 
 ### 2.1 The `my_gvr_*` accessor surface (15, not 10)
 
@@ -142,12 +137,12 @@ The `gvr` scoreboard is exposed through **15 distinct `my_gvr_*` accessors**
 | interlock | `my_gvr_stall` | gr->drain RAW bypass |
 
 > **CORRECTION — "10 `my_gvr_*`" is the def/use-role subset, not the full
-> surface.** SX-ISS-01 / SX-ISS-05 counted **10** by listing only the def/use
+> surface.** ISS-01 / ISS-05 counted **10** by listing only the def/use
 > semantic rows plus `commit_data`/`def_addr`/`use_addr`. A literal
 > `nm libcas-core.so \| rg ' my_gvr_'` returns **15** distinct names — the extra 5
 > are the `stage_value`/`commit_value`/`set_stage_value`/`set_commit_value` helpers
 > of the deferred-commit path (the gr is filled at post, committed at drain). The
-> roles are the same; the surface is 15. *(HIGH · OBSERVED — `nm` count.)*
+> roles are the same; the surface is 15.
 
 The crucial **`gt`/`gs` split**: `gt` (gather-TARGET) is the gr **def** posted by
 PHASE 1; `gs` (gather-SOURCE) is the gr **use** consumed by PHASE 2. This is the
@@ -183,9 +178,7 @@ IVP_GATHERANX8UT_issue @0x118aa90 :         (rdi=state, rbp=instr-word ptr, r12=
 
 So the post grammar is **`{base:AR, gr:gvr, vbMask:vbool, Voff:vec}`** — exactly
 the firmware's `gatheran_2x32t gr0, a8(base), v31(Voff), vb0(vbMask)`,
-operand-for-operand. *(HIGH · OBSERVED — the four `opnd_sem_*@plt` calls and the
-four `mov $LAT,%esi` immediates are read directly off the disassembly at the
-addresses shown.)*
+operand-for-operand.
 
 - The **non-predicated** `GATHERANX8U` is the same minus the `vbool` operand:
   `AR(LAT 1) + gvr(LAT 0xa) + vec(LAT 0xa)`.
@@ -196,8 +189,7 @@ addresses shown.)*
 > (stage 10), where the host value handoff fires (§6). Only the scalar `AR` base
 > posts early (LAT 1, an address def). The 12 logical stage functions per
 > `(format, slot, mnemonic)` run stage0..stage11; **EXECUTE is stage 10**
-> (`esi=$0xa`). *(HIGH · OBSERVED.)*
-
+> (`esi=$0xa`).
 ---
 
 ## 4. PHASE 2 "drain" — operand decode (`libcas-core`)
@@ -214,13 +206,12 @@ destination retires at **LAT 11 — one cycle deeper than the post's LAT 10** �
 drained value materializes one stage after the gr is ready. The pair issues across
 all FLIX formats (F0..F7) **plus the narrow `N2` format**
 (`N2_N2_S1_Ld_16_inst_IVP_GATHERDNX16_issue`), so the drain is encodable in a
-narrow bundle as well. *(HIGH · OBSERVED — issue symbol present in F0..F7 and N2.)*
+narrow bundle as well.
 
 > **QUIRK — drain is a *light* op.** Where the post (§3) and scatter (§8) carry a
 > stack of structural hazards, the drain's only dependencies are the gr it reads
 > and the coprocessor-enable. It is, in effect, "pull the already-staged 16 lanes
-> out of the register." See the stall chain in §7. *(HIGH · OBSERVED.)*
-
+> out of the register." See the stall chain in §7.
 ### 4.1 FLIX slot map (where each phase issues)
 
 | Group | Mnemonics | FLIX slot | Unit |
@@ -231,8 +222,7 @@ narrow bundle as well. *(HIGH · OBSERVED — issue symbol present in F0..F7 and
 
 The two phases issue in **different FLIX slots on different LSU units** — post on
 S0/LdSt, drain on S1/Ld — so a post and an unrelated drain can co-issue in one
-bundle, but the *dependent* drain stalls on its gr (§7). *(HIGH · OBSERVED — the
-slot/unit are encoded in every issue symbol's `S0_LdSt` / `S1_Ld` prefix.)*
+bundle, but the *dependent* drain stalls on its gr (§7).
 
 ---
 
@@ -243,8 +233,7 @@ undefined imports are libc/runtime (`memcpy`/`memset`, `__gmon_start__`, `_ITM_*
 `_Jv_*`) — **zero `nx_*_interface` host callbacks**
 (`nm -D libfiss-base.so \| rg ' U ' \| rg -c 'nx_.*_interface'` -> 0). Every
 gather/scatter mnemonic has a `regload__` + `opcode__<m>__stage_10` triple; all 24
-mnemonics present, identical to cas. *(HIGH · OBSERVED.)*
-
+mnemonics present, identical to cas.
 ### 5.1 PHASE-1 value — `regload__ivp_gatheran_2x32t @0x2c20e0`
 
 The operand READ. Byte-exact, this is the literal `addr[lane] = base + Voff[lane]`
@@ -274,8 +263,7 @@ The `shl $0x4` (×16) on the vec index is the **per-lane fan-out**: the offset
 register is read as **16 consecutive 32-bit lane values** into `0xd4..0x110`
 (`16 × 4 = 64` bytes). These are the **16 per-lane 32-bit offsets**; combined with
 the base address in `0xb0`, the per-lane gather address is `addr[lane] = base +
-Voff[lane]`. *(HIGH · OBSERVED — `shl $0x4` and the 16 unrolled `lea n(%rax)` /
-`mov ->0xd4+4n(%rdi)` stores are byte-exact.)*
+Voff[lane]`.
 
 ### 5.2 PHASE-1 value — `opcode__ivp_gatheran_2x32t__stage_10 @0x2c1c20`
 
@@ -295,15 +283,13 @@ The stage-10 EXECUTE for the post (size `0x43a`):
 
    Each predicate bit becomes `0x00000000` (lane **KILLED** / masked / OOB) or
    `0xFFFFFFFF` (lane **ACTIVE**). This is the **per-lane in-bounds/active gate**
-   that selects which lanes are gathered. *(HIGH · OBSERVED — `shl 0x1f ; sar 0x1f`
-   is the canonical sign-replicate predicate expansion.)*
+   that selects which lanes are gathered.
 3. Tags the gr state word (`0x91 @0x164`) and stages the per-lane mask
    `0x168..0x18c`.
 
 > The non-predicated `GATHERANX8U @0x2bf650` sets all 16 lane masks to `0xFFFFFFFF`
 > (all lanes active) and zeroes the gr drain buffer `0x6c..0xa4` (pre-drain).
-> *(HIGH · OBSERVED.)*
-
+>
 ### 5.3 PHASE-2 value — the drain
 
 - `regload__ivp_gatherdnx16 @0x2c2560`: gr src index `0x6c(rdi)`, `<<4`, gr regfile
@@ -317,8 +303,7 @@ The stage-10 EXECUTE for the post (size `0x43a`):
 So PHASE-2 **drains the 16 gathered elements from gr into the destination vector
 register**. Sub-width drains exist: `GATHERD2NX8_H/_L @0x2c3120/0x2c2c80` (double-
 rate 8-bit, high/low halves), `GATHERDNX8S @0x2c2700` (nx8 signed),
-`MOVGATHERD @0x2c3780` (gr->gr move). *(HIGH · OBSERVED.)*
-
+`MOVGATHERD @0x2c3780` (gr->gr move).
 ### 5.4 Per-lane load / miss / bounds — where the memory read happens
 
 `fiss` has **no host memory callback** (self-contained). The per-lane LOAD of
@@ -396,8 +381,7 @@ By **port wiring at the stages**: stage 1 (control setup) drives
 > with the engine it serves.** Both framings are consistent with the binary; this
 > page uses **6 = the full SuperGather port set** (the 5 `nx_GS*` plus
 > `nx_ScatterData_0`). The total `nx_*_interface` import count is **119** either
-> way (re-verified). *(HIGH · OBSERVED — the 6-symbol `nm -D` set is byte-exact;
-> the 5-vs-6 difference is solely which bucket `nx_ScatterData_0` is filed under.)*
+> way.
 
 The dual `_0`/`_1` on `nx_GSControl`/`nx_GSEnable` mirrors the **2-lane LSU**
 (`nx_Load_0`/`_1`, `nx_VAddr*_0`/`_1`) — two parallel vector memory pipes. Note
@@ -447,8 +431,7 @@ my_gvr_stall @0x17a9970 :
 
 The drain (phase 2) **stalls until the gr posted by phase 1 has propagated far
 enough to be forwardable** — a latency-aware bypass interlock between the two
-phases over the 32-deep ring, window 10. *(HIGH · OBSERVED.)*
-
+phases over the 32-deep ring, window 10.
 ### 7.3 The stall chains (RAW + structural)
 
 ```text
@@ -480,8 +463,7 @@ The drain stall body, byte-exact, confirms gr use-LAT 9:
 
 Gather-post + scatter model the writeback-PORT structural hazard
 (`WB_P`/`WB_N`), coprocessor-enable, and (scatter) multi-slot dispatch; the
-phase-2 drain is light. *(HIGH · OBSERVED — all callees and `esi` values read off
-disasm.)*
+phase-2 drain is light.
 
 ### 7.4 Faults and debug
 
@@ -492,8 +474,7 @@ disasm.)*
 | `my_DBREAKC_SG0_*` / `_SG1_*` | — | two SuperGather data-breakpoint registers (full def/use/commit/stall role set) |
 
 The gather path has its own access-error + imprecise-FP fault model and two
-dedicated data-breakpoint registers. *(HIGH · OBSERVED.)*
-
+dedicated data-breakpoint registers.
 ---
 
 ## 8. The scatter path — single-phase, no gr
@@ -503,8 +484,7 @@ the per-lane vec data, and (for `*T` forms) the `vbMask` predicate **directly to
 the store port** — there is **no gr def/use in any scatter issue body**. Verified:
 `F1_F1_S0_LdStALU_4_inst_IVP_SCATTERNX8UT_issue @0x7abc70` calls
 `opnd_sem_AR_addr` + `opnd_sem_vbool_addr` (×2) + `opnd_sem_vec_addr` (×3) — and
-**never `opnd_sem_gvr_addr`**. *(HIGH · OBSERVED — the operand-resolver call set
-contains no gvr.)*
+**never `opnd_sem_gvr_addr`**.
 
 | Scatter form | Behavior |
 |---|---|
@@ -515,7 +495,7 @@ contains no gvr.)*
 
 - **Scatter value packing**: `opcode__ivp_scatternx8u__stage_10 @0x2c3c70` makes
   **32** calls to `module__xdref_replo8_16_16 @0x82d020` (`movzbl ; shl $8 ; or` —
-  pack the low-8 scatter datum into 32 lanes). *(HIGH · OBSERVED.)*
+  pack the low-8 scatter datum into 32 lanes).
 - **Scatter-add**: `opcode__ivp_scatterincnx16__stage_10 @0x2c8a50` has **no
   sub-calls** — an inline per-lane increment (the scatter-reduce / histogram form).
   It ties to the firmware's DGE-compute ADD / embedding-update ADD scatter-reduce
@@ -530,8 +510,7 @@ contains no gvr.)*
 Scatter ADDRESS emission to the host goes via `nx_GSVAddrOffset_0` +
 `nx_ScatterData_0` under the `nx_GSEnable` gate; structural hazards add
 `my_InOCDMode_stall` + `my_MS_DISPST_stall` (multi-slot dispatch) on top of the
-gather-post set. *(HIGH · OBSERVED.)*
-
+gather-post set.
 ---
 
 ## 9. Cross-check against the device hardware gather
@@ -558,7 +537,7 @@ the device-side indirection kernels are in
 [The Indirection Engine](../firmware/kernels/indirection-gather.md). The
 cross-validation against the *reference* ISS cores (`libcas-ref-core.so` /
 `libfiss-ref-base.so`, report VAL-06) is a later Part and is named here in prose
-only. *(HIGH · OBSERVED structural identity.)*
+only.
 
 ---
 

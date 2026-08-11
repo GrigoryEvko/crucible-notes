@@ -17,13 +17,13 @@
 > [NEFF ↔ device-ELF relationship](./neff-elf-relationship.md), the
 > [ntff trace + parse-state](./ntff-trace-parse-state.md) page, and the
 > [container capstone](./container-capstone.md). Every cited anchor here is
-> **re-grounded against the binary** in this pass; nothing is taken on a sibling's word
+> **grounded against the binary**, not taken on a sibling's word
 > alone.
 
 **Tag legend.** Each claim carries `[CONF × PROV]`: confidence `HIGH/MED/LOW` × provenance
-`OBSERVED` (bytes/struct/string/enum read this pass from a binary, an IDA sidecar, a
+`OBSERVED` (bytes/struct/string/enum read from a binary, an IDA sidecar, a
 `STATIC_ASSERT`ed shipped header, or the carved fixture), `INFERRED` (decompiled
-control/data flow), `CARRIED` (consolidated from a sibling page, re-grounded here). **v2–v4
+control/data flow), `CARRIED` (consolidated from a sibling page). **v2–v4
 (SUNDA/CAYMAN/MARIANA) facts are byte-grounded**; **v5 / MAVERICK is header-OBSERVED only**
 and every v5 *interior* claim is flagged `INFERRED`.
 
@@ -82,7 +82,7 @@ file off 0x400   [ data_size bytes of inner archive (begins at header_size offse
 ## 1. The container — the 1024-byte `neff_header_t` (byte-layout map)  `[HIGH × OBSERVED]`
 
 IDA ordinal **5896**, `size == 1024` (verified `structures.json`). Every offset below is
-exact; the `[bracketed]` values are the embedded fixture's bytes, re-read this pass at
+exact; the `[bracketed]` values are the embedded fixture's bytes at
 `0xC07E20` (`xxd -s 0xC07E20`):
 
 | off | C type | field | meaning · fixture value |
@@ -104,7 +104,7 @@ exact; the `[bracketed]` values are the embedded fixture's bytes, re-read this p
 | `+0x22C` | `u8[468]` | `pad` | reserved |
 | `+0x400` | `u8[data_size]` | `data` | inner archive payload (gzip stream begins here for `pkg2`) |
 
-Leading-qword re-read this pass (`xxd -s 0xC07E20`):
+Leading qwords (`xxd -s 0xC07E20`):
 
 ```
 00c07e20: 0200…00  pkg_version=2     00c07e28: 0004…00  header_size=0x400
@@ -130,7 +130,7 @@ Leading-qword re-read this pass (`xxd -s 0xC07E20`):
 
 ### 1.1 Structural front gate — `neff_get_header_from_buffer @0x4ca2c0`  `[HIGH × OBSERVED]`
 
-The cheap pre-gate, returning the header pointer or `NULL` (re-grounded `addr=0x4ca2c0`,
+The cheap pre-gate, returning the header pointer or `NULL` (`addr=0x4ca2c0`,
 IDA `functions.json`):
 
 ```c
@@ -157,7 +157,7 @@ strings log under subsystem tag `"NEFF"`.
 > tar header is **GNU `ustar`**, *not* POSIX-pax: magic `ustar ` + two trailing **spaces**
 > (`75 73 74 61 72 20 20` at member off `+0x100`, version ` \0`), GNU **base-256**
 > `uid`/`gid` (high bit `0x80` set), and **zero** PAX/GNU-longname extension records
-> (no `typeflag 'x'/'g'/'L'/'K'` anywhere). Re-confirmed this pass — inflating the fixture
+> (no `typeflag 'x'/'g'/'L'/'K'` anywhere). Inflating the fixture
 > gzip yields a 20 480-B tar whose first member is `kelf-a.json` and whose `+0x100` reads
 > `ustar  `. The `libarchive` reader (`archive_read_support_format_tar`) accepts the GNU
 > dialect transparently, so the *parser* is dialect-agnostic; a NEFF **writer** should emit
@@ -169,8 +169,8 @@ The gzip filter (`archive_read_support_filter_gzip`) is registered **uncondition
 over the **compressed** payload — corruption detection, *not* authentication: a re-hashed
 modified NEFF passes), and is computed **only** when `nrt_load`'s verify flag (`a3`) is set.
 
-> **CORRECTION (re-grounded) — the `pkg2` MD5 is over the COMPRESSED gzip bytes.** Verified
-> this pass by recomputation: `md5(data[0xC08220 : +0x6AD])` =
+> **CORRECTION — the `pkg2` MD5 is over the COMPRESSED gzip bytes.** Verified
+> by recomputation: `md5(data[0xC08220 : +0x6AD])` =
 > **`61b3cab24369b326a2b3ee40a744c746`** = `header.hash[0:16]` (exact). The MD5 of the
 > *inflated* 20 480-B tar is `0a677f86…` and does **not** match. So the digest input is the
 > on-disk gzip member (`header.data` for `data_size` bytes), confirmed in the decompiled
@@ -180,7 +180,7 @@ modified NEFF passes), and is computed **only** when `nrt_load`'s verify flag (`
 
 ## 2. The inner archive — `neff_parse → neff_t::files`  `[HIGH × OBSERVED]`
 
-`neff_parse @0x4ca3f0` (re-grounded `addr=0x4ca3f0`) builds the in-memory filesystem with
+`neff_parse @0x4ca3f0` builds the in-memory filesystem with
 **no temp files**:
 
 ```c
@@ -206,7 +206,7 @@ while (archive_read_next_header(a, &e) != ARCHIVE_EOF) {
 @0x4cb670`**, returning `{buffer, size}` from the map node (payload at `node+0x40` /
 `+0x48`).
 
-> **CORRECTION (vs DX-NEFF-07 §2's "checksum" gloss).** The 18-byte suffix the loader skips
+> **CORRECTION (vs an earlier "checksum" gloss).** The 18-byte suffix the loader skips
 > is **`wavegraph-bin.json`** (the per-graph debug wavegraph IR — `memcmp` against the byte
 > string at `0x84986c`), **not** `"…checksum"`. `def.json` still *references*
 > `wavegraph-bin.json` under `debug_info.wavegraph`; in production builds the file is simply
@@ -234,8 +234,8 @@ while (archive_read_next_header(a, &e) != ARCHIVE_EOF) {
 
 ## 3. The section catalog — `def.json` parsed in fixed key order  `[HIGH × OBSERVED]`
 
-For each `graph` in `kelf-a.json` the runtime calls **`kelf_load_from_neff @0x4c0870`**
-(re-grounded), loads `sgNN/def.json` via **simdjson** (haswell backend), and consumes its
+For each `graph` in `kelf-a.json` the runtime calls **`kelf_load_from_neff @0x4c0870`**,
+loads `sgNN/def.json` via **simdjson** (haswell backend), and consumes its
 keys **in this exact order** — the canonical section→parser map every sibling builds on:
 
 | `def.json` key | `libnrt` parser / sink @ addr | doc |
@@ -262,7 +262,7 @@ DVE=3, SP=4 (MAX=5)** — these are exactly the `sg00/{pe,act,pool,dve,sp}` file
 
 > **GOTCHA — two distinct `arch` numberings.** The `arch_type` tested above is the
 > **software/HAL ordinal** `al_hal_tpb_arch_type` (`INVALID=0, _1=1, SUNDA=2, CAYMAN=3,
-> MARIANA=4, NUM=5` — re-grounded from `enums.json`), **not** the hardware `arch_id`
+> MARIANA=4, NUM=5` — from `enums.json`), **not** the hardware `arch_id`
 > codename byte (`0x05`/`0x0c`/`0x14`/`0x1c`). `arch_type == 2` ⇒ inject the default Q7
 > ExtISA lib; `arch_type == 3` (CAYMAN) is the EVTACCEL/legacy-NEFF arm. Do not conflate the
 > scales. `[HIGH × OBSERVED — version-compat §5, container §5]`
@@ -276,7 +276,7 @@ include `var_id` (u32), `#transfer-type` (`"input"`/`"output"`/`"tmp-buf"`/`"sta
 `file`/`file_name`/`prefix` (weight payload), `load_weight_bin`. The dense-`var_id`
 invariant (`max var_id + 1 == map size`) is enforced after the loop.
 
-`#transfer-type → kbin_mr_type` (re-grounded `enums.json`, 12 values):
+`#transfer-type → kbin_mr_type` (`enums.json`, 12 values):
 
 ```
 MR_INVALID=0  MR_SB=1  MR_BUFFER_STAGED=2  MR_BUFFER=3  MR_TMP_BUF=4  MR_INPUT=5
@@ -293,7 +293,7 @@ Outputs" reject.
 
 The metaneff is a **separate proto3 string** (package `metaneff`), **not** in the NEFF tar,
 handed to `torch.classes.neuron.{Model,SPMDModel}(neff_bytes, metaneff_bytes, …)`. Schema
-(re-confirmed from the native `_InternalParse`/`_InternalSerialize` bodies in
+(from the native `_InternalParse`/`_InternalSerialize` bodies in
 `libtorchneuron.so`, not a `.proto` file):
 
 ```
@@ -354,7 +354,7 @@ stream of fixed 64-byte slots** (the byte-level ISA is [seq-microcode](./seq-mic
 ### 4.1 The 64-byte slot  `[HIGH × OBSERVED — STATIC_ASSERTed shipped header]`
 
 `aws_tonga_isa_tpb_common.h` pins `TONGA_ISA_TPB_INST_NBYTES=64`, `INST_NWORDS=16`,
-`RT_MAX_NAME=32`, `NUM_SEMAPHORES=32` (all re-read this pass). The common 4-byte header
+`RT_MAX_NAME=32`, `NUM_SEMAPHORES=32`. The common 4-byte header
 (`TONGA_ISA_TPB_INST_HEADER`, `STATIC_ASSERT(sizeof==4)`):
 
 | off | sz | field | sample | meaning |
@@ -379,7 +379,7 @@ semaphore_value(u32)`, where `wait_mode 0x04` = "wait $S[n] ≥ value" and `upda
 
 ### 4.2 The opcode space — `opcode = base | (engine<<5)`  `[HIGH × OBSERVED — shipped enum]`
 
-`TONGA_ISA_TPB_ENGINE` (re-read verbatim): **PE=0x0, ACT=0x1, POOL=0x2, ALL=0x3, RT=0x6,
+`TONGA_ISA_TPB_ENGINE` (verbatim): **PE=0x0, ACT=0x1, POOL=0x2, ALL=0x3, RT=0x6,
 SIM=0x7** (INVALID=0xFF). The shipped enum **literally** defines opcodes as
 `base | (ENGINE<<5)` — e.g. `TENSOR_TENSOR_ARITH = 0x01 | (POOL<<5) = 0x41`,
 `PSEUDO_DMA_TRIGGER = 0x01 | (RT<<5) = 0xC1`. So `engine = opcode >> 5`, `base = opcode &
@@ -412,7 +412,7 @@ the model's allocated DMA queue + IP space. Consequences: `0xC1`/`0xC8`/`0xCA` *
 appear in any device-side decode table** (the SEQ never sees them); `PSEUDO_DMA_TRIGGER`
 carries its **queue name** (32-B ASCII) which the loader resolves to the physical ring.
 
-### 4.4 Two key pseudo records (re-confirmed byte-exact in the fixture)
+### 4.4 Two key pseudo records (byte-exact in the fixture)
 
 `PSEUDO_DMA_TRIGGER` (`pool.bin` slot, `STATIC_ASSERT(sizeof==64)`): `+0x00` header
 `{0xC1, 0x10, …}`, `+0x04` events, **`dma_queue_name[32]`** (non-empty asserted),
@@ -459,7 +459,7 @@ GPSIMD custom-op device code rides in the NEFF as a **ucode library**. **Two inj
 paths**, both ending in the same `ucode_lib` struct:
 
 **(A) Default Q7 library — baked into the runtime, *not* the NEFF.** On `arch_type == 2`,
-`kelf_load_from_neff` calls `ucode_get_q7_lib @0x2265a0` (re-grounded) →
+`kelf_load_from_neff` calls `ucode_get_q7_lib @0x2265a0` →
 `ucode_lib_get_ext_isa(CSWTCH.113[arch_type−2])` where `CSWTCH.113 @0x86ada8 = {6, 13, 21}`
 (a **third** numbering — ExtISA library identifiers, distinct from `arch_type` 2/3/4 and the
 hardware `arch_id`). The default ExtISA library lives in the sibling
@@ -467,8 +467,8 @@ hardware `arch_id`). The default ExtISA library lives in the sibling
 capped at **18** ExtISA ops.
 
 **(B) NEFF-supplied library.** `def.json` `"ucode_lib"` names a JSON manifest inside the tar
-(e.g. `ucode_lib.json`); each element → `parse_one_ucode_lib @0x4b1610` (re-grounded). Its
-keys/gates (re-confirmed):
+(e.g. `ucode_lib.json`); each element → `parse_one_ucode_lib @0x4b1610`. Its
+keys/gates:
 
 ```
 library    (string) path of the device-code BIN in the tar → load_bin_file (private copy)
@@ -485,7 +485,7 @@ duplicate name → "UCode Library %s has already been added"
 > **CORRECTION — the version JSON key is `ulib_to_ucode_version`, not `version`.** The
 > 21-char key is assembled at runtime (`_mm_load_si128(&"ulib_to_ucode_ve")` then overwrite
 > from byte 13 with `"_version"`). The `cpu_id == 0`, `ulib_to_ucode_version`, and
-> `"1.21.1.0"` strings were all re-confirmed present in `libnrt.so` this pass.
+> `"1.21.1.0"` strings are all present in `libnrt.so`.
 > `[HIGH × OBSERVED — version-compat §6]`
 
 **On-device placement** `[MED × INFERRED]`: the library bytes are a **Vision-Q7 (Cairo NX,
@@ -525,7 +525,7 @@ The library appears in distinct representations as it crosses host → device:
 
 The GPSIMD device ucode is **not** a flat blob: it is a complete **32-bit LE Xtensa
 Position-Independent ELF executable** (`ELFCLASS32`, `EI_DATA=LSB`, `ET_EXEC`,
-`e_machine=0x5E=94` Tensilica, `e_flags=0x300`, 4 program headers). Re-confirmed this pass
+`e_machine=0x5E=94` Tensilica, `e_flags=0x300`, 4 program headers). Confirmed
 by `xxd` of the ground-truth blob at host file off **`0x2EF7E0`** in
 `libnrtucode_internal.so`:
 
@@ -534,7 +534,7 @@ by `xxd` of the ground-truth blob at host file off **`0x2EF7E0`** in
 002ef7f0: 0200 5e00 01000000 10560001 34000000   ET_EXEC ; e_machine 0x5E ; e_entry 0x01005610
 ```
 
-**Segment → device region map** (native `ncore2gp xtensa-elf-readelf -lW`, re-run this pass):
+**Segment → device region map** (native `ncore2gp xtensa-elf-readelf -lW`):
 
 | Phdr | Type | VAddr | FileSz/MemSz | Flg | → device region |
 |:---|:---|:---|:---|:---|:---|
@@ -555,7 +555,7 @@ seg1's `MemSz − FileSz = 0x048C − 0x450 = 0x3C` is the `.bss` the loader zer
 
 `readelf -SW`: `[33] .rela.got RELA 030000c8 0075c8 000b40 0c` — VAddr `0x030000C8`,
 device-ELF file off **`0x75C8`**, size `0xB40 / 0x0C = 240` `Elf32_Rela` `{u32 r_offset;
-u32 r_info; u32 r_addend}`. Re-read this pass at host file off `0x2EF7E0 + 0x75C8 =
+u32 r_info; u32 r_addend}`. At host file off `0x2EF7E0 + 0x75C8 =
 0x2F6DA8`:
 
 ```
@@ -564,11 +564,11 @@ entry1  r_offset=0x0100001E  r_info=0x14 (SLOT0_OP,  type 20)  r_addend=0x020002
 entry2,3  all-zero (R_XTENSA_NONE padders)
 ```
 
-Native `ncore2gp xtensa-elf-readelf -rW` type histogram (re-run this pass): **8 NONE / 30
+Native `ncore2gp xtensa-elf-readelf -rW` type histogram: **8 NONE / 30
 RELATIVE / 101 SLOT0_OP / 101 SLOT0_ALT = 240**.
 
 > **CORRECTION — reloc type 5 = `R_XTENSA_RELATIVE`, not `R_XTENSA_32`.** The native
-> ncore2gp readelf prints `00000005 R_XTENSA_RELATIVE` (30 of them) — confirmed this pass.
+> ncore2gp readelf prints `00000005 R_XTENSA_RELATIVE` (30 of them).
 > Per the Xtensa psABI, type **1** = `R_XTENSA_32` and type **5** = `R_XTENSA_RELATIVE`; the
 > 30 data-word fixups in this table are type 5. The shared reloc-type-set
 > `{0=NONE, 5=RELATIVE, 20–34=SLOT*_OP, 35–49=SLOT*_ALT}` holds; pin type 5 to the name
@@ -585,7 +585,7 @@ slot-index** one — they share only the word "relocation".
 
 `prelink @0x9b5d60` flattens the ELF into `{iram_buf, dram_buf}` (seg0 copied+relocated,
 seg1 copied+zero-padded(`.bss`)+relocated) and prepends a **32-byte UCPL header**. Magic
-`"UCPL "` re-confirmed this pass at host file off **`0x9B5BE0`** (decimal `10178080`):
+`"UCPL "` at host file off **`0x9B5BE0`** (decimal `10178080`):
 
 ```c
 typedef struct {                  // 0x20 bytes, written to device offset 0
@@ -608,7 +608,7 @@ no NEFF-supplied BIN is byte-present in this corpus subset).
 ### 6.3 The in-ELF `kernel_info_table` — the device dispatch ABI  `[HIGH × OBSERVED]`
 
 `readelf -SW`: `[7] kernel_info_table PROGBITS 02000380 007400 000088` — VAddr `0x02000380`,
-size `0x88 = 17 rows × 8 B`. Re-read this pass at host file off `0x2EF7E0 + 0x7400 =
+size `0x88 = 17 rows × 8 B`. At host file off `0x2EF7E0 + 0x7400 =
 0x2F6BE0`:
 
 ```
@@ -708,7 +708,7 @@ Engine streams are compiled against a *device-IP* space; at load the kbin-constr
 per-engine patch list — the **NEFF analog of ELF dynamic relocations** (a debug/trace
 PC→source map, *not* required for execution correctness).
 
-`kbin_patch_location_t` (16 B, ordinal 8667, re-grounded `size=16`):
+`kbin_patch_location_t` (16 B, ordinal 8667, `size=16`):
 
 | off | sz | field | meaning |
 |:---|:---|:---|:---|
@@ -736,7 +736,7 @@ exit resolved to a relative branch once offsets are known), carried through
 `FUNCATION(3)` otherwise. Append failure only **WARN**s.
 
 **The relocation walk** (`get_neff_ip @0x2faee0` / `kbin_patch_device_ip_to_neff_ip
-@0x2fb3a0`, re-grounded): translates a runtime device PC back to the source-stream slot index.
+@0x2fb3a0`): translates a runtime device PC back to the source-stream slot index.
 Per matching entry — `MODIFY +0x40 addr & +1 ip`; `DELETE +count` both; `INSERT +count<<6
 addr only` (synthetic slots have no source index); tail = `(device_ip − addr) >> 6`. The
 `0x40`/`<<6` stride everywhere **confirms 64-byte slots**. A PC inside a FUNCTION block
@@ -749,7 +749,7 @@ accumulates two `get_neff_ip` calls. On miss → "Failed to find section %d in t
 The `def.json` `.bin` is **only the MAIN-body source**; the runtime **assembles** a larger
 device image around it by buffer concatenation, in this fixed physical order, then DMA-stages
 it to HBM as one `inst_block`. The assembler is **`ib_create_one_block @0x2f7e50`**
-(re-grounded), driven by `sequencer_setup_instr @0x4483d0` (which asserts the last engine is
+driven by `sequencer_setup_instr @0x4483d0` (which asserts the last engine is
 SP).
 
 ```
@@ -796,12 +796,12 @@ only**); else (raw `.bin`) → `load_bin_file` (private copy). Either way → an
 mem_ref whose buffer points at the constant bytes. **metaneff carries no weights — they live
 only here.**
 
-`kbin_mem_ref` (152 B on-disk, re-grounded `size=152`): `+0x00 mr_type`, `+0x08 name`, `+0x10
+`kbin_mem_ref` (152 B on-disk, `size=152`): `+0x00 mr_type`, `+0x08 name`, `+0x10
 size`, `+0x18 alignment`, `+0x20 var_id`, `+0x24 dtype[16]`, `+0x38 shape[8]`, `+0x78
 dtensor_md*`, `+0x80 buffer*` (constant payload ptr; NULL for non-constant MR types), `+0x88
 union {ptr | virtual_scratchpad | list | remote}`.
 
-**Staging** (`mem_ref_copy_and_stage_mr @0x2fb780`, re-grounded): only MR types
+**Staging** (`mem_ref_copy_and_stage_mr @0x2fb780`): only MR types
 `{SB(1), BUFFER(3), TMP_BUF(4), VIRTUAL_TMP_BUF(8)}` are bulk-staged. `MR_BUFFER`/`MR_TMP_BUF`
 → HBM via `dmem_alloc_aligned(TONGA_DRAM, hbm_idx, usage = DMA_MEM_USAGE_TYPE_WEIGHT(6) for
 weights / SCRATCHPAD_NOT_SHARED(16) for types 4/8)`; if `mr.buffer != NULL` → `dmem_buf_copyin`
@@ -897,7 +897,7 @@ runtime event stream), where GPSIMD/Q7 work appears under `engine_instruction_in
 | `Elf32_Rela` | 12 | neff-elf | `{r_offset, r_info, r_addend}`; types 0/5/20/35 §6.1 |
 | `ucpl_header_t` | 32 | neff-elf | magic 0x204C504355/seg lens/init/fini/start_sym §6.2 |
 
-**Key enums** (re-grounded `enums.json` this pass):
+**Key enums** (`enums.json`):
 
 ```
 kbin_mr_type           INVALID0 SB1 BUFFER_STAGED2 BUFFER3 TMP_BUF4 INPUT5 OUTPUT6 PTR7
@@ -1001,15 +1001,15 @@ This page consolidates the NEFF Part; each topic's authoritative byte-level page
 ## Guard restatement
 
 Every byte-level claim is grounded in shipped/extracted static-analysis artifacts: the
-embedded NEFF fixture (re-read this pass at `libnrt.so` off `0xC07E20`/`0xC08220`; `pkg2` MD5
+embedded NEFF fixture (read at `libnrt.so` off `0xC07E20`/`0xC08220`; `pkg2` MD5
 `61b3cab2…` recomputed over the compressed gzip window; inner archive confirmed GNU `ustar`),
 the `STATIC_ASSERT`ed arch-isa headers (`aws_tonga_isa_tpb_common.h`: NBYTES 64 / NWORDS 16 /
 ENGINE PE0..SIM7 / `opcode = base|(ENGINE<<5)`), the device Xtensa PI ELF carved at
-`libnrtucode_internal.so` off `0x2EF7E0` (e_machine 0x5E re-read; `.rela.got` 240 entries and
-the type-5 = `R_XTENSA_RELATIVE` histogram re-run via the native `ncore2gp` readelf;
-`kernel_info_table` 17 rows re-read; UCPL magic at off `0x9B5BE0`), and the IDA-typed
+`libnrtucode_internal.so` off `0x2EF7E0` (e_machine 0x5E; `.rela.got` 240 entries and
+the type-5 = `R_XTENSA_RELATIVE` histogram via the native `ncore2gp` readelf;
+`kernel_info_table` 17 rows; UCPL magic at off `0x9B5BE0`), and the IDA-typed
 structs/enums of `libnrt.so` (load-spine addresses, `kbin_*` sizes, the `FUNCATION` typo, the
-`kbin_mr_type`/patch enums all re-grounded). Host control-flow facts are from the `libnrt.so`
+`kbin_mr_type`/patch enums). Host control-flow facts are from the `libnrt.so`
 decompiled bodies (host x86); device-side dispatch facts are carried from the cited sibling
-pages and re-grounded against the binary. Every fact reads as derived from static analysis of
+pages. Every fact reads as derived from static analysis of
 shipped/extracted artifacts alone.

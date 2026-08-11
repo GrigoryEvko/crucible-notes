@@ -27,8 +27,8 @@ collective-side and the Pool-engine gathers**.
 `neuron_{cayman,mariana,maverick,sunda}_arch_isa/tpb/*.h`); opcode bindings from each
 arch's `instruction_mapping.json`; the lowering dispatch disassembled byte-exact from
 `libnrt.so.2.31.24.0` (NRT host runtime, DWARF-named, `.text` VMA==fileoffset); the
-device decode strings from `libnrtucode_internal.so`. Tags: HIGH/MED/LOW ×
-OBSERVED/INFERRED/CARRIED, per claim.
+device decode strings from `libnrtucode_internal.so`. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -52,8 +52,7 @@ strings, all below.]
 
 ---
 
-## 1. Opcode + struct binding [HIGH/OBSERVED]
-
+## 1. Opcode + struct binding
 `aws_neuron_isa_tpb_common.h` (cayman/NC-v3) `NEURON_ISA_TPB_OPCODE` enum — the `// Y`
 comment marks a *real HW* (non-pseudo) opcode; the `0b110`-prefixed values are the
 compiler-pseudo class:
@@ -83,8 +82,7 @@ range (a POOL extended-opcode). The `struct2opcode` map in `instruction_mapping.
 
 > **QUIRK (OBSERVED).** The JSON spells the memcpy opcode `OPCODE_DMA_MEMCPY` (with an
 > underscore) while the `common.h` enumerator is `OPCODE_DMAMEMCPY` (no underscore). Same
-> value `0xb8`; purely cosmetic. Both spellings read directly. [HIGH/OBSERVED]
-
+> value `0xb8`; purely cosmetic. Both spellings read directly.
 These are the **same six** 64-B descriptor words the committed
 [descriptor model §2](../../dma/descriptor-model.md) catalogs (`0xbd ≠ 0xf1` — two distinct
 transpose words; see §4 here and the CORRECTION callout there: the catalog is **six**, not
@@ -92,8 +90,7 @@ five). [HIGH/OBSERVED — JSON + header + cross-page]
 
 ---
 
-## 2. STRUCT #1 — DIRECT2D (`DMA_DIRECT2D_STRUCT`, opcode `0xb8`, 64 B) [HIGH/OBSERVED]
-
+## 2. STRUCT #1 — DIRECT2D (`DMA_DIRECT2D_STRUCT`, opcode `0xb8`, 64 B)
 Header doc (`aws_neuron_isa_tpb_dma_direct2d.h`): *"DmaMemcpy Instruction. This instruction
 will generate DMA descriptors to initiate a Memcpy. The descriptors will be supplied by the
 DGE block and the TPB engine will update the DMA queue tail pointers when the descriptors are
@@ -149,8 +146,7 @@ validator `is_valid_dma_direct2d` = `_general` ∧ `_arith`:
 
 ---
 
-## 3. STRUCT #2 — INDIRECT1D (`DMA_INDIRECT1D_STRUCT`, opcode `0xbb`, 64 B) [HIGH/OBSERVED]
-
+## 3. STRUCT #2 — INDIRECT1D (`DMA_INDIRECT1D_STRUCT`, opcode `0xbb`, 64 B)
 Header doc (`aws_neuron_isa_tpb_dma_indirect1d.h`): *"DmaIndirect performs DMAs for a vector
 of dynamic indices (offsets) generated during execution. These dynamic indices can be applied
 to the source to perform a gather, or applied to the destination to perform a scatter, or two
@@ -191,8 +187,7 @@ probe-confirmed.
 > pseudo-op here *and* the compute-side indexed-DMA word there — one instruction, two views.
 > [HIGH/OBSERVED — byte-exact reconciliation]
 
-### 3.1 `DMA_INDIRECT_FLAGS` (1 byte) — `common.h:852` [HIGH/OBSERVED]
-
+### 3.1 `DMA_INDIRECT_FLAGS` (1 byte) — `common.h:852`
 ```c
 struct NEURON_ISA_TPB_DMA_INDIRECT_FLAGS {           // packed, 1 byte
     INDIRECT_DMA_ADDRESSING_MODE indirect_mode : 2;  // SRC_INDIRECTION=0 (gather),
@@ -211,8 +206,7 @@ the **values** are `0/1/2`. The validator `has_valid_indirect_dim_by_mode` requi
 `SRC_INDIRECTION` mode `gather_dim` is dim-checked and `scatter_dim == 0` (vice-versa for
 `DST`); in `SRC_DST` both are checked. `indirect_dim_check`: when shape-from-register, any
 valid `IndirectDim`; otherwise the indirect dim **must be `X`** (the only dim available
-without a shape reg). [HIGH/OBSERVED]
-
+without a shape reg).
 ### 3.2 Validity constraints (header inline, OBSERVED HIGH)
 
 - `has_dma_indirect_valid_index_count`: index count **≤ 4096** for the active leg(s) (or
@@ -226,8 +220,7 @@ without a shape reg). [HIGH/OBSERVED]
 
 ---
 
-## 4. STRUCT #3 — GATHER_XPOSE (`DMA_GATHER_XPOSE_STRUCT`, opcode `0xf1`, 64 B) [HIGH/OBSERVED]
-
+## 4. STRUCT #3 — GATHER_XPOSE (`DMA_GATHER_XPOSE_STRUCT`, opcode `0xf1`, 64 B)
 Header doc (`aws_neuron_isa_tpb_dma_gather_xpose.h`): *"DmaGatherTranspose performs a gather
 operation from HBM or SBUF using dynamic indices, followed by xbar transpose, and writes the
 result to SBUF. This instruction uses the SW-DGE backend with Q7 processors in the Gpsimd
@@ -261,7 +254,6 @@ Gather dimension must be slowest dimension (Y) initially."* `sizeof==64`, probe-
 > src+dst dtype into a single byte (`DTYPE_PAIR`, `common.h:767`: `dtype_lo:4 / dtype_hi:4`)
 > — because it spends its bytes on the `ADDR4` index (`@36`) plus the dst-tile geometry. It
 > also is the only one whose dim0 dst step is **implicit** (`= sizeof(dtype_hi)`), not stored.
-> [HIGH/OBSERVED]
 
 > **GOTCHA — `0xbd` ≠ `0xf1`.** Do not conflate `DMA_GATHER_XPOSE` (`0xf1`, *index-array*
 > driven, with an `ADDR4` index at `@36`) with the sibling `DMA_DIRECT2D_XPOSE` (`0xbd`,
@@ -303,8 +295,7 @@ validator; the 16×128-tile execution is from the header doc + the device string
 
 ---
 
-## 5. The compiler pseudo + the lowering [HIGH/OBSERVED]
-
+## 5. The compiler pseudo + the lowering
 ### 5.1 `PSEUDO_DMA_DIRECT2D` (opcode `0xd4`, 64 B) — the *one* compiler pseudo
 
 Header doc (`aws_neuron_isa_tpb_pseudo_dma_direct2d.h`): *"This pseudo instruction will serve
@@ -339,8 +330,7 @@ The pseudo's `dma_configs` doc: *"priority_class (0-4): the lower 3 bits … 0 i
 unused/invalid priority — apply the default packet size; the max allowed priority class number
 in ucode is 4."* So although the field is 3 bits (`0..7`), the ucode **caps usable values at
 4** — i.e. the 5-value band `P0..P4`, matching the committed
-[DGE micro-op encoding §6](../../dma/dge-microop-encoding.md). [HIGH/OBSERVED]
-
+[DGE micro-op encoding §6](../../dma/dge-microop-encoding.md).
 ### 5.2 `PSEUDO_DMA_EXT` (opcode `0xda`, 64 B) — the extension instruction
 
 Header doc: *"This instruction must follow a Pseudo DMA Direct instruction (using
@@ -375,10 +365,8 @@ byte-bounds for INDIRECT1D) **and** the transpose tile geometry (`tile_src_rows`
 `tile_src_rows ∈ {16, 0}`, `tile_src_cols ∈ {128, 0}` — the same 16×128 tile as the GATHER_XPOSE
 HW word, or all-zero when the extension is carrying index info rather than tile geometry.
 `is_valid_pseudo_dma_ext_fields`: index fields are validated only when `idx_num_active_channels
-!= 0`. [HIGH/OBSERVED]
-
-### 5.3 The host NRT lowering dispatch (libnrt, disassembled byte-exact) [HIGH/OBSERVED]
-
+!= 0`.
+### 5.3 The host NRT lowering dispatch (libnrt, disassembled byte-exact)
 DWARF subprogram names (`libnrt.so.2.31.24.0`, `.text` VMA==fileoffset):
 `translate_one_pseudo_dge_instr_v2 / _v3` (the dispatcher),
 `translate_one_pseudo_dma_memcpy_instr_v2` (the direct2d/indirect1d builder),
@@ -460,8 +448,7 @@ index vector) is computed at runtime; it lowers via
 
 ## 6. The shared carriers — `dma_configs`, `idx_num_active_channels`, bound regs, `compute_op`, `dtype`
 
-### 6.1 `DMA_CONFIGS` (1 byte, `common.h:713`) [HIGH/OBSERVED]
-
+### 6.1 `DMA_CONFIGS` (1 byte, `common.h:713`)
 ```c
 struct NEURON_ISA_TPB_DMA_CONFIGS { uint8_t priority_class : 3; uint8_t reserved_bitfield : 5; };
 ```
@@ -478,18 +465,15 @@ DIRECT2D_XPOSE `@63`.
 > band (the runtime gate, `<= 4`). The compiler-IR `DMAQoSClass` is a wider `0..14`; the host
 > `add_dma_configs_priority_class_v3` lowering narrows it into the 3-bit field. Do not cite
 > `0..14` for the wire `dma_configs` — that is the IR-level QoS, not the descriptor byte
-> (cross-link [DGE micro-op encoding](../../dma/dge-microop-encoding.md)). [HIGH/OBSERVED]
-
-### 6.2 `idx_num_active_channels` (`common.h:2343`) [HIGH/OBSERVED]
-
+> (cross-link [DGE micro-op encoding](../../dma/dge-microop-encoding.md)).
+### 6.2 `idx_num_active_channels` (`common.h:2343`)
 INDIRECT1D (`@14`) and GATHER_XPOSE (`@14`) carry `idx_num_active_channels`. The validator
 `check_dma_indirect_indices(n) = (n != 0) ∧ (n <= POOLING_NUM_CHANNELS) ∧ (n ==
 POOLING_NUM_CHANNELS)` with `POOLING_NUM_CHANNELS == 128U` — i.e. the index generator must run
 **all 128 pooling channels**. DIRECT2D has **no** channel field (the DGE backend decides the
 DMA spread). [HIGH/OBSERVED — the predicate constant `common.h:2348`]
 
-### 6.3 `BOUND_CHECK_REG` (1 byte, `common.h:707`) — and the role swap [HIGH/OBSERVED]
-
+### 6.3 `BOUND_CHECK_REG` (1 byte, `common.h:707`) — and the role swap
 ```c
 struct NEURON_ISA_TPB_BOUND_CHECK_REG {
     REG_NUM bc_reg : 6;                     // register # of the bound; bc_reg+1 = high 32 bits for wide offsets
@@ -508,8 +492,7 @@ the **index** for INDIRECT1D (`src_idx_bound_reg@58`, `dst_idx_bound_reg@59`) an
 instructions** for INDIRECT1D when the HW reg path is unavailable (gated by
 `tdrv_arch_instr_block_supports_dma_indirect1d_bound_check`). [HIGH/OBSERVED — doc + libnrt symbols]
 
-### 6.4 `DGE_COMPUTE_OP` (1 byte, `common.h:837`) [HIGH/OBSERVED]
-
+### 6.4 `DGE_COMPUTE_OP` (1 byte, `common.h:837`)
 ```c
 enum NEURON_ISA_TPB_DGE_COMPUTE_OP {
     NONE=0,      // B = A   (plain memcpy)
@@ -524,16 +507,14 @@ pairs with `flags.non_unique_dst_idx` for duplicate scatter targets), and PSEUDO
 `are_valid_memcpy_dtypes` gates: either a no-CCE memcpy (`compute_op==NONE`, `in==out`) or a
 valid CCE/cast dtype pair. [HIGH/OBSERVED — enum + validator]
 
-### 6.5 `DTYPE` / `DTYPE_PAIR` [HIGH/OBSERVED]
-
+### 6.5 `DTYPE` / `DTYPE_PAIR`
 The 4-bit `NEURON_ISA_TPB_DTYPE` (`common.h:722`): `INVALID=0`, `UINT64=1`, `INT8=2`, `UINT8=3`,
 `INT16=4`, `UINT16=5`, `BFLOAT16=6`, `FP16=7`, `INT32=8`, `UINT32=9`, `FP32=A`, `FP32R=B`,
 `INT64=C`, `FP8_EXP3=D`, `FP8_EXP4=E`, `FP8_EXP5=F`. DIRECT2D/INDIRECT1D carry separate
 `in_dtype`/`out_dtype` bytes (cast allowed via the CCE path); GATHER_XPOSE packs both into one
 `DTYPE_PAIR` byte (`dtype_lo:4 / dtype_hi:4`) and **requires `dtype_lo == dtype_hi`, 2 B only**
 (no cast yet). The pseudo doc adds: `in_dtype` may not be `FP32R`, `UINT64`/`INT64` are invalid
-for both, and `NC_v4+` restricts to the `DtypeBasic` subset. [HIGH/OBSERVED]
-
+for both, and `NC_v4+` restricts to the `DtypeBasic` subset.
 ---
 
 ## 7. Compute-vs-collective gather — the three distinct gathers
@@ -583,7 +564,7 @@ The three boundaries, precisely:
 > TRANSPOSE"`) belongs entirely to the *compute / custom-op* path of this page. The collective
 > Decode-set is its own group (`SB2SB_Collective`, `Sbuf2Sbuf`, `ExtendedInst*`,
 > `GetSequenceBounds`, …). Same SDMA descriptor format, same `rdma_desc_gen` doorbell loop —
-> different instructions. [HIGH/OBSERVED — both string groups read byte-exact this session]
+> different instructions. [HIGH/OBSERVED — both string groups read byte-exact]
 
 **Shared machinery.** Both the compute DGE kinds *and* the collective SB2SB leg converge on the
 **same** SDMA BD ring and the **same** `rdma_desc_gen → rdma_desc_start` tail-pointer doorbell
@@ -591,12 +572,10 @@ The three boundaries, precisely:
 DGE kinds; the inter-core SB2SB composer for the collective) and *whether the data crosses a
 NeuronCore boundary* (no for the three compute gathers; yes for the collective). The
 differential validator harness for these is
-[VAL-15 gather/scatter](../../validation/gather-scatter.md) (planned). [HIGH/OBSERVED]
-
+[VAL-15 gather/scatter](../../validation/gather-scatter.md).
 ---
 
-## 8. GCC layout probe — every offset compile-confirmed [HIGH/OBSERVED]
-
+## 8. GCC layout probe — every offset compile-confirmed
 Compiling all six structs against the cayman headers (`gcc -I…/neuron_cayman_arch_isa/tpb`,
 `offsetof`/`sizeof`) independently reproduces every offset above:
 
@@ -618,8 +597,7 @@ Supporting types (`common.h`): `HEADER` 4 B (`opcode/inst_word_len/debug_cmd/deb
 `EVENTS` 8 B (`wait_mode/wait_idx/update_mode/update_idx/semaphore_value`); `ADDR8` 8 B union
 (imm `NeuronAddr` / `addr_reg{reg_lo,reg_hi,…,marker}` / `addr_table8` / `addr_tbl_offs`),
 `ADDR4` 4 B union; `PSEUDO_ADDR8` 8 B adds an `addr_var` (neff variable id + imm offset, marker
-`VAR_ID_BIT (1<<4)`). All match the header inline byte annotations exactly. [HIGH/OBSERVED]
-
+`VAR_ID_BIT (1<<4)`). All match the header inline byte annotations exactly.
 ---
 
 ## 9. The DGE-kind map + SDMA lowering [HIGH/OBSERVED + cross-ref]
@@ -678,8 +656,7 @@ BD-word bitfield per push is the descriptor-ring-field-tables scope — MED/CARR
 
 ---
 
-## 10. Generational delta (NC-v2 … NC-v5) [HIGH/OBSERVED]
-
+## 10. Generational delta (NC-v2 … NC-v5)
 Cross-arch header presence (`fd` over the four arch trees) and `DGE_OPCODE` width:
 
 | header / feature | cayman (v3) | mariana (v4) | maverick (v5) | sunda (v2) |
@@ -703,7 +680,7 @@ Cross-arch header presence (`fd` over the four arch trees) and `DGE_OPCODE` widt
 
 > **NOTE — v5/MAVERICK is header-OBSERVED only.** The maverick (NC-v5) struct *layouts* are
 > verified from the shipped header text (the body md5 matches v3/v4), but no MAVERICK binary was
-> byte-disassembled this session; the v2/v3/v4 paths are byte-grounded (the cayman header + the
+> byte-disassembled; the v2/v3/v4 paths are byte-grounded (the cayman header + the
 > libnrt disasm + the ucode strings). MAVERICK interiors beyond the header text are
 > **INFERRED/CARRIED** from the byte-identical struct region. [v2–v4 HIGH/OBSERVED; v5 layout
 > HIGH-from-header, MAVERICK-binary behavior INFERRED]
@@ -751,7 +728,7 @@ Cross-arch header presence (`fd` over the four arch trees) and `DGE_OPCODE` widt
   [descriptor-ring field tables](../../dma/descriptor-ring-field-tables.md) scope.
 - `v2`-vs-`v3` translator selection being a NEFF/ABI version gate.
 - MAVERICK (v5) interiors beyond the header text (struct region byte-identical to v3/v4; no v5
-  binary disassembled this session).
+  binary disassembled).
 
 **LOW / NOT CLAIMED**
 
@@ -773,4 +750,4 @@ Cross-arch header presence (`fd` over the four arch trees) and `DGE_OPCODE` widt
 - [DGE micro-op encoding (GENERATE/DIMPUSH/REGWRITE, priority band)](../../dma/dge-microop-encoding.md).
 - [Descriptor-ring field tables](../../dma/descriptor-ring-field-tables.md).
 - [Firmware indirection engine (`do_indirection`/`gather_indices`)](../../firmware/kernels/indirection-gather.md).
-- [VAL-15 gather/scatter differential](../../validation/gather-scatter.md) (planned).
+- [VAL-15 gather/scatter differential](../../validation/gather-scatter.md).

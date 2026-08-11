@@ -6,7 +6,7 @@
 
 An **MX matmul** (`bir::InstMatmultMx`, opcode 95) is the Trainium PE-array primitive that multiplies two **microscaled** operands — FP4 or FP8 mantissas packed four-to-a-lane, each 32-element block sharing one **E8M0** (8-bit, exponent-only) scale byte. Before such an instruction can be encoded into a `LdWeightMx`/`MatmultMx` bundle pair, it must pass **two** legality verifiers in `libwalrus.so`: `checkMatmultMxInputs` (`0x1007420`) enforces the **shape / numeric** contract — 11 asserts on per-partition element counts, the data-vs-scale ×4 ratio, scale start-partition alignment, the PSUM-bank capacity bound, the hard `K ≤ 512` bound, even-block packing, and partition-count agreement — and `checkMatmultMxInstruction` (`0x10139a0`) enforces the **instruction-level** contract — 7 asserts pinning the engine to PE, forcing data and its scale into the same 32-partition SBUF quadrant, requiring 4-partition scale alignment, and forbidding any column tiling, any row sub-tiling, and any weight-replication shift. At runtime the silicon (and the BIR simulator's `dequantizeMx`, `0x27b040`) recovers the true value with one operation per element: `ldexpf(mantissa, E8M0 − 127)` — apply the block's shared exponent as a power of two, with the E8M0 bias (127) removed. The format reference each scale is measured against is the per-format **EMAX** table (`byte_5F7898`, `0x5F7898`): `{fp4_e2m1 → 2, fp8_e4m3 → 8, fp8_e5m2 → 15}`.
 
-This page is the **numeric contract a reimplementer must satisfy to emit a legal MX matmul**. It names every assert, its exact predicate, its numeric bound, the `NeuronAssertion` error code it throws, and the source line; reproduces the dequant formula and the EMAX table as annotated pseudocode against the recovered symbols; and reconciles a partition-set discrepancy (the set is `{32,64,128}`, **not** `{32,64,96,128}`) between two prior decodes. Backing: **D-G05** (verifier line-by-line) and **D-F02** (simulator per-opcode kernels), both re-verified here against the decompiled bodies and `.rodata` tables.
+This page is the **numeric contract a reimplementer must satisfy to emit a legal MX matmul**. It names every assert, its exact predicate, its numeric bound, the `NeuronAssertion` error code it throws, and the source line; and reproduces the dequant formula and the EMAX table as annotated pseudocode against the recovered symbols. One bound is easy to misread and is spelled out in §2: the legal ifmap partition count is `{32, 64, 128}`, **not** `{32, 64, 96, 128}`.
 
 If you want the *encoding* of the bundle pair these asserts gate, see [PE Matmul Encoding](../isa/pe-matmul-encoding.md) (2.10) and [codegen: Matmul + MX](../bir/codegen-matmul-mx.md). For the *quantize* (forward) direction that produces the E8M0 scales, see [MX-FP8 Microscaling Legalization](../hlo-opt/mx-fp8-legalization.md) and the [`quantize_mx` / MX microscaling page](mx-microscaling.md) (9.8). For the full simulator numeric model, see [Sim Matmul / MX Quantize / Dequantize](../bir/sim-matmul-mx.md). The verifier family overview is [birverifier Per-Op Verification](../walrus/birverifier-per-op.md) (Part 8).
 
@@ -38,7 +38,7 @@ v12        = getOrCreatePhysicalAP(I.getWeightsScales());// arg3 : weights scale
 // out0 = getInOutPhysicalAP(I, 0, /*isOutput=*/1)       — the PSUM destination
 ```
 
-Both verifiers read these same six APs. Each `bir::AccessPattern` exposes, at fixed offsets the verifier bodies dereference directly (CONFIRMED against the simulator body, which reads the identical layout):
+Both verifiers read these same six APs. Each `bir::AccessPattern` exposes, at fixed offsets the verifier bodies dereference directly — the simulator body reads the identical layout:
 
 | AP field | Offset | Read as | Meaning |
 |---|---|---|---|
@@ -47,7 +47,7 @@ Both verifiers read these same six APs. Each `bir::AccessPattern` exposes, at fi
 | `Pattern[0].num` | `+0x50 → +8` | `*(QWORD*)(*(QWORD*)(ap+80) + 8)` | **partitions accessed** (the first AP dimension's count) |
 | `Pattern.size` | `+0x58` (= 88) | `*(_DWORD*)(ap + 88)` | guarded `> 0`; else `SmallVector` `"idx < size()"` abort |
 
-> **NOTE — the AP layout is shared, not coincidental.** The simulator (`libBIRSimulator.so`) and the verifier (`libwalrus.so`) are separate binaries with their **own** copies of the dtype tables, yet both read Dtype at `+0x30` and partition-count at `+0x50→+8`. The simulator's `visitInstMatmultMx` line 130 is `v17 = *(_DWORD *)(PhysicalAP + 48)` and line 128 is `v15 = *(_QWORD *)(*(_QWORD *)(PhysicalAP + 80) + 8LL)` — verbatim confirmation of the offsets the verifier asserts read. **(CONFIRMED.)**
+> **NOTE — the AP layout is shared, not coincidental.** The simulator (`libBIRSimulator.so`) and the verifier (`libwalrus.so`) are separate binaries with their **own** copies of the dtype tables, yet both read Dtype at `+0x30` and partition-count at `+0x50→+8`. The simulator's `visitInstMatmultMx` line 130 is `v17 = *(_DWORD *)(PhysicalAP + 48)` and line 128 is `v15 = *(_QWORD *)(*(_QWORD *)(PhysicalAP + 80) + 8LL)` — the same offsets the verifier asserts read.
 
 ### The ×4-unpack predicate — the central numeric primitive
 
@@ -70,7 +70,7 @@ The predicate `dt == 2 || (unsigned)(dt - 8) <= 1` admits **exactly** `{2, 8, 9}
 | 9 | `float8_e5m2_x4` | FP8, four E5M2 mantissas per lane |
 | 6 | `float8_e8m0fnu` | the **scale** type itself (exponent-only, not data) |
 
-> **GOTCHA — "NumElementsPerPartition" inside an MX assert is always the unpacked count.** Reading the asserts literally without the ×4 expansion gives the wrong bounds by 4×. The packed scale-vs-data relationship is then checked as a literal `data == 4 · scale` (asserts 1, 2, 9, 10 in §2) — the `/4` half of the `[P/8, F/4]` scale shape. The other half (`P/8`) is enforced indirectly by the 8-partition block + the partition-count asserts. **(CONFIRMED — the unsigned-wrap form `(unsigned)(dt-8)<=1` is exactly the simulator's; D-F02 §2, D-F13 §1 agree.)**
+> **GOTCHA — "NumElementsPerPartition" inside an MX assert is always the unpacked count.** Reading the asserts literally without the ×4 expansion gives the wrong bounds by 4×. The packed scale-vs-data relationship is then checked as a literal `data == 4 · scale` (asserts 1, 2, 9, 10 in §2) — the `/4` half of the `[P/8, F/4]` scale shape. The other half (`P/8`) is enforced indirectly by the 8-partition block plus the partition-count asserts. The unsigned-wrap form `(unsigned)(dt-8) <= 1` is byte-identical to the simulator's.
 
 ---
 
@@ -78,7 +78,7 @@ The predicate `dt == 2 || (unsigned)(dt - 8) <= 1` admits **exactly** `{2, 8, 9}
 
 `birverifier::checkMatmultMxInputs` @ `0x1007420` computes, in its prologue, the unpacked per-partition element count of each of the five APs and the start-partition / partition-count of each, then fires up to 11 throw sites. Every throw routes through `logging::NeuronAssertion<neuronxcc::backend::ErrorCode>::NeuronAssertion(...)` → `std::throw_with_nested<…>`; the **error code** is the 2nd constructor argument.
 
-Computed locals (names reconstructed from the predicate text; CONFIRMED via D-G05's line-by-line and corroborated by NX-081 at the same source lines):
+Computed locals (names reconstructed from the predicate text; the source lines are read from the decompiled body):
 
 ```c
 v105 = ifMapNumElementsPerPartition          // arg0 N, ×4-expanded   (K_ifmap)
@@ -104,16 +104,16 @@ The 11 asserts, in source order:
 | 5 | 3079 | `ifMapNumElementsPerPartition <= max_ifmap_elements` | K_ifmap ≤ `32·(PSUM_bank_bytes / sizeof(out_dtype))` — the PSUM-bank capacity bound (§4) | 232 |
 | 6 | 3083 | `weightsNumElementsPerPartition <= 128 * 4` | **K_weights ≤ 512** — the hard contraction bound = 128 partitions × the ×4 container (tested `v106 > 0x200`) | 233 |
 | 7 | 3084 | `(weightsNumElementsPerPartition / 4) % 2 == 0` | the unpacked weights K is an **even** number of 4-col blocks (tested `(v106 & 4)==0`) | 289 |
-| 8 | 3091 | `ifmapNumPartitionsAccessed == 32 \|\| == 64 \|\| == 128` | ifmap partition count ∈ **{32, 64, 128}** (see CORRECTION below) | 234 |
+| 8 | 3091 | `ifmapNumPartitionsAccessed == 32 \|\| == 64 \|\| == 128` | ifmap partition count ∈ **{32, 64, 128}** (see the note below) | 234 |
 | 9 | 3096 | `ifmapNumPartitionsAccessed == weightsNumPartitionsAccessed` | ifmap and weights access the **same** partition count (the shared K-contraction dim) | 235 |
 | 10 | 3099 | `outputNumPartitionsAccessed * 4 == weightsNumElementsPerPartition` | 4·(output partitions) == K_weights — the `N`/free dim ×4-maps to output partitions | 236 |
 | 11 | 3102 | `outputNumElementsPerPartition * 4 == ifMapNumElementsPerPartition` | 4·(output free elems) == K_ifmap | 237 |
 
-> **CORRECTION — the partition set is `{32, 64, 128}`, not `{32, 64, 96, 128}`.** A prior legality-graph decode (NX-096) summarized assert 3091 as "partitions `{32,64,96,128}`," conflating it with the *separate* DVE-engine verifier `checkQuantizeMxInstruction`. The actual machine test in `checkMatmultMxInputs` is `((v109 - 32) & 0xFFFFFFDF) != 0 && v109 != 128` (throw on failure). `(v - 32) & 0xFFFFFFDF == 0` is true iff `v - 32 ∈ {0, 0x20}` — i.e. `v ∈ {32, 64}` — OR'd with the explicit `v == 128`. For `v = 96`: `(96-32) & 0xFFFFFFDF = 0x40 ≠ 0`, so **96 is rejected.** The admissible set is exactly **{32, 64, 128}** (NX-016 line 124 likewise: "stationary/moving partition dim: multiple of 32, ≤ 128, identical" — and the OR-form of 3091 happens to exclude the multiple 96). **(CONFIRMED by the bit-mask arithmetic; D-G05 + NX-081 concur.)**
+> **GOTCHA — 96 partitions is illegal, even though it is a multiple of 32.** "Multiple of 32, ≤ 128" is the natural summary of assert 3091 and it is wrong by one value. The machine test is `((v109 - 32) & 0xFFFFFFDF) != 0 && v109 != 128` (throw on failure). `(v - 32) & 0xFFFFFFDF == 0` holds iff `v - 32 ∈ {0, 0x20}`, i.e. `v ∈ {32, 64}`, OR'd with the explicit `v == 128`. For `v = 96`, `(96-32) & 0xFFFFFFDF = 0x40 ≠ 0`, so 96 throws. The admissible set is exactly **{32, 64, 128}**. The `{32, 64, 96, 128}` set belongs to the *separate* DVE-engine verifier `checkQuantizeMxInstruction`.
 
 Two structural facts pin the assert count and the dtype range:
 
-- The body contains **exactly 11** throw sites (lines 3067, 3069, 3072, 3073, 3079, 3083, 3084, 3091, 3096, 3099, 3102). **(CONFIRMED — D-G05; NX-081 independently lists the same source lines.)**
+- The body contains **exactly 11** throw sites (lines 3067, 3069, 3072, 3073, 3079, 3083, 3084, 3091, 3096, 3099, 3102).
 - A pre-assert bounds guard at line 560: if the output dtype index `> 0x13` (19) the body hits `llvm_unreachable "Unknown dtype"` (`bir/IR/Dtype.h`). So a legal output dtype enum ∈ `[0, 19]` — exactly the 20-entry span of the byte-size table (§4).
 
 Every `Inputs` error message carries the same resolution trailer: *"Please open a support ticket at https://github.com/aws-neuron/aws-neuron-sdk/issues/new. You may also be able to obtain more information using the 'XLA_IR_DEBUG' and 'XLA_HLO_DEBUG' environment variables."*
@@ -161,13 +161,13 @@ numPartitionsAccessed = arg0.Pattern[0].num;
 
 Asserts 5 and 6 run inside **one** loop over the tile-descriptor index `i ∈ [0, col_tile_pos.size())`; trip count `= (col_tile_pos.end − col_tile_pos.begin) >> 2` (int32 elements). Inside, the column check is spelled `(unsigned)(col_tile_pos[i]+1) > 1` (detects pos ∉ {-1,0}) and `col_tile_size[i] != 128 && col_tile_size[i] != -1` (detects a bad col size). The extractor `sub_10125B0` itself asserts the four vectors are parallel: *"(row_tile_pos.size() == col_tile_pos.size() && row_tile_pos.size() == row_tile_size.size() && row_tile_pos.size() == col_tile_size.size())"*.
 
-> **QUIRK — `engine == PE` here is an MX-specific gate on top of the generic engine check.** The L1 `checkValidEngines` verifier already validates engine legality for all instructions; `checkMatmultMxInstruction`'s 2994 (code 205) is a *second, MX-specific* assertion with its own code. It is not a duplicate — different assert, different code, different message. The MX path is doubly pinned to PE. **(CONFIRMED — D-G05 §5 vs D-E21.)**
+> **QUIRK — `engine == PE` here is an MX-specific gate on top of the generic engine check.** The L1 `checkValidEngines` verifier already validates engine legality for all instructions; `checkMatmultMxInstruction`'s 2994 (code 205) is a *second, MX-specific* assertion with its own code. It is not a duplicate — different assert, different code, different message. The MX path is doubly pinned to PE.
 
 > **GOTCHA — the only legal MX-matmul split is across whole instructions.** Asserts 5/6 together mean an MX matmul occupies a **full 128-wide PE column** and a row block equal to the accessed partition count (∈ {32,64,128}, per Inputs 3091). You cannot column-tile or row-subtile a single `InstMatmultMx`; to cover a larger problem you emit *more instructions*, each whole. A reimplementing scheduler must therefore tile at the op level, never inside the descriptor.
 
 ### Where the data/scale must physically sit
 
-The quadrant model the two verifiers jointly enforce (CONFIRMED; `getStartPartition` @ `0xfc6e30` returns `baseByteOffset / firstStride` = the first partition the AP touches):
+The quadrant model the two verifiers jointly enforce (`getStartPartition` @ `0xfc6e30` returns `baseByteOffset / firstStride` = the first partition the AP touches):
 
 ```text
 SBUF partitions → 32-partition QUADRANTS;  quadrant = partition >> 5.
@@ -176,7 +176,7 @@ SBUF partitions → 32-partition QUADRANTS;  quadrant = partition >> 5.
   • each SCALE stream is 4-partition aligned: %4 == 0      (Instr 3017)
 ```
 
-The `%32 < 16` (lower-half) leaves the upper 16 partitions of the quadrant for the data lanes and the 8-partition block stacking; the `%4 == 0` lands each scale stream on the 4-column MX block boundary (one E8M0 byte per 4 columns). The exact intra-quadrant packing of the 8-partition scale blocks is **inferred** from these two rules (not independently confirmed from a NEFF fixture — D-G05 GAP G4).
+The `%32 < 16` (lower-half) leaves the upper 16 partitions of the quadrant for the data lanes and the 8-partition block stacking; the `%4 == 0` lands each scale stream on the 4-column MX block boundary (one E8M0 byte per 4 columns). [INFERRED] The exact intra-quadrant packing of the 8-partition scale blocks follows from these two rules; no NEFF fixture was byte-diffed to pin it independently.
 
 ---
 
@@ -185,14 +185,14 @@ The `%32 < 16` (lower-half) leaves the upper 16 partitions of the quadrant for t
 Assert 5 of `Inputs` (line 3079) is the only bound whose value is **architecture-dependent**. It caps `K_ifmap` at the number of fp32 (or bf16) elements one PSUM bank holds, times 32:
 
 ```c
-// checkMatmultMxInputs line 3079 derivation (mechanism CONFIRMED; per-arch byte value not pinned here):
+// checkMatmultMxInputs line 3079 derivation (per-arch byte value not pinned here):
 PSUM_bank_bytes  = Hwm::getSingleton(arch)->vtable[+0x78](arch);   // per-arch HWM query
 perBank          = PSUM_bank_bytes / qword_1DEFBA0[out_dtype];     // elements per PSUM bank
 max_ifmap_elements = 32 * perBank;                                 // ×32 = 32 K per block
 assert(ifMapNumElementsPerPartition <= max_ifmap_elements);        // code 232
 ```
 
-`PSUM_bank_bytes` comes from `bir::Hwm::getSingleton(arch)` followed by `call qword ptr [rax+78h]` (the HWM accessor). For Trainium gen2–gen4 the PSUM bank is **2048 bytes** (8 banks; see [SBUF/PSUM Geometry](../arch/sbuf-psum-geometry.md)), so with an fp32 output the concrete bound is `32 · (2048 / 4) = 16384`, and with bf16 `32 · (2048 / 2) = 32768`. **(The formula is CONFIRMED; the concrete per-arch `PSUM_bank_bytes` is HWM-table-strand work, taken from the geometry page rather than re-decoded here.)**
+`PSUM_bank_bytes` comes from `bir::Hwm::getSingleton(arch)` followed by `call qword ptr [rax+78h]` (the HWM accessor). For Trainium gen2–gen4 the PSUM bank is **2048 bytes** (8 banks; see [SBUF/PSUM Geometry](../arch/sbuf-psum-geometry.md)), so with an fp32 output the concrete bound is `32 · (2048 / 4) = 16384`, and with bf16 `32 · (2048 / 2) = 32768`. The formula is read from the verifier body; the concrete per-arch `PSUM_bank_bytes` is taken from the geometry page rather than re-decoded here.
 
 The per-dtype **byte-size** divisor is `qword_1DEFBA0` (`0x1DEFBA0`, `.rodata`, 20 × u64, xxd-verified via the VA==fileoff anchor):
 
@@ -201,7 +201,7 @@ idx:   0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
 bytes: 1  1  2  1  1  1  1  1  4  4  2  2  2  2  4  4  4  4  8  8
 ```
 
-> **NOTE — three independently-decoded copies of this table agree byte-for-byte.** `qword_1DEFBA0` (libwalrus, this verifier), `qword_1DFC040` (libwalrus, the D-D04 dtype-stride decode), and `qword_5F74E0` (libBIRSimulator) are **byte-identical**: `1 1 2 1 1 1 1 1 4 4 2 2 2 2 4 4 4 4 8 8`. The simulator and the verifier ship their own copies; they were not shared at link time, which is why a reimplementer can trust the values rather than a single decode. The `out_dtype` index must be ≤ 19. **(CONFIRMED — D-G05, D-D04, D-F02 all cite the same 20 values.)**
+> **NOTE — three independently-decoded copies of this table agree byte-for-byte.** `qword_1DEFBA0` (libwalrus, this verifier), `qword_1DFC040` (libwalrus, the dtype-stride table), and `qword_5F74E0` (libBIRSimulator) are **byte-identical**: `1 1 2 1 1 1 1 1 4 4 2 2 2 2 4 4 4 4 8 8`. The simulator and the verifier ship their own copies; they were not shared at link time, which is why a reimplementer can trust the values rather than a single decode. The `out_dtype` index must be ≤ 19.
 
 ---
 
@@ -233,7 +233,7 @@ Decoded:
 
 - **Scale index** `= (K/4)·(row/8) + (col/4)`. One E8M0 byte is shared by every `(8 partitions) × (4 columns)` tile = **32 elements** — the OCP-MXFP `block_size = 32`. The `row >> 3` is the 8-partition stride; the `col >> 2` is the 4-column stride; `K >> 2` is the per-row block count.
 - **`scale − 127`** removes the `float8_e8m0fnu` bias (E8M0 bias = 127). E8M0 is exponent-only: it has no mantissa, so its decoded value *is* a power of two.
-- **`ldexpf(x, e) = x · 2^e`** applies the shared block exponent as a power-of-two scale. The full recovered value is therefore `mantissa · 2^(E8M0 − 127)` — bit-exactly the OCP MX dequant: `value = element · scale · 2^(E8M0 − 127)` with the scale folded into the shared exponent. **(CONFIRMED bit-exact against the decompiled body.)**
+- **`ldexpf(x, e) = x · 2^e`** applies the shared block exponent as a power-of-two scale. The full recovered value is therefore `mantissa · 2^(E8M0 − 127)` — bit-exactly the OCP MX dequant: `value = element · scale · 2^(E8M0 − 127)` with the scale folded into the shared exponent.
 
 The FP4/FP8 mantissa is already unpacked to fp32 by `cast_to(obj, 16)` *before* `dequantizeMx`, and the `×4` lane container was expanded by the `Ki *= 4` extent plus a `deinterleaveMatrices(…, factor=4)` (sim lines 159–163). The `copyScalesFromArray<u8>` (`0x29e5e0`) reorders the raw scale-AP bytes into block-major layout (`idx → (i&3) + 32·(i>>2)`) so `dequantizeMx` sees a contiguous scale grid.
 
@@ -261,7 +261,7 @@ out = float_bits( (254 - E8M0) << 23 ) * input;               // = 2^(127 - E8M0
 //  = input / 2^(E8M0 - 127)   — the EXACT inverse of dequantizeMx's · 2^(E8M0-127)
 ```
 
-> **NOTE — the `254` (not 255) is the bias bookkeeping.** `float_bits((254 − E8M0) << 23)` constructs an fp32 whose biased exponent field is `254 − E8M0`, i.e. an unbiased exponent of `(254 − E8M0) − 127 = 127 − E8M0`. So `E8M0 = 127` (unbiased 0) → `2^0 = ×1` (no scale); `E8M0 > 127` → scale down; `E8M0 < 127` → scale up. Same `(row>>3, col>>2)` block index as the dequant. **(CONFIRMED — D-F02 §7, D-F13 §3.)**
+> **NOTE — the `254` (not 255) is the bias bookkeeping.** `float_bits((254 − E8M0) << 23)` constructs an fp32 whose biased exponent field is `254 − E8M0`, i.e. an unbiased exponent of `(254 − E8M0) − 127 = 127 − E8M0`. So `E8M0 = 127` (unbiased 0) → `2^0 = ×1` (no scale); `E8M0 > 127` → scale down; `E8M0 < 127` → scale up. Same `(row>>3, col>>2)` block index as the dequant.
 
 ---
 
@@ -284,9 +284,9 @@ out = float_bits( (254 - E8M0) << 23 ) * input;               // = 2^(127 - E8M0
 | 8 | `float8_e4m3fn_x4` | **8** | ×4-packed E4M3 |
 | 9 | `float8_e5m2_x4` | **15** | ×4-packed E5M2 |
 
-The scope's EMAX set is therefore confirmed as **`{fp4 → 2, e4m3 → 8, e5m2 → 15}`** — these are the OCP per-format **max-normal unbiased exponents**, the reference the block's shared exponent is measured *against* in `generateMxScales`. The ×4 MX data dtypes (2, 8, 9) and their base formats (2, 5, 7) carry the same value pairwise.
+The EMAX set is therefore **`{fp4 → 2, e4m3 → 8, e5m2 → 15}`** — these are the OCP per-format **max-normal unbiased exponents**, the reference the block's shared exponent is measured *against* in `generateMxScales`. The ×4 MX data dtypes (2, 8, 9) and their base formats (2, 5, 7) carry the same value pairwise.
 
-> **NOTE — `MxAlternativeEmaxEn` shifts EMAX by one in the alternative mode.** The raw table byte is *not* handed to `generateMxScales` directly. The caller `doQuantizeMx` (`0x29e380`) reads `v6 = byte_5F7898[dt − 2]` (guarded `(unsigned)(dt−2) <= 7`; `lea unk_5F7898` at `0x29e398`) and passes `(MxAlternativeEmaxEn == 0) + v6 − 1` as the bias argument. In the **default** mode (`MxAlternativeEmaxEn == 0`) this is `1 + EMAX − 1 = EMAX` (the raw table value); in the alternative mode it is `EMAX − 1`. The NEFF-side table emits `emax_fp8_e4m3 = MxAlternativeEmaxEn ? 7 : 8` and `emax_fp8_e5m2 = ? 14 : 15` — i.e. the `−1` arm. `MxAlternativeEmaxEn` is a `libBIR`-imported global (HIGH — the default value was not independently pinned). **(CONFIRMED for the default path; D-F13 §1; `doQuantizeMx` body re-verified.)**
+> **NOTE — `MxAlternativeEmaxEn` shifts EMAX by one in the alternative mode.** The raw table byte is *not* handed to `generateMxScales` directly. The caller `doQuantizeMx` (`0x29e380`) reads `v6 = byte_5F7898[dt − 2]` (guarded `(unsigned)(dt−2) <= 7`; `lea unk_5F7898` at `0x29e398`) and passes `(MxAlternativeEmaxEn == 0) + v6 − 1` as the bias argument. In the **default** mode (`MxAlternativeEmaxEn == 0`) this is `1 + EMAX − 1 = EMAX` (the raw table value); in the alternative mode it is `EMAX − 1`. The NEFF-side table emits `emax_fp8_e4m3 = MxAlternativeEmaxEn ? 7 : 8` and `emax_fp8_e5m2 = ? 14 : 15` — i.e. the `−1` arm. `MxAlternativeEmaxEn` is a `libBIR`-imported global; its default value was not independently pinned.
 
 > **QUIRK — quantize and dequantize live in *different* visitors.** The EMAX-bias path (`doQuantizeMx` → `generateMxScales` + `quantizeDataApplyingMxScales`) is reached only from `visitInstQuantizeMx` (`0x1f6920`, the `QuantizeMx` opcode 96). `visitInstMatmultMx` (`0x27f680`) never calls `doQuantizeMx`; it performs the *inverse* via `dequantizeMx` (`0x27b040`) plus the ×4 `Ki` adjustment. The two are a matched forward/inverse pair across two opcodes, not one routine — a reimplementer building the matmul path needs only the dequant side; the EMAX table matters when authoring the *scales* (the `QuantizeMx` op, page 9.8).
 
@@ -308,21 +308,20 @@ Satisfy those and the value the array computes is `out[p,n] = Σ_k ldexpf(ifmap_
 
 ---
 
-## 8. Confidence & gaps
+## 8. Evidence anchors and limits
 
 | Claim | Confidence | Anchor |
 |---|---|---|
-| `checkMatmultMxInputs` @ `0x1007420`, 11 asserts at lines 3067–3102, codes 228–237/289 | CONFIRMED | D-G05 line-by-line; NX-081 same source lines; thunk `0x5fb140` `jmp off_3DD3088` decoded |
-| `checkMatmultMxInstruction` @ `0x10139a0`, 7 asserts, codes 204/205/212/213/214/240/241 | CONFIRMED | D-G05; NX-081 cites the same predicates |
-| Partition set `{32, 64, 128}` (NOT `{…, 96, …}`) | CONFIRMED | bit-mask `((v-32)&0xFFFFFFDF)!=0 && v!=128` ⇒ 96 rejected; NX-016 "multiple of 32, ≤128" |
-| ×4 dtype set `{2, 8, 9}`; AP Dtype `+0x30`, partition-count `+0x50→+8` | CONFIRMED | sim `visitInstMatmultMx` lines 130/128 verbatim |
-| `dequantizeMx` = `ldexpf(data, E8M0 − 127)`, block index `(K/4)·(r/8)+(c/4)` | CONFIRMED | `0x27b040` line 26 verbatim |
-| EMAX `byte_5F7898` = `02 00 00 08 00 0f 08 0f` ⇒ `{fp4:2, e4m3:8, e5m2:15}` | CONFIRMED | xxd; D-F02 §7, D-F13 §1, generateMxScales `0x29e1d0` |
-| dtype byte-size `1 1 2 1 1 1 1 1 4 4 2 2 2 2 4 4 4 4 8 8` (20 u64) | CONFIRMED | `qword_1DEFBA0`/`qword_1DFC040`/`qword_5F74E0` byte-identical |
-| quantize inverse `float_bits((254−E8M0)<<23)·in = in / 2^(E8M0−127)` | CONFIRMED | D-F02 §7, D-F13 §3 |
-| `max_ifmap_elements = 32·(PSUM_bank_bytes/out_bytes)`; concrete `PSUM_bank_bytes` per arch | STRONG (formula) / INFERRED (concrete) | HWM `[rax+0x78]`; 2048 B from SBUF/PSUM geometry page, not re-decoded here |
-| `getReplicationShiftAmnt()` exact struct offset (`std::variant` near `+0xB0/0xC0`) | INFERRED | predicate text + code 204 CONFIRMED; no independent getter body decoded (D-G05 G1) |
-| Intra-quadrant 8-partition scale-block packing | INFERRED | implied by `%32<16` + `%4==0`; no NEFF fixture byte-diff (D-G05 G4) |
-| `sub_10125B0` per-tile derivation math | INFERRED | 4-vectors-equal-length invariant CONFIRMED; full extraction not transcribed (D-G05 G2) |
-
-**Sources:** D-G05 (`checkMatmultMxInputs` / `checkMatmultMxInstruction` line-by-line), D-F02 (BIR simulator matmul / MX per-opcode kernels), cross-checked against D-F13 (MX quantize), D-D04 (dtype tables), NX-016, NX-081, NX-096. Re-verified for this page against the decompiled `dequantizeMx`/`visitInstMatmultMx`/`generateMxScales` bodies and the `.rodata` EMAX / byte-size tables.
+| `checkMatmultMxInputs` @ `0x1007420`, 11 asserts at lines 3067–3102, codes 228–237/289 | CERTAIN | decompiled body; thunk `0x5fb140` `jmp off_3DD3088` |
+| `checkMatmultMxInstruction` @ `0x10139a0`, 7 asserts, codes 204/205/212/213/214/240/241 | CERTAIN | decompiled body |
+| Partition set `{32, 64, 128}` (NOT `{…, 96, …}`) | CERTAIN | bit-mask `((v-32)&0xFFFFFFDF)!=0 && v!=128` ⇒ 96 rejected |
+| ×4 dtype set `{2, 8, 9}`; AP Dtype `+0x30`, partition-count `+0x50→+8` | CERTAIN | sim `visitInstMatmultMx` lines 130/128 verbatim |
+| `dequantizeMx` = `ldexpf(data, E8M0 − 127)`, block index `(K/4)·(r/8)+(c/4)` | CERTAIN | `0x27b040` line 26 verbatim |
+| EMAX `byte_5F7898` = `02 00 00 08 00 0f 08 0f` ⇒ `{fp4:2, e4m3:8, e5m2:15}` | CERTAIN | xxd of `.rodata`; `generateMxScales` @ `0x29e1d0` |
+| dtype byte-size `1 1 2 1 1 1 1 1 4 4 2 2 2 2 4 4 4 4 8 8` (20 u64) | CERTAIN | `qword_1DEFBA0`/`qword_1DFC040`/`qword_5F74E0` byte-identical |
+| quantize inverse `float_bits((254−E8M0)<<23)·in = in / 2^(E8M0−127)` | CERTAIN | `quantizeDataApplyingMxScales` @ `0x29e2a0` |
+| `max_ifmap_elements = 32·(PSUM_bank_bytes/out_bytes)` | HIGH | HWM `[rax+0x78]` call in the body |
+| concrete per-arch `PSUM_bank_bytes` = 2048 | MEDIUM | taken from the SBUF/PSUM geometry page, not re-decoded here |
+| `getReplicationShiftAmnt()` exact struct offset (`std::variant` near `+0xB0/0xC0`) | MEDIUM | predicate text and code 204 are exact; no getter body decoded |
+| Intra-quadrant 8-partition scale-block packing | MEDIUM | implied by `%32<16` + `%4==0`; no NEFF fixture byte-diff |
+| `sub_10125B0` per-tile derivation math | MEDIUM | the four-vectors-equal-length invariant is exact; the full extraction was not transcribed |

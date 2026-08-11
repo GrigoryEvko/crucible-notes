@@ -40,7 +40,7 @@ For reimplementation, the contract is:
 
 ### The whole file is the array
 
-`datapath_table.bin` has no header. Parsing the gen2 default blob as u64-LE yields `8192 / 8 = 1024` words, grouped into `1024 / 8 = 128` blocks of 8 lanes. Block `b` owns the eight u64 words at indices `[b*8 .. b*8+7]`, file bytes `[b*64 .. b*64+63]`. The same parse on gen3/gen4 yields `16384 / 8 = 2048` words → `256` blocks. **[CONFIRMED — `struct.unpack` + `xxd` on the shipped blob.]**
+`datapath_table.bin` has no header. Parsing the gen2 default blob as u64-LE yields `8192 / 8 = 1024` words, grouped into `1024 / 8 = 128` blocks of 8 lanes. Block `b` owns the eight u64 words at indices `[b*8 .. b*8+7]`, file bytes `[b*64 .. b*64+63]`. The same parse on gen3/gen4 yields `16384 / 8 = 2048` words → `256` blocks.
 
 ```text
 gen2  8192 B → 1024 u64 → 128 blocks × 8 lanes   (657 nonzero words)
@@ -59,9 +59,9 @@ A block is **not** addressed by the opcode integer. The chain is `opcode → opc
 
 ### Stride is invariant
 
-The 64-byte stride is fixed by the 8-lane × u64 block and is identical across all three generations: `8192/128 = 16384/256 = 64`. The gen2→gen3 size doubling (8K→16K) is therefore **more control rows** (128→256, from the gen3 control fast/slow split), **not** more opcodes and **not** wider blocks — the opcode index space is a constant 256 in every gen. gen3→gen4 keeps 16384 B / 256 blocks but lights ~55% more blocks (99→155 active) and **widens each lane word** (≈37→61 bit) to carry the new gen4 op classes `{48, 119, 120, 224..227}`. **[CONFIRMED — stride arithmetic + active-block census.]**
+The 64-byte stride is fixed by the 8-lane × u64 block and is identical across all three generations: `8192/128 = 16384/256 = 64`. The gen2→gen3 size doubling (8K→16K) is therefore **more control rows** (128→256, from the gen3 control fast/slow split), **not** more opcodes and **not** wider blocks — the opcode index space is a constant 256 in every gen. gen3→gen4 keeps 16384 B / 256 blocks but lights ~55% more blocks (99→155 active) and **widens each lane word** (≈37→61 bit) to carry the new gen4 op classes `{48, 119, 120, 224..227}`.
 
-> **CORRECTION —** It is tempting to read the 8K→16K jump as a gen4 doubling driven by saturating arithmetic. It is not: the doubling is **gen2→gen3** and is driven by the control-row split. The gen4 change happens at *constant* file size (+active-blocks, +wider words). Decode each blob against its own generation's idle-word position, not gen2's.
+> **GOTCHA —** the 8K→16K size jump is **gen2→gen3**, driven by the control-row split — not a gen4 doubling for saturating arithmetic. gen4's change happens at *constant* file size (more active blocks, wider words). Decode each blob against its own generation's idle-word position, never gen2's.
 
 ---
 
@@ -75,7 +75,7 @@ Every block is exactly one of three classes. The class encodes *which functional
 | **All-idle / pass-through** | Every active lane == the gen's **idle word**; the datapath is *wired but no-op* — pure data-move (bypass) | 16 | Copy/Cast (r1), Memset (r36), TensorCumulative (r39), StreamTranspose/ExtInst (r105) |
 | **Active** | ≥ 1 lane carries a non-idle config word; the ALU pipeline is **engaged** | 99 | TensorTensor / TensorScalar / TensorReduce, Pool, MaxPoolSelect, BatchNorm*, Dropout, Select, ScalarTensorTensor, Max8 |
 
-> **GOTCHA — the all-idle class has two sub-forms.** A pass-through block is either all 8 lanes idle (6 blocks: rows 1, 36, 39, 45, 48, 105) *or* a mix of idle + trailing zero with **no active lane** (10 blocks). Both mean "datapath in bypass". Count them together (6 + 10 = **16**) when comparing against the "pure data-move" op set; a census that only matches *all-8-idle* will report 6 and appear to contradict the roster. **[CONFIRMED — re-derived from the blob: `all8idle=6`, `idle+zero=10`, sum 16.]**
+> **GOTCHA — the all-idle class has two sub-forms.** A pass-through block is either all 8 lanes idle (6 blocks: rows 1, 36, 39, 45, 48, 105) *or* a mix of idle + trailing zero with **no active lane** (10 blocks). Both mean "datapath in bypass". Count them together (6 + 10 = **16**) when comparing against the "pure data-move" op set; a census that only matches *all-8-idle* will report 6 and appear to contradict the roster. The blob's own split is `all8idle=6`, `idle+zero=10`.
 
 ### The idle word *is* the VALID bit alone
 
@@ -87,7 +87,9 @@ gen3  0x100000000    (bit 32)   — 221 copies
 gen4  0x40000000000  (bit 42)   — 233 copies
 ```
 
-A block of 8 idle words is the datapath **wired but doing nothing** → pass-through (class B). A block of 8 zeros is the datapath **unwired** → bypassed to another unit (class A). The idle-word position climbing 20 → 32 → 42 is precisely the field-widening of §5: new low bits are inserted *below* the VALID marker, pushing it up. **[CONFIRMED — single-bit-set census on each gen's blob.]**
+A block of 8 idle words is the datapath **wired but doing nothing** → pass-through (class B). A block of 8 zeros is the datapath **unwired** → bypassed to another unit (class A). The idle-word position climbing 20 → 32 → 42 is precisely the field-widening of §5: new low bits are inserted *below* the VALID marker, pushing it up.
+
+*Anchors: single-bit-set census on each generation's blob.*
 
 ---
 
@@ -106,7 +108,7 @@ Within an active block the non-idle lanes are **left-packed**: lanes `0..k-1` ca
 | 7 | compound multi-stage | BatchNormGradAccum; Dropout; MatchValueLoad |
 | 8 | full-width fan-in tree | BatchNormStats2; BatchNormAggregate; CopyPredicated; ScalarTensorTensor; SelectReduce |
 
-This `k` tracks op *semantic* complexity (validated in §6): the simplest binary op `a⊕b` lights 1 stage; the BatchNorm reductions / Dropout / select-reduce light all 8 lanes (a fan-out reduction/select tree). It is an independent, byte-derived fingerprint of the op's identity. **[CONFIRMED packing; complexity-correlation STRONG.]**
+This `k` tracks op *semantic* complexity (validated in §6): the simplest binary op `a⊕b` lights 1 stage; the BatchNorm reductions / Dropout / select-reduce light all 8 lanes (a fan-out reduction/select tree). It is an independent, byte-derived fingerprint of the op's identity. The left-packing itself is byte-exact; the correlation between `k` and semantic complexity is an interpretation of it.
 
 ---
 
@@ -124,17 +126,17 @@ The field map (gen2; bit offsets shift +12 in gen3, +22 in gen4; semantics invar
 
 | bits | field | width | role | confidence |
 |---|---|---|---|---|
-| `[0:8]` | **OPA** | 8 | operand-A / source-select / immediate — **not** an ALU-opcode (§7) | STRONG |
-| `[8:11]` | **OPB** | 3 | operand-B / accumulator-command sub-select; pairs with OPA as the second source | STRONG |
-| `[11:20]` | **MUX** | 9 | datapath route/crossbar; bit 15 hard-zero → really `11:15 ‖ 16:20`; the `0x180`-family = cross-lane fan-in route (§8) | STRONG |
-| `[20]` | **VALID** | 1 | "intermediate datapath step present"; the **idle word == this bit alone** (pass-through). 127 active words clear it — those are terminal/output lanes carrying a STAGE tag instead | CONFIRMED |
-| `[21:24]` | **MODE** | 3 | accumulator / convert role; on BatchNorm, `MODE=3` marks the M2 (Σdev²) lane vs `MODE=0` mean/n lane (§6 V5) | STRONG |
-| `[24:27]` | **STAGE** | 3 | pipeline-stage / output-lane (crossbar destination); ranges `0..7` → the 8 lanes; reductions fan to STAGE 7 | STRONG |
+| `[0:8]` | **OPA** | 8 | operand-A / source-select / immediate — **not** an ALU-opcode (§7) | HIGH |
+| `[8:11]` | **OPB** | 3 | operand-B / accumulator-command sub-select; pairs with OPA as the second source | HIGH |
+| `[11:20]` | **MUX** | 9 | datapath route/crossbar; bit 15 hard-zero → really `11:15 ‖ 16:20`; the `0x180`-family = cross-lane fan-in route (§8) | HIGH |
+| `[20]` | **VALID** | 1 | "intermediate datapath step present"; the **idle word == this bit alone** (pass-through). 127 active words clear it — those are terminal/output lanes carrying a STAGE tag instead | CERTAIN |
+| `[21:24]` | **MODE** | 3 | accumulator / convert role; on BatchNorm, `MODE=3` marks the M2 (Σdev²) lane vs `MODE=0` mean/n lane (§6 V5) | HIGH |
+| `[24:27]` | **STAGE** | 3 | pipeline-stage / output-lane (crossbar destination); ranges `0..7` → the 8 lanes; reductions fan to STAGE 7 | HIGH |
 
 Two structural facts pin the boundaries:
 
-- **`bit20` varies independently of STAGE.** Over the 401 words, `STAGE=1` appears with `b20=1` (`0x11`, 58×) *and* `b20=0` (`0x10`, 36×). So `bit20` is a separate VALID bit, not the low bit of STAGE. **[CONFIRMED — independence over 401 words.]**
-- **The idle word `0x100000` is `bit20` alone** — byte-exact. This is the keystone: a "present but no-op" datapath lane. **[CONFIRMED.]**
+- **`bit20` varies independently of STAGE.** Over the 401 words, `STAGE=1` appears with `b20=1` (`0x11`, 58×) *and* `b20=0` (`0x10`, 36×). So `bit20` is a separate VALID bit, not the low bit of STAGE — the independence holds over all 401 words.
+- **The idle word `0x100000` is `bit20` alone** — byte-exact. This is the keystone: a "present but no-op" datapath lane.
 
 > **NOTE —** The decode of one lane word in C:
 >
@@ -205,7 +207,7 @@ STAGE (=7 on every BNStats lane): gen2 [24:27]=7 → gen3 [36:39]=7   = +12
 VALID marker:                     gen2 bit20     → gen3 bit32        = +12
 ```
 
-A field identified purely by value-factoring in gen2 reappears, *semantically identical*, exactly 12 bits higher in gen3, on the same op. This is the single strongest proof that the §4 field map is real — it is not a coincidence. **[CONFIRMED — bit-exact XOR on one op across two gens.]**
+A field identified purely by value-factoring in gen2 reappears, *semantically identical*, exactly 12 bits higher in gen3, on the same op. That coincidence-proof relationship is what grounds the §4 field map.
 
 > **NOTE — mechanism.** Each DVE generation adds datapath features (more mux modes, the gen4 saturating + new reduce/select ops). Rather than re-pack, the format **appends** new field above the prior VALID marker and relocates VALID to the new top. gen2 fields are preserved verbatim in the low bits — a forward-compatible superset widening, not a re-layout.
 
@@ -224,9 +226,9 @@ The simulator (`libBIRSimulator.so`, build-id `f1c6885f`) is the **oracle**: its
 | V5 | BatchNormStats2 (op97, block41) | 8 lanes, `MODE=3` on lanes 3,7 | two interleaved Welford triples `[n,mean,M2]`; `MODE=3` marks exactly the two M2 (Σdev²) accumulators (high slot of each 4-lane group); the other 6 are `MODE=0` mean/n | ✓ |
 | V6 | Dropout (op127, block77) | 7 lanes, STAGE `5,7,7,3,3,3,1` | RNG-mask → threshold-compare → scale → multiply: a genuine multi-stage program (every lane a *different* STAGE, unlike a uniform-STAGE reduction) | ✓ |
 
-The net mapping the simulator confirms: **lane-count = pipeline depth; block-class = functional-unit routing; MODE = accumulator/convert role; STAGE = output-lane/crossbar route.** All six corroborate the op→name binding from the datapath bytes alone. **[STRONG.]**
+The net mapping the simulator confirms: **lane-count = pipeline depth; block-class = functional-unit routing; MODE = accumulator/convert role; STAGE = output-lane/crossbar route.** All six corroborate the op→name binding from the datapath bytes alone.
 
-> **NOTE — compiler-side grounding.** The firmware row-decoder is absent from the wheel, but the BIR instruction layer *names* the operand-config fields the bin-gen compiles **into** these words: `bir::InstDveReadAccumulator` (a DVE instruction whose datapath reads an accumulator source), the `s_dve_read_accumulator_opcode` / `s_dve_read_indices_opcode` rodata selectors (which accumulator / which index stream a step reads), and the `AccumulatorCmd` + `imm1` pair per DVE op, with per-core validators `core_v{2,3,4}::dbg_is_valid_activation_read_accumulator` (= gen2/3/4). These confirm the datapath is configured by an *operand/source select* + a small *command + immediate* — exactly the `OPA[0:8]` (source/imm) + `OPB[8:11]` (cmd) structure — and **not** by an ALU-opcode field. The bit *positions* remain INFERRED (no firmware packer ships); the field *roles* are STRONG.
+> **NOTE — compiler-side grounding.** The firmware row-decoder is absent from the wheel, but the BIR instruction layer *names* the operand-config fields the bin-gen compiles **into** these words: `bir::InstDveReadAccumulator` (a DVE instruction whose datapath reads an accumulator source), the `s_dve_read_accumulator_opcode` / `s_dve_read_indices_opcode` rodata selectors (which accumulator / which index stream a step reads), and the `AccumulatorCmd` + `imm1` pair per DVE op, with per-core validators `core_v{2,3,4}::dbg_is_valid_activation_read_accumulator` (= gen2/3/4). These confirm the datapath is configured by an *operand/source select* + a small *command + immediate* — exactly the `OPA[0:8]` (source/imm) + `OPB[8:11]` (cmd) structure — and **not** by an ALU-opcode field. The field *roles* rest on that naming; the exact bit *positions* remain [INFERRED], since no firmware packer ships in the wheel.
 
 ---
 
@@ -238,13 +240,13 @@ The net mapping the simulator confirms: **lane-count = pipeline depth; block-cla
 - **Unrelated ops share an OPA.** TensorTensorArith (a binary add/mul) and TensorScalar (a different op) *both* carry lane `OPA=0x1c`. An op-code would differ.
 - **Complex ops carry varied, distinct per-lane OPAs** (e.g. BNGradAccum lanes `{5,6,6,27,166,27,155}`) — each lane reads a *different* source. Both patterns are source-address-like, neither is op-code-like.
 
-So `OPA[0:8] ‖ OPB[8:11]` together form an 11-bit **operand/source selector** (which datapath register / immediate the lane reads). The ALU *function* is the BIR opcode + the MODE/STAGE fields — which is why op-family pairs sharing a control row share the datapath block but the opcode disambiguates them. **[STRONG.]**
+So `OPA[0:8] ‖ OPB[8:11]` together form an 11-bit **operand/source selector** (which datapath register / immediate the lane reads). The ALU *function* is the BIR opcode + the MODE/STAGE fields — which is why op-family pairs sharing a control row share the datapath block but the opcode disambiguates them.
 
 ### The MUX/route field `[11:20]`
 
 MUX value distribution (gen2 active lanes): `0x000` (186, no route), `0x004` (89, basic), a `0x180`-family `{0x180,0x184,0x1a8,0x1ac,...}` (≈70), and `0x028/0x02c`. Bit 15 (= MUX bit 4) is never set → MUX is really `11:15 ‖ 16:20`, a split route field. The `0x180`-family (high MUX bits 18,19) marks **cross-lane / fan-in routing**: it lights on BatchNormStats2 (all 8 lanes `0x1ac`), BNGradAccum (`0x184`), MatchValueLoad / ScalarTensorTensor / SelectReduce (`0x180`) — the ops that read across lanes.
 
-> **CAVEAT —** BatchNormAggregate (a reduction) carries `MUX=0x0`, so the `0x180` bit is a *specific cross-lane operand-broadcast route*, not a generic "is-reduction" flag. It lights when a lane sources from a different lane/column, which Aggregate (already pre-reduced inputs) doesn't need. **[STRONG — 5 fan-in ops match; the one non-match is consistent with "broadcast route".]**
+> **CAVEAT —** BatchNormAggregate (a reduction) carries `MUX=0x0`, so the `0x180` bit is a *specific cross-lane operand-broadcast route*, not a generic "is-reduction" flag. It lights when a lane sources from a different lane/column, which Aggregate (already pre-reduced inputs) doesn't need. Five fan-in ops carry the bit; the single non-match is exactly the one that needs no broadcast.
 
 ---
 
@@ -272,7 +274,7 @@ Read as u64-LE, six lanes are `0x071d6000` and lanes 3 & 7 are `0x077d6000`. Dec
 | 6 | `0x071d6000` | 0x00 | 0 | `0x1ac` | 1 | 0 | 7 | n/mean accumulator |
 | **7** | `0x077d6000` | 0x00 | 0 | `0x1ac` | 1 | **3** | 7 | **M2 (Σdev²) accumulator** |
 
-Reading the configuration: all 8 lanes are active (`k=8`, full-width fan-in) with `MUX=0x1ac` (cross-lane fan-in route) and `STAGE=7` (all fan into the last output column). `MODE=3` on exactly lanes 3 and 7 — the high slot of each 4-lane group — marks the two M2 accumulators; the other 6 lanes (`MODE=0`) are the n/mean accumulators. This is the two-interleaved-Welford-triple structure the simulator's BatchNorm body computes (§6 V5). A reader can now decode any block to its per-lane ALU configuration. **[CONFIRMED bytes; field roles STRONG.]**
+Reading the configuration: all 8 lanes are active (`k=8`, full-width fan-in) with `MUX=0x1ac` (cross-lane fan-in route) and `STAGE=7` (all fan into the last output column). `MODE=3` on exactly lanes 3 and 7 — the high slot of each 4-lane group — marks the two M2 accumulators; the other 6 lanes (`MODE=0`) are the n/mean accumulators. This is the two-interleaved-Welford-triple structure the simulator's BatchNorm body computes (§6 V5). A reader can now decode any block to its per-lane ALU configuration.
 
 Three more blocks for reference, end-to-end (`opcode → opcode_table[op] → fast_row → block`):
 
@@ -301,27 +303,20 @@ op88 MaxPoolSelect → row8 → block8 @0x200  (4-lane select pipeline)
 
 Each table-set ships its **own** `datapath_table.bin` — the set is independently compiled, not a base + overlay. Differences are localized to the datapath payload:
 
-- **transformer vs default (gen2):** 588 of 1024 words differ across 93 blocks — a large diff, because the transformer set has a different opcode roster, so each op's fast control row is repacked and nearly every block shifts. **[CONFIRMED.]**
-- **saturate vs default (gen4):** 134 lane words differ, all in blocks 143..182 (29 blocks) — the gen4 high-numbered ops `{op227@143, op225@170, op234@180}` plus the intermediate pipeline-stage rows their programs traverse. The slow rows are unchanged. The XOR deltas are large and varied (65 distinct, e.g. `0x0001800001540000`) — saturate is a full multi-field datapath re-config (saturating clamp + altered route), not a single "saturate flag" bit. **[CONFIRMED.]**
+- **transformer vs default (gen2):** 588 of 1024 words differ across 93 blocks — a large diff, because the transformer set has a different opcode roster, so each op's fast control row is repacked and nearly every block shifts.
+- **saturate vs default (gen4):** 134 lane words differ, all in blocks 143..182 (29 blocks) — the gen4 high-numbered ops `{op227@143, op225@170, op234@180}` plus the intermediate pipeline-stage rows their programs traverse. The slow rows are unchanged. The XOR deltas are large and varied (65 distinct, e.g. `0x0001800001540000`) — saturate is a full multi-field datapath re-config (saturating clamp + altered route), not a single "saturate flag" bit.
 
 ---
 
-## 10. Confidence Summary
+## 10. Evidence Anchors and Limits
 
-**CONFIRMED (binary-derived, byte-exact):**
+**Read byte-exact off the shipped blobs:** the 64-byte / 8-lane block and its stride `blob_size / control_row_count` = 64, invariant across generations; `#blocks == #fast-control-rows` (128 / 256 / 256) with every active block landing on a used row; the three block classes; the idle word as a single VALID bit (gen2 bit 20 / gen3 bit 32 / gen4 bit 42), 256 of them in the gen2 default blob; the left-packing of lanes and `k` as pipeline depth; the exact +12-bit gen2→gen3 field relocation (via the BatchNormStats XOR) and +10 more gen3→gen4; the gen2→gen3 size doubling as a control fast/slow split (128→256 rows) against a constant 256-entry opcode index space; and saturate as a datapath-payload variant scoped to blocks 143..182.
 
-- 64-byte / 8-lane block; stride `blob_size / control_row_count` = 64, invariant across gens; `#blocks == #fast-control-rows` (128 / 256 / 256); every active block on a used row.
-- Three block classes; idle word = single VALID bit (gen2 bit 20 / gen3 bit 32 / gen4 bit 42); 256 idle words in the gen2 default blob.
-- Lanes left-packed; `k` = pipeline depth.
-- High fields relocate +12 bits gen2→gen3, EXACT (BNStats XOR); +10 more gen3→gen4.
-- gen2→gen3 size doubling = control fast/slow split → 128→256 rows; opcode index space constant 256.
-- Saturate = datapath-payload variant scoped to blocks 143..182.
+**Interpretation resting on cross-checks rather than a decoder:** the §4 field *roles* (OPA source-select, OPB command, MUX route, VALID, MODE accumulator-role, STAGE output-lane), the six simulator-semantic validations, MUX `0x180` as the cross-lane fan-in route, and the BIR `InstDveReadAccumulator` / `AccumulatorCmd` / `imm1` naming that corroborates the source-select + command structure.
 
-**STRONG:** the §4 field roles (OPA source-select / OPB cmd / MUX route / VALID / MODE acc-role / STAGE output-lane); the six simulator-semantic validations; MUX `0x180` = cross-lane fan-in route; the BIR `InstDveReadAccumulator` / `AccumulatorCmd` / `imm1` corroboration.
+**[INFERRED]:** the exact bit *boundaries* between OPB, MUX, and MODE — factored from value distributions plus the +12-bit cross-gen shift, not from a decompiled firmware packer — and the gen4 HIGH-section (bits ≥ 48) field assignment.
 
-**INFERRED:** the exact bit *boundaries* of OPB vs MUX vs MODE (factored from value distributions + the +12-bit cross-gen shift, not from a decompiled firmware packer); the gen4 HIGH-section (bits ≥ 48) field assignment.
-
-**OPEN (firmware-side, not in this wheel):** the physical mux/ALU each bit drives; the slow-program datapath usage of blocks 143..182; gen4 HIGH-section semantics for the new op classes.
+**Open, and not answerable from this wheel:** the physical mux/ALU each bit drives; the slow-program datapath usage of blocks 143..182; and gen4 HIGH-section semantics for the new op classes. The firmware unit that turns a lane word into mux/ALU signals does not ship here.
 
 ---
 

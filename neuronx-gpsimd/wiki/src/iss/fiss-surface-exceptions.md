@@ -23,7 +23,7 @@ ELF64 LSB shared object, x86-64, SYSV, dynamically linked, NOT stripped
 Tooling: `nm -D/-S`, `readelf -h/-SW/-d`, `objdump -d`, `xxd`, and a live
 `ctypes` drive. Each claim is tagged **confidence** × **provenance**
 (`OBSERVED` = read directly off the binary, `INFERRED` = strong deduction from
-observed evidence, `CARRIED` = taken from a prior report and re-checked here).
+observed evidence, `CARRIED` = taken from a prior report).
 The one recovered header cited (`tools/XtensaTools/include/iss/libfiss.h`) is
 treated as a binary-adjacent artifact: it ships in the same toolchain and its
 constants are corroborated against the binary at every use.
@@ -66,9 +66,9 @@ $ nm -D --undefined-only libfiss-base.so
 
 All five are **weak** (`w`) — the standard GCC `crtstuff` epilogue/ITM/gcj
 stubs present in every C++ shared object. **There is no `nx_*_interface`, no
-`memset`, no libm, no host datapath import.** Every value fiss returns is
-computed by code inside this 12.3 MB image. *(HIGH · OBSERVED — `nm -D` total
-20,384 dynsym; 20,379 defined; 20,384 − 20,379 = 5 undefined, listed above.)*
+`memset`, no libm, no host datapath import.** (`nm -D` = **20,384** total dynsym:
+20,379 defined + 5 undefined.) Every value fiss returns is
+computed by code inside this 12.3 MB image.
 
 > **NOTE — why this matters for reimplementation.** The cas page's takeaway was
 > that you need *two* models and that the 119-port `nx_*_interface` vtable is the
@@ -119,8 +119,7 @@ arithmetic from name-grammar inference.)*
 > return register gives garbage. Pass a `byref(c_int32())` out slot. For
 > 3-operand widths the slot indices shift (e.g. `muls_24_24_8_8` takes two
 > source operands plus the out-pointer in a later slot); read the prologue before
-> wiring the call. *(HIGH · OBSERVED.)*
-
+> wiring the call.
 ### 1.3 No SIMD anywhere — reference-model shape
 
 The verdict is reinforced by what is **absent**: the entire 12.3 MB image
@@ -131,8 +130,7 @@ throughput, the classic reference-model style. The IVP `addnx16t` op makes this
 literal: `opcode__ivp_addnx16t__stage_5 @0x256d50` calls
 `module__xdref_add_16_16_16` **27 times** (once per active 16-bit lane of the
 512-bit NX16 vector) interleaved with predicate-mask `module__xdref_bitkillt_16_2`
-calls. *(HIGH · OBSERVED — SIMD mnemonic count 0; the per-lane call multiplicity
-read off the unrolled loop body.)*
+calls.
 
 > **COROLLARY for the per-format ISS pages.** The saturation bounds,
 > signed/unsigned distinctions, and wrap/round semantics that the cas-side pages
@@ -154,8 +152,7 @@ ELF facts: entry `0x190430`; `.text` VMA `0x190430` == file offset; `.rodata`
 VMA `0x88ff00` == file offset; **`.data.rel.ro` VMA `0xc17e80` → file `0xa17e80`,
 delta `0x200000`** (§6). Of the 20,379 defined exports, **20,368 are `T`
 (functions)** and **11 are data** (2 `B` + 4 `D` + 5 `R`). Only 5 undefined
-imports (§1.1). *(HIGH · OBSERVED.)*
-
+imports (§1.1).
 ### 2.1 Export prefix-family census
 
 Each family is the value-side counterpart of one column of the `libfiss.h`
@@ -180,7 +177,6 @@ grep — re-ground each as `nm -D --defined-only … \| rg -c '^<prefix>'`:
 | misc singletons | 13 | `_init`/`_fini`/`_end`/`_edata`/`__bss_start`/`cver__id`/`exception_fns`/`stage_functions`/`semantic_functions`/`opcode_num_exceptions`/`opcode_exceptions_idxs`/`opcode_exceptions_operandarg_idxs`/`libfiss_config_metadata`/`complexity_loc` | HIGH · OBSERVED |
 
 The named families plus the 13 misc singletons sum to **exactly 20,379**.
-*(HIGH · OBSERVED.)*
 
 > **CORRECTION — the three counts are a superset chain, not a contradiction.**
 > Three figures circulate; they are nested, not competing:
@@ -197,8 +193,7 @@ The named families plus the 13 misc singletons sum to **exactly 20,379**.
 > opcode_complete__ (214) = 1,922 ≈ 1,925`, and `memstore__ (106) +
 > memstore_check__ (106) = 212`. This page reports the *unmerged*, binary-exact
 > tallies, matching the census already published on
-> [libcas-core Surface](./cas-core-surface.md) §3. *(HIGH · OBSERVED — re-grepped
-> against `nm -D`, not the decompile.)*
+> [libcas-core Surface](./cas-core-surface.md) §3.
 
 ### 2.2 The `libfiss.h` semantic-stage contract
 
@@ -253,9 +248,7 @@ opcode__add__stage_14 @0x8875e0 :  (rdi = per-op context)
 
 The five families are element-wise parallel — **1,534 each** of
 `stateload__`/`regload__`/`writeback__`, one per executable mnemonic-variant —
-the classic template-generated ISS shape. *(HIGH · OBSERVED — the four ADD
-symbols are contiguous at `0x8875e0`–`0x887660`; the execute arithmetic is
-disassembled above.)*
+the classic template-generated ISS shape.
 
 > **NOTE — scalar retires at stage 14, vector at stage 5.** The execute callback
 > suffix is the modeled retire stage. `opcode__add__stage_14` (scalar base ISA)
@@ -308,8 +301,7 @@ slotfill__x24__Inst_slot0__ADD @0x296320 :  (rdi = decode context)
 Every operation is `shr`/`and`/`or`/`lea` over the instruction word and a slot
 stride. "slotfill" = *fill the decoded operand slots*, not *compute*. The IVP
 vector slotfill (`slotfill__F0__F0_S3_ALU_slot3__ADD_S`) is the same shape over
-the wider IVP vec-reg fields. *(HIGH · OBSERVED.)*
-
+the wider IVP vec-reg fields.
 ### 3.3 Issue-slot / functional-unit grid
 
 The slotfill exports partition by format × issue-slot × functional-unit. The
@@ -374,8 +366,6 @@ regs and decodes from `%rdi` offsets with no `call`.)*
 | **Debug / break / OCD** | `BreakException`, `BreakNException`, `IBreakException`, `DBreakException`, `SingleStepException`, `MaybeOCDBreakException`, `OCDInterrupt`, `HaltException`, `HaltStayException`, `WaitiFallThru` |
 | **Interrupt / syscall** | `Interrupt1`, `SyscallException` |
 
-*(HIGH · OBSERVED — names read verbatim from `nm -D`; the count is exactly 61.)*
-
 > **NOTE — `Sem*` are semantic-phase replay duplicates.** `SemInstructionFetchError`,
 > `SemInstTLBMultiHitException`, etc. mirror their architectural twins; they fire
 > when the ISS replays a fetch in its *semantic* phase and share the same
@@ -408,8 +398,6 @@ for op in decoded_bundle.slots:
 
 `opcode_num_exceptions` reads `00 00 00 00 / 01 00 00 00 / 01 00 00 00 …` — a flat
 `u32[opcode]` table (opcode 0 raises none; most opcodes have one candidate fault).
-*(HIGH · OBSERVED — three R-section symbols present at the addresses above; the
-table head dumped with `xxd` since `.rodata` is VMA==file-offset.)*
 
 ### 4.3 Exception-relevant special registers
 
@@ -472,8 +460,7 @@ writeback__ivp_addnx16t(op_ctx);                        /* vd -> regfile  */
 The element value is produced *inside* `module__xdref_add_16_16_16` — the
 verified `add %esi,%edx ; and $0xffff,%edx ; mov %edx,(%rcx)` of §1.2. There is
 no host callback on this path; the whole computation is internal to
-`libfiss-base.so`. *(HIGH · OBSERVED for every named symbol and the execute
-body; the per-lane loop bound is read from the unrolled call multiplicity.)*
+`libfiss-base.so`.
 
 ### 5.1 The `module__xdref_*` datapath (the 864 value leaves)
 
@@ -504,8 +491,7 @@ Representative addresses (all live-callable by absolute symbol):
 | `module__xdref_mula_48_48_16_16` | `0x68a6b0` | i16×i16 multiply-accumulate |
 | `module__xdref_muls_24_24_8_8` | `0x82c170` | i8×i8 multiply-subtract |
 
-*(HIGH · OBSERVED — addresses from `nm -D`; the `mula_*` pair was certified live
-8/8 in a prior datapath wave, re-confirmed present here.)*
+*(HIGH · OBSERVED — the `mula_*` pair was certified live 8/8 in a prior datapath wave.)*
 
 ---
 
@@ -532,8 +518,7 @@ writable sections are **not** identity-mapped — the ncore2gp DLL delta is
 > `0xa17e80`). Applying libtpu's `0x400000` — or assuming VMA==fileoffset because
 > `.text`/`.rodata` are — lands in the wrong place and yields a spurious "table
 > is garbage" finding. The `opcode_exceptions_*` tables, by contrast, are in
-> `.rodata` and *do* read directly. *(HIGH · OBSERVED.)*
-
+> `.rodata` and *do* read directly.
 ---
 
 ## 7. How this slices and connects
@@ -554,8 +539,8 @@ The cas/fiss split this page completes is established on
 [Runnable ISS Infrastructure](./runnable-iss-infra.md); and both are unified into
 a runnable fault-injection reference on
 [The ISS as Executable Oracle](./iss-oracle-synthesis.md). Cross-validation
-against the reference cores (`libfiss-ref-base.so`) is referenced by title only —
-that Part is not yet written.
+against the reference cores (`libfiss-ref-base.so`) is on
+[ref-vs-production diff](./ref-vs-production-diff.md).
 
 ---
 

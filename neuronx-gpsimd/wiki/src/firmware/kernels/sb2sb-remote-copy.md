@@ -8,18 +8,18 @@ byte-mover that the host collective trigger pseudo-ops lower **to**, and the dev
 `NEURON_ISA_TPB_OPCODE_SB2SB_COLLECTIVE`, decoded against the 64-byte
 `NEURON_ISA_TPB_S3D3_COLLECTIVE_STRUCT`.
 
-Everything here is **byte-pinned to shipped artifacts re-read this session**: the per-generation
+Everything here is **byte-pinned to shipped artifacts**: the per-generation
 `NX_POOL` (SEQ control) and `Q7_POOL` (data-plane) DEBUG firmware images carved out of
 `libnrtucode.a`, disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
 FLIX/VLIW, `IsaMaxInstructionSize=32`); the shipped clean C ISA headers (`neuron_*_arch_isa`),
 compile-checked; and the firmware's **own embedded `P%i:` / `S:` / `R:` DEBUG format strings**,
 which name every kernel sub-routine and descriptor field. Where the FLIX-scheduled inner loops
 desync `objdump`'s linear sweep, the format strings and headers are ground truth and the claim is
-tagged `MED`. Where the binary disagreed with the backing reading, **the binary wins**, marked
+tagged `MED`. Where the binary disagrees with an earlier reading, **the binary wins**, marked
 with a **CORRECTION**.
 
 Confidence tags follow the [project model](../../reference/confidence-model.md): `OBSERVED` = a
-byte / string / instruction / header read from a shipped artifact this session; `INFERRED` =
+byte / string / instruction / header read from a shipped artifact; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed
 with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
@@ -81,7 +81,7 @@ the local/remote completion semaphores.**
 
 The SB2SB leg lives in **two members per generation** of `libnrtucode.a`: the `NX_POOL` member
 (SEQ control engine; the `0xBF` handler) and the `Q7_POOL` member (data plane; `remote_copy.cpp`).
-All carves were re-computed and sha-confirmed **this session**
+All carves are sha-confirmed
 (`ar p libnrtucode.a img_<NAME>_contents.c.o | objcopy -O binary --only-section=.rodata`):
 
 | Member (DEBUG) | Engine | `.rodata` size | sha256[:12] | Role |
@@ -94,22 +94,21 @@ All carves were re-computed and sha-confirmed **this session**
 | `img_MARIANA_PLUS_Q7_POOL_DEBUG_DRAM` | Q7 | 89472 B | `295fae9c1cdb` | **`tensor_reshape_transpose_sb2sb`** (§10) |
 | `img_SUNDA_Q7_POOL_DEBUG_DRAM`   | Q7   | 42496 B  | `44e70bc520ca` | **NO SB2SB strings** (v2 absence proof, §9) |
 
-**[HIGH / OBSERVED — `stat -c%s` + `sha256sum` this session; the two CAYMAN `NX_POOL` shas
-(`8e4412b99201` / `7bdf6ed7ccd2`) match the [dispatch-hub](../seq/dispatch-hub.md) /
-[boot](../seq/boot.md) anchors exactly; the CAYMAN `Q7` DRAM `226f4254d475` matches the
-[DGE emit page](../dge/dge-emit.md) carve.]**
+The two CAYMAN `NX_POOL` shas (`8e4412b99201` / `7bdf6ed7ccd2`) match the
+[dispatch-hub](../seq/dispatch-hub.md) / [boot](../seq/boot.md) anchors exactly; the CAYMAN
+`Q7` DRAM `226f4254d475` matches the [DGE emit page](../dge/dge-emit.md) carve.
+**[HIGH / OBSERVED]**
 
 **Addressing rules.** `.rodata` file-offset **== device VA** for IRAM (the disassembly addresses
 below are raw file offsets and equal device VAs). DRAM images load at device VA `0x80000`, so a
 **DRAM-string VA = file-offset + `0x80000`** (e.g. `"S: SB2SB_Collective"` at file off `0x2d50`
 = VA `0x82d50`; the Q7 strings at off `0xNNN` = VA `0x80NNN`). The Q7 IRAM head bytes are
-`06 7f 00 00` = `j 0x1fc` (the reset vector). **[HIGH / OBSERVED — `xxd` head + sha this session.]**
+`06 7f 00 00` = `j 0x1fc` (the reset vector).
 
 > **NOTE — provenance of the engine split.** `decode_extended_inst_sb2sb` / `decode_sb2sb_collective`
 > (the Q7 leg) is **NOT** in the Q7 `kernel_info_table` (the `0xf0` POOL extended-inst dispatch,
 > covered on [pool-dispatch](../pool/pool-dispatch.md)) — SB2SB is reached via the SEQ `0xBF`
 > handler + the Q7 `remote_copy` decode path, **not** via the POOL `kernel_info_table` key set.
-> **[HIGH — FW table key set carries no `0xBF` row; the Q7 decode strings are present. OBSERVED.]**
 
 ---
 
@@ -118,8 +117,8 @@ below are raw file offsets and equal device VAs). DRAM images load at device VA 
 This is the instruction both engines decode. Layout read **byte-exact and compile-verified** from
 the shipped ISA header (`ISA_STATIC_ASSERT(sizeof == 64)`), header doc verbatim: *"Neuron
 'S3D3_Collective' Format — one 3d SRC Tensor, one 3d DST Tensor. Use for: SB2SB Collective using
-Pool/Q7 iDMA engine."* **[HIGH / OBSERVED — `aws_neuron_isa_tpb_s3d3_collective.h` +
-`aws_neuron_isa_tpb_common.h`.]**
+Pool/Q7 iDMA engine."* Sources: `aws_neuron_isa_tpb_s3d3_collective.h` +
+`aws_neuron_isa_tpb_common.h`. **[HIGH / OBSERVED]**
 
 | off | size | field | C type | meaning |
 |---|---|---|---|---|
@@ -139,7 +138,7 @@ Pool/Q7 iDMA engine."* **[HIGH / OBSERVED — `aws_neuron_isa_tpb_s3d3_collectiv
 > the vendor comment.** By the byte arithmetic (`lnc_size_fmt`@32 + `num_active_channels`@33 +
 > `reserved1[14]`@34..47, then `dst_mem_pattern`@48), `reserved1` occupies **offsets 34–47**, and
 > the `s3d3_collective_reserved_zero` predicate enumerates `reserved1[0..13]` (14 bytes) — confirming
-> 34–47, not 35–47. **[HIGH / OBSERVED — struct field arithmetic + the 14-element reserved-zero predicate.]**
+> 34–47, not 35–47.
 
 ### 2a. `NEURON_ISA_TPB_TENSOR3D` (16 B) — the SBUF 3-D access pattern
 
@@ -153,7 +152,7 @@ typedef struct NEURON_ISA_TPB_TENSOR3D {
 
 So src/dst are full **3-D strided SBUF tensors**. The element counts (`num_elem`) are what the
 firmware totals into `total_src_nelem` / `total_dst_nelem` (logged at `P%i: SB2SB_Collective :
-total_src_nelem = %zu, total_dst_nelem = %zu, …`). **[HIGH / OBSERVED — header + log string.]**
+total_src_nelem = %zu, total_dst_nelem = %zu, …`).
 
 ### 2b. `NEURON_ISA_TPB_LNC_SIZE_FMT` (off 32) — the die/NC peer grouping
 
@@ -171,7 +170,7 @@ typedef enum {
 > this ISA an SB2SB step is **legal only for `LNC1` (self-test) or `LNC2` (one peer)**. A single
 > SB2SB leg therefore moves between a NeuronCore and **its one LNC2 partner** (or itself); wider
 > world sizes are realised by **chaining legs** over a ring/mesh, not by a wider `lnc_size_fmt`.
-> **[HIGH / OBSERVED — `has_valid_LncSizefmt` predicate + enum, verbatim.]**
+> **[HIGH / OBSERVED]**
 
 ### 2c. Validator predicates (header-exact)
 
@@ -193,11 +192,11 @@ The `is_valid_sb2sb_collective(i, nc)` conjunction is read verbatim from the hea
 > conflated `num_active_channels <= 128` (`POOLING_NUM_CHANNELS`) with the source size cap; the header
 > predicate `size_check_src(tensor) -> t3d_element_count(tensor) <= 256` is a **separate, larger**
 > bound on the source tensor's element count. Both apply: **≤128 active channels AND ≤256 source
-> elements**. **[HIGH / OBSERVED — both header predicates, verbatim.]**
+> elements**.
 
 > **GOTCHA — both endpoints must be SBUF; PSUM is forbidden.** `AllowedInPSUM::False` on both
 > src and dst means SB2SB is a State-Buffer→State-Buffer mover only; routing PSUM through it fails
-> host-side validation before the device ever sees the `0xBF`. **[HIGH / OBSERVED.]**
+> host-side validation before the device ever sees the `0xBF`.
 
 ### 2d. DTYPE pass-through
 
@@ -205,7 +204,7 @@ The `is_valid_sb2sb_collective(i, nc)` conjunction is read verbatim from the hea
 `INVALID=0 UINT64=1 INT8=2 UINT8=3 INT16=4 UINT16=5 BFLOAT16=6 FP16=7 INT32=8 UINT32=9 FP32=0xA
 FP32R=0xB INT64=0xC FP8_E3=0xD FP8_E4=0xE FP8_E5=0xF`. The firmware logs the numeric dtype verbatim
 (`dtype=%d`); since `dtype_equality_check` forces `in == out`, SB2SB is a **dtype-preserving raw
-copy** — no convert. **[HIGH / OBSERVED — enum + the op-log format string.]**
+copy** — no convert.
 
 ---
 
@@ -214,8 +213,8 @@ copy** — no convert. **[HIGH / OBSERVED — enum + the op-log format string.]*
 The Q7 DEBUG build keeps verbose `P%i:` (per-CPU) / `R:` / `S:` strings; each is at a fixed DRAM
 offset (device VA = offset + `0x80000`), loaded by a `const16 aX,8 ; const16 aX,<lo>` pair feeding
 the printf-like logger (`call8 0x18a2c / 0x18b84 / 0x60e8`). The set below is OBSERVED **byte-exact**
-in `CAYMAN_Q7_POOL_DEBUG_DRAM` (`strings -a -t x`, offsets re-confirmed this session) and names every
-sub-routine and descriptor field. **[HIGH / OBSERVED.]**
+in `CAYMAN_Q7_POOL_DEBUG_DRAM` and names every sub-routine and descriptor field.
+**[HIGH / OBSERVED]**
 
 | DRAM off | string (byte-exact) | names |
 |---|---|---|
@@ -261,7 +260,7 @@ confirm the call graph and TX/RX control flow instruction-exact.
 
 ## 4. The call graph — instruction-exact (master disasm, `XTENSA_CORE=ncore2gp`)
 
-All addresses below are **Q7 IRAM file offsets == device VAs**, re-disassembled this session.
+All addresses below are **Q7 IRAM file offsets == device VAs**.
 
 ### 4a. Q7 decode entry — `decode_extended_inst_sb2sb`, `@0x31ad`
 
@@ -274,9 +273,7 @@ All addresses below are **Q7 IRAM file offsets == device VAs**, re-disassembled 
   31ff:  call8   0x2f38              ; (post-decode continuation)
 ```
 
-**[HIGH / OBSERVED — `0x31ad const16 a10,0xafe`, `0x31b4 call0 0x463c0`, `0x31cd call8 0x328c`,
-`0x31d3 call8 0x2eb8`, `0x31ff call8 0x2f38` all read verbatim this session; the `0x328c`/`0x2f38`
-worker identities INFERRED from the log strings they reach — MED.]**
+**[HIGH/OBSERVED; MED worker identities]**
 
 ### 4b. Pre-sync — `@0x2eb8` (`entry a1, 32`)
 
@@ -290,7 +287,7 @@ worker identities INFERRED from the log strings they reach — MED.]**
 
 The companion `remote_pool_xt_addr / remote_q7_xt_addr / sb2sb_ready_to_receive_remote` log
 (`0xc3e`) is loaded inside a FLIX bundle here and desyncs; the window addresses it prints come from
-§7. **[pre-sync entry + first log HIGH/OBSERVED; inner remote-addr log site MED.]**
+§7. **[HIGH/OBSERVED; MED inner log site]**
 
 ### 4c. SB2SB main driver — `@0x3300`, hands off at `@0x3742`
 
@@ -300,8 +297,7 @@ The large driver (`entry a1, 32`) threads decode/pre-sync/channel-loop and, at I
   3742:  call8   0x161f4             ; *** rdma_desc_gen — build the descriptor ring (§4d)
 ```
 
-**[call edge `0x3742 call8 0x161f4` HIGH/OBSERVED this session; the exact loop bound =
-`num_active_channels` is INFERRED from the `num_chans`/`tpb_idx` logs — MED.]**
+**[HIGH/OBSERVED edge; MED loop bound]**
 
 ### 4d. `rdma_desc_gen` — `@0x161f4` (`entry a1, 0x2540`)
 
@@ -314,8 +310,7 @@ The large driver (`entry a1, 32`) threads decode/pre-sync/channel-loop and, at I
 
 The descriptor-array build and the local/remote semaphore-descriptor pushes (`0x4bd6` / `0x4c2a`)
 sit in the FLIX-scheduled body and are desynced — their **semantics** are taken from the §3 log
-strings. **[entry `0x161f4 entry a1,0x2540` + the `0x4851` Start log HIGH/OBSERVED; the inner build
-MED via the log strings.]**
+strings. **[HIGH/OBSERVED entry; MED inner build]**
 
 ### 4e. `rdma_desc_start` — the TX/RX launch fn (body ≈ `0x17240..0x173f0`)
 
@@ -324,7 +319,7 @@ TX/RX control flow decodes cleanly (unlike the desynced builder body).
 
 ### 4f. SEQ control-engine `0xBF` handler — `seq_iram` `@0xD1E4` (`entry a1, 32`)
 
-This is the upstream trigger that *starts the whole chain*. Disassembled this session from
+This is the upstream trigger that *starts the whole chain*, from
 `CAYMAN_NX_POOL_DEBUG_IRAM` (sha `8e4412b99201`):
 
 ```
@@ -338,18 +333,14 @@ This is the upstream trigger that *starts the whole chain*. Disassembled this se
    …     retw.n
 ```
 
-**[`0xD1E4 entry a1,32`, `0xD1ED const16 a10,8`, `0xD1F0 const16 a10,0x2d50`, `0xD1F3 call8 0x18b84`
-all OBSERVED byte-exact this session; the string at file off `0x2d50` (= VA `0x82d50`) is verbatim
-`"S: SB2SB_Collective"`. The `0x98c8`/`0x98fc` being the iDMA-trigger helpers is INFERRED from
-position — MED; the operand-copy span partially desyncs (FLIX) and its exact `l32i/s32i` stride is
-MED.]** The SEQ dispatch routing (`0xBF` → trampoline → impl → `0xD1E4`) rides the 178-entry table
+**[HIGH/OBSERVED; MED helpers + `l32i/s32i` stride]** The SEQ dispatch routing (`0xBF` → trampoline → impl → `0xD1E4`) rides the 178-entry table
 documented on [dispatch-hub](../seq/dispatch-hub.md).
 
 ---
 
 ## 5. The TX/RX protocol + semaphore handshake (instruction-exact)
 
-`rdma_desc_start`'s role split and tail-pointer doorbell decode cleanly. Disassembled this session.
+`rdma_desc_start`'s role split and tail-pointer doorbell decode cleanly.
 
 ### 5a. Role determination — `@0x1736d`
 
@@ -389,9 +380,7 @@ documented on [dispatch-hub](../seq/dispatch-hub.md).
   173ea:  retw.n
 ```
 
-**[All of §5a–§5d OBSERVED byte-exact this session: `rsr.prid`, `extui a7,a7,0,1`, `bne a7,a6,0x173ec`,
-`beqz.n a6,0x173a0`, the two `s32i.n a3,a4,0` tail-inc stores at `0x1739b` (TX) / `0x173a9` (RX), and
-`retw.n` at `0x173ea`. HIGH.]**
+**[HIGH / OBSERVED]**
 
 ### 5e. Interpretation — the producer/consumer ring handshake
 
@@ -406,16 +395,14 @@ The two ends of the SDMA producer/consumer descriptor ring:
 The two `s32i.n a3,a4,0` stores are the **DmaTrigger** primitive — "initiate a DMA transfer by
 writing the DMA tail pointer" — the `TDRTP_inc` / `RDRTP_inc` `+0x38` doorbells of the SDMA CSR map.
 
-> **QUIRK — `left_pop` / `right_push` are recovered here for the first time.** These literal token
-> strings are firmware-only and are first recovered from the device image on this page (a
-> primary-source improvement: the sibling DMA/CSR notes recorded the ring producer/consumer protocol
-> but not these exact tokens). **[`left_pop`/`right_push` strings OBSERVED HIGH; the `left_pop = wait`
-> / `right_push = signal` direction is INFERRED from the log wording + ring semantics — MED.]**
+> **QUIRK — `left_pop` / `right_push` are firmware-only literal tokens.** They are read from the
+> device image; the sibling DMA/CSR notes record the ring producer/consumer protocol but not these
+> exact tokens. **[HIGH/OBSERVED strings; MED direction]**
 
 > **GOTCHA — the exact register a4 holds (TDRTP vs RDRTP) is FLIX-bound.** The absolute tail-inc CSR
 > offset loaded into `a4` (per role) is in a desynced literal-pool span; that it is the M2S/S2M
-> `*RTP_inc` doorbell is reconciled from the CSR map, not read from the literal. **[MED — the store
-> site is OBSERVED, the literal value is INFERRED.]**
+> `*RTP_inc` doorbell is reconciled from the CSR map, not read from the literal.
+> **[MED — literal value INFERRED]**
 
 ### 5f. The `0xBF` `events` semaphore (instruction-level arrive/wait)
 
@@ -424,8 +411,8 @@ update_idx, semaphore_value}` — the hardware semaphore the `0xBF` **waits on b
 **updates on completion**. Combined with the `rdma_desc_gen` LOCAL + REMOTE semaphore descriptors
 (§6), this is the on-chip end of the NCFW counted barrier: a step's SB2SB waits its inbound semaphore
 ≥ target (`wait_ge_and_dec`) and increments the peer's semaphore on completion (`add_semaphore_inc`).
-**[`events`-field semantics HIGH from the header; the inc/wait_ge mapping to NCFW barriers MED — the
-counted-barrier ops live on the LX/NCFW side; this leg posts the `dma_compl_sema`.]**
+The counted-barrier ops live on the LX/NCFW side; this leg posts the `dma_compl_sema`.
+**[HIGH/OBSERVED semantics; MED NCFW mapping]**
 
 ---
 
@@ -459,15 +446,13 @@ source and at the remote sink.
 > the *mapping* (which named input → which descriptor field) from the byte-exact log strings; the
 > exact 16-B BD encoding is deferred to the [RDMA descriptor gen/start](rdma-desc-gen-start.md)
 > sibling and the [CCE in-transfer](../../dma/cce-in-transfer.md) page (**Part 9/10 — not yet
-> authored, NOTE: forward link**). **[field names + existence HIGH/OBSERVED (log strings); the
-> byte-exact word0/word1 packing MED, deferred.]**
+> authored, NOTE: forward link**). **[HIGH/OBSERVED names; MED packing]**
 
 **The broadcast launch (`sdma_bcast`).** `rdma_desc_start` logs `Trigger DMA; sdma_bcast_base = 0x…,
 trigger addr = 0x…, mask = 0x…, n_desc=%d` (`0x47f4` / `0x4d39`). `sdma_bcast_base` is the **broadcast
 M2S/S2M aperture**: a single tail-inc write to the bcast doorbell advances the tails of a **group** of
 queues at once (the `dma_mask` selecting which), launching the multi-channel move with one trigger.
-**[`sdma_bcast` usage + `mask` HIGH/OBSERVED (log); the bcast-queue-group cut HIGH cross-ref / MED
-exact group.]**
+**[HIGH/OBSERVED usage; MED exact group]**
 
 ---
 
@@ -485,15 +470,15 @@ exact group.]**
 The `rdma_desc_gen` `routing_id` / `remote_routing_id` is the value that, written into
 `{CAYMAN_ID, CAYMAN_ID_VALID}` (and the neighbor decoder's exit-die / neighbor-route bits), turns a
 local `dst_addr` into a **REMOTE-die** SoC address. The firmware's `after remote_routing_id …
-dst_addr=0x%llx` log (`0x497b`) is exactly this rewrite. **[SoC bitfield HIGH (cross-ref); the
-`routing_id` → high-bits rewrite INFERRED from the log + bitfield — MED.]**
+dst_addr=0x%llx` log (`0x497b`) is exactly this rewrite.
+**[HIGH bitfield; MED routing_id rewrite]**
 
 ### 7b. `is_tpb` / `is_die_0` / `engine_idx` decode
 
 The `engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u` log (`0xf98`) is
 the firmware classifying a SoC base: whether it targets the TPB SBUF aperture (`is_tpb`), whether it
 is die 0 (the `DIE[47]` bit), and the engine index — how the kernel decides local-vs-remote and which
-engine's SBUF it touches. **[string OBSERVED HIGH; the comparison constants are FLIX-desynced — MED.]**
+engine's SBUF it touches. **[HIGH/OBSERVED string; MED constants]**
 
 ### 7c. The remote-SBUF → local-Q7-window remapper
 
@@ -503,9 +488,8 @@ before the Q7 iDMA can reach it. `program_window` writes the remapper CSRs that 
 soc_addr}` with `u_mask`/`l_mask` and a match/replace rule (logs `0xffd` and `0x105e`). The pre-sync
 log `remote_pool_xt_addr=0x%x, remote_q7_xt_addr=0x%x` (`0xc3e`) prints the two programmed local-window
 views of the remote peer's POOL/Q7 SBUF. This is the same remapper the
-[SoC window manager](../seq/soc-window-manager.md) page documents. **[`program_window` fn + its two
-logs + the window-manager string anchors OBSERVED HIGH; the exact CSR offsets are not in this image —
-LOW.]**
+[SoC window manager](../seq/soc-window-manager.md) page documents.
+**[HIGH/OBSERVED logs; LOW CSR offsets]**
 
 ---
 
@@ -523,23 +507,23 @@ write into a buffer the receiver has not yet armed):
 
 The pre-sync function is `@0x2eb8` (§4b), called from the decode path at `0x31d3` **before**
 `rdma_desc_gen`/`start`. This is the SB2SB analogue of the NCFW `recv_sema`/`post_sema`: the receiver
-signals "buffer armed", the sender waits on it, then triggers the DMA. **[pre-sync fn + both log
-strings OBSERVED HIGH; the precise flag-poll arithmetic is in a FLIX-desynced bundle — MED.]**
+signals "buffer armed", the sender waits on it, then triggers the DMA.
+**[HIGH/OBSERVED logs; MED flag-poll]**
 
 ---
 
 ## 9. Per-generation presence — proven by bytes
 
 > **The SB2SB device leg exists from NC-v3 (CAYMAN) onward and is ABSENT on NC-v2 (SUNDA).** This is
-> proven three independent ways, all re-checked this session.
+> proven three independent ways.
 
 | Codename | NC-ver | `s3d3_collective.h`? | `0xBF` opcode? | Q7 DRAM `remote_copy.cpp` / `SB2SB_Collective` / `rdma_desc_gen` | verdict |
 |---|---|---|---|---|---|
 | **TONGA**  | NC-v1 | — (legacy ISA only) | — | (no NCFW/EXTISA image in corpus) | **leg absent** `[CARRIED]` |
-| **SUNDA**  | NC-v2 | **ABSENT** | **none** | **0 / 0 / 0** (0 hits) | **leg ABSENT** `[HIGH/OBSERVED]` |
-| **CAYMAN** | NC-v3 | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** | leg present `[HIGH/OBSERVED]` |
-| **MARIANA** | NC-v4 | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** | leg present `[HIGH/OBSERVED]` |
-| **MARIANA_PLUS** | NC-v4+ | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** + `tensor_reshape_transpose_sb2sb` | leg present + **v4+ fast-path** (§10) `[HIGH/OBSERVED]` |
+| **SUNDA**  | NC-v2 | **ABSENT** | **none** | **0 / 0 / 0** (0 hits) | **leg ABSENT** |
+| **CAYMAN** | NC-v3 | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** | leg present |
+| **MARIANA** | NC-v4 | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** | leg present |
+| **MARIANA_PLUS** | NC-v4+ | present (`nc>=V3`) | `0xbf` | **1 / 3 / 10** + `tensor_reshape_transpose_sb2sb` | leg present + **v4+ fast-path** (§10) |
 | **MAVERICK** | NC-v5 | present (`nc>=V3`) | `0xbf` | **header-OBSERVED; image only in `libnrtucode_internal.so`** | leg present → **interior INFERRED** `[MED/INFERRED]` |
 
 Grounding:
@@ -548,20 +532,20 @@ Grounding:
    verbatim from every present `aws_neuron_isa_tpb_s3d3_collective.h` (cayman/mariana/maverick). The
    **sunda** arch-isa dir has **no `s3d3_collective.h`** and `common.h` carries **no
    `SB2SB_COLLECTIVE` opcode** — only a stale `LNC_SIZE_FMT` doc-comment mentioning "sb2sb collective
-   using q7 iDMA", with no opcode/struct behind it. **[HIGH/OBSERVED.]**
+   using q7 iDMA", with no opcode/struct behind it. **[HIGH/OBSERVED]**
 2. **String fingerprint.** Carving every `*_Q7_POOL_DEBUG_DRAM` member: **SUNDA = 0 hits** for all of
    `remote_copy.cpp` / `SB2SB_Collective` / `rdma_desc_gen` / `left_pop`; CAYMAN/MARIANA/MARIANA_PLUS
-   each = `1 / 3 / 10 / 1` (identical counts). **[HIGH/OBSERVED — `strings | rg -c` this session.]**
+   each = `1 / 3 / 10 / 1` (identical counts).
 3. **Member existence.** `libnrtucode.a` ships `NX_POOL` + `Q7_POOL` members for **SUNDA, CAYMAN,
    MARIANA, MARIANA_PLUS only**. **MAVERICK has NO member in the shipped archive** — it exists solely
-   in `libnrtucode_internal.so`'s `.rodata` (the internal NC-v5 twin). **[HIGH/OBSERVED.]**
+   in `libnrtucode_internal.so`'s `.rodata` (the internal NC-v5 twin).
 
 > **MAVERICK (NC-v5) interiors are HEADER-OBSERVED → INFERRED.** MAVERICK's `s3d3_collective.h` and
 > `0xBF` opcode are read directly from its arch-isa headers (so the *contract* is OBSERVED), but its
 > firmware images are not in the shipped runtime archive — so the **kernel interior** (the byte-exact
 > `rdma_desc_gen`/`rdma_desc_start` addresses) cannot be carved from a shipped blob and is **INFERRED**
-> to match the CAYMAN..MARIANA_PLUS family by header contract + the codename crosswalk. **[contract
-> HIGH/OBSERVED; interior MED/INFERRED.]** See [codename crosswalk](../../reference/codename-crosswalk.md)
+> to match the CAYMAN..MARIANA_PLUS family by header contract + the codename crosswalk.
+> **[contract HIGH/OBSERVED; interior MED/INFERRED]** See [codename crosswalk](../../reference/codename-crosswalk.md)
 > and the [MAVERICK profile](../../generations/maverick-profile.md) (**forward link — not yet authored,
 > NOTE**).
 
@@ -580,9 +564,9 @@ Grounding:
 | `wait_for_credit` | `MARIANA_PLUS_NX_POOL_DEBUG_DRAM` | `0x3914` | **MARIANA_PLUS only** |
 | `tensor_reshape_transpose_sb2sb` | `MARIANA_PLUS_Q7_POOL_DEBUG_DRAM` | (Q7 corpus) | **MARIANA_PLUS only** |
 
-**[HIGH/OBSERVED — carved all four `NX_POOL` DRAM gens (SUNDA/CAYMAN/MARIANA/MARIANA_PLUS) +
-all four `Q7_POOL` DRAM gens; the three NX strings and the one Q7 string appear with count 1 in
-MARIANA_PLUS and count 0 in every earlier gen this session.]**
+Across all four `NX_POOL` DRAM gens (SUNDA/CAYMAN/MARIANA/MARIANA_PLUS) and all four `Q7_POOL`
+DRAM gens, the three NX strings and the one Q7 string appear with count 1 in MARIANA_PLUS and
+count 0 in every earlier gen. **[HIGH/OBSERVED]**
 
 Read together with the `[TX] Waiting for RX sync (left_pop)` doorbell (§5b), `wait_for_credit` is the
 v4+ name for the credit/handshake step the earlier gens spell as the `left_pop` wait — a credit-gated
@@ -590,27 +574,25 @@ producer/consumer gate added on the SEQ/sequencer side, paired with a
 `dge_reshape_memcopy_transpose_fast` reshape-and-move fast path and a Q7
 `tensor_reshape_transpose_sb2sb` leg. **The wire opcode is unchanged — still `0xBF`,
 `S3D3_COLLECTIVE_STRUCT` — and the EXTISA byte set is byte-identical to MARIANA; the v4+ delta is the
-firmware fast-path, not the ISA.** **[opcode/EXTISA invariance CARRIED from the
-codename crosswalk; the fast-path string presence HIGH/OBSERVED; `wait_for_credit ≈ left_pop credit
-gate` INFERRED from the string + the §5 protocol — MED.]**
+firmware fast-path, not the ISA.**
+**[CARRIED invariance; HIGH strings; MED credit-gate reading]**
 
 ---
 
 ## 11. Error / completion handling
 
 - **iDMA channel init failure** — `iDMA channel %d failed to initialize!` (`0xa93`): a per-channel
-  init guard. **[HIGH/OBSERVED.]**
+  init guard. **[HIGH/OBSERVED]**
 - **DescriptorStream count mismatch (FATAL)** — `rdma_desc_start`'s role/parity check
   (`0x17373 bne → 0x173ec`) and `ERROR: DescriptorStream wrote %d descriptors, expected %d` (`0x5040`)
   feed `const16 a2,0x60e8 ; callx8 a2` — the `_Assert`/error sink (the same `0x60e8` logger/assert the
-  [decode-pool](decode-pool.md) path uses). A descriptor-count mismatch is a hard error. **[`0x5040`
-  log + the `bne → 0x173ec` edge OBSERVED HIGH; that `0x60e8` traps is INFERRED from its use as the
-  assert sink — MED.]**
+  [decode-pool](decode-pool.md) path uses). A descriptor-count mismatch is a hard error.
+  **[HIGH/OBSERVED; MED assert-sink identity]**
 - **Completion is the semaphore/poll model.** The TX/RX tail-pointer doorbell launches the CME COPY;
   completion is signalled by the ring's completion BD (busy-poll on the generation tag) **and** by the
   LOCAL/REMOTE semaphore descriptors firing `dma_compl_sema` / the peer `recv_sema`. There is **no
-  INTC-trigger completion** for the data plane — completion is semaphore-over-DMA. **[completion-via-
-  semaphore HIGH by reconciliation; the exact Q7 poll site is FLIX-desynced — MED.]**
+  INTC-trigger completion** for the data plane — completion is semaphore-over-DMA.
+  **[HIGH completion model; MED Q7 poll site]**
 
 ---
 
@@ -618,7 +600,7 @@ gate` INFERRED from the string + the §5 protocol — MED.]**
 
 > **This is the device leg the AllReduce trace rides.** The host emits a `PSEUDO_TRIGGER_COLLECTIVE`
 > (`0xC8` / `0xD9` / `0xDA`) carrying a `collective_type` of `ALL_REDUCE` (`= 0x1` in the
-> `NEURON_ISA_TPB_COLLECTIVE_TYPE` enum, read this session); the host lowering expands that into a
+> `NEURON_ISA_TPB_COLLECTIVE_TYPE` enum); the host lowering expands that into a
 > **sequence of `0xBF` SB2SB legs** over the ring/mesh topology; the device ucode **never** decodes
 > the pseudo trigger — it only decodes the lowered SB2SB legs, **which is this kernel**.
 
@@ -640,9 +622,10 @@ Per ring/mesh step *k*, for each participating NeuronCore:
 
 So: **one ring/mesh step = one (or `num_active_channels`-wide) SB2SB leg = one `rdma_desc_gen` +
 `rdma_desc_start` invocation**; step-to-step ordering is the semaphore counted barrier; the whole
-AllReduce is the sequence of these legs over the topology. **[the leg↔step correspondence + semaphore
-chaining HIGH from the combined ISA + device-decode evidence; the exact per-(ctype, topology,
-world-size) leg SCHEDULE lives in the LX/NCFW firmware and is not decodable from the Q7 image — MED/LOW.]**
+AllReduce is the sequence of these legs over the topology. The leg↔step correspondence + semaphore
+chaining are HIGH from the combined ISA + device-decode evidence; the exact per-(ctype, topology,
+world-size) leg SCHEDULE lives in the LX/NCFW firmware and is not decodable from the Q7 image.
+**[MED/LOW schedule]**
 
 For the orchestration side (algorithm selection, per-step peer/semaphore assignment), see the
 collectives architecture pages: [architecture synthesis](../../collectives/ops/architecture-synthesis.md)
@@ -665,14 +648,14 @@ forward links**). For the cross-die transport, see [RDMA cross-die](../../dma/rd
 | `left_pop` / `right_push` | UDMA producer/consumer ring | **IMPROVED — literal tokens recovered here** |
 | cross-die `dst_addr` `routing_id` | SoC `{CAYMAN_ID, _VALID, DIE}` | **CONFIRMED** |
 | `program_window` remapper | the `soc2xt` window program; [SoC window manager](../seq/soc-window-manager.md) | **CONFIRMED (the window prog)** |
-| per-gen presence: SUNDA absent / CAYMAN..MARIANA_PLUS present / MAVERICK header-only | `nc>=V3` gate; member existence; string fingerprint | **CONFIRMED this session** |
+| per-gen presence: SUNDA absent / CAYMAN..MARIANA_PLUS present / MAVERICK header-only | `nc>=V3` gate; member existence; string fingerprint | **CONFIRMED** |
 | v4+ fast-path (`wait_for_credit` / `…_fast` / `tensor_reshape_transpose_sb2sb`) | MARIANA_PLUS-only strings @`0x34b0`/`0x34d3`/`0x3914` | **CONFIRMED MARIANA_PLUS-only** |
 
 ---
 
 ## 14. Confidence summary
 
-**HIGH / OBSERVED** (direct disasm / byte read / compile-verified header, this session):
+**HIGH / OBSERVED** (direct disasm / byte read / compile-verified header):
 
 - Carves: CAYMAN `NX_POOL` IRAM (`8e4412b99201`, 116768 B) + DRAM (`7bdf6ed7ccd2`, 28448 B); CAYMAN
   `Q7_POOL` IRAM (`513a8a22d94b`, 125504 B, reset `j 0x1fc`) + DRAM (`226f4254d475`, 89344 B);

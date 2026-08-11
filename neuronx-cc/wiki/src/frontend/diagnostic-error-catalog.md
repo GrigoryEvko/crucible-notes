@@ -20,7 +20,7 @@ For a reader who must interpret any neuronx-cc diagnostic, the contract is: **(1
 | **Render template** | `{debugloc} {prefix} [NCC_{CAT}{idx:03}] {cause} - {resolution}` |
 | **Global support keyword** | `RESOLUTION_CONTACT_SUPPORT` (one entry in `NEURON_ASSERT_GLOBAL_KEYWORDS`) |
 
-> **NOTE —** every count on this page was re-verified against the binary in this analysis: 224 via `strings | grep -oE 'NCC_[A-Z]+[0-9]{3}' | sort -u | wc -l` over the four native bins; 2556/353 via importing `ErrorMessages.cpython-310.so` standalone under CPython 3.10 and calling `len(NEURON_ASSERT_ERROR_MESSAGES)`. Both match exactly. The F-code set was re-confirmed as closed (`grep -rao '\[F[0-9]+\]'` over the entire wheel returns only F134/F137/F139, each once, all in `CommandDriver.so`).
+> **NOTE — how the three counts were obtained.** 224 comes from an `NCC_[A-Z]+[0-9]{3}` token sweep over the four native bins; 2556 and 353 come from importing `ErrorMessages.cpython-310.so` standalone under CPython 3.10 and reading `NEURON_ASSERT_ERROR_MESSAGES` directly. The F-code set is closed: a `\[F[0-9]+\]` sweep over the entire wheel returns only F134/F137/F139, each exactly once, all in `CommandDriver.so`.
 
 ---
 
@@ -30,12 +30,12 @@ The single most important fact is that these are *four different things* that a 
 
 | System | Origin (emitter) | Format | Example | When emitted | Closed? | Confidence |
 |---|---|---|---|---|---|---|
-| **A — fatal exit** | `CommandDriver.handleError` (Python/Cython) | `[F1xx] <prose>` | `[F137] neuronx-cc was forcibly killed…` | parent process sees subprocess die with abnormal exit code / signal | **Yes** — exactly 3 | CONFIRMED (strings); signal map INFERRED |
-| **B — native NCC_** | native HLO/penguin bins, per-callsite rodata | `[<prefix>] [NCC_<CAT><idx>] <cause> - <res>` | `[ERROR] [NCC_EVRF001] …` | a native HLO/penguin pass hits a curated check | **Yes** — 224 codes, sparse indices | CONFIRMED (token inventory) |
-| **C — template table** | `ErrorMessages.so` dict, via `NeuronAssertion` | `(cat,idx) → (cause_tmpl, res_tmpl)` | `('EARG',2) → ("Illegal argument(s) - …", "Check that …")` | a backend BIR/walrus/codegen/NKI assert fires & looks up its body | **Yes** — 2556 entries, 353 cats | CONFIRMED (runtime dump) |
-| **D — MLIR/LLVM** | embedded MLIR/LLVM diag engine + ad-hoc | `<loc> error:/warning:/note:/remark: <msg>` | `loc: error: 'op' op failed to verify` | MLIR op-verification / LLVM codegen, in-flight | **No** — open-ended | CONFIRMED (prefixes) |
+| **A — fatal exit** | `CommandDriver.handleError` (Python/Cython) | `[F1xx] <prose>` | `[F137] neuronx-cc was forcibly killed…` | parent process sees subprocess die with abnormal exit code / signal | **Yes** — exactly 3 | CERTAIN (strings); signal map MEDIUM |
+| **B — native NCC_** | native HLO/penguin bins, per-callsite rodata | `[<prefix>] [NCC_<CAT><idx>] <cause> - <res>` | `[ERROR] [NCC_EVRF001] …` | a native HLO/penguin pass hits a curated check | **Yes** — 224 codes, sparse indices | CERTAIN (token inventory) |
+| **C — template table** | `ErrorMessages.so` dict, via `NeuronAssertion` | `(cat,idx) → (cause_tmpl, res_tmpl)` | `('EARG',2) → ("Illegal argument(s) - …", "Check that …")` | a backend BIR/walrus/codegen/NKI assert fires & looks up its body | **Yes** — 2556 entries, 353 cats | CERTAIN (runtime dump) |
+| **D — MLIR/LLVM** | embedded MLIR/LLVM diag engine + ad-hoc | `<loc> error:/warning:/note:/remark: <msg>` | `loc: error: 'op' op failed to verify` | MLIR op-verification / LLVM codegen, in-flight | **No** — open-ended | CERTAIN (prefixes) |
 
-> **GOTCHA —** systems B and C describe the *same* diagnostic from two angles. The 224 `NCC_` *tokens* are baked into the native binaries' rodata (system B), but for the **backend** assert path the message *body* is looked up at runtime from the `ErrorMessages.so` dict (system C). Crucially, the *frontend* native NCC categories (`EVRF`, `PYP`, `ISPP`, `MOD`, `HPM`, `CTR`, …) are **absent** from the `ErrorMessages.so` dict — their bodies are baked directly into the HLO bins' rodata. The two catalogs overlap at exactly one category: `IIOT`. So "look up the body in `ErrorMessages.so`" works for backend codes but *not* for the frontend native ones. (CONFIRMED by category presence/absence in the dumped dict.)
+> **GOTCHA —** systems B and C describe the *same* diagnostic from two angles. The 224 `NCC_` *tokens* are baked into the native binaries' rodata (system B), but for the **backend** assert path the message *body* is looked up at runtime from the `ErrorMessages.so` dict (system C). Crucially, the *frontend* native NCC categories (`EVRF`, `PYP`, `ISPP`, `MOD`, `HPM`, `CTR`, …) are **absent** from the `ErrorMessages.so` dict — their bodies are baked directly into the HLO bins' rodata. The two catalogs overlap at exactly one category: `IIOT`. So "look up the body in `ErrorMessages.so`" works for backend codes but *not* for the frontend native ones.
 
 > **GOTCHA —** a single failing compile typically prints **two** lines: the failing subprocess emits its `[NCC_…]` / template line and then exits non-zero; the parent `CommandDriver` then prints the trailing `[F1xx]`. Do not read the `[F1xx]` as the root cause — it is the *envelope*. The diagnostic content is in the `[NCC_…]` line above it.
 
@@ -55,9 +55,9 @@ CommandDriver.run                                       ── runs subcommand i
        └─ CommandDriver.handleError(exit_code, signal)  ── selects [F134] / [F137] / [F139]
 ```
 
-Qualname `neuronxcc.driver.CommandDriver.handleError` is CONFIRMED verbatim in `CommandDriver.cpython-310.so`, along with the Cython entry symbol `__pyx_pw_9neuronxcc_6driver_13CommandDriver_3handleError` and the locals `exitcode` / `signal` (`__pyx_v_exit_code`, `__pyx_n_s_signal`). The auxiliary banner `"Subcommand returned with exitcode="` is CONFIRMED.
+The qualname `neuronxcc.driver.CommandDriver.handleError` sits verbatim in `CommandDriver.cpython-310.so`, alongside the Cython entry symbol `__pyx_pw_9neuronxcc_6driver_13CommandDriver_3handleError`, the locals `exitcode` / `signal` (`__pyx_v_exit_code`, `__pyx_n_s_signal`), and the auxiliary banner `"Subcommand returned with exitcode="`.
 
-### The three codes (verbatim message bodies, CONFIRMED)
+### The three codes (verbatim message bodies)
 
 ```text
 [F134] neuronx-cc terminated abnormally - Please open a support ticket at
@@ -69,7 +69,7 @@ Qualname `neuronxcc.driver.CommandDriver.handleError` is CONFIRMED verbatim in `
        https://github.com/aws-neuron/aws-neuron-sdk/issues/new
 ```
 
-A second diagnostic is printed alongside (CONFIRMED): *"Processes may be terminated if they encountered an internal error or if there was insufficient memory. Please review the log file for any error conditions. … Current memory usage for neuronxcc is …"*.
+A second diagnostic is printed alongside: *"Processes may be terminated if they encountered an internal error or if there was insufficient memory. Please review the log file for any error conditions. … Current memory usage for neuronxcc is …"*.
 
 ### Code ↔ signal mapping
 
@@ -81,7 +81,7 @@ The numeric codes are the POSIX shell convention `128 + signal`:
 | `F137` | `128 + 9` | `SIGKILL` | child killed by signal 9 — overwhelmingly the Linux OOM-killer | "forcibly killed … insufficient system memory" |
 | `F139` | `128 + 11` | `SIGSEGV` | child segfaulted | "terminated abnormally" (2nd variant) |
 
-The `128+{6,9,11}` identity is **INFERRED** from POSIX convention, but is near-certain: the `F137` message explicitly ties the code to out-of-memory (the SIGKILL/OOM-killer fingerprint), and the names are the standard shell exit codes. The exact `exitcode → F-switch` branch inside `handleError` is the one derived part. `SIGINT` (Ctrl-C) is also referenced as a distinct symbol — it is *not* one of the F-codes (it is the clean-interrupt path).
+The `128+{6,9,11}` identity is [INFERRED] from POSIX convention, but near-certain: the `F137` message explicitly ties its code to out-of-memory — the SIGKILL/OOM-killer fingerprint — and the numbers are the standard shell exit codes. The exact `exitcode → F-switch` branch inside `handleError` is the one derived part. `SIGINT` (Ctrl-C) is also referenced as a distinct symbol — it is *not* one of the F-codes (it is the clean-interrupt path).
 
 > **NOTE —** `F134` and `F139` carry the *identical* "terminated abnormally — open a support ticket" body. The only thing distinguishing an abort from a segfault to the user is the trailing digit. Both mean "the compiler crashed; this is a bug" — versus `F137` which means "you ran out of RAM; shrink the model".
 
@@ -107,11 +107,11 @@ The big one. 224 distinct `NCC_<CAT><III>` tokens are baked per-callsite into th
   <III>      = 3-digit zero-padded index (ErrorCode.__str__ = f"{category}{index:03}")
 ```
 
-The `[INTERNAL_ERROR] [NCC_I` literal is CONFIRMED in rodata. The 4-character `I…`/`E…` rule is enforced by the CI linter `valid_error_category` in `neuronxlogger/error_validation.py` (CONFIRMED): an internal assert must use a 4-char category starting `'I'`; an external assert, 4-char starting `'E'`. (See the [prefix correction](#correction-the-prefix-is-chosen-by-the-assert-function-not-the-category) below — the *runtime* prefix is chosen by the assert function, not by re-parsing the letter.)
+The `[INTERNAL_ERROR] [NCC_I` literal is present in rodata. The 4-character `I…`/`E…` rule is enforced by the CI linter `valid_error_category` in `neuronxlogger/error_validation.py`: an internal assert must use a 4-char category starting `'I'`; an external assert, 4-char starting `'E'`. (See [§the prefix is chosen by the assert function](#the-prefix-is-chosen-by-the-assert-function-not-the-category) below — the *runtime* prefix does not come from re-parsing the letter.)
 
-### Inventory (CONFIRMED — closed sweep)
+### Inventory — a closed sweep
 
-**224 distinct `NCC_` tokens**, distributed across the four native bins as follows (re-verified `strings | grep -oE 'NCC_[A-Z]+[0-9]{3}' | sort -u`):
+**224 distinct `NCC_` tokens**, distributed across the four native bins:
 
 | Binary | Distinct codes | Categories present |
 |---|---|---|
@@ -122,11 +122,11 @@ The `[INTERNAL_ERROR] [NCC_I` literal is CONFIRMED in rodata. The 4-character `I
 
 The 30 distinct categories present in these four bins are: `CTR DRV ECFT EHCA EMOD ESFH ESPP ETUP EUDT EUET EUOC EVRF HPM IARC IARE IHCA IHNW IIOT IMOD IMUT INFG INL ISPP ITUP IVRF MOD NCO OPT PYP SPP`.
 
-> **QUIRK —** index sets are **sparse with gaps**, not contiguous. `EVRF` runs `001-058` but is missing `003,015,016,020-024`; `PYP` runs `001-058` missing `002`; `ISPP` runs `001-061` with gaps. The gaps are *retired* codes — `ErrorMessages.so` literally contains four `"OBSOLETE ERROR CODE. DO NOT USE."` templates (CONFIRMED). A reimplementer enumerating a category must treat each range as enumerated-with-gaps, never `for i in 1..n`.
+> **QUIRK —** index sets are **sparse with gaps**, not contiguous. `EVRF` runs `001-058` but is missing `003,015,016,020-024`; `PYP` runs `001-058` missing `002`; `ISPP` runs `001-061` with gaps. The gaps are *retired* codes — `ErrorMessages.so` literally contains four `"OBSOLETE ERROR CODE. DO NOT USE."` templates. A reimplementer enumerating a category must treat each range as enumerated-with-gaps, never `for i in 1..n`.
 
 ### Category decode
 
-The first-letter severity class is CONFIRMED; the word-expansion of each abbreviation is **STRONG** (inferred from the emitting binary and adjacent rodata strings):
+The first-letter severity class is read directly; the word-expansion of each abbreviation is [INFERRED] from the emitting binary and adjacent rodata strings:
 
 | Category | Expansion | Bin | Severity |
 |---|---|---|---|
@@ -164,7 +164,7 @@ NCC_IIOT002      "Forbidden io_transpose found for input: <name>"               
 NCC_IHNW003      "Reshape size mismatch for input: <name>"                           (hlo-neff-wrapper)
 ```
 
-The `IIOT`/`IHNW` message strings are CONFIRMED verbatim in `hlo-neff-wrapper`. The `OPT`/`HPM` diagnostics are CONFIRMED in `hlo-opt`. The exact per-index `NCC_OPT001` ↔ message binding is **not** individually pinned (codes and diagnostic strings are separate rodata blobs) — STRONG by co-location.
+The `IIOT`/`IHNW` message strings sit verbatim in `hlo-neff-wrapper`, and the `OPT`/`HPM` diagnostics in `hlo-opt`. The exact per-index binding — which message goes with `NCC_OPT001` specifically — is **not** individually pinned: codes and diagnostic strings live in separate rodata blobs, so the pairing is [INFERRED] from co-location.
 
 ---
 
@@ -174,7 +174,7 @@ The `IIOT`/`IHNW` message strings are CONFIRMED verbatim in `hlo-neff-wrapper`. 
 
 `ErrorMessages.cpython-310.so` (Cython, compiled from `ErrorMessages.pyx`) holds the **message bodies** for the *backend* `NeuronAssertion` path. It is a single flat Python dict, recovered verbatim by importing the `.so` standalone (it has zero third-party deps) under CPython 3.10 and dumping the global.
 
-### Exact shape (CONFIRMED — runtime introspection)
+### Exact shape, from runtime introspection
 
 ```python
 NEURON_ASSERT_ERROR_MESSAGES: Dict[Tuple[str, int], Tuple[str, str]]
@@ -186,7 +186,7 @@ NEURON_ASSERT_ERROR_MESSAGES: Dict[Tuple[str, int], Tuple[str, str]]
 
 It is **one flat tuple-keyed dict for all namespaces** — *not* an ordered list indexed by an enum, *not* a per-category nested dict. The per-error "namespace" in the `neuronxlogger` sense is the single string `"neuronxcc"`; the 353 categories are an internal sub-key inside the key tuple, not separate registrations.
 
-### Counts (CONFIRMED — re-verified by import in this analysis)
+### Counts, read from the imported dict
 
 | Metric | Value |
 |---|---|
@@ -200,11 +200,11 @@ It is **one flat tuple-keyed dict for all namespaces** — *not* an ordered list
 | `"OBSOLETE ERROR CODE. DO NOT USE."` entries | **4** — all `('BIR',199/202/203/204)` |
 | `NEURON_ASSERT_GLOBAL_KEYWORDS` | 1 entry (`RESOLUTION_CONTACT_SUPPORT`) |
 
-> **QUIRK —** the count being 2556 (not the strings-era estimate of ~600) is explained by a **generated 901/902 per-pass family**: **446** of the 2556 entries are `(<CAT>,901) = ("<PassName> assertion error: {baseMessage}", …)` and `(<CAT>,902) = ("<PassName> error: {baseMessage}", …)`. 217 categories carry *only* `{901,902}` (pure per-pass wrappers); the rest add 901/902 on top of curated low-index codes. `901` = a failed C++ assert inside the pass (`{baseMessage}` = the assert text); `902` = a non-assert thrown pass error. This is the generic "any pass can fail" backstop; the low-index codes are the specific, curated diagnostics. See the index map below for the pass-name → category mapping (e.g. `ILCM`=LICM, `INIS`=NeuronISel, `ISIM`=SimulatorPass).
+> **QUIRK — most of the table is one generated family.** A `strings`-based estimate of the catalog lands near 600; the real 2556 is explained by the **generated 901/902 per-pass family**: **446** of the 2556 entries are `(<CAT>,901) = ("<PassName> assertion error: {baseMessage}", …)` and `(<CAT>,902) = ("<PassName> error: {baseMessage}", …)`. 217 categories carry *only* `{901,902}` (pure per-pass wrappers); the rest add 901/902 on top of curated low-index codes. `901` = a failed C++ assert inside the pass (`{baseMessage}` = the assert text); `902` = a non-assert thrown pass error. This is the generic "any pass can fail" backstop; the low-index codes are the specific, curated diagnostics. See the index map below for the pass-name → category mapping (e.g. `ILCM`=LICM, `INIS`=NeuronISel, `ISIM`=SimulatorPass).
 
 ### Build mechanism
 
-The dict is a **compile-time-frozen Cython constant**: the whole `{(cat,idx):(cause,res), …}` literal is stored as one large tuple-of-pairs in `.rodata`, materialised once in the module-exec and bound to the global. The module-exec `__pyx_pymod_exec_ErrorMessages` (entry `0x53c8`) contains only ~9 `PyDict_SetItem` calls total — far too few for 2556 inline insertions. This is exactly why D-A13 could not recover the `(cat,idx)↔text` pairing from `strings` alone: `strings` sees the text blob and the category tokens, but the *adjacency* is encoded in the frozen constant's pointer layout, not interleaved in the string section. The runtime import reconstitutes it losslessly. Cython build provenance is CONFIRMED via an `__assert_fail` string: `.../neuronxcc/logging/ErrorMessages.cxx`, function `int __pyx_pymod_exec_ErrorMessages(PyObject*)`.
+The dict is a **compile-time-frozen Cython constant**: the whole `{(cat,idx):(cause,res), …}` literal is stored as one large tuple-of-pairs in `.rodata`, materialised once in the module-exec and bound to the global. The module-exec `__pyx_pymod_exec_ErrorMessages` (entry `0x53c8`) contains only ~9 `PyDict_SetItem` calls total — far too few for 2556 inline insertions. This is exactly why the `(cat,idx)↔text` pairing cannot be recovered from `strings` alone: `strings` sees the text blob and the category tokens, but the *adjacency* is encoded in the frozen constant's pointer layout, not interleaved in the string section. Only a runtime import reconstitutes it losslessly. The Cython build provenance shows up in an `__assert_fail` string: `.../neuronxcc/logging/ErrorMessages.cxx`, function `int __pyx_pymod_exec_ErrorMessages(PyObject*)`.
 
 ### Wiring
 
@@ -220,11 +220,11 @@ logging.addLevelName(logging.NOTSET   +  5, "TRACE")               # TRACE = 5
 register_namespace("neuronxcc", NEURON_ASSERT_ERROR_MESSAGES)      # ONE call, whole flat dict
 ```
 
-`register_namespace`, `NEURON_ASSERT_ERROR_MESSAGES`, and `addLevelName` are CONFIRMED symbols in `__init__.so`. The single namespace string `"neuronxcc"` registers the entire flat dict; there are *not* 353 separate registrations. The `USER`/`OFF`/`TRACE` level constants bolted onto the stdlib `logging` module are the neuronxcc severity overlay — see [§3.18 neuronlogger](neuronlogger.md) and [§3.19 python-logging-facade](python-logging-facade.md).
+`register_namespace`, `NEURON_ASSERT_ERROR_MESSAGES`, and `addLevelName` are all symbols in `__init__.so`. The single namespace string `"neuronxcc"` registers the entire flat dict; there are *not* 353 separate registrations. The `USER`/`OFF`/`TRACE` level constants bolted onto the stdlib `logging` module are the neuronxcc severity overlay — see [§3.18 neuronlogger](neuronlogger.md) and [§3.19 python-logging-facade](python-logging-facade.md).
 
 ### Representative categories & rows
 
-The table is too large to inline. Here are representative rows grouped by emitting subsystem (CONFIRMED templates; `{kwarg}` placeholders verbatim). The full 2556-row dump is the **Part-14 error appendix (planned)**.
+The table is too large to inline. Here are representative rows grouped by emitting subsystem, templates and `{kwarg}` placeholders verbatim. The full 2556-row dump is the **Part-14 error appendix (planned)**.
 
 ```text
 # EXTERNAL — driver / arguments (EARG, EDRV, EBRD, EOOM)            [Severity: ERROR/user]
@@ -249,13 +249,13 @@ The table is too large to inline. Here are representative rows grouped by emitti
 ('INIS',901) "NeuronISel assertion error: {baseMessage}"    ('IBCG',901) "BIRCodeGenLoop assertion error: {baseMessage}"
 ```
 
-### First-letter category histogram (distinct categories, CONFIRMED)
+### First-letter category histogram (distinct categories)
 
 ```text
 A=3  B=9  C=4  D=4  E=24  G=1  I=252  J=2  L=12  M=5  N=4  O=2  P=3  R=1  S=8  T=3  V=1  X=15
 ```
 
-The bare-category first letter is a **subsystem tag**, not a severity: `B*`=BIR, `L*`=loop/link/legalize/LNC, `S*`=schedule/sim/serdes, `X*`=XLA-bridge/codegen, `M*`=memory/MMP, `D*`=DMA/driver. (STRONG — from the per-category pass labels.)
+The bare-category first letter is a **subsystem tag**, not a severity: `B*`=BIR, `L*`=loop/link/legalize/LNC, `S*`=schedule/sim/serdes, `X*`=XLA-bridge/codegen, `M*`=memory/MMP, `D*`=DMA/driver. [INFERRED] from the per-category pass labels.
 
 ### Largest categories (by entry count, from the per-category index map)
 
@@ -278,17 +278,17 @@ There are **two independent** `NeuronAssertion` implementations. Do not conflate
 
 ### (I) Frontend — `neuronxlogger/{error,error_validation}.py`
 
-Pure Python, shipped as `.py` source (CONFIRMED, read in full). Surface: `NeuronAssertion(Exception)`, `ErrorCode(category,index)`, `neuron_internal_assert` / `neuron_external_assert` / `neuron_internal_assert_msg`, `register_namespace`. The class-level registry is `NeuronAssertion.namespaces: Dict[str, Dict]`. On a lookup miss, `_fallback_internal_assert` raises `ErrorCode("INAS",1)` — the canonical "namespace/code does not exist" failure (`INAS001`). `error_validation.py` is the **CI linter** (`valid_error_category`, `verify_neuron_assert_namespace`) — *not* a runtime path.
+Pure Python, shipped as readable `.py` source. Surface: `NeuronAssertion(Exception)`, `ErrorCode(category,index)`, `neuron_internal_assert` / `neuron_external_assert` / `neuron_internal_assert_msg`, `register_namespace`. The class-level registry is `NeuronAssertion.namespaces: Dict[str, Dict]`. On a lookup miss, `_fallback_internal_assert` raises `ErrorCode("INAS",1)` — the canonical "namespace/code does not exist" failure (`INAS001`). `error_validation.py` is the **CI linter** (`valid_error_category`, `verify_neuron_assert_namespace`) — *not* a runtime path.
 
 ### (II) Backend — `neuronxcc/logging/{Assert,ErrorMessages,__init__}.so`
 
-Cython package. `ErrorMessages.so` holds the 2556-entry dict (system C). `Assert.so` exposes `neuron_assert(namespace, index, condition, **kwargs)` plus `class NeuronAssertionError` (`getSrcInfo` / `getSrcInfoFromDebugLocation` / `__str__`, CONFIRMED symbols) and the rendered-prefix constants (`__pyx_kp_u_INTERNAL_ERROR_NCC_I`). `__init__.so` wires `ErrorMessages` into the frontend registry via `register_namespace("neuronxcc", …)`. The **same** C++ model is statically linked into the native bins as `logging::NeuronAssertion` / `lookupCause` / `lookupResolution`.
+Cython package. `ErrorMessages.so` holds the 2556-entry dict (system C). `Assert.so` exposes `neuron_assert(namespace, index, condition, **kwargs)` plus `class NeuronAssertionError` (with `getSrcInfo`, `getSrcInfoFromDebugLocation` and `__str__`) and the rendered-prefix constants (`__pyx_kp_u_INTERNAL_ERROR_NCC_I`). `__init__.so` wires `ErrorMessages` into the frontend registry via `register_namespace("neuronxcc", …)`. The **same** C++ model is statically linked into the native bins as `logging::NeuronAssertion` / `lookupCause` / `lookupResolution`.
 
-Pinned Python call sites (CONFIRMED): `cli/Daemon.py` → `neuron_assert('DAE',1/2,…)`; `nki/.../kernel_assert.py` → `neuron_assert("NKI",16, condition, error_text, **kwargs)`.
+Pinned Python call sites: `cli/Daemon.py` → `neuron_assert('DAE',1/2,…)`; `nki/.../kernel_assert.py` → `neuron_assert("NKI",16, condition, error_text, **kwargs)`.
 
 > **NOTE —** the split is **FRONTEND-native-rodata** (`EVRF`/`PYP`/`ISPP`/`HPM`/`CTR`/… — baked into the HLO bins, system B) **vs BACKEND-ErrorMessages.pyx** (the 353 categories of system C, reached via the linked C++ `NeuronAssertion` *and* the Python `neuron_assert`). They overlap at exactly one category: `IIOT` (present in `ErrorMessages.so` only as the generated `(IIOT,901)/(IIOT,902)` pair). So the same `NeuronAssertion` *model* is rendered in two places with disjoint category sets.
 
-### Render path (CONFIRMED verbatim from `neuronxlogger/error.py`)
+### Render path, verbatim from `neuronxlogger/error.py`
 
 ```c
 // neuron_external_assert / neuron_internal_assert (error.py L77-190)
@@ -310,7 +310,7 @@ if not debugloc:  message = f"{prefix} [NCC_{ec}] {cause} - {res}"
 else:             message = f"{debugloc} {prefix} [NCC_{ec}] {cause} - {res}"
 ```
 
-Worked example (CONFIRMED templates):
+Worked example:
 
 ```text
 neuron_external_assert("neuronxcc","EARG",2, cond, …, unrecognized_args="--foo", usage="…")
@@ -318,9 +318,9 @@ neuron_external_assert("neuronxcc","EARG",2, cond, …, unrecognized_args="--foo
      unrecognized: --foo. - Check that only recognized arguments are used: …"
 ```
 
-### CORRECTION — the prefix is chosen by the assert *function*, not the category
+### The prefix is chosen by the assert *function*, not the category
 
-> **CORRECTION (A13→AG09) —** an earlier reading said the `[INTERNAL_ERROR]` vs `[ERROR]` prefix is selected by parsing the category's first letter (`I…`/`E…`). The shipped `error.py` shows otherwise: `neuron_internal_assert` hard-codes `INTERNAL_ERROR_PREFIX` (L109) and `neuron_external_assert` hard-codes `EXTERNAL_ERROR_PREFIX` (L188). The runtime never branches on `CAT[0]`. The `I…`/`E…` naming is a **strong convention** enforced *at CI lint time* by `valid_error_category` (internal asserts must use 4-char `I*`, external 4-char `E*`), and it co-varies with the chosen prefix — but the prefix is determined by *which function the caller invoked*, not by the letter. For bare categories the prefix is whatever assert the native/Python call site uses; the bare first letter is a subsystem tag.
+> **GOTCHA — the `[INTERNAL_ERROR]` / `[ERROR]` prefix does not come from the category letter.** `neuron_internal_assert` hard-codes `INTERNAL_ERROR_PREFIX` (`error.py` L109) and `neuron_external_assert` hard-codes `EXTERNAL_ERROR_PREFIX` (L188); the runtime never branches on `CAT[0]`. The `I…`/`E…` naming is a convention enforced *at CI lint time* by `valid_error_category`, and it co-varies with the prefix — but the prefix is decided by which function the caller invoked. For bare categories the prefix is simply whatever assert the call site used; the bare first letter is a subsystem tag.
 
 > **QUIRK —** `neuron_internal_assert_msg` (L115-152) still *validates* that `(cat,idx)` exists in the table (it calls `_get_cause_resolution` and discards the result) but then **overrides** the cause with a caller-supplied `cause_message` and forces `resolution = "{RESOLUTION_CONTACT_SUPPORT}"`. So a registered `(cat,idx)` can serve purely as a "this code is valid" gate with inline text — which is why some entries like `('ENKI',1)` exist as empty-string existence sentinels.
 
@@ -332,7 +332,7 @@ neuron_external_assert("neuronxcc","EARG",2, cond, …, unrecognized_args="--foo
 
 `hlo-opt` links the full MLIR/LLVM diagnostic infrastructure. These are emitted *ad hoc* with source locations during op-verification and LLVM codegen — they are **not** a closed, numbered catalog. Severity is encoded in the prefix.
 
-### Diagnostic prefixes (CONFIRMED literals in `hlo-opt`)
+### Diagnostic prefixes (literals in `hlo-opt`)
 
 | Prefix | MLIR severity | Meaning |
 |---|---|---|
@@ -341,15 +341,15 @@ neuron_external_assert("neuronxcc","EARG",2, cond, …, unrecognized_args="--foo
 | `note:` | (attached context) | informational, attaches to a prior diagnostic |
 | `remark:` | `DiagnosticSeverity::Remark` | optimization remark / info |
 
-Driver wrappers (CONFIRMED strings): `"LLVM compilation error: "`, `"LLVM ERROR: "`, `"JIT session error: "`, `"In-Flight Diagnostics:"`. Supporting flags: `mlir-print-op-on-diagnostic`, `crash-diagnostics-dir`, `-split-input-file` (`// -----` separators). All CONFIRMED.
+Driver wrapper strings: `"LLVM compilation error: "`, `"LLVM ERROR: "`, `"JIT session error: "`, `"In-Flight Diagnostics:"`. Supporting flags: `mlir-print-op-on-diagnostic`, `crash-diagnostics-dir`, `-split-input-file` (`// -----` separators).
 
 ### Ad-hoc numbered codes (NOT `NCC_`)
 
 `StaticIOTranspose` (Cython, separate from the native bins) emits its own `n001/n002/n003` numbered diagnostics on the modular io_transpose path: `n001` = ≥2 modular files without `--netlist`; `n002` = duplicate/forbidden transpose; `n003` = reshape size mismatch. These are distinct from the `NCC_IIOT/IHNW` codes in `hlo-neff-wrapper` (which check the same conditions but render as `NCC_` tokens). See [§3.15 static-io-transpose](static-io-transpose.md).
 
-Backend validation also emits free-form (non-`NCC_`) diagnostics: `"Data race detected:"` from `libBIRRacecheck.so` (`racecheck::RaceChecker`). The `neuronxcc::backend::ErrorType` LLVM `cl::opt` enum (`abort` / `error` / `ignore` / `strict`, STRONG) is a knob that escalates/suppresses backend validation failures — a *control*, not a code.
+Backend validation also emits free-form (non-`NCC_`) diagnostics: `"Data race detected:"` from `libBIRRacecheck.so` (`racecheck::RaceChecker`). The `neuronxcc::backend::ErrorType` LLVM `cl::opt` enum (`abort` / `error` / `ignore` / `strict`) is a knob that escalates or suppresses backend validation failures — a *control*, not a code.
 
-> **CORRECTION (per D-B13) —** an earlier note attributed `n001/002/003` codes to the CC-ops legalizers. That is **uncorroborated**: those sites carry no `NCC_` code; their only diagnostic is the up-cast *warning* `"We up-casted some collective-communication ops … performance penalty"` plus `TfCheckOp` aborts. The confirmable `n00x` codes are `StaticIOTranspose`'s.
+> **GOTCHA — the CC-ops legalizers emit no numbered code at all.** They are sometimes assumed to own an `n00x` family; they do not. Those sites carry no `NCC_` code, and their only diagnostic is the up-cast *warning* `"We up-casted some collective-communication ops … performance penalty"` plus `TfCheckOp` aborts. The only `n00x` codes in the wheel are `StaticIOTranspose`'s.
 
 ---
 
@@ -383,15 +383,15 @@ Native `NCC_` rows: the message template body is the subsystem text per system C
 
 ### Cross-ABI identity
 
-The catalog is **ABI-independent**: the cp310/cp311/cp312 wheels carry the identical 224-token `NCC_` set and the identical 2556-entry `ErrorMessages` dict (D-AG09 reports an md5-identical sorted `(cat,idx,cause,res)` tuple set, `2c25078c8065b0381143fabf7aff60be`, across all three). A reimplementation may treat the catalog as fixed across CPython versions.
+The catalog is **ABI-independent**: the cp310/cp311/cp312 wheels carry the identical 224-token `NCC_` set and the identical 2556-entry `ErrorMessages` dict — the sorted `(cat,idx,cause,res)` tuple set hashes to `2c25078c8065b0381143fabf7aff60be` on all three. A reimplementation may treat the catalog as fixed across CPython versions.
 
 ---
 
 ## Gaps & Caveats
 
 1. **Frontend native NCC bodies are not in the dict.** The 224 native `NCC_` codes' *bodies* for frontend categories (`EVRF`/`PYP`/`ISPP`/`MOD`/`HPM`/`CTR`/…) are baked into the HLO bins' rodata, not in `ErrorMessages.so`. The exact per-index `NCC_OPT001` ↔ message binding is co-located but not individually pinned (codes and strings are separate rodata blobs).
-2. **`128+signal` for F-codes is INFERRED** (POSIX convention + the F137-OOM wording); the message bodies and the OOM tie are CONFIRMED.
-3. **The `n00x` CC-ops-legalizer claim is uncorroborated** (per D-B13); the confirmable `n00x` codes are `StaticIOTranspose`'s.
+2. **The `128+signal` decode for F-codes is [INFERRED]** from POSIX convention plus the F137-OOM wording; the message bodies themselves are verbatim literals.
+3. **The CC-ops legalizers own no `n00x` family** — the only `n00x` codes in the wheel are `StaticIOTranspose`'s.
 4. **Index sets are sparse** (retired/`OBSOLETE` codes); ranges are enumerated-with-gaps.
 5. The MLIR/LLVM `error:`/`warning:`/`note:`/`remark:` tier is open-ended — only the structured `NCC_*` / `F*` / `DAE*` / `n00x` codes are enumerable.
 

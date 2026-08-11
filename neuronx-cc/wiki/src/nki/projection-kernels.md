@@ -71,9 +71,7 @@ function _qkv_cte_matmul(input_sb, weights_sb, psum):       // qkv_cte.py:1401-1
 
 > **QUIRK —** the *contraction* side is `H`, but at the NKI call site `input` is the **stationary** operand and `weights` is **moving**, the reverse of the textbook "weights stay, activations stream" intuition. The PE-array contract (`stationary`/`moving`, both loaded with the contraction on the 128-partition) is orthogonal to which logical tensor is "the weights". The static-FP8 path (`qkv_cte.py:1336-1383`) uses the same single-matmul structure with `perf_mode="double_row"` (256-H subtiles, two 128-tiles fused) for 2× throughput.
 
-The TKG matmul (`qkv_tkg.py:1507-1513`) keeps the hidden as `[H0=128, B·S, H1]` (`H0` already on the partition, no transpose needed) and packs multiple small-`B·S` matmuls into the 128-wide array via `tile_position`. The array-tiling factor is `array_tiling_dim`: `B·S ≤ 32 → 32` (4×), `≤ 64 → 64` (2×), else `128`; `gen2` forces `64` (`qkv_tkg.py:611-621`).
-
-> **CORRECTION (QKV-1) —** an earlier survey claimed the TKG tiling variable was named `dim32`/`dim64`. It is `array_tiling_dim`, taking integer values `32`/`64`/`128` (`qkv_tkg.py:611-621`); the comments label the modes `"4x 128P*32F"` / `"2x 128P*64F"`. The numeric thresholds and the gen2-forces-64 rule are exact.
+The TKG matmul (`qkv_tkg.py:1507-1513`) keeps the hidden as `[H0=128, B·S, H1]` (`H0` already on the partition, no transpose needed) and packs multiple small-`B·S` matmuls into the 128-wide array via `tile_position`. The array-tiling factor is a single integer, `array_tiling_dim`, taking the values `32` / `64` / `128` (`qkv_tkg.py:611-621`): `B·S ≤ 32 → 32` (4×), `≤ 64 → 64` (2×), else `128`, with `gen2` forced to `64`. The source comments name the two packed modes `"4x 128P*32F"` and `"2x 128P*64F"`.
 
 ### Output slicing — Q | K | V
 
@@ -209,9 +207,7 @@ The golden reference confirms the math: `attn.permute(0,3,1,2).reshape(B,S,N·D)
 
 ### Head packing
 
-When `D < P_MAX`, o_proj folds multiple heads into the partition to fill the 128-wide contraction. `_calculate_head_packing` (`cte_parameters.py:193-196`) and `calculate_head_packing` (`output_projection_utils.py:36-43`) find `group_size` = the largest divisor of `N` with `group_size·D ≤ 128`, then `new_N = N//group_size`, `new_D = D·group_size`. For `D=128`, `group_size=1` (no packing). MX/STATIC_MX force `group_size=1` (`cte_parameters.py:322-323`); the TKG variant gates head-packing on `D % 32 == 0`.
-
-> **CORRECTION (OPROJ-1) —** `_calculate_head_packing` is **duplicated** (`cte_parameters.py:193` and `output_projection_utils.py:36`, near-identical). The two copies are a maintenance smell, not a behavioural difference.
+When `D < P_MAX`, o_proj folds multiple heads into the partition to fill the 128-wide contraction. `_calculate_head_packing` (`cte_parameters.py:193-196`) and `calculate_head_packing` (`output_projection_utils.py:36-43`) find `group_size` = the largest divisor of `N` with `group_size·D ≤ 128`, then `new_N = N//group_size`, `new_D = D·group_size`. For `D=128`, `group_size=1` (no packing). MX/STATIC_MX force `group_size=1` (`cte_parameters.py:322-323`); the TKG variant gates head-packing on `D % 32 == 0`. The two listed definitions are near-identical duplicates of one routine, not two behaviours.
 
 ### Dtype dispatch
 
@@ -232,7 +228,7 @@ CTE dispatches `STATIC`/`STATIC_MX`/`MX`/float at `output_projection_cte.py:155-
 
 `STATIC_MX` runs per-tensor FP8 on the MX engine with **constant** E8M0 scales for 4× throughput — not true per-block MX. The constant is `127` (`= 2^(127−127) = 1.0`): `create_constant_mx_scales(..., scale_value: int = 127)` at `cte_tensor_io.py:575`, and the real dequant is a post-matmul `tensor_scalar(·combined_weight_scale)` (`cte_quantization.py:1136`), not the E8M0.
 
-> **CORRECTION (OPROJ-2) —** the docstrings at `cte_quantization.py:818` and `cte_tensor_io.py:579` say the constant MX scale is **`126`**. The **code is correct (`127`)**; the docstring comment is stale.
+> **GOTCHA — the docstrings say `126`, the code says `127`.** Two docstrings (`cte_quantization.py:818` and `cte_tensor_io.py:579`) give the constant MX scale as `126`. The executed default is `127`, i.e. an E8M0 of exactly `1.0`. The docstrings are stale; trust `create_constant_mx_scales`.
 
 ---
 
@@ -277,7 +273,7 @@ In Megatron-style tensor parallelism, attention heads are column-sharded so o_pr
 
 Any cross-*rank* TP all-reduce (distinct from the LNC logical-core shard) is a **separate HLO collective** — `AllReduce` (SUM, for TP) or `ReduceScatter` (for sequence-parallel TP) — lowered by the graph compiler and inserted *around* this leaf kernel, never inside it. See [AllReduce/ReduceScatter Combiners](../hlo-opt/collective-combiners.md) for the graph-level placement and threshold model.
 
-> **CORRECTION (OPROJ-3) —** a common framing calls o_proj "the TP all-reduce point" and expects it to emit a `sendrecv`-reduce. The o_proj NKI kernel emits **no** reduce. Its LNC mode is the **gather** half (disjoint-HBM writes), and any TP reduce is a graph-level collective external to the kernel. The kernel is the leaf; the collective is the wrapper.
+> **GOTCHA — o_proj is not "the TP all-reduce point".** It is commonly described that way, which leads readers to look inside the kernel for a `sendrecv`-reduce. There is none. The kernel's LNC mode is the **gather** half — disjoint HBM writes — and any TP reduce is a graph-level collective wrapped *around* this leaf.
 
 ---
 
@@ -333,4 +329,4 @@ MX paths interpose `quantize_mx(→fp8_x4 + uint8 E8M0)` and swap `nc_matmul` fo
 - [SBUF / PSUM Geometry](../arch/sbuf-psum-geometry.md) — the 128-partition PE array and 512-column PSUM banks the fused matmul tiles into
 - [Worked Example — Matmul Lowering](../front/worked-example-matmul.md) — the matmul descent these projections specialise
 - [AllReduce/ReduceScatter Combiners & Threshold Model](../hlo-opt/collective-combiners.md) — the *graph-level* TP collective placed around o_proj (the reduce o_proj itself does **not** emit)
-- RoPE *(planned, §6.7.11)* — the standalone rotary-embedding kernel; the QKV CTE variant fuses this scheme in `_copy_psum_to_sbuf_apply_rope_and_bias`
+- RoPE *(planned)* — the standalone rotary-embedding kernel; the QKV CTE variant fuses this scheme in `_copy_psum_to_sbuf_apply_rope_and_bias`

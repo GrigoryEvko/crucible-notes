@@ -8,7 +8,7 @@ generation profile that rolls up the five committed MAVERICK image pages
 profile, and pushes the thinnest generation from "ISA-headers-only" toward OBSERVED
 wherever the shipped v5 arch-ISA headers, the customop-lib v5 firmware images, and a
 native `ncore2gp` disassembly of those images permit. Every fact here is consistent
-with the five image pages and re-grounded against the binary this pass.
+with the five image pages and re-grounded against the binary.
 
 MAVERICK is the **fifth, newest** GPSIMD codename — `coretype 37` (OBSERVED),
 `arch_id 36` (INFERRED), NC-v5 / `NeuronCoreVersion::V5` — the "Cairo" Vision-Q7 NX
@@ -24,7 +24,7 @@ MAVERICK is the **fifth, newest** GPSIMD codename — `coretype 37` (OBSERVED),
 > counts + `(opcode,spec)` key sets, the PROF-CAM armed sets, the shipped
 > arch-ISA **opcode-enum values** and the `get_ext_isa` `coretype 37` dispatch case.
 > What stays **`INFERRED`**: every v5 *interior* — per-opcode→handler-body bindings,
-> full-body decode (FLIX-VLIW desync frontier, SX-FW-00), `arch_id 36`, the v5 Q7
+> full-body decode (FLIX-VLIW desync frontier, FW-00), `arch_id 36`, the v5 Q7
 > geometry / CSR programmer / run-stall / DKL, the v5 D2D transport IP. Never state a
 > v5 interior as fact. Confidence is `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` per the
 > [Confidence & Walls Model](../reference/confidence-model.md). [WALL]
@@ -84,7 +84,7 @@ later SoC instance* (OBSERVED); the part name is not.
 libnrtucode.a` (sha256 `158dadc5…`) carries **0** MAVERICK members
 (**435** total = **420 image members** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 /
 SUNDA 48 / MAVERICK 0] **+ 15 framework `.c.o`** objects, re-verified
-`ar t | rg -ic maverick` → empty this pass). So **every MAVERICK carve is
+`ar t | rg -ic maverick` → empty). So **every MAVERICK carve is
 single-source by necessity** — there is no `.a` member to byte-reconcile against
 (unlike the v4/v4+ carves, which reconciled `.so`==`.a`). The shipped static archive
 topping out at MARIANA_PLUS is itself a gen-step signature. [HIGH/OBSERVED]
@@ -181,8 +181,8 @@ The four OBSERVED footprints:
 The central cross-gen deliverable. `v5 = strict v4 opcode superset (+6)` — **165
 opcodes**, all 159 mariana ops recurring with identical name=value (zero drift, zero
 drop), plus six genuine new free slots. Each opcode value below was read directly from
-`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` this pass (line + `// Y`
-marker shown where load-bearing). `OBS` = OBSERVED this pass; `INF` = inferred; `CIT`
+`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` (line + `// Y`
+marker shown where it decides the result). `OBS` = OBSERVED; `INF` = inferred; `CIT`
 = carried.
 
 | FEATURE / AXIS | MARIANA (v4) | MAVERICK (v5) | EVID |
@@ -346,9 +346,9 @@ customop-lib v5 firmware images + native `ncore2gp` disasm permit.
 |---|---|---|---|
 | **W1** | **`arch_id 36` INFERRED** | `coretype 37` (the `get_ext_isa` ct37 dispatch case + `maverick_libs`); `NeuronCoreVersion::V5`; the v5 NCFW image is **definitively ABSENT** (`libncfw` ladder = `{0x05,0x0c,0x14,0x1c}` only; no v5/maverick string) | the specific value **36** — `coretype−1` extrapolation, **no byte confirms it**. Mark `36*`. [HIGH that v5 NCFW is absent; LOW that the arch_id is 36] |
 | **W2** | **v5 Q7 geometry / CSR programmer / run-stall / DKL** | the firmware confirms **8× Q7_POOL + 4 EXTISA** (62 getters; the KIT carves); the v5 device-CSR headers (`xt_defines`, `xt_general_local_reg_defines`, `notification`) are **byte-identical to v4** (a negative OBSERVED) | `{base_offset, IRAM/DRAM size, reserved tail, num_q7 POOL/CC, POOL local-reg base}` — no v5 KaenaHal slot in libnrt 2.31.x, no v5 device-CSR delta to read. Cayman-class+ INFERRED. Q7 DKL is **dropped** (12 DKL getters gone) — OBSERVED absence; the runtime swap path INFERRED |
-| **W3** | **v5 D2D transport changes** | the ISA exposes the remote-capable descriptor model (`REMOTE_SEM_INC`/`REMOTE_COLLSYNC_INC`, `remote_core_id` in `DmaMemcpy2`); the `SEMA_SYNC.CLEAR_PCIE_RO` hook persists; the firmware names the **DGE** dispatcher | the PHY/IP. The "UCIe 2nm chiplet, 7-entry abstract D2D IP, H_DIE_SCRATCHPAD" reading is **CARRIED** from SX-GEN-08 — neither header nor firmware names the PHY. INFERRED at the IP level |
+| **W3** | **v5 D2D transport changes** | the ISA exposes the remote-capable descriptor model (`REMOTE_SEM_INC`/`REMOTE_COLLSYNC_INC`, `remote_core_id` in `DmaMemcpy2`); the `SEMA_SYNC.CLEAR_PCIE_RO` hook persists; the firmware names the **DGE** dispatcher | the PHY/IP. The "UCIe 2nm chiplet, 7-entry abstract D2D IP, H_DIE_SCRATCHPAD" reading is **CARRIED** from GEN-08 — neither header nor firmware names the PHY. INFERRED at the IP level |
 | **W4** | **v5 `Q7_CC_TOP` collective FW FILE-ABSENT** | `nm | rg -c 'MAVERICK_Q7_CC_TOP.*_get'` = **0** — a genuine provisioning gap (parallel to SUNDA's missing Q7_CC_TOP), not merely unread | the v5 compute-cluster collective top-sync firmware is **not in this artifact**. Its existence/shape on real silicon is out of scope of this corpus |
-| **W5** | **v5 DVE/PE/Q7 full-body decode PARTIAL** | the reset/boot spine, the dispatch *structure* (187-entry `addi −48` table / `addx4`-indexed DRAM table / SP base-subtraction), the PROF arming, the `S:`/`P%i:` rosters, and the MX IVP fingerprints (`ivp_srln_2x32`/`ivp_bmaxn_2x32`/`ivp_mulus4tan16xr16`/`ivp_dextrprn_2x32`) are OBSERVED | the **per-opcode→handler-*body* binding** — the PERF/TEST IRAM vector datapath desyncs under FLIX-VLIW bundling in the linear sweep (the SX-FW-00 ceiling). No DEBUG image on PE/POOL/SP to anchor a body. Per-row body INFERRED |
+| **W5** | **v5 DVE/PE/Q7 full-body decode PARTIAL** | the reset/boot spine, the dispatch *structure* (187-entry `addi −48` table / `addx4`-indexed DRAM table / SP base-subtraction), the PROF arming, the `S:`/`P%i:` rosters, and the MX IVP fingerprints (`ivp_srln_2x32`/`ivp_bmaxn_2x32`/`ivp_mulus4tan16xr16`/`ivp_dextrprn_2x32`) are OBSERVED | the **per-opcode→handler-*body* binding** — the PERF/TEST IRAM vector datapath desyncs under FLIX-VLIW bundling in the linear sweep (the FW-00 ceiling). No DEBUG image on PE/POOL/SP to anchor a body. Per-row body INFERRED |
 | **W6** | residual roll-up | the QuantizeMx `0xe3` ambiguity is **RESOLVED** (§6, no longer a wall); the PROF `0x1e3` "4th deprecation" is the `0xe3` mask-respec (resolved); `MODULE_SCHEDULE`/SortMerge phantoms do not bite v5 (no MAVERICK image references them) | nothing residual blocks v5 beyond W1–W5; the §6 resolution removes the largest open divergence |
 
 > **GOTCHA — the device-CSR header equality is WHY the geometry stays inferred.**
@@ -429,7 +429,7 @@ gen-wide; `cayman/seq` source tree retained; NC-v5 own ISA dir.
    `NRTUCODE_CORE_MAVERICK_NX_POOL` enumerant. `arch_id 36` has no NCFW image
    (`libncfw` ladder caps at `0x1c`). **HOLDS — split respected.** [HIGH/OBSERVED vs MED/INFERRED]
 2. **The ACT-fold four zeros.** *Challenge:* a carve gap could fake the absence.
-   *Re-verify:* `nm | rg -c 'MAVERICK.*NX_ACT'` = 0 (confirmed this pass); the 62
+   *Re-verify:* `nm | rg -c 'MAVERICK.*NX_ACT'` = 0; the 62
    getters resolve to DVE/PE/POOL/SP/Q7 with no ACT family; the 5 ACT handlers = 0
    firmware-wide; `0x23`/`0x25` armed on DVE PROF (absent on MARIANA DVE). **HOLDS.** [HIGH/OBSERVED]
 3. **The `0xe3` resolution.** *Challenge:* maybe `0xe3` IS a POOL row and the pages
@@ -443,13 +443,13 @@ gen-wide; `cayman/seq` source tree retained; NC-v5 own ISA dir.
    Q7_POOL `06 78`→`j 0x1e4` (−0x1c). The shorthand `−0x20` is wrong for SP/Q7; the true
    invariant is `enter_run @0x94`. **HOLDS — unified table, not the shorthand.** [HIGH/OBSERVED]
 5. **The opcode-enum values.** *Challenge:* are `0xb6/0xf3/0xf4/0xe3` exact?
-   *Re-verify, read from `common.h` this pass:* `COMPACT_CONTROL_INST = 0xb6` (`:266`),
+   *Re-verify, read from `common.h`:* `COMPACT_CONTROL_INST = 0xb6` (`:266`),
    `TENSOR_TENSOR_INT_WIDE = 0xf3` (`:320`), `TENSOR_SCALAR_INT_WIDE = 0xf4` (`:321`),
    `QUANTIZE_MX = 0xe3` (`:309`), `MATMUL_MX = 0x0A` (`:167`), `LDWEIGHTS_MX = 0x09`
    (`:166`), `TENSOR_DEQUANTIZE = 0x7b` (`:222`); MX dtypes `0x11/0x12/0x13-0x16`.
    **HOLDS — all byte-confirmed.** [HIGH/OBSERVED]
 
-**Honesty ledger.** *HIGH/OBSERVED (this pass):* container sha `b7c67e89…` MATCH; the
+**Honesty ledger.** *HIGH/OBSERVED:* container sha `b7c67e89…` MATCH; the
 62-getter histogram (DVE 14 / PE 10 / NX_POOL 10 / SP 8 / Q7_POOL 20 / Q7_CC_TOP 0 /
 NX_ACT 0); 0 `.a` members of 435; `maverick_libs @0x9b9050`; the ct37 dispatch
 (`cmp 0x25` + mask `0x2020202000`); `NeuronCoreVersion::V5=5` (maverick) vs caps-V4

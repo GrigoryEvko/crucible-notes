@@ -339,8 +339,8 @@ H_COMM_INTRA_ID=0  H_COMM_INTER_ID=1  H_COMM_MAX_ID=2
 SDMA_CCETYPE_ADD=0 FMA=1 MAX=2 MIN=3 EXT=4 GCE=5
 ```
 
-> **CORRECTION (vs. SX-CCL-02 backing report).** The report's `enc_op_type`
-> table stopped at `ENC_PERMUTE_IMPLICIT=10`. The actual libnrt enum continues:
+> **CORRECTION — the `enc_op_type` enum continues past `ENC_PERMUTE_IMPLICIT=10`.**
+> An earlier reading stopped the table at `ENC_PERMUTE_IMPLICIT=10`; the actual libnrt enum continues:
 > `ENC_PERMUTE_REDUCE_IMPLICIT=11`, **`ENC_ALLTOALL_V=12`**, `ENC_OP_INVALID=13`.
 > The presence of `ENC_ALLTOALL_V` is consistent with the A2Av path
 > ([§3a](#3a-src1_bitmap--a2av-metadata)) and the

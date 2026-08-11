@@ -26,12 +26,12 @@ Cross-references:
 [tensor object chain](tensor-object-chain.md) ·
 [Q7PtrType](q7ptrtype.md).
 
-> **CORRECTION (vs SX-ABI-06).** The earlier pass *inferred* the ISA→ScalarType
+> **CORRECTION (vs ABI-06).** That report *inferred* the ISA→ScalarType
 > map from the surrounding call graph. This page **decodes the actual switch**
 > from the Xtensa machine code (`xtensa-elf-objdump`, core `ncore2gp`), so every
 > row below is `OBSERVED` from the compare/branch chain, not reconstructed.
 
-> **CORRECTION (vs SX-ABI-06).** The unsupported-dtype DEFAULT arm is **not**
+> **CORRECTION (vs ABI-06).** The unsupported-dtype DEFAULT arm is **not**
 > `ScalarType::Undefined` (ordinal 18). It is a hard `_Assert` →
 > `noreturn`/abort. The pre-decode sentinel that *would* have been stored is the
 > magic `42` (`0x2a`), never `18`, and it is always overwritten on a hit or
@@ -318,7 +318,7 @@ the `expr` here is the literal `0`, i.e. an unconditional fail). Control never
 returns; there is no `ScalarType::Undefined` (ordinal 18) produced.
 `[HIGH][OBSERVED]`
 
-> **CORRECTION — assert line number.** SX-ABI-06 attributed the default abort
+> **CORRECTION — assert line number.** ABI-06 attributed the default abort
 > to `utypes.hpp:89 ret == 0`. Byte-accurate `.data` extraction (`objcopy
 > --only-section=.data` + offset index) shows the relocation `.data+0x3ab`
 > resolves to **`utypes.hpp:37 0`**, not `:89`. The string `utypes.hpp:89 ret ==

@@ -11,7 +11,8 @@
 > Everything below is derived from static analysis of the shipped customop static
 > objects (Xtensa DWARF, disassembled with the shipped `ncore2gp` toolchain), the
 > shipped RTL-generated CSR headers, and the shipped host `libnrtucode_internal.so`
-> string/format table. Confidence is tagged `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+> string/format table. Claims that depart from the page default `HIGH/OBSERVED`
+> carry an explicit tag.
 
 Related pages: the translate ABI [`../../abi/neuron-translate-windows.md`](../../abi/neuron-translate-windows.md),
 the SEQ SoC window manager [`../../firmware/seq/soc-window-manager.md`](../../firmware/seq/soc-window-manager.md),
@@ -74,8 +75,8 @@ A SoC address is 64-bit with bits `[57:0]` defined; the **LOCAL** (own-die) view
 > with `DIE[47]` / `CAYMAN_ID[53:48]` set. This is the cross-die mechanism (§7).
 
 > **CORRECTION — "57-bit SoC physical" is loose shorthand; the precise form is
-> 58-bit decode field, `[54:0]` routed, 2⁵⁴ populated.** Earlier passes of this
-> page (and a few siblings) called the target a "57-bit SoC physical" space. That
+> 58-bit decode field, `[54:0]` routed, 2⁵⁴ populated.** Calling the target a
+> "57-bit SoC physical" space
 > is an off-by-one against the decode struct: `cayman_addr_decode.h` defines bits
 > **`[57:0]` — a 58-bit field**. The *routed* geometry is `[54:0]` (`LOCAL[46:0]` +
 > `DIE[47]` + `CAYMAN_ID[53:48]` + `CAYMAN_ID_VALID[54]`); bits `[57:55]` are
@@ -83,7 +84,7 @@ A SoC address is 64-bit with bits `[57:0]` defined; the **LOCAL** (own-die) view
 > (`0x40000000000000`). State it as **"58-bit decode field, `[54:0]` routed,
 > 2⁵⁴-populated"**, matching [`unified-soc-memory-map.md`](unified-soc-memory-map.md)
 > and [`soc-master-map.md`](soc-master-map.md). The window-tag mechanism above is
-> unchanged — only the width label is corrected. `[HIGH · OBSERVED]`
+> unchanged — only the width label is corrected.
 
 ---
 
@@ -222,7 +223,7 @@ Reading the widths back into spans (byte-exact, **not assumed**):
 
 ## 4. The device view — the runtime software TLB (`neuron_translate`)
 
-`HIGH/OBSERVED` — re-disassembled byte-exact from `translation.o`
+`HIGH/OBSERVED` — disassembled byte-exact from `translation.o`
 (`libneuroncustomop.a`) with the shipped `ncore2gp` `xtensa-elf-objdump`.
 Four symbols:
 
@@ -312,7 +313,7 @@ MISS:   // @ 0x215 — evict the round-robin victim, REPROGRAM its MEM_WINDOWn r
 ```
 
 The `%3` cursor uses the classic divide-by-3 reciprocal `0xAAAAAAAB`
-(`muluh` → `srli …,1` → `addx2` (=`3×`) → `sub`), re-verified to map
+(`muluh` → `srli …,1` → `addx2` (=`3×`) → `sub`), mapping
 `next∈{0..6}` → `{1,2,0,1,2,0,1}`. **The search scans all 5 records, but only the
 3 dynamic slots are ever recycled** — the two 64-MB pins are HIT-only.
 
@@ -389,12 +390,12 @@ the device `_map_record`. The **second** is the **Cayman TCAM** form —
 flag ↔ `WINDOW_CONTROL.window_valid`.) The `push_unallocated_window` is the host
 free-list whose on-core fast path is the device round-robin.
 
-> **CORRECTION vs SX-ADDR-17 `HIGH/OBS`.** The backing report documented only the
-> Sunda `{xt_addr, soc_addr, u_mask, l_mask}` `program_window` form. This page adds
-> the **second** format string — `program_window: num, mask, match, replace` — which
-> is the host-side image of the Cayman TCAM window, and pins its field widths to
-> `cayman/tpb_nx.h` (`mask`/`match` 20-bit over `[39:20]`, `replace` over `[63:20]`).
-> The Sunda-only view in SX-ADDR-17 §5b is correct but incomplete.
+> **CORRECTION — both `program_window` forms ship, not just the Sunda one.**
+> Documenting only the Sunda `{xt_addr, soc_addr, u_mask, l_mask}` `program_window`
+> form is incomplete: the **second** format string —
+> `program_window: num, mask, match, replace` — is the host-side image of the Cayman
+> TCAM window, with field widths pinned to `cayman/tpb_nx.h` (`mask`/`match` 20-bit
+> over `[39:20]`, `replace` over `[63:20]`).
 
 ### 5c. The host → device staging pattern (the PC-bounds twin)
 
@@ -588,8 +589,7 @@ l_mask}` or Cayman `{mask,match,replace}`) is the runtime image of the same writ
 
 ## 11. Confidence ledger
 
-**HIGH / OBSERVED** (native Xtensa disasm re-verified + RTL/ISA header text + host
-strings):
+**HIGH / OBSERVED** (native Xtensa disasm + RTL/ISA header text + host strings):
 
 - `reg_loc 0x100218/228/230 = MEM_WINDOW3/5/6_LO` (`CONST16`-shift decode pinned to
   `nx_map.h` / `sunda/tpb_nx.h`); MISS path writes `*(reg)/*(reg+4) = lo/hi`.
@@ -597,7 +597,7 @@ strings):
 - rec3 sbuf tag = `ENGINE_BASE_ADDR (0x100028/0x10002c) − 41 MiB`, cached in
   `_sbuf_window`.
 - The full window/mask/granule table (3 dyn 16 MB + 2 pin 64 MB; masks
-  `0xff000000` / `0xfc000000`) — re-decoded byte-exact.
+  `0xff000000` / `0xfc000000`) — decoded byte-exact.
 - The translate hit/miss arithmetic + `%3` round-robin (`0xAAAAAAAB`).
 - **Sunda** `tpb_nx.h` / `nx_map.h`: 8 `MEM_WINDOW` lo/hi pairs (`0:31 - addr`, no
   sub-fields) + `TPB_WINDOW` + `SEQUENCER_WINDOW` at REG_BASE `0x100000`.

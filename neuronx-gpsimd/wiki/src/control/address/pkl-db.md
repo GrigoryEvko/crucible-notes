@@ -111,7 +111,7 @@ with open(JSON, "rb") as f:
 
 ---
 
-## 1. Container format `[HIGH · OBSERVED]`
+## 1. Container format
 
 | Property | Value | How verified |
 | --- | --- | --- |
@@ -128,27 +128,25 @@ The encoding is heavily **memoized**: 10,141,891 `MEMOIZE` entries and 8,024,869
 back-references store each repeated key-string *once*. This is why a 216 MB binary expands
 to a 514 MB pretty JSON — the JSON re-spells every memoized string inline.
 
-> **`genops` opcode scan (re-verified):** `DANGEROUS ∩ present = ∅` — **zero**
+> **`genops` opcode scan:** `DANGEROUS ∩ present = ∅` — **zero**
 > `GLOBAL`/`STACK_GLOBAL`/`REDUCE`/`NEWOBJ*`/`BUILD`/`EXT*`/`PERSID`. The stream is
 > *pure data* (only `list`, `dict`, `str`, `int`, `tuple`, memo refs). Safe to materialize.
-> `[HIGH · OBSERVED]`
 
 ---
 
-## 2. Record schema — **23 fields** `[HIGH · OBSERVED]`
+## 2. Record schema — **23 fields**
 
 Streaming the JSON mirror and tallying `len(rec)` per record yields exactly two shapes:
 
 * **323,197 records — 23 keys** (the full schema below, including `json`)
 * **1 record — 22 keys** — the root `ADDRESS_MAP` node, which has **no `json` key**
 
-> **CORRECTION/VERIFY vs SX-ADDR-10 §2.** SX-ADDR-10 states "23 fields per node; root is
-> 22-key (no `json`)". Re-counted by streaming the file: field-count distribution is
-> `{23: 323197, 22: 1}` — **confirmed exact**. The 23-key set, by `ijson` key union, is
-> exactly: `InclSizeInBytes, address, as_array, base, count, instance_index, json, legacy,
-> name, offset, parameters, parentName, parent_array_size, parent_name_no_idx,
-> parent_names, parent_offset, parent_size, self_array_size, short_name, short_name_lc,
-> size, tag, type`. The 23-field claim holds. `[HIGH · OBSERVED]`
+> **NOTE — the 23-key set, verbatim.** The field-count distribution over the DB is
+> `{23: 323197, 22: 1}` (23 fields per node; the root is 22-key, no `json`). The 23-key
+> set, by `ijson` key union, is exactly: `InclSizeInBytes, address, as_array, base, count,
+> instance_index, json, legacy, name, offset, parameters, parentName, parent_array_size,
+> parent_name_no_idx, parent_names, parent_offset, parent_size, self_array_size,
+> short_name, short_name_lc, size, tag, type`.
 
 | Field | Type | Meaning (recovered) |
 | --- | --- | --- |
@@ -188,7 +186,7 @@ Streaming the JSON mirror and tallying `len(rec)` per record yields exactly two 
 
 ---
 
-## 3. Node `type` taxonomy — **6 classes** `[HIGH · OBSERVED]`
+## 3. Node `type` taxonomy — **6 classes**
 
 Streaming-count of the `type` field over all 323,198 records:
 
@@ -206,18 +204,18 @@ The five leaf classes (`REGFILE/TABLE/INTC/MEM_CTRL/INDIRECT_ACCESS`) are a **ty
 taxonomy the flat YAML collapsed**: the YAML only recorded "has `json`?" vs "no `json`".
 The pkl tells you *how* each CSR block is accessed.
 
-> **`EMPTY_DICT` reconciliation `[HIGH · OBSERVED]`.** The 6 `type` counts sum to 323,198,
+> **`EMPTY_DICT` reconciliation.** The 6 `type` counts sum to 323,198,
 > and the `genops` `EMPTY_DICT` count (646,396) is `2 × 323,198` — each record contributes
 > one outer dict and one `tag` sub-dict. Two fully independent paths (opcode stream and
 > materialized type-tally) agree on **323,198**.
 
 ---
 
-## 4. Addressing model — **5 access-domain views**, view-relative base `[HIGH · OBSERVED]`
+## 4. Addressing model — **5 access-domain views**, view-relative base
 
 The DB is organized **first by access-domain VIEW**, then by SoC engine, then by block.
 There are exactly **five** top-level VIEW nodes — the direct children of the root
-(`parent_names == ['ADDRESS_MAP']`), re-verified by streaming filter:
+(`parent_names == ['ADDRESS_MAP']`):
 
 | view record | `short_name` | `base` (bits 63:60) | `size` |
 | --- | --- | --- | --- |
@@ -231,11 +229,11 @@ All five are `type=NODE`, `count=1`. The **top nibble (bits 63:60)** selects the
 `{user-internal, user-PCIe-A, secure-internal, secure-PCIe-M, user-POD}` — the
 **USER/SECURE × INT/PCIe** access matrix plus a POD domain.
 
-**`base` vs `address` `[HIGH · OBSERVED]`:** `base == address` for **100%** of records.
+**`base` vs `address`:** `base == address` for **100%** of records.
 Both hold the node's absolute address *within its view domain* (the view's `0x_000…000`
 prefix is the zero point). The richer, YAML-absent field is `offset` (parent-relative).
 
-> **ANCHOR `[HIGH · OBSERVED]`.** Sampled leaf `USER_INT_SENG_0_TPB_0_SP_0_LOCAL_REG`:
+> **ANCHOR.** Sampled leaf `USER_INT_SENG_0_TPB_0_SP_0_LOCAL_REG`:
 > `base = offset = 0x60000`, `size = 0x10000`, `parent_names =
 > ['ADDRESS_MAP','user_int','seng_0','tpb_0','SP_0']`, `json = …/csrs/tpb/tpb_xt_local_reg.json`.
 > The `LOCAL_REG` window sits `0x60000` inside its `SP_0` parent — a fact the flat YAML
@@ -252,7 +250,7 @@ prefix is the zero point). The richer, YAML-absent field is `offset` (parent-rel
 | *L1 view nodes* | 5 |
 | *root* | 1 |
 
-> **QUIRK — `user_pod` is an empty domain `[HIGH · OBSERVED]`.** `USER_POD` is *declared*
+> **QUIRK — `user_pod` is an empty domain.** `USER_POD` is *declared*
 > (`size 0x4000000000000000`) but has **zero materialized children** — it never appears in
 > the per-view record tally above. v5 INFERRED: the POD (multi-die pod) domain is a
 > placeholder window reserved for inter-die addressing whose contents this MAVERICK build
@@ -262,7 +260,7 @@ prefix is the zero point). The richer, YAML-absent field is `offset` (parent-rel
 (`user_int`/`secure_int`) hold 4 engines `SENG_0..3`, each `0x100000000000` (16 TiB); the
 PCIe views (`user_pciea`/`secure_pciem`) hold 8 sparse PCIe blocks each (24 records/view).
 
-> **NOTE — view-size sum `[HIGH · OBSERVED]`.** The five view `size` fields sum to
+> **NOTE — view-size sum.** The five view `size` fields sum to
 > `0x8000000000000000` (4 × `0x1000…` + `0x4000…`), not a clean `2**64`. The top-nibble
 > *bases* are nonetheless distinct and contiguous (`0x0,0x1,0x2,0x3,0x4`), so the domains
 > do not overlap; the upper half of the 64-bit space (`0x5…0xF` prefixes) is simply
@@ -270,7 +268,7 @@ PCIe views (`user_pciea`/`secure_pciem`) hold 8 sparse PCIe blocks each (24 reco
 
 ---
 
-## 5. Top-level block enumeration `[HIGH · OBSERVED]`
+## 5. Top-level block enumeration
 
 The root's descendants partition into the hierarchy below (depths via `len(parent_names)`):
 
@@ -296,7 +294,7 @@ byte-grounded NC-v3 instance):
 | distinct schemas | **76** csrs files | **320** distinct `json` paths (superset) |
 | dropped field | — | `offset` (parent-relative), array dims, HDL paths, RTL params |
 
-> **CORRECTION/NOTE — DMA engine naming differs by instance `[HIGH · OBSERVED]`.** The
+> **CORRECTION/NOTE — DMA engine naming differs by instance.** The
 > CAYMAN YAML names its DMA engine `SDMA` (`csrs/sdma/udma_m2s.json`); the MAVERICK pkl has
 > **zero** `SDMA` tokens and instead names them `DDMA`/`CDMA`/`UDMA`. Downstream
 > [DMA-subtree](./pkl-dma-subtree.md) extraction must grep `DDMA\|CDMA\|UDMA` on the pkl,
@@ -311,7 +309,7 @@ byte-grounded NC-v3 instance):
 
 ---
 
-## 6. The `json` schema binding `[HIGH · OBSERVED]`
+## 6. The `json` schema binding
 
 | Metric | Value |
 | --- | --- |
@@ -326,7 +324,7 @@ The pkl points at the *real* RTL register-block JSONs (e.g.
 pruned `csrs/` copies. The block→schema mapping is detailed in
 [`block-schema-xref.md`](./block-schema-xref.md).
 
-**pkl ↔ json equivalence `[HIGH · OBSERVED]`:** the streaming record count of the `.json`
+**pkl ↔ json equivalence:** the streaming record count of the `.json`
 mirror is **323,198**, identical to the pkl `len`, with identical first record and field
 order. The two files are byte-different encodings of **one** database.
 

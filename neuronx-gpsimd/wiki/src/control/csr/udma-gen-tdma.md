@@ -10,9 +10,10 @@ block (`tdma_model`). This page documents those three.
 
 All three are shipped as binary-derived CSR register schemas under the Cayman
 arch-regs tarball (`csrs/sdma/{udma_gen,udma_gen_ex,tdma_model}.json`). Every
-count, offset, bit-range, reset, and access type below was re-extracted from the
-JSON with `jq` and cross-checked against `output/address_map/address_map_flat.yaml`.
-Confidence is tagged `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+count, offset, bit-range, reset, and access type below is read from the
+JSON and cross-checked against `output/address_map/address_map_flat.yaml`.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an
+explicit `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` tag.
 
 > Schema shape (all three): `RegFile.RegistersBundleArrays[]` is an array of
 > *bundle arrays*, each with `Name`, `AddressOffset` (relative to the regfile
@@ -23,7 +24,7 @@ Confidence is tagged `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
 
 ---
 
-## 1. The three blocks at a glance `[HIGH/OBSERVED]`
+## 1. The three blocks at a glance
 
 | block | window | regfile base in channel | bundles | reg-defs | bitfield-defs | reg-instances | role |
 |---|---|---|---|---|---|---|---|
@@ -31,7 +32,7 @@ Confidence is tagged `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
 | `udma_gen_ex` | 0x4000 (16 KiB) | `+0x3C000` | 5  | 29 | 68  | 284  | V4 virtualization: per-queue VMPR, section/transaction-type routing (BUFF1/BUFF2/DDP/drop) |
 | `tdma_model`  | 0x1000 (4 KiB)  | `+0x40000` (node `MISC_SDMA_APP`) | 8 | 44 | 59 | 148 | SDMA application glue: event-accel doorbell, RD/WR reorder buffers, broadcast cfg, notification triggers, app-engine inflight status |
 
-Counts re-derived (jq, from scratch):
+Counts:
 
 ```
                   udma_gen   udma_gen_ex   tdma_model
@@ -49,31 +50,31 @@ Counts re-derived (jq, from scratch):
 `register-instances` multiplies by `ArraySize`; the `udma_gen` figure (2956) is
 dominated by `int_ctrl_base_addr` (ArraySize 2048 — a per-interrupt-source
 address table), so 2956 is *table entries*, not 2956 distinct programmable
-registers. `[HIGH/OBSERVED]`
+registers.
 
 > **Schema gotcha — `BundleSizeInBytes` encoding differs.** In `udma_gen` and
 > `udma_gen_ex` the per-register `AddressOffset` is a hex string (`"0x..."`) but
 > `BundleSizeInBytes` is **decimal** (`DMA_misc`=256, `VMPR`=64, `Mailbox`=64).
 > In `tdma_model` **both** `BundleSizeInBytes` and `SizeInBytes` are **hex
 > strings** (`"0x0200"`, `"0x18"`, `"0x1000"`). Do not apply the decimal rule to
-> `tdma_model`. `[HIGH/OBSERVED]`
+> `tdma_model`.
 
 > **Schema gotcha — `tdma_model` bundle order is not address-monotonic.**
 > `app_engine_status` (`+0x600`) is listed in the JSON *after* `notific_cfg`
 > (`+0x700`) but sits *below* it in address space. Sort by `AddressOffset`, not
-> array index. `[HIGH/OBSERVED]`
+> array index.
 
-> **CORRECTION — instance layout vs the task anchor.** A working anchor placed
+> **CORRECTION — instance layout.** An earlier anchor placed
 > `GEN@+0x78000 / GEN_EX@+0x7C000`. The Cayman address map
 > (`address_map_flat.yaml`, node `APB_SE_0_SDMA_0_*`, OBSERVED verbatim) places
 > the **unicast** channel as `GEN@+0x38000 / GEN_EX@+0x3C000`. The `+0x78000`
 > band is in the **broadcast mirror** (`BCAST_UDMA_GEN @ +0xB8000` within the
 > `+0x80000` BCAST region — not `+0x78000` either). The byte-grounded unicast
-> placement is used throughout this page; see section 2. `[HIGH/OBSERVED]`
+> placement is used throughout this page; see section 2.
 
 ---
 
-## 2. How the five blocks compose into one SDMA channel `[HIGH/OBSERVED]`
+## 2. How the five blocks compose into one SDMA channel
 
 One SDMA channel is a contiguous `0x40000` UDMA window plus a `0x4000` MISC
 window. Sample channel `APB_SE_0_SDMA_0` from `address_map_flat.yaml` (offsets
@@ -97,14 +98,12 @@ Composition facts:
   `AXI.endian_cfg` has `swap_m2s_*` **and** `swap_s2m_*`; `VMADDR.cfg_vm_ctrl`
   has `tx_q_vmid_*` **and** `rx_q_vmid_*`; `axi_outstanding_cnt` has `tx_*`
   **and** `rx_*` counters; `axi_queue.cfg` has `tx_mask_*` **and** `rx_mask_*`.
-  `[HIGH/OBSERVED]`
 - S2M ends at `+0x38000` (`+0x20000 + 0x18000`), so GEN begins exactly where S2M
   ends — the channel does not reserve a gap between S2M and GEN here.
-  `[HIGH/OBSERVED]`
 - `tdma_model` is **not in the UDMA window** — it is node `MISC_SDMA_APP` in the
   MISC window at `+0x40000`, immediately below `MISC_NOTIFIC` (`+0x41000`). That
   adjacency is why its `notific_cfg*` triggers route into the
-  `notific_10_queue` block. `[HIGH/OBSERVED]`
+  `notific_10_queue` block.
 
 **Instance multiplicity across the SoC** (`rg -c` on `address_map_flat.yaml`):
 
@@ -126,7 +125,7 @@ writer. `[HIGH/OBSERVED counts; MED/INFERRED rationale]`
 
 ## 3. `udma_gen` — the shared control surface
 
-### 3.1 Bundle map (22 arrays, `BundleSizeInBytes` DECIMAL) `[HIGH/OBSERVED]`
+### 3.1 Bundle map (22 arrays, `BundleSizeInBytes` DECIMAL)
 
 | base | end | arr | bs | #reg | bundle / meaning |
 |---|---|---|---|---|---|
@@ -149,7 +148,7 @@ writer. `[HIGH/OBSERVED counts; MED/INFERRED rationale]`
 
 Max bundle end = `0x3470`, window `0x4000` -> no overlap, `0xb90` headroom. The
 seven `int_ctrl0..6` bundles share one row above; each is a separate 64x32-bit
-file. `[HIGH/OBSERVED]`
+file.
 
 ### 3.2 Design revision — the only version surface in the GEN family
 
@@ -162,9 +161,9 @@ file. `[HIGH/OBSERVED]`
 | `[11:0]` | `programming_id` | `0x03` | programming-interface revision ID |
 
 This is the **only** version/revision register in the whole gen family —
-`udma_gen_ex` deliberately has none (section 4.3). `[HIGH/OBSERVED]`
+`udma_gen_ex` deliberately has none (section 4.3).
 
-### 3.3 The AXI-master common config + arbitration `[HIGH/OBSERVED]`
+### 3.3 The AXI-master common config + arbitration
 
 > **CORRECTION — there is no per-queue "arbitration weight" register and no
 > "DMA mux".** The full arbitration/scheduling surface in `udma_gen` is exactly:
@@ -189,7 +188,7 @@ This is the **only** version/revision register in the whole gen family —
 | | | `[0]` | `swap_m2s_desc` | RW | `0x0` | swap M2S descriptor read + completion write |
 
 `DMA_misc.int_cfg` @ `+0x00`: `[6:4] msix_axi_qos` (RW, MSI-X AXI QoS),
-`[0] msix_64` (RW, 1 = 64-bit MSI-X message, 0 = 32-bit). `[HIGH/OBSERVED]`
+`[0] msix_64` (RW, 1 = 64-bit MSI-X message, 0 = 32-bit).
 
 Per-queue AXI-error scheduling masks live in `axi_queue[16].cfg` @ `+0x08` —
 these are the closest thing to per-queue scheduling control:
@@ -208,7 +207,7 @@ these are the closest thing to per-queue scheduling control:
 | `[5:4]` | `rx_mark_pkt` | RW (rst `0x1`) | as `tx_mark_pkt` for the RX/CMPL side |
 | `[0]` | `rx_state` | RO | per-queue AXI-error state |
 
-### 3.4 Cross-DMA mailbox + interrupt aggregation `[HIGH/OBSERVED]`
+### 3.4 Cross-DMA mailbox + interrupt aggregation
 
 `Mailbox[4]` (`BundleSizeInBytes`=64) is a cross-DMA doorbell:
 
@@ -222,7 +221,7 @@ Interrupt aggregation: `int_ctrl_base_addr[2048]` + `int_ctrl_sec_addr[64]` are
 per-source MSI-X/interrupt address tables; `int_ctrl0..6` are seven 64-entry
 aggregator-group register files. `DMA_misc.abort_ctl` @ `+0x1c` masks abort
 indications: `[1] mask_app_abort` (toward APP/Adapter), `[0] mask_local_abort`
-(from the local INT controller). `[HIGH/OBSERVED]`
+(from the local INT controller).
 
 `axi_outstanding_cnt[16]` exposes live AXI back-pressure counters per queue —
 `tx_desc_read`, `tx_data_read`, `tx_cmpl_write`, `rx_desc_read`,
@@ -230,7 +229,7 @@ indications: `[1] mask_app_abort` (toward APP/Adapter), `[0] mask_local_abort`
 `rst_counters` strobe register. `pmu` carries occupancy `inuse_high_th` /
 `inuse_low_th` thresholds for rx_hdr/rx_data/tx_data plus per-queue rx_drop
 counts. `init_memory` is the desc/cmpl SRAM init handshake (write `init_trigger`,
-poll `init_in_progress`). `[HIGH/OBSERVED]`
+poll `init_in_progress`).
 
 ### 3.5 Programming the AXI master + arbitration (C pseudocode)
 
@@ -270,7 +269,7 @@ static inline void udma_gen_unmask_queue_sched(volatile uint32_t *gen_base, unsi
 
 ## 4. `udma_gen_ex` — the V4 virtualization extension
 
-### 4.1 Bundle map (5 arrays, `BundleSizeInBytes` DECIMAL) `[HIGH/OBSERVED]`
+### 4.1 Bundle map (5 arrays, `BundleSizeInBytes` DECIMAL)
 
 | base | end | arr | bs | #reg | bundle / meaning |
 |---|---|---|---|---|---|
@@ -280,7 +279,7 @@ static inline void udma_gen_unmask_queue_sched(volatile uint32_t *gen_base, unsi
 | `0x820` | `0x828` | 1  | 8  | 2  | `init_transaction_table` — `init_trig` / `init_in_progress` |
 | `0xc00` | `0xc1c` | 1  | 28 | 7  | `transaction_type_table` — per-transaction routing / VMID |
 
-Max bundle end `0xc1c`, window `0x4000` -> no overlap. `[HIGH/OBSERVED]`
+Max bundle end `0xc1c`, window `0x4000` -> no overlap.
 
 ### 4.2 `VMPR[16]` — fine-grained per-queue TX+RX virtual-memory mapping
 
@@ -302,7 +301,7 @@ DDP (Direct Data Placement) target. Selected fields (all reset `0x0`):
 `VMPR_V4[16]` (4 regs) replaces the per-stream `hisel` fields with explicit
 high-address selectors: `cfg_vmpr_v4_0 tx_q_vmaddr_hi_sel`,
 `v4_1 rx_q_buf1_vmaddr_hi_sel`, `v4_2 rx_q_buf2_vmaddr_hi_sel`,
-`v4_3 rx_q_ddp_vmaddr_hi_sel` (all RW, reset `0x0`). `[HIGH/OBSERVED]`
+`v4_3 rx_q_ddp_vmaddr_hi_sel` (all RW, reset `0x0`).
 
 `section_ctrl` + `transaction_type_table` add S2M scatter/section routing absent
 from `udma_gen`:
@@ -317,7 +316,7 @@ from `udma_gen`:
 | `transaction_type_table.count_cmd` | `[2:1] field_selection` / `[0] calc_cmd` | which length to use (none/BUFF1/BUFF2) + override/accumulate |
 | `transaction_type_table.axi_write_padding` | `[6:4] eos_addr_round_up_cmd` / `[3] eos_wstrb_cmd` / `[2] sos_wstrb_cmd` / `[1:0] padding_cmd` | section-end alignment + 64-B cache-pad |
 
-### 4.3 GEN vs GEN_EX — what `_ex` actually adds `[HIGH/OBSERVED]`
+### 4.3 GEN vs GEN_EX — what `_ex` actually adds
 
 These are **two separate `0x4000` APB windows** (GEN @ `+0x38000`, GEN_EX @
 `+0x3C000`), not "gen plus inline extra registers". The `_ex` suffix is **not**
@@ -342,7 +341,6 @@ a version bump.
 
 - No version/revision/id register — a `jq` name sweep for `rev\|version` over
   `gen_ex` returns empty; the version surface stays in `udma_gen.DMA_misc.revision`.
-  `[HIGH/OBSERVED]`
 - No descriptor-ring registers (those are in the M2S/S2M engines).
 - No AXI common cfg / interrupt aggregation / mailbox / PMU (all GEN-only).
 
@@ -354,7 +352,7 @@ They are complementary, never overlapping. `[HIGH/OBSERVED + MED/INFERRED]`
 
 ## 5. `tdma_model` — the SDMA application glue
 
-### 5.1 What `tdma_model` is — and is NOT `[HIGH/OBSERVED]`
+### 5.1 What `tdma_model` is — and is NOT
 
 `tdma_model` is **not** a descriptor engine and is **not** a tensor-DMA
 descriptor ring. The entire file has **zero** ring base/head/tail pointers,
@@ -406,7 +404,7 @@ the PE/POOL/ACT binding is indirect (via the app-engine inflight + the
 notification queue), not register-level here. `[HIGH/OBSERVED for the bindings
 present; MED/INFERRED for the end-to-end mapping]`
 
-### 5.2 Bundle map (8 arrays, `BundleSizeInBytes` HEX STRINGS) `[HIGH/OBSERVED]`
+### 5.2 Bundle map (8 arrays, `BundleSizeInBytes` HEX STRINGS)
 
 Sorted by address (the JSON array order is non-monotonic — see section 1 gotcha):
 
@@ -421,9 +419,9 @@ Sorted by address (the JSON array order is non-monotonic — see section 1 gotch
 | `0x900` | `0x910` | 2 | `0x8`  | 2 | `spares` — spare_zeros / spare_ones |
 | `0x980` | `0x984` | 1 | `0x4`  | 1 | `strongly_ordered_write` — cfg |
 
-Max bundle end `0x984`, window `0x1000` -> no overlap. `[HIGH/OBSERVED]`
+Max bundle end `0x984`, window `0x1000` -> no overlap.
 
-### 5.3 Key registers (byte-exact) `[HIGH/OBSERVED]`
+### 5.3 Key registers (byte-exact)
 
 `tdma` bundle (event accel + reorder buffers + broadcast):
 
@@ -454,7 +452,7 @@ AXI-read-response, and APB-write address-match triggers (`*_id_mask` / `*_id_cmp
 back-stalls the SDMA<->APP path when the notification block is not ready
 (`m2s_sop_eop_en`, `s2m_sop_eop_en`, `s2m_cmpl_en`, all rst `0x1`).
 `notific_cfg.timestamp` (`+0x20`) carries a `[23:0] delta` (rst `0x400`) added
-to the timestamp per cycle. `[HIGH/OBSERVED]`
+to the timestamp per cycle.
 
 `app_engine_status` — per-queue inflight bitmaps (one bit per queue, `[15:0]`):
 
@@ -466,14 +464,13 @@ to the timestamp per cycle. `[HIGH/OBSERVED]`
 | `ats_packets_inflight` | `+0x0c` | RW | ATS (address-translation) packets in flight |
 | `dmb_packets_inflight` | `+0x20` | RW | packets carrying a DMB / write barrier |
 
-> **In-place clarification vs SX-CSR-09 section 7.** The backing report's
-> per-field table formats the `app_engine_status` rows as RO. The Cayman JSON
+> **In-place clarification — `app_engine_status` access type.** These rows are
+> commonly formatted as RO. The Cayman JSON
 > marks all five `app_engine_status` registers **RW** (verified: the only four RO
 > registers in `tdma_model` are `tdma_stat_0`, `tdma_stat_1`,
 > `robert.data_requests_outstanding`, `robert.responses_cached`). The RW access
 > is consistent with the `RO4 RW40` register histogram. Treat them as readable
-> status with a writable shadow (test/clear). `[HIGH/OBSERVED — corrects a report
-> formatting choice]`
+> status with a writable shadow (test/clear).
 
 `robert` (the read/write reorder buffer back-pressure accounting):
 
@@ -486,11 +483,11 @@ to the timestamp per cycle. `[HIGH/OBSERVED]`
 
 `strongly_ordered_write.cfg` (`+0x00`): `[0] bypass_enable`, `[4] clear`. The
 two `spares` registers are RW (`spare_zeros` rst `0x0`, `spare_ones` rst
-`0xFFFFFFFF`). `[HIGH/OBSERVED]`
+`0xFFFFFFFF`).
 
 ---
 
-## 6. Cross-generation divergence (Cayman authoritative) `[HIGH/OBSERVED]`
+## 6. Cross-generation divergence (Cayman authoritative)
 
 Cayman (`cayman-arch-regs`) vs `sunda` / `mariana` / `mariana_plus`
 (customop-lib arch-headers), via normalized `jq -S` comparison:

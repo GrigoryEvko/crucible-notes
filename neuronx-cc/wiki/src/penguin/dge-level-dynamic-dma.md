@@ -44,11 +44,11 @@ For reimplementation, the contract is:
 | 4 | `dst_reduce` | "DGE with an accumulate operation (add/min/max) performed on the destination" |
 | 5 | `transpose` | "allow DGE DMAs to do xbar transposes" |
 
-> **CORRECTION (D-Z02) —** an earlier survey of the driver CLI ([`--dge-levels`](../frontend/walrus-driver-cli.md), tagged MED there) reported the literal→description pairing shifted by one (an "IO DMA on DGE" first line). The rodata value-table read directly here is unambiguous: each literal is immediately followed by *its own* description string, giving the table above. The CLI page already flags its own pairing as lower-confidence "as laid out"; this page is authoritative on the pairing. *(CONFIRMED — value-table order; the literal NAMES `spill_reload … transpose` are independently CONFIRMED in the CLI page.)*
+> **NOTE —** the pairing above is read straight off the rodata value table, where each literal is immediately followed by *its own* description string. The [driver-CLI page](../frontend/walrus-driver-cli.md) lays the same option out with the pairing shifted by one (an "IO DMA on DGE" first line) and flags that rendering as lower-confidence; this page is authoritative on which description belongs to which literal. The literal *names* agree on both pages.
 
-The chosen set is resolved into `PassOptions` as `enable_dge_levels`, a `std::set<DGELevels>` — the rodata name for the resolved set is `"ChosenDGELevels"` (`@0x15ffb8`). Every DMA query is a `CurDGELevels->count(DGELevels::Level) > 0` red-black-tree lookup; an assertion that mentions one such call by name is `"options.enable_dge_levels.count(DGELevels::Transpose) > 0"` (`@0x1dca130`). *(CONFIRMED — set name string, member-name assertion strings.)*
+The chosen set is resolved into `PassOptions` as `enable_dge_levels`, a `std::set<DGELevels>` — the rodata name for the resolved set is `"ChosenDGELevels"` (`@0x15ffb8`). Every DMA query is a `CurDGELevels->count(DGELevels::Level) > 0` red-black-tree lookup; an assertion that mentions one such call by name is `"options.enable_dge_levels.count(DGELevels::Transpose) > 0"` (`@0x1dca130`).
 
-> **NOTE — clEnumValN ints are INFERRED.** Only the literal/description *table* is byte-readable; the actual `int` value each `clEnumValN` binds is the C++ constructor argument, not stored as a contiguous LUT. The ordinal column above is the value-table *index*, which the `cl::parser` returns from `OptionInfo+40` (`parse() @0x7eea40`). The member *names* `ScalarDynamicOffset`, `VectorDynamicOffsets`, `Transpose` are CONFIRMED (they appear by `DGELevels::` in assertion strings); the numeric value of each is INFERRED to match table order.
+> **NOTE —** only the literal/description *table* is byte-readable. The actual `int` each `clEnumValN` binds is a C++ constructor argument, not a contiguous LUT, so the ordinal column above is the value-table *index* — what the `cl::parser` returns from `OptionInfo+40` (`parse() @0x7eea40`). The member names `ScalarDynamicOffset`, `VectorDynamicOffsets`, and `Transpose` appear verbatim in `DGELevels::`-qualified assertion strings; that each one's numeric value matches table order is [INFERRED].
 
 ### `bir::DGEType` — the per-DMA route tag
 
@@ -61,7 +61,7 @@ The route is a persisted libBIR enum stored as a 4-byte `int` at `bir::InstDMA +
 | 2 | `HWDGE` | Hardware descriptor generation (a dedicated SP/Activation engine runs the generator) |
 | 3 | `Unassigned` | Sentinel — pre-scan; the value `dynamic_dma_scan` looks for |
 
-These four ordinals are CONFIRMED byte-exact two ways: by `libBIR`'s `DGEType2string`/`string2DGEType` (`HWDGE\0 → 2`, `SWDGE\0 → 1`, `None\0 → 0`, `Unassigned\0 → 3`), and by the consolidated ISA enum catalogue, which lists `DGEType {0:None, 1:SWDGE, 2:HWDGE, 3:Unassigned}` (libBIR `@0x400dc0`) as an identity wire enum that *selects the descriptor-gen engine, not an opcode* (see [ISA Enum Ordinals](../isa/isa-enum-ordinals.md) and [DMA Encoding](../isa/dma-encoding.md)). *(CONFIRMED — `DGEType2string` table + two cross-checked sibling pages from the same build.)*
+These four ordinals are byte-exact two ways: by `libBIR`'s `DGEType2string`/`string2DGEType` (`HWDGE\0 → 2`, `SWDGE\0 → 1`, `None\0 → 0`, `Unassigned\0 → 3`), and by the consolidated ISA enum catalogue, which lists `DGEType {0:None, 1:SWDGE, 2:HWDGE, 3:Unassigned}` (libBIR `@0x400dc0`) as an identity wire enum that *selects the descriptor-gen engine, not an opcode* (see [ISA Enum Ordinals](../isa/isa-enum-ordinals.md) and [DMA Encoding](../isa/dma-encoding.md)).
 
 > **QUIRK — the SW-vs-HW route is the engine selector, not an opcode.** A `SWDGE` and an `HWDGE` DMA of the same shape carry the *same* DMA-family opcode; the `DGEType` field is what decides whether a descriptor program is generated in software on the compute engine, or by a dedicated hardware DGE on SP/Activation. The downstream encoder ([DMA Encoding](../isa/dma-encoding.md)) reads this field, not a distinct instruction.
 
@@ -146,7 +146,7 @@ getDGEInstructionType(const Instruction& I,
     // (4) COPY / CAST family — feasibility-tested, not flavour-tested.
     if isIOCopyDMA(I) || isSRCopyDMA(I) || isIOCastDMA(I) || isSRCastDMA(I):
         // CCE-aware: scan descendants for opcode 33/48 (CollectiveCompute)
-        // to decide whether the copy can legally stay a DGE DMA.   [STRONG]
+        // to decide whether the copy can legally stay a DGE DMA.
         bool fits_sw = sub_1096280(in0, out0, /*cand*/SWDGE, considerDescNum, considerMinElems);
         bool fits_hw = hwOk && sub_1096280(in0, out0, /*cand*/HWDGE, considerDescNum, considerMinElems);
         set s = {};
@@ -159,7 +159,7 @@ getDGEInstructionType(const Instruction& I,
     return { None(0), {None} };
 ```
 
-The byte-exact `firstOrdinal` writes pin the four return arms: `None(0)` at `0x10973c6`/`0x10981f2`, `SWDGE(1)` at `0x1097947`, `HWDGE(2)` (transpose arm) at `0x1097ff9`; the eligible-set keys are written as `{0}`, `{1}` (+`{2}` when `arch>29`), `{0,2}` (`0x200000000`), `{0,1}` (`0x100000000`). *(CONFIRMED — decompiled body, NX-162 byte-exact writes.)*
+The byte-exact `firstOrdinal` writes pin the four return arms: `None(0)` at `0x10973c6`/`0x10981f2`, `SWDGE(1)` at `0x1097947`, `HWDGE(2)` (transpose arm) at `0x1097ff9`; the eligible-set keys are written as `{0}`, `{1}` (+`{2}` when `arch>29`), `{0,2}` (`0x200000000`), `{0,1}` (`0x100000000`).
 
 > **QUIRK — `firstOrdinal` is itself a `bir::DGEType`.** The pair's `.first` is not an index into the set; it is the *primary route* the scan stamps (`None`/`SWDGE`/`HWDGE`). The `.second` set is the *eligibility envelope* — the routes the AP still satisfies — which the cleanup pass later checks the stamped route against. A dynamic-offset DMA on Cayman (ArchLevel 30) returns `firstOrdinal=SWDGE`, set `{SWDGE,HWDGE}`: SW is the default route, HW is an offered alternative that a later pass may promote to.
 
@@ -167,7 +167,7 @@ The byte-exact `firstOrdinal` writes pin the four return arms: `None(0)` at `0x1
 
 `HWDGE` is added to the eligible set only when `CurArch > 29` (`cmp CurArch, 0x1d`). The `ArchLevel` is read once from `Module + 0xAC` (172). `SWDGE` is offered on any qualifying arch.
 
-> **NOTE — what "gen3+" means numerically.** The backing analysis labels the `>29` set "gen3(30)/core_v4(40)/core_v5(50)". Against the CONFIRMED `ArchLevel` mapping in [Target Abstraction](target-abstraction.md) — `{10→Inf1/Tonga, 20→Trn1/Sunda, 30→Trn2/Cayman, 40→Trn3/CoreV4, 50→CoreV5}` — the gate `>29` (i.e. `≥30`) admits **Cayman/Trn2 (30) and up**, and excludes Inferentia (10) and Sunda/Trn1 (20). On those two, the `HWDGE` candidate is never added, so all DGE on them is `SWDGE`. The same `cmp …,0x1d` (29) generation boundary is observed independently in the GPSIMD latency selector ([GPSIMD Engine](../arch/gpsimd-engine.md)), corroborating 29 as the gen boundary constant in this build. *(CONFIRMED gate constant; codename mapping cross-strand.)*
+> **NOTE — what "gen3+" means numerically.** The `>29` set is the "gen3(30) / core_v4(40) / core_v5(50)" band. Against the `ArchLevel` mapping in [Target Abstraction](target-abstraction.md) — `{10→Inf1/Tonga, 20→Trn1/Sunda, 30→Trn2/Cayman, 40→Trn3/CoreV4, 50→CoreV5}` — the gate `>29` (i.e. `≥30`) admits **Cayman/Trn2 (30) and up**, and excludes Inferentia (10) and Sunda/Trn1 (20). On those two, the `HWDGE` candidate is never added, so all DGE on them is `SWDGE`. The same `cmp …,0x1d` (29) generation boundary is observed independently in the GPSIMD latency selector ([GPSIMD Engine](../arch/gpsimd-engine.md)), corroborating 29 as the gen boundary constant in this build.
 
 ### `sub_1096280` — descriptor-count feasibility (SW-vs-HW fit)
 
@@ -207,7 +207,7 @@ bool descFits(const AccessPattern& in, const AccessPattern& out,
     return true;
 ```
 
-The two trailing bools threaded from `getDGEInstructionType` are `b1 = considerDescNum` (use the `getMaxDMADescElements` per-descriptor cap) and `b2 = considerMinElems` (also enforce the `qword_3E01C58` per-arch minimum-element floor, so a copy too small to be worth a descriptor program stays static). The exact-division requirement (`elems % MaxDMADescElements == 0`) means a copy whose element count is not a clean multiple of the per-descriptor cap simply does not fit and falls back to `None`. *(STRONG — decompiled; `isDescNumOk`/`getMaxDMADescElements` resolved through libBIR PLT, semantics from call sites + the two `utils.cpp` size-match assertions.)*
+The two trailing bools threaded from `getDGEInstructionType` are `b1 = considerDescNum` (use the `getMaxDMADescElements` per-descriptor cap) and `b2 = considerMinElems` (also enforce the `qword_3E01C58` per-arch minimum-element floor, so a copy too small to be worth a descriptor program stays static). The exact-division requirement (`elems % MaxDMADescElements == 0`) means a copy whose element count is not a clean multiple of the per-descriptor cap simply does not fit and falls back to `None`. `isDescNumOk` and `getMaxDMADescElements` resolve through the libBIR PLT, so their semantics come from the call sites plus the two `utils.cpp` size-match assertions rather than from their bodies.
 
 ### `_validateOnlyOneOf…DynamicOffset…`
 
@@ -220,7 +220,7 @@ void validate(shared_ptr<klr::BirAccessPattern> ap):
         reportError();   // illegal: a dynamic AP must have exactly one offset flavour
 ```
 
-The runtime strings that mirror this constraint — `"Logic Fault: dynamic access should have vector offset."`, `"tensor_copy only supports scalar_offset for dynamic access, not vector_offset."`, `"When using vector offset, the only supported indirectDim is 0"` — confirm that scalar and vector offsets are mutually exclusive per AP, and that `tensor_copy` lowering only accepts the scalar flavour for dynamic access. *(CONFIRMED — decompiled body + runtime assertion strings.)*
+The runtime strings that mirror this constraint — `"Logic Fault: dynamic access should have vector offset."`, `"tensor_copy only supports scalar_offset for dynamic access, not vector_offset."`, `"When using vector offset, the only supported indirectDim is 0"` — confirm that scalar and vector offsets are mutually exclusive per AP, and that `tensor_copy` lowering only accepts the scalar flavour for dynamic access.
 
 ---
 
@@ -263,9 +263,9 @@ visit(Instruction& I):
     // else: already routed → leave it untouched (idempotent).
 ```
 
-The DMA-family gate reads a 0x31-byte table `off_1DE6420` indexed by `opcode-19`, plus the explicit `opcode == 18` case; the table sets the DMA / DMA-like opcodes `{18,19,22,32,41,42,43,44,45,46,67}`. The `!isDstReduceDGE` assertion (`dynamic_dma.cpp:124`) is the scan's refusal to route a destination-reduce DMA through DGE here — `dst_reduce` is a separate `DGELevel` handled elsewhere in the lowering. *(CONFIRMED — decompiled bodies; the `!isDstReduceDGE(&I)` and `dynamic_dma.cpp:124` strings pin the assert.)*
+The DMA-family gate reads a 0x31-byte table `off_1DE6420` indexed by `opcode-19`, plus the explicit `opcode == 18` case; the table sets the DMA / DMA-like opcodes `{18,19,22,32,41,42,43,44,45,46,67}`. The `!isDstReduceDGE` assertion (`dynamic_dma.cpp:124`) is the scan's refusal to route a destination-reduce DMA through DGE here — `dst_reduce` is a separate `DGELevel` handled elsewhere in the lowering.
 
-> **QUIRK — the `Unassigned` guard makes the scan idempotent and re-runnable.** Because the stamp only fires on `+0xF8 == 3`, the pass can run twice (it does — once pre-allocation, once post; see [Pipeline Placement](#pipeline-placement)) and the second pass routes only DMAs that were *introduced after* the first (spill/reload clones, SSA re-clones), leaving every already-routed DMA alone. A reimplementation that unconditionally re-stamps would clobber routes the allocator depends on.
+> **QUIRK — the `Unassigned` guard makes the scan idempotent and re-runnable.** Because the stamp only fires on `+0xF8 == 3`, the pass can run twice (it does — once pre-allocation, once post; see [Pipeline Placement](#pass-registration-and-pipeline-placement)) and the second pass routes only DMAs that were *introduced after* the first (spill/reload clones, SSA re-clones), leaving every already-routed DMA alone. A reimplementation that unconditionally re-stamps would clobber routes the allocator depends on.
 
 ---
 
@@ -297,7 +297,7 @@ visit(Module& M):
     scratch->memLocationSet(+352)->buildTensorId2MemLoc();   // index by tensor id
 ```
 
-The high dword `4` in the `MemoryLocationSet` is the memory-space tag selecting SB (state-buffer) space for the scratch. The location it creates, `"DynamicDMAScratchLoc"`, is the buffer `generateDynamicDMA` (`@0x1276b10`, the descriptor lowering consumer in [DMA Encoding](../isa/dma-encoding.md)) stages dynamically-generated descriptors into. The driver-facing size of this region is the `--dynamic-dma-scratch-size-per-partition` option ("The SB scratch size per partition for Dynamic DMA", CONFIRMED in [walrus-driver-cli](../frontend/walrus-driver-cli.md)). *(CONFIRMED — decompiled body; `"DynamicDMAScratchLoc"` and the pre-linker assertion strings present; consumer cross-referenced.)*
+The high dword `4` in the `MemoryLocationSet` is the memory-space tag selecting SB (state-buffer) space for the scratch. The location it creates, `"DynamicDMAScratchLoc"`, is the buffer `generateDynamicDMA` (`@0x1276b10`, the descriptor lowering consumer in [DMA Encoding](../isa/dma-encoding.md)) stages dynamically-generated descriptors into. The driver-facing size of this region is the `--dynamic-dma-scratch-size-per-partition` option ("The SB scratch size per partition for Dynamic DMA"; see [walrus-driver-cli](../frontend/walrus-driver-cli.md)).
 
 ---
 
@@ -335,7 +335,9 @@ run(Module& M):
             // dynamic_dma.cpp:172, error id 1698
 ```
 
-Check (B) is the central invariant of the whole subsystem: the route stamped by the scan must *still* be among the AP's eligible routes after every intervening lowering and allocation transform — if a pass mutated the AP such that the stamped `DGEType` no longer fits, the build fails loudly rather than emitting a wrong descriptor. Check (C) hands off to / agrees with `assign_hwdge_engine`: `isHWDGEDMAWithEngineSet(I)` is `(I.DGEType == HWDGE(2)) && ((I.engine@+0x90 & ~4) != 0)`, and a HWDGE DMA with any engine bound must be on **SP (6)** or **Activation (2)** — both satisfy `(x & ~4) == 2`. *(CONFIRMED — decompiled body; the route-validity, feature-guard, and engine assertion strings + `dynamic_dma.cpp:143/145/172` and error id 1698 pin all three checks.)*
+Check (B) is the central invariant of the whole subsystem: the route stamped by the scan must *still* be among the AP's eligible routes after every intervening lowering and allocation transform — if a pass mutated the AP such that the stamped `DGEType` no longer fits, the build fails loudly rather than emitting a wrong descriptor. Check (C) hands off to / agrees with `assign_hwdge_engine`: `isHWDGEDMAWithEngineSet(I)` is `(I.DGEType == HWDGE(2)) && ((I.engine@+0x90 & ~4) != 0)`, and a HWDGE DMA with any engine bound must be on **SP (6)** or **Activation (2)** — both satisfy `(x & ~4) == 2`.
+
+*Anchors: the route-validity, feature-guard, and engine assertion strings, plus `dynamic_dma.cpp:143/145/172` and error id 1698 — one per check.*
 
 > **GOTCHA — `dgeEnabled` strips routes silently when DGE is disabled.** If the module-level DGE feature flag (`M.config(+12)->byte(+472)`) is clear, every `SWDGE`/`HWDGE` mark is first *flagged as an error if it exists* and then *unconditionally reset to `None`*. A reimplementation that honours stamped routes without re-reading this flag at cleanup time would emit DGE descriptors the runtime is not configured to accept.
 
@@ -352,7 +354,7 @@ assignEngine(InstDMA& I):
     // ... pick an engine from ValidEngines, write to I+0x90 ...
 ```
 
-`ValidEngines` is built once from the first module's `ArchLevel` (`+0xAC`): for `ArchLevel ≤ 49` (Cayman 30 / CoreV4 40) it is a fixed 2-entry set `[ SP(6), Activation(2) ]` and `assignEngine` picks SP or Activation by affinity-match against the instruction's `(engine, sub)` key at `I+0x90`/`I+0x94`, falling back round-robin; for `ArchLevel ≥ 50` (CoreV5) it is a larger target-supplied set the binder round-robins via `counter++ % size`. The hard invariant `ValidEngines.size() >= 2` (`assign_hwdge_engine.cpp:22`, FATAL "Number of valid engines for HWDGE must be greater than or equal to 2") guarantees the SP/Activation pair is always available. *(CONFIRMED via the assign_hwdge_engine page.)*
+`ValidEngines` is built once from the first module's `ArchLevel` (`+0xAC`): for `ArchLevel ≤ 49` (Cayman 30 / CoreV4 40) it is a fixed 2-entry set `[ SP(6), Activation(2) ]` and `assignEngine` picks SP or Activation by affinity-match against the instruction's `(engine, sub)` key at `I+0x90`/`I+0x94`, falling back round-robin; for `ArchLevel ≥ 50` (CoreV5) it is a larger target-supplied set the binder round-robins via `counter++ % size`. The hard invariant `ValidEngines.size() >= 2` (`assign_hwdge_engine.cpp:22`, FATAL "Number of valid engines for HWDGE must be greater than or equal to 2") guarantees the SP/Activation pair is always available.
 
 The SW/HW split this produces:
 
@@ -376,7 +378,7 @@ Each pass is registered by a `std::function` factory `(PassOptions → unique_pt
 | `register_generator_dynamic_dma_cleanup__` | `0xd06550` / `0xd04d60` | `dynamic_dma_cleanup` |
 | `register_generator_assign_hwdge_engine__` | `0x1182710` / `0x1180100` | `assign_hwdge_engine` |
 
-The relevant relative placement in the backend pipeline (the second numbers below are the D-H17 pipeline-trace sub-sequence, distinct from the alphabetical registry IDs `dynamic_dma_cleanup=49 / dynamic_dma_scan=50 / dynamic_dma_setup=51 / assign_hwdge_engine=12 / lower_dynamic_dma=92`):
+The relevant relative placement in the backend pipeline (the second numbers below are the pipeline-trace sub-sequence, distinct from the alphabetical registry IDs `dynamic_dma_cleanup=49 / dynamic_dma_scan=50 / dynamic_dma_setup=51 / assign_hwdge_engine=12 / lower_dynamic_dma=92`):
 
 ```text
  ... 35 bir_splitter
@@ -393,7 +395,7 @@ The relevant relative placement in the backend pipeline (the second numbers belo
  ... 110 assign_trigger_engine    123 assign_hwdge_engine    124 alloc_queues
 ```
 
-> **NOTE — setup before scan, and scan twice.** `dynamic_dma_setup` (36) runs *before* the first authoritative scan because the scratch reservation must exist before the allocators color SB. The scan appears at 73 *after* allocation so that late-introduced/cloned DMAs (spill/reload, SSA re-clones) get routed; the `Unassigned` guard makes this second pass touch only the new DMAs. The cleanup at 71 runs just ahead of that post-alloc scan to strip stale marks; the authoritative route+engine verify is the cleanup that follows codegen. The exact global ordering of the cleanup/scan pair versus `assign_hwdge_engine` is the D-H17 sub-sequence numbering, distinct from the registry's global IDs. *(STRONG — pipeline trace.)*
+> **NOTE — setup before scan, and scan twice.** `dynamic_dma_setup` (36) runs *before* the first authoritative scan because the scratch reservation must exist before the allocators color SB. The scan appears at 73 *after* allocation so that late-introduced/cloned DMAs (spill/reload, SSA re-clones) get routed; the `Unassigned` guard makes this second pass touch only the new DMAs. The cleanup at 71 runs just ahead of that post-alloc scan to strip stale marks; the authoritative route+engine verify is the cleanup that follows codegen. The exact global ordering of the cleanup/scan pair versus `assign_hwdge_engine` is the sub-sequence numbering, distinct from the registry's global IDs.
 
 ---
 
@@ -401,25 +403,25 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `getDGEInstructionType` | `0x1097330` | Route predicate: `{firstOrdinal, eligible set}` | CONFIRMED |
-| `sub_1096280` | `0x1096280` | SW-vs-HW descriptor-fit feasibility | STRONG |
-| `_validateOnlyOneOf…DynamicOffset…` | `0xf140a0` | Exactly-one-of scalar/vector offset | CONFIRMED |
-| `DynamicDMAScan::run` | `0xd03c40` | Per-function/BB scan driver | CONFIRMED |
-| `DynamicDMAScanImpl::visitInstruction` | `0xd05ba0` | The `Unassigned`→route stamp | CONFIRMED |
-| `DynamicDMASetup::run` | `0xd02370` | Setup driver | CONFIRMED |
-| `DynamicDMASetupImpl::visit(Module)` | `0xd05440` | Insert `DynamicDMAScratchLoc` | CONFIRMED |
-| `DynamicDMACleanUp::run` | `0xd02680` | Feature-strip + route/engine verify | CONFIRMED |
-| `AssignHWDGEEngineImpl::assignEngine` | `0x1180360` | HWDGE engine binder (gates `DGEType==2`) | CONFIRMED |
-| `IsHWDGETransposeAPShapeSizeOk` | `0x1093990` | xbar-transpose feasibility (transpose arm) | STRONG |
-| `isDescNumOk` / `getDGEMaxDescNumBasedOnShape` | `0x1093970` / `0x1093950` | Descriptor-count helpers | STRONG |
-| `generateDynamicDMA(InstDMA&, DMAQoSClass)` | `0x1276b10` | Descriptor lowering consumer | CONFIRMED |
-| `isScalar/VectorDynamicOffsetDMA`, `isDstReduceDGE`, `DGEType2string`, `isHWDGEDMAWithEngineSet` | PLT/GOT (libBIR) | AP-flavour probes & route helpers | INFERRED (call sites + assertion strings) |
+| `getDGEInstructionType` | `0x1097330` | Route predicate: `{firstOrdinal, eligible set}` | CERTAIN |
+| `sub_1096280` | `0x1096280` | SW-vs-HW descriptor-fit feasibility | HIGH |
+| `_validateOnlyOneOf…DynamicOffset…` | `0xf140a0` | Exactly-one-of scalar/vector offset | CERTAIN |
+| `DynamicDMAScan::run` | `0xd03c40` | Per-function/BB scan driver | CERTAIN |
+| `DynamicDMAScanImpl::visitInstruction` | `0xd05ba0` | The `Unassigned`→route stamp | CERTAIN |
+| `DynamicDMASetup::run` | `0xd02370` | Setup driver | CERTAIN |
+| `DynamicDMASetupImpl::visit(Module)` | `0xd05440` | Insert `DynamicDMAScratchLoc` | CERTAIN |
+| `DynamicDMACleanUp::run` | `0xd02680` | Feature-strip + route/engine verify | CERTAIN |
+| `AssignHWDGEEngineImpl::assignEngine` | `0x1180360` | HWDGE engine binder (gates `DGEType==2`) | CERTAIN |
+| `IsHWDGETransposeAPShapeSizeOk` | `0x1093990` | xbar-transpose feasibility (transpose arm) | HIGH |
+| `isDescNumOk` / `getDGEMaxDescNumBasedOnShape` | `0x1093970` / `0x1093950` | Descriptor-count helpers | HIGH |
+| `generateDynamicDMA(InstDMA&, DMAQoSClass)` | `0x1276b10` | Descriptor lowering consumer | CERTAIN |
+| `isScalar/VectorDynamicOffsetDMA`, `isDstReduceDGE`, `DGEType2string`, `isHWDGEDMAWithEngineSet` | PLT/GOT (libBIR) | AP-flavour probes & route helpers | MEDIUM (call sites + assertion strings) |
 
 > **NOTE — corpus provenance.** `libwalrus.so` and `libBIR.so` are present in the corpus —
 > as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so the fine
 > addresses on this page (e.g. `getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`) are
 > the `libwalrus.so`-proper VA frame recovered from the `ida/…libwalrus.so/` database; the cited
-> bodies are disassembled, not merely declared, and are **CONFIRMED**. The wheel snapshot
+> bodies are disassembled, not merely declared. The wheel snapshot
 > additionally ships the same code statically linked into `walrus_bugpoint_driver`, whose IDA
 > sidecar independently confirms the `cl::list<DGELevels>` parser instantiation and the
 > `Unassigned` enum string. The `bir::DGEType {None0,SWDGE1,HWDGE2,Unassigned3}` ordinals and the
@@ -428,23 +430,6 @@ The relevant relative placement in the backend pipeline (the second numbers belo
 > pages. The same provenance stance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md),
 > [Backend Dependence-Distance](backend-dependence-distance.md), [the Dynamic For-Loop](dynamic-for-loop.md),
 > and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
-
-> **NOTE (retraction) —** an earlier CORRECTION here (Wave-2 audit) claimed there is *no* standalone
-> `ida/…libwalrus.so/` IDA database and that the fine DGE addresses fell "outside the standalone-`.so`
-> extracted range" of `0x5e9000–0x7cfb30`, so they were merely *driver-DB-grounded*. **That CORRECTION
-> was wrong and is retracted.** A full standalone `ida/…starfish__lib__libwalrus.so/` IDA database (a
-> 1.37 GB `.i64` with 59,466 disassembled functions, per its `_function_addresses.json`) **does** ship in
-> the corpus, with per-symbol `disasm/`, `decompiled/`, `context/` and `graphs/` subdirs. Its function
-> table spans `0x5e9000 … 0x3fdaa30` — the `0x5e9000–0x7cfb30` "ceiling" was an artifact of a *truncated
-> top-level* `disasm/` sidecar dump, **not** the DB's actual range. Every DGE address on this page resolves
-> to real standalone disassembly there: `getDGEInstructionType @0x1097330`, `assignEngine @0x1180360`,
-> `DynamicDMAScan::run @0xd03c40`, `KlirToBirCodegen::assembleDynamicInfo @0xf20230`,
-> `LowerAP::convertSymAP @0x11b7f80`, `LowerAP::run @0x11ba970`, `rewireDynamicAPRegisters @0xef91d0`,
-> `sub_1096280 @0x1096280` (each appears as a `…_0x<va>.asm` in the DB's internal `disasm/`). Each symbol
-> also has a second `.`-prefixed body entry in the `0x5e9xxx–0x6xxxxx` frame (the truncated dump); the
-> CORRECTION saw only that frame and wrongly inferred the DB did not exist. These addresses are therefore
-> **standalone-`libwalrus.so`-disasm-CONFIRMED**, as the original provenance NOTE above states — not merely
-> driver-DB-grounded. The retraction applies equally to the four sibling pages the NOTE names.
 
 ## Related Components
 

@@ -26,13 +26,13 @@
 |---|------|----------|-----|
 | 1 | TensorStore = opcode **`0xab`**, **maintained** (`// Y`) in **all four** shipped gens. | `common.h` enum: sunda L254 / cayman L251 / mariana L256 / maverick L259, each `= 0xab, // Y` | HIGH/OBSERVED |
 | 2 | It binds the **same** 64-B struct as TensorLoad: `NEURON_ISA_TPB_MEM_2D_STRUCT` maps to **both** `TENSOR_LOAD` *and* `TENSOR_STORE`. NOT a distinct STORE struct. | `instruction_mapping.json` (4/4 gens): `"NEURON_ISA_TPB_MEM_2D_STRUCT": [ TENSOR_LOAD, TENSOR_STORE ]` (sunda L88–90) | HIGH/OBSERVED |
-| 3 | Struct `sizeof == 64`; offsets header=0 events=4 dtype=12 **src_datasrc=13** num_elem=14 start_addr=16 step_elem=24 data=32. | `mem_2d.h:106–128` + `ISA_STATIC_ASSERT==64` + **in-task gcc compile-verify** (all `_Static_assert` pass) | HIGH/OBSERVED |
+| 3 | Struct `sizeof == 64`; offsets header=0 events=4 dtype=12 **src_datasrc=13** num_elem=14 start_addr=16 step_elem=24 data=32. | `mem_2d.h:106–128` + `ISA_STATIC_ASSERT==64` + **gcc compile-verify** (all `_Static_assert` pass) | HIGH/OBSERVED |
 | 4 | **The new content vs LOAD** — `src_datasrc` (offset 13) may be `0` (Register) **or** `1` (Immediate). When Immediate, the same 32-byte `data[]` field is **reinterpreted** as packed typed immediates via the `MEM2D_DATA` union. | `common.h:754–757` (`DATA_SRC{REGISTER=0,IMMEDIATE=1}`) + `mem2d_datasrc_valid` (`mem_2d.h:232–235`) + union `common.h:738–747` | HIGH/OBSERVED |
 | 5 | Immediate element caps = `floor(32 / sizeof(dtype))`: **u8/i8 ≤32, u16/i16 ≤16, u32/i32/fp32 ≤8, u64 ≤4**; Register src is always **≤32**. | `mem2d_store_num_elem_check` (`mem_2d.h:253–268`), byte-cited; spec prose `mem_2d.h:44–50,86–96` | HIGH/OBSERVED |
 | 6 | **dtype-truncate on store** — NO numeric cast. The source datum is written at dtype **width** (low N bits for a register source; the high bits drop). The reverse of TensorLoad's zero/sign-extend. | spec Store paragraph carries no cast verb (`mem_2d.h:22–52`); symmetric mirror of the Load extend table (`mem_2d.h:54–73`) | HIGH for "truncate not cast"; MED/INFERRED for exact narrowing |
-| 7 | **Dispatch** is iTPB-sequencer-native: decoded in the `0xa5..0xab` control block, NOT a Q7-POOL software kernel and NOT a DVE op. **`"S: TensorStore"` appears 16×** in the host ucode lib (the 16 sequencer blobs), matching WRITE/MOVE/TensorLoad. | `strings libnrtucode_internal.so` → `S: TensorStore` ×16 (in-task) ; absent from carved POOL `kernel_info_table` | HIGH/OBSERVED |
+| 7 | **Dispatch** is iTPB-sequencer-native: decoded in the `0xa5..0xab` control block, NOT a Q7-POOL software kernel and NOT a DVE op. **`"S: TensorStore"` appears 16×** in the host ucode lib (the 16 sequencer blobs), matching WRITE/MOVE/TensorLoad. | `strings libnrtucode_internal.so` → `S: TensorStore` ×16 ; absent from carved POOL `kernel_info_table` | HIGH/OBSERVED |
 | 8 | Destination = the **full 64-bit Neuron Address Space** (`NEURON_ADDR = uint64_t`): SBUF, PSUM, per-core dataram/DRAM, HBM via the dynamic window. Whole tensor must lie in **one aligned 16 MB region**. | `common.h:443` + `STATE_BUF`/`PSUM_BUF` offsets `common.h:68–71` + `mem_2d.h:52` | HIGH/OBSERVED |
-| 9 | **Present + maintained in all four gens** SUNDA(NC-v2) → MAVERICK(NC-v5); store-spec body byte-identical (only the line-3 NC-version comment differs). | per-gen enum `// Y` + JSON + `diff <(tail -n+4 …)` empty (in-task) | HIGH/OBSERVED; v5/MAVERICK interior INFERRED |
+| 9 | **Present + maintained in all four gens** SUNDA(NC-v2) → MAVERICK(NC-v5); store-spec body byte-identical (only the line-3 NC-version comment differs). | per-gen enum `// Y` + JSON + `diff <(tail -n+4 …)` empty | HIGH/OBSERVED; v5/MAVERICK interior INFERRED |
 
 ---
 
@@ -49,14 +49,14 @@ source was referenced.
 | Enums / struct fields | `…/neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_common.h` (`OPCODE`, `DTYPE`, `DATA_SRC`, `MEM2D_DATA`, `ADDR8`, `HEADER`, `EVENTS`, buffer offsets) |
 | Struct→opcode binding | `…/neuron_<gen>_arch_isa/tpb/instruction_mapping.json` (`struct2opcode`) |
 | Host ucode container | `…/custom_op/c10/lib/libnrtucode_internal.so` — ELF x86-64, **not stripped** |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified in-task |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Container BuildID | `sha1:9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` |
 | Self-name DEBUG tag | `"S: TensorStore"` ×16 (the 16 sequencer blobs); adjacent `"S: Dispatch opcode=0x%x"` |
 | Carved POOL images | `<gen>_Q7_POOL_PERF_EXTISA_*` getters embedded in the container; `kernel_info_table` byte-decoded (8-B entries, opcode @+3) |
 
 The four `mem_2d.h` are **body-byte-identical** across sunda/cayman/mariana/maverick: a `diff` of each
 file minus its line-3 NC-version comment is empty for all three pairs. The `MEM2D_DATA` union and the
-`DATA_SRC` enum are byte-identical in all four `common.h`. `[HIGH/OBSERVED — in-task]`
+`DATA_SRC` enum are byte-identical in all four `common.h`.
 
 > **NOTE — host x86 vs Vision-Q7 FLIX.** None of this decode crosses the Q7 Vision FLIX bundle
 > decoder. The struct/enum facts are from C headers; the dispatch facts are from host x86-64 ASCII
@@ -87,7 +87,6 @@ NEURON_ISA_TPB_OPCODE_PSEUDO_TENSOR_LOAD  = 0xce,        // compiler pseudo (no 
 opcodes (`WRITE`, `NOTIFY`, `MOVE`, `ALU_OP`, `COMPARE_BRANCH`, `TENSOR_LOAD`, `TENSOR_STORE`). These
 are *not* PE / ACT / POOL / DVE compute ops; they are the control engine's own instruction set.
 `TENSOR_LOAD`/`TENSOR_STORE` are its scalar **memory↔register access pair** — `0xab` is the store half.
-`[HIGH/OBSERVED]`
 
 Per-gen byte pins (every gen carries the trailing `// Y` "tested / maintained / not-deprecated" flag
 on `0xab`):
@@ -106,13 +105,13 @@ on `0xab`):
 > - **`DMA_MEMCPY 0xb8` / `DMA_INDIRECT 0xbb`** — the **bulk** tile/tensor DMA movers (these *are* POOL
 >   kernels; see [DMA / transpose cluster](dma-transpose-opcode-cluster.md)).
 >
-> TensorStore is the narrow scalar scatter; it is **not** the bulk DMA tile mover. `[HIGH/OBSERVED]`
+> TensorStore is the narrow scalar scatter; it is **not** the bulk DMA tile mover.
 
 The compiler-emitted **`PSEUDO_TENSOR_STORE` (`0xcd`)** uses a parallel 64-B struct
 `NEURON_ISA_TPB_PSEUDO_MEM_2D_STRUCT` (`aws_neuron_isa_tpb_pseudo_mem_2d.h:102–115`) in which the
 concrete `start_addr` (offset 16, `ADDR8`) is replaced by a symbolic `uint32_t var_id` (16–19) +
 `uint32_t var_offset` (20–23); NRT resolves the symbol to a real `ADDR8` and lowers `0xcd → 0xab` at
-bind time. The `dtype`/`src_datasrc`/`num_elem`/`step_elem`/`data` fields are identical. `[HIGH/OBSERVED]`
+bind time. The `dtype`/`src_datasrc`/`num_elem`/`step_elem`/`data` fields are identical.
 
 ---
 
@@ -145,7 +144,7 @@ typedef struct NEURON_ISA_TPB_MEM_2D_STRUCT {
 ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_MEM_2D_STRUCT) == 64, "…NOT 64B.");
 ```
 
-### Compile-verify (in-task, gcc, SUNDA headers)
+### Compile-verify (gcc, SUNDA headers)
 
 A standalone TU compiled clean (`gcc -I <sunda hdr>`) with every `_Static_assert` passing:
 
@@ -168,14 +167,14 @@ _Static_assert(NEURON_ISA_TPB_OPCODE_TENSOR_LOAD  == 0xaa, "");
 _Static_assert(sizeof(uint64_t[4]) == 32, "");   /* the implicit u64 immediate footprint, §6 */
 ```
 
-Result: **all assertions pass** in the SUNDA header set. `[HIGH/OBSERVED — in-task gcc]` The whole
+Result: **all assertions pass** in the SUNDA header set. `[HIGH/OBSERVED — gcc]` The whole
 `mem_2d.h` store-spec body is byte-identical across all four gens, so the layout holds gen-for-gen.
 
 > **NOTE — keep this struct byte-identical to TensorLoad.** The 64-B layout above is **literally the
 > same struct** the [TensorLoad](tensorload.md) page documents (same offsets, same sub-sizes). The
 > STORE/LOAD asymmetry is entirely in how `src_datasrc` and `data[]` are *interpreted at validate /
 > execute*, never in the bytes. If the two pages ever disagree on a field offset, this one is the
-> compile-verified reference. `[HIGH/OBSERVED]`
+> compile-verified reference.
 
 Field roles for TensorStore:
 
@@ -214,7 +213,6 @@ Everything else is shared verbatim with LOAD:
 | datasrc | `mem2d_datasrc_zero` — `src_datasrc == Register` **forced** (`mem_2d.h:228–230`) | `mem2d_datasrc_valid` — Register **or** Immediate (`mem_2d.h:232–235`) |
 | element-count | `mem2d_32_elem_check` — uniform `≤ 32` (`mem_2d.h:237–239`) | `mem2d_store_num_elem_check` — per-dtype caps (`mem_2d.h:253–268`) |
 
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -245,7 +243,7 @@ static inline uint64_t mem2d_elem_addr(
 > region (to allow sequencer to use one memory window)" (`mem_2d.h:52`). The sequencer maps the
 > destination through **one** 16 MB hardware memory-window TLB entry, so the entire 2-D span — every
 > address the generator above produces — must stay inside one aligned 16 MB region. This is the same
-> constraint TensorLoad carries. `[HIGH/OBSERVED]`
+> constraint TensorLoad carries.
 
 `start_addr` is an `ADDR8` (`common.h:553–558`): a union whose marker byte selects an **immediate**
 address, an address **from a register**, or an address **from a table** (with optional wide offset).
@@ -262,7 +260,7 @@ So an **immediate** start address must be naturally aligned to the element width
 supplied address is not statically checkable and is trusted at runtime (`mem_2d.h:81`: "valid Neuron
 Address (no assertion for this, depends on system)"). There is **no** per-element destination-range
 assertion in the validate set — destination legality beyond alignment + single-window is a runtime /
-system property. `[HIGH/OBSERVED]`
+system property.
 
 ---
 
@@ -288,7 +286,7 @@ typedef union NEURON_ISA_TPB_MEM2D_DATA {
 When `src_datasrc == Register`, the executor reads `data.registers[k]` (a `uint8` register number) and
 fetches `R[that]`. When `src_datasrc == Immediate`, the executor reads `data.<dtype-overlay>[k]` — the
 **same 32 bytes** reinterpreted as packed typed immediates. The immediate data does **not** occupy a
-separate field; it overlays `data[]`. One field, two readings. `[HIGH/OBSERVED]`
+separate field; it overlays `data[]`. One field, two readings.
 
 > **QUIRK — the u64 immediate overlay is implicit.** The union lists eight members
 > (`registers`/`uint8`/`int8`/`uint16`/`int16`/`uint32`/`int32`/`fp32`) — there is **no** explicit
@@ -362,7 +360,7 @@ store but is not spelled out element-by-element the way Load's extend table is.]
 > (`0xB`) exists in the `DTYPE` enum (`common.h:712`, the "RTL FP22 partial fp32 type") but is **not**
 > one of the 8 dtypes `mem2d_dtype_check` accepts. Neither are `bf16`/`fp16`/`fp8`. TensorStore's
 > dtype set is the integer + `fp32` + `u64` **scalar** set, *not* the wider compute-dtype set. Do not
-> assume a data-movement op accepts every `DTYPE` value. `[HIGH/OBSERVED]`
+> assume a data-movement op accepts every `DTYPE` value.
 
 Data-movement family, dtype-convert column:
 
@@ -374,7 +372,6 @@ Data-movement family, dtype-convert column:
 | [Copy](cast-copy.md) | — | `S4D4_TR` | element-copy, *may* convert dtype |
 | Cast | — | `S4D4_TR` | element-copy, *does* convert dtype (fp pack) |
 
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -425,11 +422,10 @@ void exec_tensor_store(const NEURON_ISA_TPB_MEM_2D_STRUCT *i)
 **pair**, so `mem2d_u64_register_check` (`mem_2d.h:187–226`, via `mem2d_odd_register_used`) requires
 **all 32** source register numbers to be even (`r0`, `r2`, …, `r14`, …): an odd register id in any of
 the 32 slots fails validation. (For a `u64` **immediate**, the value is in the `data[]` overlay — §6a.)
-`[HIGH/OBSERVED]`
 
 **No multi-tile continuation.** TensorStore is bounded to ≤32 (or fewer, per dtype) scalars in one
 window — a single pass, `O(n)` with `n ≤ 32`. Larger transfers are not its job: those use
-`DMA_MEMCPY (0xb8)` / `DMA_INDIRECT (0xbb)` (POOL kernels). `[HIGH/OBSERVED]`
+`DMA_MEMCPY (0xb8)` / `DMA_INDIRECT (0xbb)` (POOL kernels).
 
 ---
 
@@ -452,9 +448,9 @@ window the sequencer's 16 MB memory-window TLB can map for this NeuronCore:
 > 64-bit `ADDR8` Neuron Address; the SBUF/PSUM windows are the *low* region of that space. The only
 > **encode-time** destination constraint TensorStore enforces is (a) `start_addr` alignment for the
 > immediate form and (b) the whole span inside one 16 MB window — there is no per-element SBUF/PSUM
-> range assertion (`mem_2d.h:81`). See the [memory model](../../topics/memory-model.md) /
-> [LSU memory](../../uarch/lsu-memory.md) and the planned
-> [SBUF/PSUM banks](../../dma/sbuf-psum-banks.md) for the full map. `[HIGH/OBSERVED]`
+> range assertion (`mem_2d.h:81`). See the [memory model](../../dma/sbuf-psum-banks.md) /
+> [LSU memory](../../uarch/lsu-memory.md) and
+> [SBUF/PSUM banks](../../dma/sbuf-psum-banks.md) for the full map.
 
 ---
 
@@ -468,13 +464,13 @@ kernel:
    appears **16 times** — the count of the 16 sequencer-engine blobs — matching `"S: WRITE"` (16),
    `"S: MOVE"` (16), and `"S: TensorLoad"` (16). A DVE op tags differently: `"S: FindIndex8"` appears
    **4 times** (DVE). The `"S: TensorStore"` strings sit adjacent to `"S: Dispatch opcode=0x%x"`,
-   confirming opcode-keyed sequencer dispatch. `[HIGH/OBSERVED — in-task `strings` counts]`
+   confirming opcode-keyed sequencer dispatch. `[HIGH/OBSERVED — `strings` counts]`
 
 2. **POOL `kernel_info_table` absence.** The carved POOL images' `kernel_info_table` (8-byte entries,
    opcode at byte +3) was byte-decoded across multiple carves: opcode `0xab` is **absent** from every
    POOL table (and so is its twin `0xaa`), while the bulk movers `0xb8` (`DMA_MEMCPY`) and `0xbb`
    (`DMA_INDIRECT`) **are** present. TensorStore is therefore **not** a POOL kernel; the bulk DMA
-   movers are. `[HIGH/OBSERVED — report SX-FW-65 §6, re-decoded across 3 carves]`
+   movers are.
 
 **Dispatch chain (identical all four gens):**
 
@@ -540,7 +536,7 @@ struct byte-identical between the two):
 | window | one aligned 16 MB region | **same** |
 | u64 + Register | all 32 reg# even | **same** (`mem2d_u64_register_check`) |
 | dispatch surface | iTPB sequencer (`0xa5..0xab`) | **same** — its twin |
-| POOL `kernel_info_table` | ABSENT (not a POOL kernel) | ABSENT (re-decoded carves) |
+| POOL `kernel_info_table` | ABSENT (not a POOL kernel) | ABSENT |
 | `S:`-tag multiplicity | 16 (sequencer) | 16 (sequencer) |
 | pseudo (compiler) | `0xce` `PSEUDO_TENSOR_LOAD` | `0xcd` `PSEUDO_TENSOR_STORE` |
 | per-gen presence | SUNDA..MAVERICK, all `// Y` | SUNDA..MAVERICK, all `// Y` |
@@ -548,7 +544,7 @@ struct byte-identical between the two):
 **Net.** The pair is a structurally symmetric memory↔register scalar access pair. The **only**
 asymmetry: STORE adds the `src_datasrc == Immediate` branch (packed immediates in `data[]` with
 per-dtype `≤32/16/8/4` caps) and the truncating-width store; LOAD forbids the immediate branch
-(`datasrc` forced `0`) and zero/sign-extends instead. `[HIGH/OBSERVED]`
+(`datasrc` forced `0`) and zero/sign-extends instead.
 
 ---
 
@@ -560,10 +556,10 @@ per-dtype `≤32/16/8/4` caps) and the truncating-width store; LOAD forbids the 
 - [DMA / transpose opcode cluster](dma-transpose-opcode-cluster.md) — the bulk movers `0xb8`/`0xbb`
   (what TensorStore is **not**).
 - Store ISA batch: [`../../isa/ref/b07-stores.md`](../../isa/ref/b07-stores.md) — the store-mnemonic group.
-- ISS store semantics: `../../iss/cas-load-store.md` *(planned)* — the host-emulated store port
+- ISS store semantics: `../../iss/cas-load-store.md` — the host-emulated store port
   (the device-LSU truncate primitive that realizes "truncate on store").
-- SBUF / PSUM banks: `../../dma/sbuf-psum-banks.md` *(planned)* — the destination-window bank map.
-- Memory model: [`../../topics/memory-model.md`](../../topics/memory-model.md) and
+- SBUF / PSUM banks: `../../dma/sbuf-psum-banks.md` — the destination-window bank map.
+- Memory model: [On-Chip State-Buffer (SBUF) + PSUM Bank Model](../../dma/sbuf-psum-banks.md) and
   [`../../uarch/lsu-memory.md`](../../uarch/lsu-memory.md) — the Neuron Address Space + 16 MB windows.
 
 ---
@@ -575,7 +571,7 @@ per-dtype `≤32/16/8/4` caps) and the truncating-width store; LOAD forbids the 
 - opcode `0xab`, `// Y` maintained, all four gen `common.h` enums (sunda L254 / cayman L251 / mariana
   L256 / maverick L259), byte-pinned.
 - operand struct `NEURON_ISA_TPB_MEM_2D_STRUCT`, 64 B, all offsets + sub-sizes, **shared** with LOAD
-  (`instruction_mapping.json`: `MEM_2D_STRUCT → [TENSOR_LOAD, TENSOR_STORE]`), in-task gcc compile-
+  (`instruction_mapping.json`: `MEM_2D_STRUCT → [TENSOR_LOAD, TENSOR_STORE]`), gcc compile-
   verify all `_Static_assert` pass; store-spec body byte-identical across gens (only line-3 differs).
 - SRC = sequencer GPRs r0..r31 **or** packed in-instruction immediates; DST = full 64-b Neuron Address
   Space; ≤32 (or fewer) scalars; one aligned 16 MB window.
@@ -584,7 +580,7 @@ per-dtype `≤32/16/8/4` caps) and the truncating-width store; LOAD forbids the 
   u8/i8 ≤32, u16/i16 ≤16, u32/i32/fp32 ≤8, u64 ≤4 (`mem2d_store_num_elem_check`) = `32/sizeof`.
 - dtype set = the same 8; on-store = truncating-width (no numeric cast), the mirror of LOAD's
   zero/sign-extend; `FP32R`/bf16/fp16/fp8 excluded (`mem2d_dtype_check`).
-- dispatch: `"S: TensorStore"` ×16 in `libnrtucode_internal.so` (in-task) ⇒ sequencer-native; absent
+- dispatch: `"S: TensorStore"` ×16 in `libnrtucode_internal.so` ⇒ sequencer-native; absent
   from the POOL `kernel_info_table` ⇒ not a POOL kernel (bulk movers `0xb8`/`0xbb` are).
 - present + maintained in all four gens SUNDA(NC-v2)..MAVERICK(NC-v5).
 

@@ -25,7 +25,7 @@ artifacts. No external source tree was referenced.
 **Spot-verifier binary.**
 `extracted/.../custom_op/c10/lib/libnrtucode_internal.so`,
 sha256 `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`
-(re-hashed this task — **MATCH** the image-catalog anchor). Disassembler:
+(**MATCH** the image-catalog anchor). Disassembler:
 the shipped Cadence `ncore2gp` `xtensa-elf-objdump` (Binutils 2.34, Xtensa Tools 14.09).
 
 | Tag | Meaning |
@@ -36,8 +36,8 @@ the shipped Cadence `ncore2gp` `xtensa-elf-objdump` (Binutils 2.34, Xtensa Tools
 | `OBSERVED` | read directly from the bytes / disasm |
 | `CARRIED` | brought forward from an upstream image carve (e.g. SUNDA, out of this package) |
 
-> **NOTE.** Five KIT cells across four generations were **re-carved byte-exact this
-> task** to anchor the matrix (see [§7 Spot-verification](#7-spot-verification--five-cells-re-carved-byte-exact)).
+> **NOTE.** Five KIT cells across four generations were **carved byte-exact** to anchor
+> the matrix (see [§7 Spot-verification](#7-spot-verification--five-cells-re-carved-byte-exact)).
 > All five blob hashes and key columns matched their anchors.
 
 ---
@@ -57,7 +57,7 @@ the shipped Cadence `ncore2gp` `xtensa-elf-objdump` (Binutils 2.34, Xtensa Tools
   CAYMAN (`910d41c3`) ≡ MARIANA (`9f2ce049`) ≡ MAVERICK (`a92c8ba0`) — all 17 entries,
   `ADDED=[] / REMOVED=[]`. MARIANA_PLUS `EXTISA_0_SO` is byte-identical to MARIANA
   (`9f2ce049`). The POOL compute opcode space **does not grow** from CAYMAN through
-  MAVERICK; only the `funcVA`s relocate. `[HIGH/OBSERVED — re-carved this task, §7]`
+  MAVERICK; only the `funcVA`s relocate. `[HIGH/OBSERVED — §7]`
 * **SUNDA is the floor and the only key-set outlier.** SUNDA's Q7 table is a **single
   flat 18-entry table**, all `spec=0`, opcodes `0x41..0xe7`, with **no `0xF0` rows** (no
   ExtendedInst bridge), no `0x7b` dequant, no `0xe4` cptc, no `0xbe`/`0xf2`. SUNDA's Q7
@@ -72,9 +72,9 @@ the shipped Cadence `ncore2gp` `xtensa-elf-objdump` (Binutils 2.34, Xtensa Tools
   dtype expansion" is realized on DVE and PE — not as new POOL KIT rows.**
   `[HIGH/OBSERVED]`
 * **`QUANTIZE_MX` (`0xe3`) binds DVE, not POOL.** `0xe3` is **absent** from all four
-  MAVERICK Q7 EXTISA POOL KITs (re-carved: not in the 17-entry `EXTISA_0`); it is armed
+  MAVERICK Q7 EXTISA POOL KITs (not in the 17-entry `EXTISA_0`); it is armed
   only in the MAVERICK DVE PROF CAM. POOL's only MX surface is **`0x7b`
-  TENSOR_DEQUANTIZE** (`EXTISA_0` idx16). `[HIGH/OBSERVED — re-carved this task]`
+  TENSOR_DEQUANTIZE** (`EXTISA_0` idx16). `[HIGH/OBSERVED]`
 
 ---
 
@@ -155,7 +155,7 @@ The Q7 POOL core packs `(opcode, spec)` into a `u32` key and **linearly scans** 
 ```c
 /* Surface B: Q7 POOL kernel_info_table dispatch (the 'P%i:' dialect).        */
 /* Table @ EXTISA ELF section VMA 0x02000380. 8-byte records, linear scan.    */
-/* Record layout (re-carved byte-exact this task):                            */
+/* Record layout (byte-exact):                                                */
 /*   off+0..1 : 0,0       (pad / reserved)                                     */
 /*   off+2    : spec      (the 0xF0 sub-selector; 0 for plain opcodes)         */
 /*   off+3    : opcode    (the TPB opcode byte)                                */
@@ -194,12 +194,12 @@ void q7_pool_dispatch(uint8_t opcode, uint8_t spec,
 
 The 17-entry `EXTISA_0` table is the authoritative POOL compute back-end for v3..v5. The
 `(opcode,spec)` key set is **identical** across CAYMAN / MARIANA / MARIANA_PLUS /
-MAVERICK (re-carved this task — see [§7](#7-spot-verification--five-cells-re-carved-byte-exact));
+MAVERICK (see [§7](#7-spot-verification--five-cells-re-carved-byte-exact));
 only the `funcVA`s relocate. The `funcVA`s shown are the **CAYMAN `ET_EXEC`** values
-(`.text` @ `0x01000000`), re-read byte-exact this task.
+(`.text` @ `0x01000000`), read byte-exact.
 
-> `[idx / opcode / spec / funcVA — HIGH/OBSERVED, re-carved. kernel name HIGH where
-> `.xt.prop` EXACT, MED where routed. struct/dtype CARRIED from the FW reports.]`
+> `[idx / opcode / spec / funcVA — HIGH/OBSERVED. kernel name HIGH where
+> `.xt.prop` EXACT, MED where routed. struct/dtype CARRIED from the FW pages.]`
 
 | idx | op | spec | KERNEL (resolved) | ENGINE | STRUCT (FW) | DTYPE / route | funcVA (CAYMAN) | conf |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -224,7 +224,7 @@ only the `funcVA`s relocate. The `funcVA`s shown are the **CAYMAN `ET_EXEC`** va
 **Per-gen `funcVA` reloc:** CAYMAN (`ET_EXEC`, `.text` @ `0x01000000`) → MARIANA
 (`+0..+0x44` monotonic reloc) → MARIANA_PLUS (byte-identical SO to MARIANA) → MAVERICK
 (stripped `ET_DYN`, `.text` @ `0x0`, fresh rebuild; **same key set**, re-ordered
-`funcVA`s). `[HIGH/OBSERVED]`
+`funcVA`s).
 
 > **CORRECTION — idx14/15 (`0xbe` vs `0xf2`).** The SEQ-side `'S:'` log lists
 > "GetSequenceBounds" and "NonzeroWithCount" as **distinct** handlers. The shipped
@@ -235,13 +235,11 @@ only the `funcVA`s relocate. The `funcVA`s shown are the **CAYMAN `ET_EXEC`** va
 > `0xf2 = NonzeroWithCount`. Any source that wrote "`0xf2 = GetSequenceBounds`
 > loosely conflated them. `[HIGH/OBSERVED — enum pins]`
 
-### The smaller EXTISA images (re-carved byte-exact this task)
+### The smaller EXTISA images (byte-exact)
 
-* **`EXTISA_1`** (1 entry @ VMA `0x02000048`): `0x7e/0` (iota). `[HIGH/OBSERVED]`
+* **`EXTISA_1`** (1 entry @ VMA `0x02000048`): `0x7e/0` (iota).
 * **`EXTISA_2`** (2 entries @ VMA `0x02000070`): `0x7c/0`, `0x7d/0` (cross-lane reduce).
-  `[HIGH/OBSERVED]`
-* **`EXTISA_3`** (9 entries @ VMA `0x020008c8`, the cptc/MX codec family)
-  `[HIGH/OBSERVED — re-carved, funcVAs below]`:
+* **`EXTISA_3`** (9 entries @ VMA `0x020008c8`, the cptc/MX codec family, funcVAs below):
 
   | idx | op | spec | kernel | funcVA (CAYMAN) |
   | --- | --- | --- | --- | --- |
@@ -266,7 +264,7 @@ only the `funcVA`s relocate. The `funcVA`s shown are the **CAYMAN `ET_EXEC`** va
 Single flat table, **all `spec=0`**, **no `0xF0`**. `[HIGH/CARRIED]` — the SUNDA EXTISA
 container (`libnrtucode_extisa.so`, sha `444497066f5e1738`) ships in the `neuronx-runtime`
 package, **not** this checkout's customop-lib package, so these rows are byte-reads
-carried from the SUNDA image carve, not re-verified here.
+carried from the SUNDA image carve (out of this checkout).
 
 | idx | op | KERNEL (SUNDA JSON name map) | SEQ-equivalent (CAYMAN+ opcode) |
 | --- | --- | --- | --- |
@@ -396,7 +394,7 @@ This is the page's spine: rows are the **union** of (the SEQ 178-table real opco
 | `0xe3` | **QuantizeMx** | A | **DVE** | — | MX block quant | - | - | Y | Y | **Y** (DVE PROF CAM; **named handler dropped on MV; POOL ABSENT**) | FW-60/IMG-09 HIGH |
 
 > **QUIRK — `0xe3` is a DVE opcode, not a POOL KIT row.** Re-carving the MAVERICK
-> `EXTISA_0` POOL KIT (17 entries) this task confirmed `0xe3` is **absent**. On MAVERICK
+> `EXTISA_0` POOL KIT (17 entries) confirms `0xe3` is **absent**. On MAVERICK
 > the `QuantizeMx` *named handler* is even dropped from the DVE roster (60→59); `0xe3` is
 > armed only in the MAVERICK DVE PROF CAM. **POOL's only MX surface is `0x7b`
 > TensorDequantize** (`EXTISA_0` idx16). `[HIGH/OBSERVED]`
@@ -533,27 +531,26 @@ the NKI wheel and `emit_<op>` MLIR emitters are **not** in this checkout; only t
 
 ## 7. Spot-verification — five cells re-carved byte-exact
 
-All against `libnrtucode_internal.so` (`b7c67e89`, **re-hashed MATCH** this task).
-`[HIGH/OBSERVED]`
+All against `libnrtucode_internal.so` (`b7c67e89`, **MATCH**). `[HIGH/OBSERVED]`
 
 | # | Cell | Carve (file off : size) | sha8 | Anchor | Result |
 | --- | --- | --- | --- | --- | --- |
 | 1 | **CAYMAN `EXTISA_0`** (Surface B, v3) | `0x2ef7e0` : `0xa260` | `910d41c3` | IMG-06/FW-18 | **PASS** — KIT @file `0x7400`, 17 entries: idx0 `0x7e/0/0x01000080` … idx16 `0x7b/0/0x01004dc4`, the five `0xF0` rows (spec `0,1,2,4,3`). |
 | 2 | **NX_POOL DEBUG DRAM SEQ + bridge** (Surface A, v3) | `0x1cdc40` : `0x6f20` | `7bdf6ed7` | FW-07 | **PASS** — SEQ tbl @file `0x814`: `'A'`(`0x41`)=`0x3074`, `'E'`(`0x45`)=`0x3064`, `0xF0` slot @file `0xad0`=`0x3190` (ExtendedInst trampoline). |
-| 3 | **MARIANA `EXTISA_0`** (Surface B, v4) | `0x5893c0` : `0xa260` | `9f2ce049` | IMG-11 | **PASS** — 17-entry `(opcode,spec)` key column re-decoded; key diff vs CAYMAN: `ADDED=[] / REMOVED=[]` → IDENTICAL. |
+| 3 | **MARIANA `EXTISA_0`** (Surface B, v4) | `0x5893c0` : `0xa260` | `9f2ce049` | IMG-11 | **PASS** — 17-entry `(opcode,spec)` key column decoded; key diff vs CAYMAN: `ADDED=[] / REMOVED=[]` → IDENTICAL. |
 | 4 | **MAVERICK `EXTISA_0`** (Surface B, v5, stripped DYN) | `0x994de0` : `0x7fb0` | `a92c8ba0` | IMG-21 | **PASS** — KIT @file `0x7038`, 17-entry key column; vs CAYMAN: `ADDED=[] / REMOVED=[]` → IDENTICAL. `0xe3` **absent**. |
-| 5 | **CAYMAN `EXTISA_3`** cptc 9-entry (Surface B) | `0x2fbf00` : `0x6974` | `052ac31c` | IMG-06 | **PASS** — KIT @VMA `0x020008c8` (file `0x4748`, size `0x48` = 9 entries): `0x7e`/`0x7c`/`0x7d`/`0x45`/`0xbe`/`0xf2`/`0x7b`/`0xe4`(cptc disp `0x01002258`)/`0xf0`-spec7(`0x01003b64`). `EXTISA_1` (1: `0x7e`) + `EXTISA_2` (2: `0x7c`,`0x7d`) also re-carved + confirmed. |
+| 5 | **CAYMAN `EXTISA_3`** cptc 9-entry (Surface B) | `0x2fbf00` : `0x6974` | `052ac31c` | IMG-06 | **PASS** — KIT @VMA `0x020008c8` (file `0x4748`, size `0x48` = 9 entries): `0x7e`/`0x7c`/`0x7d`/`0x45`/`0xbe`/`0xf2`/`0x7b`/`0xe4`(cptc disp `0x01002258`)/`0xf0`-spec7(`0x01003b64`). `EXTISA_1` (1: `0x7e`) + `EXTISA_2` (2: `0x7c`,`0x7d`) also confirmed. |
 
 > **NOTE on the `funcVA` prologue decode.** A linear-sweep `ncore2gp` objdump of a
 > `funcVA` target shows **FLIX-bundle desync** (the documented `ncore2gp` LX-vs-Vision
 > limitation), so the per-`funcVA` `entry a1,N` prologue claim rests on the in-section
 > `R_XTENSA_RELATIVE` relocs (one-per-entry, 8-byte stride, addend 0) + the `.xt.prop`
 > EXACT matches — **not** on a clean linear disassembly. The **entry-COUNT and KEY-SET**
-> (the primary facts of this matrix) **are** byte-exact and were re-verified.
+> (the primary facts of this matrix) **are** byte-exact.
 > `[HIGH for count/keys; funcVA-prologue HIGH/CARRIED from the reloc-anchored proof.]`
 
-> **Enum cross-check (shipped `aws_neuron_isa_tpb_common.h`, maverick).** Re-read this
-> task: `TENSOR_DEQUANTIZE = 0x7b`, `COMPACT_CONTROL_INST = 0xb6`, `DMA_MEMCPY2 = 0xb9`,
+> **Enum cross-check (shipped `aws_neuron_isa_tpb_common.h`, maverick).**
+> `TENSOR_DEQUANTIZE = 0x7b`, `COMPACT_CONTROL_INST = 0xb6`, `DMA_MEMCPY2 = 0xb9`,
 > `DMA_IMMEDIATE = 0xba`, `GET_SEQUENCE_BOUNDS = 0xbe`, `QUANTIZE_MX = 0xe3`,
 > `CONV_LUT_LOAD = 0xe4`, `EXTENDED_INST = 0xf0`, `NONZERO_WITH_COUNT = 0xf2`. Every
 > byte pin above matches. `[HIGH/OBSERVED]`
@@ -594,7 +591,7 @@ reached as SEQ handlers; bodies not separately decoded): `ModifyPoolConfig`, `So
 shipped maverick enum, but the byte value + dispatch trampoline are FLIX-desynced / not
 in a clean carve slot. `[name HIGH, byte MED]`
 
-**Out-of-corpus** (cannot be re-verified in this checkout):
+**Out-of-corpus** (cannot be verified in this checkout):
 
 * The SUNDA Q7 EXTISA container (`libnrtucode_extisa.so`, sha `444497066f5e1738`) lives
   in the `neuronx-runtime` package — SUNDA's 18 rows (§3) are CARRIED.
@@ -606,7 +603,7 @@ in a clean carve slot. `[name HIGH, byte MED]`
 
 A common informal claim is that MAVERICK adds six opcodes
 `0xb6/0xb9/0xba/0x26/0xf3/0xf4` plus the FIND_INDEX8/MATCH names. Reconciled against the
-OBSERVED carves + the shipped maverick enum (re-read this task):
+OBSERVED carves + the shipped maverick enum:
 
 * **Genuine MAVERICK `+6` enum growth (159→165)** is `0xb6 COMPACT_CONTROL_INST`,
   `0xb9 DMA_MEMCPY2`, `0xba DMA_IMMEDIATE` `[HIGH/OBSERVED byte]` + `ACTIVATE_MULTIPASS`,
@@ -628,12 +625,12 @@ This is the honest correction the synthesis is obligated to make.
 
 ## 10. Honesty ledger
 
-**`HIGH / OBSERVED`** (re-derived byte-exact this task against the shipped binary):
+**`HIGH / OBSERVED`** (byte-exact against the shipped binary):
 
-* `internal.so` `b7c67e89` re-hashed MATCH.
-* CAYMAN `EXTISA_0` (`910d41c3`) 17-entry KIT re-decoded byte-exact (SPOT 1).
+* `internal.so` `b7c67e89` MATCH.
+* CAYMAN `EXTISA_0` (`910d41c3`) 17-entry KIT decoded byte-exact (SPOT 1).
 * NX_POOL DEBUG DRAM (`7bdf6ed7`) SEQ table `'A'`/`'E'`/`0xF0` slots (SPOT 2).
-* MARIANA (`9f2ce049`) + MAVERICK (`a92c8ba0`) key sets re-decoded; **both key-identical
+* MARIANA (`9f2ce049`) + MAVERICK (`a92c8ba0`) key sets decoded; **both key-identical
   to CAYMAN** (`ADDED=[]/REMOVED=[]`) (SPOT 3/4) — cross-gen key stability v3→v4→v5
   confirmed from the binaries, not inferred.
 * CAYMAN `EXTISA_3` (`052ac31c`) 9-entry cptc table (incl. `0xe4` + `0xf0`/spec7) +
@@ -642,7 +639,7 @@ This is the honest correction the synthesis is obligated to make.
 * The opcode byte pins from the shipped maverick enum.
 * The two-dispatch-surface model + the `0xF0` bridge reconciliation.
 
-**`HIGH / CARRIED`** (byte-read upstream, not re-verified here): SUNDA's 18-entry flat
+**`HIGH / CARRIED`** (byte-read upstream, out of this checkout): SUNDA's 18-entry flat
 table (§3, out-of-corpus); MARIANA_PLUS `EXTISA_0` byte-identical-to-MARIANA
 (`9f2ce049`); the per-opcode struct + dtype bindings.
 

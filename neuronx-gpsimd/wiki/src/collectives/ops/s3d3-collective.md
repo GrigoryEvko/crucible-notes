@@ -19,15 +19,13 @@ each a `NEURON_ISA_TPB_TENSOR3D` (16 B = `ADDR4` base + 3 signed `int16` strides
 > `InstGPSIMDSB2SB` (Penguin BIR roster, `compiler/bir-inst-roster.md`).
 
 **Provenance.** Every field, offset, enum value, opcode, symbol address and string below is
-re-grounded against: the clean ISA headers
+grounded against: the clean ISA headers
 (`aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64`, compile-verified with `gcc` `sizeof`/
 `offsetof`); `instruction_mapping.json`; and the host runtime `libnrt.so.2.31.24.0`
 (`aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce`, ELF x86-64, not stripped, IDA-sidecar
 verified) — the encoder that builds and validates the `0xBF` word. Device-side log strings
-are cross-checked against `libnrtucode_internal.so`. Confidence tags: **HIGH** = compile-
-verified header / direct DWARF / direct disasm / verbatim string; **MED** = strong inference;
-**LOW** = plausible. Evidence: **OBSERVED** = read directly; **INFERRED**; **CARRIED** =
-sibling-page fact.
+are cross-checked against `libnrtucode_internal.so`. The page default is `[HIGH / OBSERVED]`;
+claims that depart from it carry an explicit tag.
 
 ---
 

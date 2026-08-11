@@ -5,7 +5,8 @@ v3 / NC-v3). This is the page the Mariana / Mariana+ / Maverick ACT diffs refere
 so it is documented byte-true: every size, sha256, opcode, and string below is read
 directly from `libnrtucode_internal.so`
 (sha256 `b7c67e89…632fc329b`) and its 14 `CAYMAN_NX_ACT_*_get` accessors, with the
-shipped Cadence Vision-Q7 `ncore2gp` disassembler decoding the carved blobs.
+shipped Cadence Vision-Q7 `ncore2gp` disassembler decoding the carved blobs. The page
+default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **The verdict up front.** CAYMAN × ACT is **not** a standalone activation-kernel
 > core and **not** a POOL-style `kernel_info_table` compute engine. It is an
@@ -13,7 +14,7 @@ shipped Cadence Vision-Q7 `ncore2gp` disassembler decoding the carved blobs.
 > firmware codebase that the NX POOL / PE / DVE / SP sequencers run — compiled with
 > the activation engine's handler subset. The activation *function* (relu / gelu /
 > sigmoid / …) is **not a code kernel**: it is a host-loaded LUT applied by the
-> `Activate` opcode. [HIGH/OBSERVED]
+> `Activate` opcode.
 
 Related pages: [Firmware-Image Accessor Index](./image-catalog-index.md) ·
 [PROF_CAM / PROF_TABLE Blob Formats](./prof-cam-table-formats.md) ·
@@ -40,7 +41,6 @@ void getter(void **img_ptr /*rdi*/, size_t *img_size /*rsi*/) {
 There are exactly **14** ACT getters (`nm … | rg -c 'CAYMAN_NX_ACT_[A-Z]+_[A-Z]+_get$'`
 → 14; the IDA functions sidecar independently lists 14). `CLS=NX` (NX-core instruction
 sequencer), `ENG=ACT`. 8 carry real bytes; 6 are zero-size boundary cursors.
-[HIGH/OBSERVED]
 
 | VARIANT | REGION | ACCESSOR (.text VA) | IMG-PTR (.rodata VA == file off) | SIZE | STATUS |
 |---|---|---|---|---|---|
@@ -64,7 +64,7 @@ The 6 SRAM/EXTRAM getters all emit `movq $0x0,(%rsi)` and point their `lea` at t
 `objdump` resolves the symbol to `CAYMAN_NX_DVE_<v>_IRAM_get.data`. They ship **no
 bytes**; ACT runs entirely out of IRAM (code) + DRAM (data) on CAYMAN. (Counted
 distinct `.data` addresses for the 14 getters = 11: 8 real + 3 shared DVE cursors,
-one per variant.) [HIGH/OBSERVED]
+one per variant.)
 
 > **GOTCHA — read the getter STUBS via `objdump`, not raw `dd`.** `.rodata` is
 > identity-mapped (VA == file offset; `readelf -SW` shows `.rodata` VA `0x46b0` ==
@@ -73,14 +73,14 @@ one per variant.) [HIGH/OBSERVED]
 > A naive `dd skip=<stub-VA>` reads the wrong instruction bytes (off by `0x2000`)
 > and yields bogus ptr/size literals. Resolve the stub via `objdump -d` (VA-aware)
 > or subtract `0x2000` from the VA before `dd`. The carve `IMG-PTR`s, being
-> `.rodata` VAs, need no adjustment. [HIGH/OBSERVED — CORRECTION caught this task]
+> `.rodata` VAs, need no adjustment.
 
 ---
 
 ## 2. Carve provenance + byte-identity reconciliation
 
 Carve rule (`.rodata` identity map): `blob = internal.so[IMG-PTR : IMG-PTR+SIZE]`
-(`dd bs=1`). All 8 real carves reproduce the report's sha256 exactly: [HIGH/OBSERVED]
+(`dd bs=1`). All 8 real carves reproduce these sha256 exactly:
 
 | IMAGE | FILE-OFF | SIZE | sha256 |
 |---|---|---|---|
@@ -101,7 +101,7 @@ x86-64 relocatable defining both `<NAME>_get` (T) and `<NAME>_get.data` (r), wra
 the device blob as its `.rodata`. Extracting each member's `.rodata`
 (`ar x` → `objcopy -O binary --only-section=.rodata`) and comparing gives **8/8
 IDENTICAL** — internal.so getter blob == `.a` member `.rodata`. One firmware corpus,
-two packaging views. [HIGH/OBSERVED]
+two packaging views.
 
 ---
 
@@ -112,7 +112,7 @@ device-memory segments**, the device-side `.rodata` payload of the `*_contents.c
 members — *not* the `EM_XTENSA` ELFs of the Q7 POOL EXTISA blobs. The "ELF
 confirmation" for a flat image is the geometry confirmation: reset vector at byte 0,
 DRAM dispatch table at `0x814`, and the `ncore2gp` disassembler decoding it to real
-Q7/NX windowed-ABI + FLIX-VLIW code. [HIGH/OBSERVED]
+Q7/NX windowed-ABI + FLIX-VLIW code.
 
 - **IRAM** = code at device VA `0x0` (reset vector at byte 0).
 - **DRAM** = data at device VA `0x80000`, so **DRAM string offset = device VA −
@@ -124,7 +124,7 @@ Q7/NX windowed-ABI + FLIX-VLIW code. [HIGH/OBSERVED]
 06 76 00 00 | 00 00 | 86 77 00 00 | 00 00 | a0 71 69 80
 ```
 
-Decoded with the shipped `ncore2gp` `xtensa-elf-objdump` (exit 0, empty stderr):
+Decoded with the shipped `ncore2gp` `xtensa-elf-objdump`:
 
 ```text
 0x000:  06 76 00     j        0x1dc      ; primary reset vector → boot path
@@ -140,20 +140,19 @@ ACT computes its **own engine identity at boot** — the DRAM string
 `S: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u`
 is present, so the *same* flat binary can be loaded on any engine slot and the
 `engine_idx` is derived at runtime from `engine_base_addr` vs `tpb_base_addr`, not
-baked in. [HIGH/OBSERVED for the string; the runtime-compute is INFERRED from the
-string + boot path.]
+baked in. [string HIGH/OBSERVED; runtime-compute INFERRED]
 
 **Vector datapath.** `ncore2gp objdump -D -b binary` decodes every IRAM to real
 windowed-ABI (`entry` / `retw.n`, `l32e`/`s32e` window spill — 369 such markers in
 PERF IRAM) and a dense Cadence Vision IVP TIE vector ISA: **PERF 299 / TEST 297 /
 DEBUG 178** distinct `ivp_*` mnemonics (`ivp_addnx16t`, `ivp_absssubnx16`,
 `ivp_addexpmnxf16t`, `ivp_addn_2xf32t`, …). The activation *math* runs on this vector
-datapath. [HIGH/OBSERVED]
+datapath.
 
 > **NOTE — why DEBUG decodes to *fewer* IVP ops (178) than PERF (299).** DEBUG is the
 > *larger* image yet shows the *smaller* distinct-mnemonic count. Two reasons: (a) the
 > linear `objdump` sweep desyncs more across the bigger DEBUG image's FLIX/literal
-> boundaries (documented SX-FW-00 limitation — trampoline starts show `.byte 0xf`
+> boundaries (documented FW-00 limitation — trampoline starts show `.byte 0xf`
 > FLIX selectors), and (b) PERF schedules denser FLIX vector bundles. The count is a
 > *floor* on the real vector-op inventory, not a ceiling. [MED/INFERRED]
 
@@ -197,7 +196,7 @@ for (;;) {
 }
 ```
 
-The three HIGH anchors, all decoded in DEBUG IRAM this task: [HIGH/OBSERVED]
+The three HIGH anchors, decoded in DEBUG IRAM:
 
 - **`0x399d`** `const16 a4,0x814 ; addx4 a3,a3,a4 ; l32i.n a3,[a3] ; jx a3` — the
   DRAM `0x80814` table-indexed indirect jump.
@@ -213,7 +212,7 @@ The three HIGH anchors, all decoded in DEBUG IRAM this task: [HIGH/OBSERVED]
 > — these are tested literally by the DEBUG compare chain (`movi.n a3,33/34/35/36` at
 > `0x2b35`/`0x2b40`/`0x2b4b`/`0x2b56`), confirmed against the
 > [PWL kernel page](../firmware/kernels/activate-pwl.md). The PROF CAM (§6) arms *both*
-> tiers: `0x21`–`0x24` (ACT-native) and the `0x41`+ ASCII control opcodes. [HIGH/OBSERVED]
+> tiers: `0x21`–`0x24` (ACT-native) and the `0x41`+ ASCII control opcodes.
 
 ### The clean PERF dispatch table (the reference geometry)
 
@@ -244,7 +243,7 @@ of logs — this is the clean reference. Decoded (178 LE words at file `0x814`):
 ### Unknown-opcode / error path
 
 Present byte-for-byte in the ACT DRAM (`strings | rg ErrorHandler`), identical fault
-classes to the SEQ engine: [HIGH/OBSERVED]
+classes to the SEQ engine:
 
 ```
 S: ErrorHandler : Bad Opcode(0x%x)
@@ -266,7 +265,7 @@ roster is recovered. The ACT-specific handlers each load their name from DRAM an
 call the log helper, e.g. `Activate` at DRAM VA `0x81a41`, `ActivationTableLoad` at
 `0x81aa0`. DRAM string offsets (add `0x80000` for the device VA); opcode column
 cross-referenced from the [PWL kernel page](../firmware/kernels/activate-pwl.md) and
-confirmed against the §4 compare chain: [HIGH/OBSERVED]
+confirmed against the §4 compare chain:
 
 | Offset | DRAM VA | opcode | `S:` name | Role |
 |---|---|---|---|---|
@@ -286,8 +285,7 @@ absent). The activation function is **data** loaded into an activation table by
 is therefore the **4 activation opcodes** (`Activate` / `ActivateQuantize` /
 `ActivationTableLoad` / `ActivationReadAccumulator`) plus `Cast` / `Copy` /
 `TensorScalar`; the specific functions are run-time, host-supplied table contents.
-[HIGH/OBSERVED — absence grep-verified; LUT interpretation INFERRED HIGH from the
-`ActivationTableLoad`+`Activate` pair and the absence of named kernels.]
+[absence HIGH/OBSERVED; LUT model INFERRED-HIGH]
 
 `ActivationReadAccumulator` (opcode `0x24`, also in the PROF CAM set — §6) reads the
 ACT engine's per-lane fp32 reduction accumulator, i.e. the PE-array PSUM pulled into
@@ -324,7 +322,7 @@ void handle_Activate(inst_t *ins) {              // "S: Activate", op 0x21
 ### ACT-vs-POOL handler diff (apples-to-apples, same `S:` regex on both DEBUG DRAMs)
 
 Carving `CAYMAN_NX_POOL_DEBUG_DRAM` (ptr `0x1cdc40`, size `0x6f20`) and diffing the
-two `S:` rosters: [HIGH/OBSERVED]
+two `S:` rosters:
 
 - **ACT-ONLY**: `Activate`, `ActivateQuantize`, `ActivationReadAccumulator`,
   `ActivationTableLoad`, `Cast`, `Copy`, `TensorScalar`.
@@ -342,7 +340,7 @@ compiled-in compute-handler subset. The decode handlers come from the same sourc
 tree — PERF/TEST/DEBUG DRAM all carry `…/src/decode/alu_op.cpp`,
 `…/src/decode/move.cpp`, `…/src/decode/branch.cpp` with DTYPE constants
 `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}`; `alu_op.cpp` has 4 distinct "not
-supported op" assert sites (`:141`, `:196`, `:220`, `:262`). [HIGH/OBSERVED]
+supported op" assert sites (`:141`, `:196`, `:220`, `:262`).
 
 ---
 
@@ -375,7 +373,7 @@ struct prof_cam_record {       // 16 bytes — the per-engine HW-decode profiler
 > hardware *instruction-decode profiler*. It is structurally distinct from the 32 B
 > activation `aws_hal_stpb_act_cam_entry_t` (keyed on `(opcode, func_id)`) that the
 > [PWL page](../firmware/kernels/activate-pwl.md) §5 describes for the activation LUT.
-> Same word "CAM", two different tables. [HIGH/OBSERVED]
+> Same word "CAM", two different tables.
 
 The 47 `opcode_id` values are the ACT engine's ASCII/binary opcodes the HW-decode
 profiler is armed to count (mask `0xff`, enable `1`):
@@ -388,9 +386,8 @@ profiler is armed to count (mask `0xff`, enable `1`):
 ```
 
 (`0x21`–`0x24` are the ACT-native compute opcodes; `0x41`=`'A'` … are the shared SEQ
-ASCII control opcodes; `0x24` is `ActivationReadAccumulator`.) [HIGH/OBSERVED bytes;
-the "profiler arms these opcodes" reading is INFERRED HIGH from the
-`{opcode,mask,enable}` record shape + the hwdecode-table provenance.] See
+ASCII control opcodes; `0x24` is `ActivationReadAccumulator`.) [bytes HIGH/OBSERVED;
+"profiler arms these" INFERRED-HIGH] See
 [PROF_CAM / PROF_TABLE Blob Formats](./prof-cam-table-formats.md) for the cross-engine
 CAM/TABLE schema.
 
@@ -415,23 +412,23 @@ field schema]
 
 - **DEBUG** is the largest and the **only** build carrying the 150 `S:` runtime log
   strings — it is the reverse-engineering substrate (every handler self-names via its
-  `S: <OpName>` log). [HIGH/OBSERVED]
+  `S: <OpName>` log).
 - **PERF** (production / release flavor) strips **all** `S:` logs: DRAM shrinks to
   `0x2900`, only **15** strings survive — all assertion source-paths
   (`exception_handler.hpp`, `alu_op.cpp`, `move.cpp`, `branch.cpp`,
   `signal_handler.cpp`) plus the `ok_to_evict` WARNING and the generic
   `Assertion failure!`. IRAM also shrinks, yet the IVP vector-op count *rises* to 299
-  (see §3 NOTE). [HIGH/OBSERVED]
+  (see §3 NOTE).
 - **TEST** sits between: 0 `S:` logs but 58 strings — it keeps FUNCTION-NAME / file
   symbols for assert context (`fetch_cache_line`, `enter_run`,
   `sunda_handle_surprises`, `sunda_redirect`, `soc_window_manager.hpp`,
   `interrupt_handler`, `setup_interrupts`, `push_unallocated_window`, …) — a
-  symbol/assert build. [HIGH/OBSERVED]
+  symbol/assert build.
 
 > **The dispatch mechanism is invariant across all three.** Same reset vector
 > (`06 76 00 00`), same DRAM table @ `0x814`, same 178-bound, same ErrorHandler arms,
 > same `cayman/seq/` codebase. A DEBUG↔RELEASE swap is a pure **observability**
-> change, not a functional/dispatch change. [HIGH/OBSERVED]
+> change, not a functional/dispatch change.
 
 ---
 
@@ -460,7 +457,6 @@ firmware**, differing only in the compiled-in compute-handler subset. ACT is the
 control/sequencer **front-end** for the activation engine: it decodes the `S:`
 instruction stream and routes to the activation handlers, which run vector math
 (≈299 IVP ops) on the NX core's datapath, driven by a host-loaded activation table.
-[HIGH/OBSERVED]
 
 **Hardware map.** `TPB_0_ACT` lives at SoC base `0x2802400000` (~`0x200000` span)
 with IRAM / NX / LOCAL_REG / profile sub-blocks (the activation-LUT SRAM regions
@@ -469,8 +465,8 @@ on the [PWL page](../firmware/kernels/activate-pwl.md) §5). ACT is one of the f
 engines (ACT=engine idx 1, plus PE/POOL/DVE/SP) carrying an Xtensa `LOCAL_REG`
 control block; ACT is a **single Xtensa-NX core + small sequencer block** (no Q7_CORE
 sub-array — only POOL has the 8-core Q7 array). The firmware carved here is the
-program for that single NX sequencer core. [HIGH — cited from the SoC address map and
-the per-engine-depth page, not re-derived here]
+program for that single NX sequencer core. [HIGH/CARRIED — the SoC address map + the
+per-engine-depth page]
 
 > **CARRIED forward (Maverick).** On MAVERICK (NC-v5, header-OBSERVED only) the ACT
 > engine is **folded into DVE** — there is no standalone ACT engine block; the PWL
@@ -484,16 +480,16 @@ the per-engine-depth page, not re-derived here]
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (direct byte read or disassembly this task):**
+**HIGH / OBSERVED (direct byte read or disassembly):**
 
 - 14 `CAYMAN_NX_ACT` getters (`nm` count 14, IDA functions sidecar 14); 8 real
-  (ptr/size re-read via VA-aware `objdump`) + 6 zero-size DVE-cursor aliases (all six
+  (ptr/size read via VA-aware `objdump`) + 6 zero-size DVE-cursor aliases (all six
   `movq $0x0`).
 - 8 carves byte-identical (sha256) to the `libnrtucode.a` member `.rodata`, 8/8;
   shas reproduced exactly.
 - Flat geometry; reset vector `06 76 00 00` (`j 0x1dc`) identical across DEBUG/PERF/
   TEST; boot path `j 0x1dc → const16 a0,0x90 ; jx a0`; 2nd vector `j 0x1e8 → halt 0`
-  (native `ncore2gp` disasm, empty stderr).
+  (native `ncore2gp` disasm).
 - Dispatch: table base DRAM `0x80814` (`const16 a4,0x814 ; addx4 ; l32i.n ; jx`
   @`0x399d`), 178-bound (`movi a3,177` @`0x2c2b`), ACT-native compute opcodes
   `0x21`–`0x24` via compare chain (`movi.n a3,33/34/35/36` @`0x2b35`…`0x2b56`),

@@ -14,7 +14,7 @@ shipped, redistributable tree (lawful RE under DMCA 17 U.S.C. §1201(f)). It des
 *what* gates and *why* the value path differs from the cycle path. It does **not**
 derive, supply, or suggest any bypass, key, hostid spoof, or patch.
 
-Everything below is anchored to shipped artifacts read **verbatim this session** — an
+Everything below is anchored to shipped artifacts read **verbatim** — an
 ELF `.dynsym` entry (`nm -D`), an embedded `strings` token, a license-file body, a
 banner. No vendor source snapshot is consulted or quoted; all output reads as derived
 from binary/file analysis of the shipped tree only.
@@ -26,10 +26,9 @@ from binary/file analysis of the shipped tree only.
 | API header | `Tools/include/tenlp.h` (71 lines) | the checkout API + policy bytes + error codes |
 | Bundled license | `Tools/lic/license.dat` (1 116 B, sha256 `73da37e7…06ad4`, Apr 4 2021) | **placeholder** — comment-only, no keys |
 
-Claims are tagged `[HIGH/OBSERVED]` (verbatim ELF/string/file bytes read this session),
+Claims are tagged `[HIGH/OBSERVED]` (verbatim ELF/string/file bytes),
 `[MED/INFERRED]` (reasoning over those bytes / FlexLM convention), or `[CARRIED]` (from a
-cross-referenced lane). Source report: **SX-ABI-16**. The `|` glyph in tables is written
-`\|`. Cross-links: the gated tools and their place in the build are owned by
+cross-referenced lane). Source report: **ABI-16**. Cross-links: the gated tools and their place in the build are owned by
 [Build Flow](build-flow.md) and [Build → Codegen](build-custom-op-codegen.md); the
 version pin is owned by [Toolchain Versions](../reference/toolchain-versions.md).
 
@@ -102,7 +101,7 @@ simulator (the `.a` static variants gate too). All carry `XTENSA_ISS_BASE` /
 ### 2.2 The binaries that do **not** gate
 
 Verified `tenlp_checkout` / `FlexNet Licensing v` / `XTENSA_ISS_BASE` hit count = **0**
-on each, this session:
+on each:
 
 * **All GNU binutils** — `xtensa-elf-{objdump, nm, ld, as, ar, objcopy, readelf, strip,
   addr2line, c++filt, size, strings, gprof, ranlib}`. GPL code cannot legally embed
@@ -114,7 +113,7 @@ on each, this session:
 * **The entire clang/LLVM-10 stack** — `clang-10`, `libLLVMXtensaCodeGen.so.10`,
   `libLLVMCodeGen.so.10`, `libLLVMXtensaDesc.so.10` (0 hits each). `[HIGH/OBSERVED]`
 
-> **CORRECTION (raises an SX-ABI-16 §3.3 claim).** SX-ABI-16 reports
+> **CORRECTION (raises an ABI-16 §3.3 claim).** ABI-16 reports
 > `XTENSA_INSTR_BASE` / `XTENSA_INTRN_BASE` as **FlexLM FEATURE tokens** present in
 > `libLLVMCodeGen.so.10` and `llvm-xtensa-config-gen`. That is **incorrect** —
 > see §3.3. Those libraries call `tenlp_checkout` **zero** times; the substrings are
@@ -186,7 +185,7 @@ A gated engine links `libtenlpw.a`, which holds **nine** function pointers —
 On `dlopen`/`dlsym` failure it prints `Error: %s: Cannot load Tensilica Licensing
 library` and returns `TENLP_NODLL (-799402)`. `[HIGH/OBSERVED — tenlpw.o strings]`
 
-> **CORRECTION (refines SX-ABI-16 §4.1).** That report counts the shim's pointer table
+> **CORRECTION (refines ABI-16 §4.1).** That report counts the shim's pointer table
 > as **eight** entries. The `libtenlpw.a` archive embeds **nine** `ptenlp_*` symbols —
 > the eighth-vs-ninth discrepancy is `ptenlp_init`, which the §4.1 enumeration omitted.
 > The exported-symbol set in `libsimxtcore.so` confirms `tenlp_init` is present (`T
@@ -346,7 +345,7 @@ follows the per-binary gate map (§2).
 | Path | What runs | Gated? |
 |---|---|---|
 | **Compile / link** | `xt-clang++` → `clang-10` → GNU `ld` → `xt-pkg-loadlib` | **No** — clang/LLVM/binutils/packager carry 0 `tenlp_checkout`. `[HIGH/OBSERVED]` |
-| **ISS — functional / value path** | the simulator's value-only modes | license-**free** in the value path; the checkout is the *cycle-accurate / timing* path's `XTENSA_ISS_BASE` (Runnable-ISS infra, Part 14 — not yet authored). `[CARRIED]` |
+| **ISS — functional / value path** | the simulator's value-only modes | license-**free** in the value path; the checkout is the *cycle-accurate / timing* path's `XTENSA_ISS_BASE` (see [Running the ISS](../iss/runnable-iss-infra.md)). `[CARRIED]` |
 | **ISS — cycle / fault path** | `xt-run` → `libsimxtcore` cycle-accurate engine | **Yes** — `XTENSA_ISS_BASE`. `[HIGH/OBSERVED]` |
 | **TIE / config regeneration** | `extend.so`, `tcgen` | **Yes** — `XTENSA_XCC_TIE` / `XT_XCC_FUSA`. `[HIGH/OBSERVED]` |
 
@@ -408,7 +407,7 @@ The XtensaTools release the gate belongs to is **14.09 / RI-2022.9** — the gen
 * **CORRECTIONS issued here** — (1) `XTENSA_INSTR_BASE` / `XTENSA_INTRN_BASE` are **not**
   FlexLM features (they are `_DISP_IMM`/`_DISP_REG` LLVM enum members); (2) the
   `libtenlpw.a` pointer table is **nine** entries, not eight (`ptenlp_init` was missing
-  from the SX-ABI-16 list); (3) the build-flow page's "compiler front-end is
+  from the ABI-16 list); (3) the build-flow page's "compiler front-end is
   FlexLM-gated" is refined — `clang-10` is ungated, the wrapper merely *exports*
   `LM_LICENSE_FILE` for the gated ISS/TIE engines.
 

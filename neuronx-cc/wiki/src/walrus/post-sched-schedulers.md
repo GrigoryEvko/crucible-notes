@@ -22,20 +22,20 @@ verified against the retained `.dynsym` (`nm -DC`) — the `0x5e…/0x5f…` ban
 
 | Item | Value | Tag |
 | --- | --- | --- |
-| Pass class | `neuronxcc::backend::PostSched` (BackendPass subclass) | CONFIRMED |
-| Single-module entry (LNC=1) | `PostSched::run(bir::Module&)` @0xc3fc90 | CONFIRMED |
-| Multi-module entry (LNC dispatch) | `PostSched::run(vector<unique_ptr<Module>>&)` @0xc41c10 | CONFIRMED |
-| Worker (levels 0/1/2 + lvl-3 driver) | `post_scheduler` (ctor @0xc15740) | CONFIRMED |
-| Module driver | `post_scheduler::schedule(Module&,…)` @0xc39920 | CONFIRMED |
-| Per-function level dispatch | `post_scheduler::schedule(Function&,int,…)` @0xc36010 | CONFIRMED |
-| Greedy list scheduler | `post_scheduler::schedule_block(BasicBlock&)` @0xc2b3b0 | CONFIRMED |
-| Cycle-accurate scheduler | `TimeAwareScheduler` (ctor @0xc549b0) | CONFIRMED |
-| Multi-core scheduler | `LncAwareScheduler` (ctor @0xc6d7a0, `schedule` @0xc70b90) | CONFIRMED |
-| Multi-core gate flag | `cl::opt<bool> "lnc-aware-scheduler"`, **default false** | CONFIRMED |
-| LNC core-count field | `PassOptions+0x1A4` = `lnc_size` (default 1) | CONFIRMED |
-| Policy field | module options `+0xE0` (policy) / dispatch `+272` | CONFIRMED |
-| Output snapshot | `bir.scheduled.after-ooo.json` | CONFIRMED |
-| Autotuner reward (lvl 3) | `addMetric(42 = PostSchedEstLatency)` | CONFIRMED |
+| Pass class | `neuronxcc::backend::PostSched` (BackendPass subclass) | CERTAIN |
+| Single-module entry (LNC=1) | `PostSched::run(bir::Module&)` @0xc3fc90 | CERTAIN |
+| Multi-module entry (LNC dispatch) | `PostSched::run(vector<unique_ptr<Module>>&)` @0xc41c10 | CERTAIN |
+| Worker (levels 0/1/2 + lvl-3 driver) | `post_scheduler` (ctor @0xc15740) | CERTAIN |
+| Module driver | `post_scheduler::schedule(Module&,…)` @0xc39920 | CERTAIN |
+| Per-function level dispatch | `post_scheduler::schedule(Function&,int,…)` @0xc36010 | CERTAIN |
+| Greedy list scheduler | `post_scheduler::schedule_block(BasicBlock&)` @0xc2b3b0 | CERTAIN |
+| Cycle-accurate scheduler | `TimeAwareScheduler` (ctor @0xc549b0) | CERTAIN |
+| Multi-core scheduler | `LncAwareScheduler` (ctor @0xc6d7a0, `schedule` @0xc70b90) | CERTAIN |
+| Multi-core gate flag | `cl::opt<bool> "lnc-aware-scheduler"`, **default false** | CERTAIN |
+| LNC core-count field | `PassOptions+0x1A4` = `lnc_size` (default 1) | CERTAIN |
+| Policy field | module options `+0xE0` (policy) / dispatch `+272` | CERTAIN |
+| Output snapshot | `bir.scheduled.after-ooo.json` | CERTAIN |
+| Autotuner reward (lvl 3) | `addMetric(42 = PostSchedEstLatency)` | CERTAIN |
 
 The dynsym retains the fully-decorated type of the level-3 ready list and the
 per-inst record, which removes any guesswork about the data structures:
@@ -51,8 +51,7 @@ std::vector<TimeAwareScheduler::Candidate>::_M_realloc_insert(...)     @0xc73900
 
 The ready list is therefore a `vector< map<readyCycle, set<Instruction*,
 ReadyInstCmp> > >` **indexed per engine** — a per-engine timeline bucketed by the
-simulated cycle at which each instruction becomes ready. [CONFIRMED — dynsym
-type signature.]
+simulated cycle at which each instruction becomes ready.
 
 ## Pipeline position and registration
 
@@ -62,7 +61,7 @@ and a companion `MemoryAnalysisAfterPostSched`
 SBUF/PSUM pressure immediately afterward. The pass appears **twice** in the
 backend execution order — the main post-RA schedule, then a re-run after
 `separate_load_and_compute` / `order_column_tiled_mms` / `arch_legalize` have
-finalized the pipelined loop body [STRONG]. A second companion,
+finalized the pipelined loop body. A second companion,
 `address_rotation_psum_post_schedule`
 (`register_generator_address_rotation_psum_post_schedule__` @0x3dff023), runs
 *after* `post_sched` to realize PSUM multi-buffering of the loop the scheduler
@@ -98,7 +97,6 @@ calls `post_scheduler::schedule(Function&, policy,…)` @0xc36010, marks
 `FunctionAttribute #12` (sched-done), and tears down the scheduling-scaffold flow
 edges via `erase_flow_dependencies(F)` + `draw_trivial_deps(F)` so the
 synchronizer can later rebuild only the surviving cross-engine dependencies.
-[CONFIRMED]
 
 `post_scheduler::schedule(Function&,…)` @0xc36010 is the ~2300-line dispatcher.
 Stripped of logging:
@@ -202,7 +200,7 @@ This is the height/critical-path machinery one would expect of a list scheduler;
 in this toolchain it lives **here**, not in the pre-allocation ordering pass.
 `requireLatencyHiding` @0xc17b60 (an `I→J` predicate) and `update_timings(ENG)`
 @0xc17c60 feed the per-engine timing the comparator uses to keep producers ahead
-of consumers. [CONFIRMED]
+of consumers.
 
 **Successor release.** `update_ready_list(I)` @0xc28660 iterates `I`'s
 descendents (a `tbb::concurrent_unordered_set<EdgePtr>` at `Instruction+0xD0+0x258`,
@@ -221,7 +219,7 @@ pickers; senior-load handling (`insert_senior_load` @0xc19f70 /
 that feeds many consumers early (a software-prefetch heuristic). **The resource
 model is per-engine ready sub-lists plus a per-engine timing word advanced by
 `update_timings` — there is no partition-band reservation table** (see the
-misattribution note below). [CONFIRMED]
+misattribution note below).
 
 **The Hwm latency the picker consumes.** `get_latency(I)` @0xc18730 returns a
 cycle estimate (all `/200`-normalized):
@@ -242,7 +240,6 @@ double get_latency(Instruction *I) {
 
 This consumption of Hwm latencies and byte-size formulas is the defining contrast
 with the pre-allocation scheduler, which has no `getLatency` call anywhere.
-[CONFIRMED]
 
 `sld(BasicBlock&)` @0xc10dc0 (levels 0/1) is the block-local "separate load and
 compute" helper that splits the block's loads from its compute so the greedy
@@ -267,7 +264,7 @@ exists, because the groups only become visible once PSUM banks are physical:
 - `deps_in_acc_groups(F)` @0xc2e230 is the level≥2 gate (no accum-group deps →
   downgrade to level 1, "Warning 3").
 - `set_last_matmults(F)` @0x1583540 + `sanitize_matmult_stc_bits` @0xc32e50 fix
-  the matmul start/stop-accumulate (STC) bits for the chosen order. [CONFIRMED]
+  the matmul start/stop-accumulate (STC) bits for the chosen order.
 
 ## Level 3 — TimeAwareScheduler (cycle-accurate simulation)
 
@@ -302,7 +299,7 @@ seed path — `df_topo_sort` @0xc57d60 is the DFS debug/alt variant);
 `replace_generic_with_lowering_choices(B)` @0xc5cf20 + `lower_hwdge_triggers(B)`
 @0xc5c580 (emit each generic DMA as a set of trigger-engine lowering choices);
 `mark_as_ready(I)` @0xc563e0 (seed the per-engine ready buckets by engine start
-time); and prime the embedded PerfSim with the chosen `InstCostMode`. [CONFIRMED]
+time); and prime the embedded PerfSim with the chosen `InstCostMode`.
 
 **The simulation loop.** `schedule_basicblock(B)` @0xc63150, gated by
 `"Searching for candidate: scheduled_insts=<N> =total_insts"`:
@@ -340,7 +337,7 @@ The register-pressure throttle `check_skip_due_to_register_pressure(int eng)`
 @0xc56630 uses a `DenseMap<bir::EngineType,int>` (a per-engine live-register
 budget) plus `bir::isDataPathEngine`; if issuing `I` on its engine would exceed
 the budget, `I` is deferred this step. This is the throttle the greedy levels
-0/1/2 lack. [CONFIRMED]
+0/1/2 lack.
 
 **The byte-true comparator order.** `is_better_instruction(a, t_a, b, t_b)`
 @0xc61500 compares in this order (disasm-verified — *height first*):
@@ -362,13 +359,11 @@ bool is_better_instruction(a, t_a, b, t_b) {
 So the level-3 priority is **{height → earliest issue cycle → PSUM-bank
 affinity}**. (A latency-hiding / busier-engine effect is emergent from the
 per-engine ready buckets and PerfSim cost; it is not the first comparator key.)
-[CONFIRMED — byte-verified field offsets.]
 
 The `set<>` ordering key `ReadyInstCmp::operator()` @0xc51270 reads the global
 `preserve_incoming_order` (@0x3dc2590) at field `+0x78` (disasm @0xc5129d): if
 `> 0` it orders by `Instruction+0x28` (scheduled-start, smaller first — preserve
 incoming order); else by `Instruction+0x48` (height, larger first), then `+0x30`.
-[CONFIRMED — byte-verified.]
 
 **HWDGE trigger-engine choice.** `is_better_trigger` @0xc51590 +
 `delete_dma_triggers` @0xc51710 select, among a DMA's lowering choices, the
@@ -405,8 +400,10 @@ Only when **policy 3 AND loop-free AND lnc-aware ON AND `lnc_size > 1` AND more
 than one module** does it log `"Running LNC-aware post_sched"`, collect one
 `BasicBlock` per core, build `LncAwareScheduler(vector<BasicBlock*>, Logger)`
 @0xc6d7a0, and call `.schedule()` @0xc70b90 (logging `"Running LNC-aware scheduler
-on block "`). [CONFIRMED — all five reason strings and the four compare constants
-are byte-present in `0xc41c10`.]
+on block "`).
+
+*Anchors: all five reason strings and the four compare constants are byte-present in
+`0xc41c10`.*
 
 **The `lnc-aware-scheduler` flag defaults to false.** The option is a standard
 LLVM `cl::opt<bool>` (`setArgStr("lnc-aware-scheduler")`, help `"Run LNC-aware
@@ -416,15 +413,15 @@ scheduler."`); its `Value` word at object `+0x98` is explicitly zeroed
 `lncAwareScheduler` @0x3df6800. Multi-core LNC-aware scheduling is therefore
 **opt-in**: absent the flag, every multi-LNC module is post-scheduled by the
 LNC=1 path, and cross-core sync ordering is left to the barrier/semaphore
-lowering passes rather than the scheduler. [CONFIRMED — zeroed Value field, no
-`init(true)`, plus the literal runtime log `lnc_aware_scheduler=false`.]
+lowering passes rather than the scheduler.
 
 **`LncAwareScheduler` construction.** The ctor @0xc6d7a0 builds N per-core
 `TimeAwareScheduler`s (one per `BasicBlock`), each pushed into a
 `vector<unique_ptr<TimeAwareScheduler>>` and `init()`-ed on its core's block, and
 constructs the cross-reference maps that index `CoreBarrier`s by NeuronCore id
-(`coreBarriers[ncId][index]`). [CONFIRMED — dynsym + `M_realloc_insert` of
-`unique_ptr<TimeAwareScheduler>` @0xc73aa0.]
+(`coreBarriers[ncId][index]`).
+
+*Anchors: dynsym plus the `M_realloc_insert` of `unique_ptr<TimeAwareScheduler>` @0xc73aa0.*
 
 **Sync-candidate identification.** Each global step asks each core for two kinds
 of candidate:
@@ -439,8 +436,8 @@ of candidate:
   name** via `bir::BasicBlock::getInstructionByName`, populating
   `lnc_sync_candidates_per_core[ncid]`. An LNC-sync candidate is thus a barrier op
   that has a same-named instance on every core and must fire at the same logical
-  step on all cores. [CONFIRMED — `cb_candidate`, `ncid`, and the
-  `coreBarriers[ncId][index]->getName()` assert strings.]
+  step on all cores. *Anchors: the `cb_candidate` and `ncid` symbols plus the
+  `coreBarriers[ncId][index]->getName()` assert strings.*
 
 **The lock-step loop.** `LncAwareScheduler::schedule()` @0xc70b90:
 
@@ -473,7 +470,6 @@ at the same step (matched by name/ID), while within each core the ordinary
 TimeAware priority (height → earliest cycle → PSUM affinity) still governs the
 non-sync instructions. The `:172` assert is a deadlock check — if no core can
 advance and no terminator was reached, the cross-core sync graph deadlocked.
-[CONFIRMED]
 
 For `LNC > 1` the backend additionally inserts PTCOM ops after `CoreBarrier`s and
 renumbers core barriers (`renumberCoreBarriers` region, `"Done renumbering core
@@ -484,7 +480,7 @@ barriers."`); those are sibling passes, not part of `schedule()` itself.
 Every scheduler ends by **splicing the block's ilist into emit order**: levels
 0/1/2 via `insertIntoSymboltable` in `schedule_block`; level 3 via
 `transferBeforeImpl` + `insertIntoSymboltable` in `schedule_basicblock`. After
-`post_sched`, the ilist *is* the per-engine schedule. [CONFIRMED]
+`post_sched`, the ilist *is* the per-engine schedule.
 
 The post-OOO snapshot is dumped as `bir.scheduled.after-ooo.json` (@0x1c81cbe);
 `dump_schedule(F)` writes per-core text traces under
@@ -495,22 +491,20 @@ get_modular_flow_runs(Module) * PerfSim::get_overall_end()` (the loop-trip
 multiplier times the simulated makespan), logged as `"Time-aware simulation
 time: <est>"` and recorded via `addMetric(42 = PostSchedEstLatency)`
 (`POracle::addMetric` @0xd13070). `post_sched` is the producer of that scalar.
-[CONFIRMED]
 
-## Misattribution correction — no partition-band reservation table
+## No partition-band reservation table
 
 The resource model of all three schedulers is the per-engine ready-list (greedy)
 or per-engine time-keyed ready map plus PerfSim clock (TimeAware), the per-engine
 register-pressure DenseMap, the PSUM-bank-affinity sets, and the DMA-queue
-dispatch slots — **none of them owns a partition-band reservation table**. The
-`partitionBandReservations` / `reservations[otherPartitionBandIndex]` /
-`"Bad Height"` strings sometimes associated with a scheduler reservation table
-resolve (via xref) to the **graph-coloring SB allocator**
-(`SB_Allocator::selectNode`, `heightAttributes`) and a prefetch peephole
-(`OptimizePrefetchActLoadImpl::visitInstruction`), not to any scheduler body.
-[CONFIRMED — xref evidence; the height priority a scheduler is expected to carry
-*is* present here via `longest_path`, but the reservation table belongs to the
-allocator.]
+dispatch slots — **none of them owns a partition-band reservation table**.
+
+> **GOTCHA —** the `partitionBandReservations` / `reservations[otherPartitionBandIndex]` /
+> `"Bad Height"` strings look like a scheduler reservation table. They xref to the
+> **graph-coloring SB allocator** (`SB_Allocator::selectNode`, `heightAttributes`) and
+> to a prefetch peephole (`OptimizePrefetchActLoadImpl::visitInstruction`), not to any
+> scheduler body. The height priority a scheduler is expected to carry *is* here — via
+> `longest_path` — but the reservation table belongs to the allocator.
 
 ## pre-allocation vs post-allocation scheduler contrast
 
@@ -579,17 +573,18 @@ allocator.]
   source of the `InstCostMode {Hwm | ML-regression}` selection and the
   `PostSchedEstLatency` makespan.
 
-## Re-verification ceiling
+## Evidence Anchors and Limits
 
-Byte-verified directly against the cp310 `libwalrus.so` in this pass: every
-scheduler symbol address (`nm -DC` dynsym), the ready-list / `InstMetrics` /
-`Candidate` types (decorated in dynsym), the five LNC-gate reason strings and the
-four gate compare constants (`cmpl $0x1,0x1a4`, `cmpl $0x3,0xe0`,
-`cmpb $0x0,0x400(%rsp)`, the loop-opcode `cmpq`), the `is_better_instruction`
-height-first ordering (`+0x48` compared before `+0x28`), the `ReadyInstCmp`
-`+0x78`/`+0x48`/`+0x28` field reads, and the `cl::opt` default-false markers. The
-`schedule_block` body is disasm-transcribed (Hex-Rays failed), so its exact
-inner control flow is STRONG rather than line-level CONFIRMED. The `InstCostMode`
-enum integer values and the `+0x88` loop-opcode constants' precise opcode
-identities are reasoned from naming/adjacency (STRONG). No claim here was
-fabricated; uncertain items are tagged inline.
+Read byte-exact from the cp310 `libwalrus.so`: every scheduler symbol address
+(`nm -DC` dynsym); the ready-list, `InstMetrics`, and `Candidate` types, which
+survive decorated in the dynsym; the five LNC-gate reason strings and the four
+gate compare constants (`cmpl $0x1,0x1a4`, `cmpl $0x3,0xe0`,
+`cmpb $0x0,0x400(%rsp)`, and the loop-opcode `cmpq`); the `is_better_instruction`
+height-first ordering, with `+0x48` compared before `+0x28`; the `ReadyInstCmp`
+`+0x78`/`+0x48`/`+0x28` field reads; and the `cl::opt` default-false markers.
+
+**Limits.** The `schedule_block` body is transcribed from disassembly because
+Hex-Rays failed on it, so its exact inner control flow is reconstructed rather than
+read statement-by-statement. The `InstCostMode` enum integer values and the precise
+opcode identities behind the `+0x88` loop-opcode constants are [INFERRED] from
+naming and adjacency.

@@ -10,7 +10,7 @@ The factor abstraction is what makes a contracting dimension of a `dot` behave c
 
 This page documents three things a reimplementer must reproduce: **(1)** `createOpShardingRule` — the 26-opcode `TypeSwitch` dispatch that builds the rule, and the per-opcode factor algebra; **(2)** `ShardingProjection` — the forward map (sharding → per-factor `FactorSharding`) and inverse map (`createTensorShardingAttr`, factors → sharding), including the sub-axis splitting that distributes one mesh axis across several factors; **(3)** `FactorSharding` — the per-factor state and the conflict-resolution rules (greatest-common-prefix, no-two-factors-share-an-axis) that decide which axes a factor may take. The propagation *driver* (basic vs aggressive, direction, the fixed-point loop) is documented in [13.2 Sharding Propagation](sharding-propagation.md); this page is the algebra those passes operate on.
 
-> **NOTE — provenance.** Everything on this page is **stock OpenXLA Shardy / StableHLO** (`mlir::sdy`, `xla::sdy`), statically linked. None of `OpShardingRuleAttr`, `ShardingProjection`, `FactorSharding`, `FactorType`, or `createOpShardingRule` is Neuron-authored. Neuron contributes only **downstream consumers** — `neuron::GetTpReplicaGroup`, the collective-rewrite passes — that read the *resulting* `HloSharding` after this machinery runs (see [§ Stock vs Neuron](#stock-shardy-vs-neuron-consumers)). Provenance D-AB05.
+> **NOTE — provenance.** Everything on this page is **stock OpenXLA Shardy / StableHLO** (`mlir::sdy`, `xla::sdy`), statically linked. None of `OpShardingRuleAttr`, `ShardingProjection`, `FactorSharding`, `FactorType`, or `createOpShardingRule` is Neuron-authored. Neuron contributes only **downstream consumers** — `neuron::GetTpReplicaGroup`, the collective-rewrite passes — that read the *resulting* `HloSharding` after this machinery runs (see [§ Stock vs Neuron](#stock-shardy-vs-neuron-consumers)).
 
 For reimplementation, the contract is:
 
@@ -113,7 +113,7 @@ FactorType OpShardingRuleAttr::getFactorType(long f):     // 0x2c71550
                                                            //   -> 3 (kPermutation) or 0 (kPassThrough)
 ```
 
-> **NOTE — the `3`/`0` tail is branchless.** The third return is `neg al ; sbb eax,eax ; and eax,3` at `0x2c715ac`–`0x2c715b0`: `is_contained` returns a bool in `al`, the idiom turns it into `0xFFFFFFFF` (contained) or `0` (not), masked to `3` or `0`. So `kPermutation=3` / `kPassThrough=0` is not inferred from upstream convention — it is in the instruction stream. The `[r9+58h]`/`[r9+60h]` loads are the `0x58`/`0x60` permutation-list pair from the storage table above. **(CONFIRMED by disasm.)**
+> **NOTE — the `3`/`0` tail is branchless.** The third return is `neg al ; sbb eax,eax ; and eax,3` at `0x2c715ac`–`0x2c715b0`: `is_contained` returns a bool in `al`, the idiom turns it into `0xFFFFFFFF` (contained) or `0` (not), masked to `3` or `0`. So `kPermutation=3` / `kPassThrough=0` is not inferred from upstream convention — it is in the instruction stream. The `[r9+58h]`/`[r9+60h]` loads are the `0x58`/`0x60` permutation-list pair from the storage table above.
 
 ### Predicate / accessor API
 
@@ -154,7 +154,7 @@ mlir::sdy::createOpShardingRule(Operation*, bool)   @ 0x2c438f0
 
 The 26 opcodes were enumerated by extracting every `createOpShardingRule…{lambda(stablehlo::XxxOp)}` symbol from the function table. The sorted-unique set is **exactly 26**, with no missing and no extra entries.
 
-> **GOTCHA — `CholeskyOp`'s lambda mangles one namespace level deeper.** A naive grep for `…EPNS_9OperationEbENKUlNS_9stablehlo…` returns **25** and appears to miss Cholesky. Its symbol is `…EPNS0_9OperationEbENKUlNS0_9stablehlo10CholeskyOp…` (`PNS0_`/`NS0_`, not `PNS_`/`NS_`). A namespace-agnostic pattern (`EPNS[0-9_]*9OperationEbENKUlNS[0-9_]*9stablehlo`) recovers the full **26**. A reimplementer counting handlers off the symbol table must allow for this clone-suffix / namespace-depth variation or they will under-count the dispatch. **(CONFIRMED — corrected count is 26.)**
+> **GOTCHA — `CholeskyOp`'s lambda mangles one namespace level deeper.** A naive grep for `…EPNS_9OperationEbENKUlNS_9stablehlo…` returns **25** and appears to miss Cholesky. Its symbol is `…EPNS0_9OperationEbENKUlNS0_9stablehlo10CholeskyOp…` (`PNS0_`/`NS0_`, not `PNS_`/`NS_`). A namespace-agnostic pattern (`EPNS[0-9_]*9OperationEbENKUlNS[0-9_]*9stablehlo`) recovers the full **26**. A reimplementer counting handlers off the symbol table must allow for this clone-suffix / namespace-depth variation or they will under-count the dispatch.
 
 | Opcode (lambda) | Factor algebra | Conf. |
 |---|---|---|
@@ -173,7 +173,7 @@ The 26 opcodes were enumerated by extracting every `createOpShardingRule…{lamb
 
 Disasm-confirmed lambda anchors: `DotGeneralOp` @ `0x2c3f620`, `ReduceOp` @ `0x2c40660`, `GatherOp` @ `0x2c403e0`; the gather/scatter emit helper `addGatherScatterFactors(bool isScatter, …, std::function<void(long,long,long,long,FactorType,bool)>)` @ `0x2c3cad0`.
 
-### Algorithm — dot factor algebra (CONFIRMED)
+### Algorithm — dot factor algebra
 
 The DotGeneral lambda @ `0x2c3f620` reads `DotDimensionNumbersAttr`, then calls `OpShardingRuleBuilder::addFactor(operandDims, resultDims, size, FactorType, blocked)` four times, once per dim group. The `FactorType` immediate pushed before each call was read directly:
 
@@ -316,11 +316,11 @@ TensorFactorShardings   = { DenseMap<long /*factorIndex*/, FactorSharding> facto
                             (replicated / unreduced axis bookkeeping) }
 ```
 
-### The `0x90` DenseMap entry stride (CONFIRMED)
+### The `0x90` DenseMap entry stride
 
 The per-tensor factor map is a `DenseMap<long, FactorSharding>`. Its entry is a `DenseMapPair<long, FactorSharding>`: an 8-byte `long` key followed by the 136-byte `FactorSharding` value, **144 bytes (`0x90`) per entry**.
 
-> **NOTE — the stride is in two independent instruction sites, not a recovered struct.** IDA did not recover a named `FactorSharding`/`DenseMapPair` struct (these are stock C++ template instantiations), so the stride cannot be read off a struct definition. It is confirmed two ways from disasm: **(1)** the grow routine `DenseMap<long, FactorSharding, …, DenseMapPair<long, FactorSharding>>::grow(uint)` @ `0x2c2da30` computes the allocation size as `lea rdi, [rax+rax*8]` (×9) followed by `shl rdi, 4` (×16) = ×144 → `allocate_buffer` (`0x2c2da9a`–`0x2c2daa2`); **(2)** the indexing in `operator[]` @ `0x2c2dd50` uses `imul …, 90h` (`0x2c2dfc4`). Both agree: 144 = 8 (key) + 136 (value). The lookup helper `getFactorSharding(TensorFactorShardings const&, long)` @ `0x2c2d200` returns the optional value via the same map. **(CONFIRMED — `lea ×9; shl 4` and `imul,0x90`.)**
+> **NOTE — the stride is in two independent instruction sites, not a recovered struct.** IDA did not recover a named `FactorSharding`/`DenseMapPair` struct (these are stock C++ template instantiations), so the stride cannot be read off a struct definition. It is confirmed two ways from disasm: **(1)** the grow routine `DenseMap<long, FactorSharding, …, DenseMapPair<long, FactorSharding>>::grow(uint)` @ `0x2c2da30` computes the allocation size as `lea rdi, [rax+rax*8]` (×9) followed by `shl rdi, 4` (×16) = ×144 → `allocate_buffer` (`0x2c2da9a`–`0x2c2daa2`); **(2)** the indexing in `operator[]` @ `0x2c2dd50` uses `imul …, 90h` (`0x2c2dfc4`). Both agree: 144 = 8 (key) + 136 (value). The lookup helper `getFactorSharding(TensorFactorShardings const&, long)` @ `0x2c2d200` returns the optional value via the same map.
 
 ### `FactorSharding` field layout
 
@@ -447,7 +447,7 @@ The following strings are present verbatim in `hlo-opt` `.rodata` and ground the
 | `"Converts the shardy attributes from strings in MHLO frontend attributes to SDY meshes, shardings and sharding rules."` | the import pass (reverse of 13.4) |
 | `sdy.op_sharding_rule`, `op_sharding_rule`, `sdy.sharding`, `sdy.sharding_rule`, `sdy.sharding_per_value`, `sdy.sharding_constraint`, `need_replication`, `permutation`, `reduction`, `blocked_propagation` | attr / factor-set tokens |
 
-> **CORRECTION (D-AB05) —** the SDY source-file path strings (`op_sharding_rule_builder.cc`, `op_sharding_rule_registry.cc`, `sharding_projection.cc`, `basic_factor_propagation.cc`, `aggressive_factor_propagation.cc`, `drop_sharding_rules.cc`) and the token `factor_sizes` were cited in early notes as `.rodata` strings. A direct string-table scan finds them **absent** — this release build stripped the SDY-internal source-loc/assert path strings (only XLA-side `.cc` names like `export_shardings.cc`, `sharding_propagation.cc` survive). The surviving assertion/registry messages above provide the grounding instead. The *symbols* and *addresses* are unaffected and remain CONFIRMED.
+> **GOTCHA —** this release build strips the SDY-internal source-location and assert path strings, so `op_sharding_rule_builder.cc`, `op_sharding_rule_registry.cc`, `sharding_projection.cc`, `basic_factor_propagation.cc`, `aggressive_factor_propagation.cc`, `drop_sharding_rules.cc` and the token `factor_sizes` are **absent** from the string table — only XLA-side `.cc` names such as `export_shardings.cc` and `sharding_propagation.cc` survive. Ground SDY-side claims on the assertion and registry messages listed above (and on the symbols/addresses, which are unaffected), not on source-path strings.
 
 ---
 

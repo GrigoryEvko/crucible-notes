@@ -106,14 +106,14 @@ function main(argc, argv):                              // 0x1fb4fa0
 
 | Function | Addr | Size | Role | Confidence |
 |---|---|---|---|---|
-| `main` | `0x1fb4fa0` | 12329 | Entry: getopt, parse, alias-fix, probe, run, write npy | CONFIRMED |
+| `main` | `0x1fb4fa0` | 12329 | Entry: getopt, parse, alias-fix, probe, run, write npy | CERTAIN |
 | `(anon)::readCommandLineInputs` | `0x1fb48a0` | 325 | Validate parsed CLI (`"incorrect input type"`) | HIGH |
 | `(anon)::printUsage` | `0x1fae080` | 319 | `Usage:` help, full flag table | HIGH |
-| `(anon)::modifyInputOutputAliasing` | `0x1fb1650` | 1649 | Remove I/O aliasing so outputs materialize | CONFIRMED |
-| `ProbeHloOutputs` | `0x1fbce70` | 1586 | Rebuild entry root to expose chosen outputs | CONFIRMED |
+| `(anon)::modifyInputOutputAliasing` | `0x1fb1650` | 1649 | Remove I/O aliasing so outputs materialize | CERTAIN |
+| `ProbeHloOutputs` | `0x1fbce70` | 1586 | Rebuild entry root to expose chosen outputs | CERTAIN |
 | `(anon)::probeAllIntermediates(…)::lambda` | `0x1fb0ff0` | 665 | Collect every node as a probe target (`-s`) | HIGH |
 | `(anon)::getQuantizeMXDtypeOverrides(…)::lambda` | `0x1fae930` | 350 | MX/quant dtype override map | MEDIUM |
-| `hilo::convertProtoForTF2_11` | `0x23330c0` | 163 | HloModuleProto TF-2.11 compat shim | CONFIRMED |
+| `hilo::convertProtoForTF2_11` | `0x23330c0` | 163 | HloModuleProto TF-2.11 compat shim | CERTAIN |
 
 ---
 
@@ -174,7 +174,7 @@ function XLAInferGoldens(module, inputs, instr, opt):          // 0x1fc7f70
 
 ### Purpose
 
-`xla::HloEvaluator` is the structural/control interpreter; it walks the computation, handles control flow and structural ops itself, and delegates every **element-wise** opcode to a per-dtype template instantiation `xla::HloEvaluatorTypedVisitor<NativeT, AccumT>`. This template is the numeric core of golden inference. Its dispatch space is a clean Cartesian product, and — unusually for a reverse-engineered claim — the full product is directly observable in the symbol table, so it is `CONFIRMED`, not inferred.
+`xla::HloEvaluator` is the structural/control interpreter; it walks the computation, handles control flow and structural ops itself, and delegates every **element-wise** opcode to a per-dtype template instantiation `xla::HloEvaluatorTypedVisitor<NativeT, AccumT>`. This template is the numeric core of golden inference. Its dispatch space is a clean Cartesian product, and the full product is directly observable in the symbol table — every cell is a named symbol, so nothing here is reconstructed.
 
 ### The dispatch dimensions
 
@@ -182,10 +182,10 @@ The visitor's `Handle*` surface is best described by its axes, not by dumping 13
 
 | Axis | Cardinality | Values | Source |
 |---|---|---|---|
-| Op | **44** | the `Handle*` set in §3.1 | demangled, directly counted (`CONFIRMED`) |
-| Dtype (`NativeT`) | **30** | §3.2 table | demangled, directly counted (`CONFIRMED`) |
-| Accumulator (`AccumT`) | — | function of `NativeT` (the rule in §3.2) | demangled (`CONFIRMED`) |
-| Product | **1320** | one `Handle<Op>(HloInstruction const*)` body per (op, dtype) | counted = 44 × 30 (`CONFIRMED`) |
+| Op | **44** | the `Handle*` set in §3.1 | demangled, directly counted |
+| Dtype (`NativeT`) | **30** | §3.2 table | demangled, directly counted |
+| Accumulator (`AccumT`) | — | function of `NativeT` (the rule in §3.2) | demangled |
+| Product | **1320** | one `Handle<Op>(HloInstruction const*)` body per (op, dtype) | counted = 44 × 30 |
 
 The count is exact. Selecting all symbols of the form
 `_ZN3xla24HloEvaluatorTypedVisitorI<dtype>E<n>Handle<Op>EPKNS_14HloInstructionE`
@@ -193,7 +193,7 @@ from the binary's function table yields **1320** distinct top-level methods, **4
 
 > **QUIRK —** the grid is *complete*: the emitter generates every op for every dtype, even type-incompatible pairs (e.g. a float-only transcendental for `bool`, or a bit-shift for `complex<float>`). Those nonsensical cells are not elided at compile time; each resolves at runtime to an `Unimplemented`/error stub. A reimplementer who prunes the grid by op/dtype compatibility will produce a *different binary shape* than the original — the original trades binary size (1320 bodies) for a uniform template instantiation that needs no per-pair `enable_if`.
 
-### 3.1 Op axis (44 ops, demangled-verbatim, CONFIRMED)
+### 3.1 Op axis (44 ops, demangled verbatim)
 
 ```text
 Unary math:      Abs Ceil Floor Round RoundNearestEven Sign Negate Not Exp Log Logistic
@@ -207,7 +207,7 @@ RNG:             Rng
 
 (`HandleExpm`/`HandleAtan`/`HandleDotSlowPathWithLiterals`/`HandleConvolutionWithLiterals` appear in the broader symbol sweep with extra inlined-lambda multiplicity, but exactly **44** distinct names are top-level `Handle*` methods on the visitor; the list above is the directly-counted set.)
 
-### 3.2 Dtype axis (30 instantiations, demangled-verbatim, CONFIRMED)
+### 3.2 Dtype axis (30 instantiations, demangled verbatim)
 
 The template is `<NativeT, AccumT>`; `AccumT` is the wider type used for compute/accumulation. The rule is mechanical: integers promote to `long`/`unsigned long`; all low-precision floats promote to `float`; `double` and `complex` are self-accumulating.
 
@@ -266,7 +266,7 @@ function HandleSelect(inst):
 
 The scalar kernel is wrapped in `absl::AnyInvocable` (`functional_internal::InvokeObject`/`VoidPtr`) and dispatched as a `{lambda(long,int)#1}` populate callback — the `(linear_index, thread_id)` pair the parallel populate path passes. Anchored to the full demangled chains at `0x87d33f0`, `0x87d6a60`, `0x87d6bd0`, `0x897c900`, `0x8984560`. The parallel path (`PopulateLinearParallel`) is the thread-fan-out for large tensors; the serial `PopulateLinearInternal` handles small ones.
 
-### 3.4 Representative `HandleAdd` row (CONFIRMED addresses)
+### 3.4 Representative `HandleAdd` row
 
 Each dtype's 44 `Handle*` methods are emitted contiguously, so the whole grid occupies the `~0x876xxxx`–`0x8ac7xxx` band. The `HandleAdd` column is a good landmark:
 
@@ -338,7 +338,7 @@ function runUsingMultihostHloRunner(module, inputs, spmd, emulate, numDevices): 
 
 ## 5. CLI Surface and Literal I/O
 
-### 5.1 The getopt grammar (CONFIRMED)
+### 5.1 The getopt grammar
 
 `getopt_long` option string `m:t:i:o:I:v:esO:SuhUF` (@ `0x243574`), echoed by `printUsage` (`0x1fae080`):
 
@@ -435,7 +435,7 @@ XLAInferGoldens job → xla_infergoldens -m <hlo> -i <in.npy> -o … -O <dir>
 
 The BIR-sim placement and compare toggles live on the **`birsim` side**, in the `walrus_driver` pass-flag vocabulary (see [walrus_driver Backend CLI](walrus-driver-cli.md)): `--enable-birsim` / `--enable-birsim-after-all` / `--enable-birsim-at-begin` / `--enable-birsim-at-end` / `--enable-birsim-sync-only`, `--enable-birsim-with-kernel-inline`, plus the `birsim` `cl::opt` belt flags `--birsim-output-tolerance` and `--birsim-output-flatten`.
 
-> **CORRECTION (INFG-1) —** the backing analysis grouped `--birsim-output-tolerance` into the xla_infergoldens scope, but it is **not** a flag of the `xla_infergoldens` ELF. A full strings sweep of the binary finds no `birsim`-prefixed flag and no `auto_compare_mismatch`. The tolerance flag belongs to the `birsim` `cl::opt` belt on the consumer side — directly observable in the `nki_klr_sim` binary (`birsim-output-tolerance`, `birsim-output-flatten`, `enable-birsim-eigen-openmp`) and registered in the `walrus_driver` pass infrastructure. `xla_infergoldens` *produces* the goldens; `birsim` *applies* the tolerance. The two are different processes in different binaries — keeping them separate matters because a reimplementer looking for the tolerance default inside this tool will not find it. (CONFIRMED by absence in the xla_infergoldens binary; CONFIRMED present in `nki_klr_sim`.)
+> **GOTCHA — `--birsim-output-tolerance` is not a flag of this binary.** The comparison tolerance is the natural companion to golden production, so it is easy to look for here. A full strings sweep of the `xla_infergoldens` ELF finds no `birsim`-prefixed flag and no `auto_compare_mismatch`. The flag belongs to the `birsim` `cl::opt` belt on the consumer side — it appears in the `nki_klr_sim` binary alongside `birsim-output-flatten` and `enable-birsim-eigen-openmp`, and is registered in the `walrus_driver` pass infrastructure. `xla_infergoldens` *produces* goldens; `birsim` *applies* the tolerance.
 
 ---
 
@@ -461,7 +461,7 @@ CLI flags the job passes to the binary (verbatim): `--module`, `--module-type pr
 
 ```cpp
 namespace hilo {
-  struct XlaInfergoldensOptions {        // dtor @0x1faec00; field offsets not recovered (MED)
+  struct XlaInfergoldensOptions {        // dtor @0x1faec00; field offsets not recovered [INFERRED]
     std::string module;        // -m
     int         moduleType;    // -t  {proto, text, snapshot}  (enum order MED)
     std::vector<std::string> inputs, outputs;   // -i, -o (repeatable)
@@ -472,7 +472,7 @@ namespace hilo {
                 unsafeDtypeCast, upcastAllToFP32, fp8e4m3fnAsFp8e4m3;
   };
 
-  // golden engine (all addresses CONFIRMED against the symbol table)
+  // golden engine (every address below resolves in the symbol table)
   void XLAInferGoldens(xla::HloModule*, std::vector<xla::Literal>&,
                        HiloInstrumentation*, const XlaInfergoldensOptions&);   // 0x1fc7f70
   bool runJitLegalizationPipeline(xla::HloModule*, HiloInstrumentation*, bool, bool, bool); // 0x1fc44c0
@@ -503,17 +503,22 @@ class xla::HloEvaluatorTypedVisitor : public xla::ConstDfsHloVisitorWithDefault 
 
 ---
 
-## 10. Adversarial Self-Verification
+## 10. Evidence summary
 
 The five strongest claims, re-challenged against the binary:
 
-1. **`main@0x1fb4fa0`** — `function_addresses.json` maps `0x1fb4fa0 → main`. CONFIRMED.
-2. **44 ops × 30 dtypes = 1320 `Handle*` bodies** — counting symbols `_ZN3xla24HloEvaluatorTypedVisitorI…E…Handle…EPKNS_14HloInstructionE` yields exactly **1320** methods, **44** distinct op names, **30** distinct `<NativeT,AccumT>` instantiations. The grid is complete, no missing cells. CONFIRMED (directly counted, not inferred).
-3. **30 dtypes verbatim with accumulator rule** — demangling the `HandleAdd` column yields all 30 `<NativeT,AccumT>` pairs in §3.2, including the float8 zoo, MXFP4, packed-int, and the int→`long`/float→`float` promotion rule. CONFIRMED.
-4. **Execution via `FunctionalHloRunner` on PjRt Host-CPU** — `RunInternal`, `Run`, `FetchAndLogOutput`, `CopyArgumentsToDevice`, `ExecuteOnDevices` demangle present; log strings `FunctionalHloRunner: compilation started./compile succeeded./ExecuteOnDevices …` present. CONFIRMED.
-5. **`--birsim-output-tolerance` is the compare gate, but lives in `birsim`, not here** — a strings sweep of the `xla_infergoldens` ELF finds *no* `birsim` flag; the flag is present in `nki_klr_sim` and registered in the `walrus_driver` belt. The xla_infergoldens role is golden *production*; the tolerance compare is on the consumer side. CONFIRMED by absence here + presence there; see CORRECTION (INFG-1).
+- **`main@0x1fb4fa0`** — `function_addresses.json` maps `0x1fb4fa0 → main`.
+- **44 ops × 30 dtypes = 1320 `Handle*` bodies** — counting symbols matching `_ZN3xla24HloEvaluatorTypedVisitorI…E…Handle…EPKNS_14HloInstructionE` yields exactly **1320** methods, **44** distinct op names, and **30** distinct `<NativeT,AccumT>` instantiations. The grid is complete; there are no missing cells.
+- **30 dtypes with the accumulator rule** — demangling the `HandleAdd` column yields all 30 `<NativeT,AccumT>` pairs in §3.2, including the float8 zoo, MXFP4, packed-int, and the int→`long` / float→`float` promotion rule.
+- **Execution via `FunctionalHloRunner` on PjRt Host-CPU** — `RunInternal`, `Run`, `FetchAndLogOutput`, `CopyArgumentsToDevice`, and `ExecuteOnDevices` all demangle in the symbol table, and the log strings `FunctionalHloRunner: compilation started./compile succeeded./ExecuteOnDevices …` are present.
+- **The compare gate lives in `birsim`, not here** — a strings sweep of the `xla_infergoldens` ELF finds no `birsim` flag, while `nki_klr_sim` carries it and the `walrus_driver` belt registers it.
 
-Tagged INFERRED/MEDIUM: the exact "JIT Legalization" pass list (only `TupleSimplifier` is a named ctor callee; passes 49–53 inferred), `XlaInfergoldensOptions` field offsets/enum order, `getQuantizeMXDtypeOverrides` map contents, and the Cython job's `getIgCmd` argv ordering (string-derived, not byte-traced). No address, default, or field meaning on this page is fabricated to fill a gap.
+## Limits of this reading
+
+- The exact "JIT Legalization" pass list is **[INFERRED]**: only `TupleSimplifier` appears as a named ctor callee, so passes 49–53 are deduced from context.
+- `XlaInfergoldensOptions` field offsets and enum order are **[INFERRED]**.
+- The contents of the `getQuantizeMXDtypeOverrides` map are **[UNRESOLVED]**.
+- The Cython job's `getIgCmd` argv ordering is string-derived rather than byte-traced.
 
 ---
 

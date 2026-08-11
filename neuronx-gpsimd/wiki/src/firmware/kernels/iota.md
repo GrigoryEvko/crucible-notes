@@ -30,12 +30,12 @@ There is **no** single `ivp_seqn`/`iota` micro-op — the ramp is always *compos
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every host-ISA fact is read out of the public
-`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and was
-re-compile-verified this session; every device fact is byte-pinned to a carve from the
+`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and compile-verified;
+every device fact is byte-pinned to a carve from the
 shipped EXTISA firmware containers and disassembled with the native `xtensa-elf-objdump`
 (`XTENSA_CORE=ncore2gp`).
 
-> **NOTE — what was carved this session, and the exact objects used.** Two shipped
+> **NOTE — the exact objects used.** Two shipped
 > containers hold the Iota bodies. The SUNDA EXTISA device ELF is carved from
 > `…/opt/aws/neuron/lib/libnrtucode_extisa.so` (the runtime-lib package,
 > `sha256 dc00763d…`) at file offset `0x921660` / `0xd308`; the CAYMAN / MARIANA /
@@ -54,10 +54,6 @@ shipped EXTISA firmware containers and disassembled with the native `xtensa-elf-
 > | `CAYMAN_3` (NC-v3 CODEC) | `0x2fbf00` / `0x6974` | `0x01000100` / `0x010002c0` | `0x108` / `0x0e4` | idx0 |
 > | `MARIANA_0` (NC-v4) | `0x5893c0` / `0xa280` | `0x01000100` / `0x010002c0` | `0x108` / `0x0e4` | idx0 |
 > | `MARIANA_PLUS_0` | `0x855240` / `0xa280` | `0x01000100` / `0x010002c0` | `0x108` / `0x0e4` | idx0 |
->
-> All five carves were re-carved and re-disassembled in-task; the SUNDA `<true>` body's
-> `ivp_floatn_2x32` count (3), the `<false>` count (0), the trampoline shape, and the
-> compile-verified struct (all four gens) reproduce against the binary below. `[HIGH/OBSERVED]`
 
 ---
 
@@ -79,36 +75,36 @@ composed host helper. Six facts pin it:
    `num_elem[4]`), not a `TENSOR4D` *memory pattern*. There is no input tensor; Iota emits
    `base + Σ_d index_d * step_elem[d]` directly. A 1-D iota is the degenerate
    single-active-dim case; the general N-D iota is a strided multi-dim index ramp.
-   `[HIGH/OBSERVED struct; INFERRED-HIGH arithmetic]`
+   `[HIGH struct; INFERRED arithmetic]`
 
 3. **Each partition can start at a different base.** The `channel_multiplier` (`int32 @36`)
    adds `channel * channel_multiplier` to lane *channel*'s ramp, so each of the 1..128
    partitions carries a distinct phase/offset (a partition-index ramp, a tiled-position
-   offset, etc.). `[field HIGH/OBSERVED; semantics INFERRED-HIGH]`
+   offset, etc.). `[HIGH field; INFERRED semantics]`
 
 4. **The `<true>`/`<false>` template axis is the OUTPUT dtype CLASS (fp vs int) — nothing
    else.** `iota_kernel<true>`/`iota_impl<true>` (`ILb1E`) does the integer→float convert
    (3× `ivp_floatn_2x32` + `ivp_ufloat16nx16t`, byte-OBSERVED). `<false>` (`ILb0E`) emits
    the raw integer ramp (0× `ivp_floatn_2x32`). The N-dimensionality is the runtime
    `DATA4D`; the direction is the *sign* of `step_elem`; the start is `base`; the
-   per-channel phase is `channel_multiplier` — none of those is the template axis. `[HIGH/OBSERVED]`
+   per-channel phase is `channel_multiplier` — none of those is the template axis.
 
 5. **It dispatches through a single dtype-branch trampoline.** The POOL
    `kernel_info_table` row `{opcode 0x7e → trampoline VA}` lands on one `entry`-framed
    trampoline that tests `out_dtype` against the FP32 constant (`0xA`) and `const16`+`callx8`s
-   the matching precompiled body. `[HIGH/OBSERVED]`
+   the matching precompiled body.
 
 6. **It is universal.** Opcode `0x7e`, the 64-byte struct, the validity predicate, and the
    1..128 channel rule are byte-identical across SUNDA/CAYMAN/MARIANA/MAVERICK; only the
    function name differs (`iota_kernel` vs `iota_impl`). Iota is the *oldest/most-universal*
-   POOL index op, not a SUNDA addition (§7). `[HIGH/OBSERVED]`
+   POOL index op, not a SUNDA addition (§7).
 
 > **NOTE — Iota is the position PRODUCER.** Unlike Sort and NonzeroWithCount, which carry an
 > index *payload* beside their values, Iota emits the index/sequence **as** the value — the
 > ramp *is* the output. There is no separate index dtype; `out_dtype` is the ramp's dtype.
 > The `addn_2x32`/`muln_2x32` ramp here is the same `0..N-1`-plus-offset position source that
 > Sort rides through compare-exchange, that NonzeroWithCount compacts under a predicate, and
-> that the gather index machinery feeds into address-gen. `[HIGH/OBSERVED]`
+> that the gather index machinery feeds into address-gen.
 
 ---
 
@@ -117,8 +113,8 @@ composed host helper. Six facts pin it:
 The operand is `NEURON_ISA_TPB_D4_IOTA_STRUCT`, declared verbatim in
 `aws_neuron_isa_tpb_d4_iota.h` (present under
 `neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/`). `instruction_mapping.json` binds
-the struct to `NEURON_ISA_TPB_OPCODE_IOTA`. This session `gcc -I<hdr>` +
-`sizeof`/`offsetof` reproduced the layout for **all four** generations — **identical**:
+the struct to `NEURON_ISA_TPB_OPCODE_IOTA`. A `gcc -I<hdr>` +
+`sizeof`/`offsetof` compile-verify reproduces the layout for **all four** generations — **identical**:
 `sz=64`, `src@12`, `out_dtype@33`, `nac@34`, `channel_multiplier@36`, `dst@44`,
 `OPCODE_IOTA=0x7e`. `[HIGH/OBSERVED]`
 
@@ -158,14 +154,14 @@ fills the destination (no over/under-run).
 > — **not** the `<true>`/`<false>` template (§6). A descending iota is `step_elem[d] < 0`.
 > Because `step_elem` is 16-bit but the ramp accumulator is 32-bit (`*_2x32` ops, §3), the
 > per-step increment is sign-extended before accumulation (`sext a15,a11,15` appears in the
-> SUNDA body). `[HIGH/OBSERVED header; INFERRED-HIGH sign-extend]`
+> SUNDA body). `[HIGH header; INFERRED sign-extend]`
 
 > **NOTE — zero runtime args is a structural consequence, not an accident.** Because the
 > source is a `DATA4D` (base/step/count) rather than a tensor read, the *entire* sequence is
 > struct-driven. The demangled symbol signature is `void iota_kernel<bool>()` /
 > `void iota_impl<bool>()` — `()` , no parameters. The body recovers `base`/`step`/
 > `channel_multiplier` by `l32i`-loading them out of the descriptor the trampoline passes
-> (`l32i a3, a0, 124` in the SUNDA trampoline — the descriptor pointer). `[HIGH/OBSERVED]`
+> (`l32i a3, a0, 124` in the SUNDA trampoline — the descriptor pointer).
 
 ### 2.1 The validity predicate
 
@@ -187,7 +183,7 @@ has_valid_neuron_header(i) && has_valid_neuron_events(i)
 `is_valid_dtype(..., AllowFP32R::True)` (the `DTYPE_ALLOW_FP32R` enum is `{FALSE=0,TRUE=1}`,
 `common.h:1137`) explicitly admits **FP32R (`0xB`)** in addition to plain FP32 — Iota is one
 of the ops that may emit the rounded/partial FP32 type. `dst` may be written to **either**
-SBUF **or** PSUM (`AllowedInPSUM::True && AllowedInSBUF::True`). `[HIGH/OBSERVED]`
+SBUF **or** PSUM (`AllowedInPSUM::True && AllowedInSBUF::True`).
 
 ---
 
@@ -217,8 +213,8 @@ constant `0xA` (the `movi a5,10` discriminator), and `const16`-builds **either**
 (the `<true>` fp body) **or** `0x6100` (the `<false>` int body), then `callx8`s it. The
 CAYMAN trampoline `@0x01000080` is the same shape (`entry a1,32`; `bgeui` dtype branch;
 `const16 0x100` `<true>` / `const16 0x2c0` `<false>`; `callx8`) — and its FLIX bundle even
-shows live IVP ops, confirming a real body lives there. `[HIGH/OBSERVED — both trampolines
-byte-decoded; the precise branch immediate is MED through the `.w15` FLIX desync.]`
+shows live IVP ops, confirming a real body lives there.
+`[HIGH/OBSERVED; MED branch immediate]`
 
 ```c
 /* The POOL trampoline for opcode 0x7e (real symbols: the kernel_info_table funcVA target).
@@ -235,7 +231,7 @@ static void pool_iota_trampoline(const NEURON_ISA_TPB_D4_IOTA_STRUCT *op /* a0->
 
 ### 3.2 The ramp body (`SUNDA iota_kernel<true> @0x01005f40`, byte-OBSERVED)
 
-Disassembled in-task (binary-resync mode, `--adjust-vma=0x01000000`), the `<true>` body's
+In binary-resync mode (`--adjust-vma=0x01000000`), the `<true>` body's
 op census is exactly: **6× `ivp_movva32`, 7× `ivp_addn_2x32`, 1× `ivp_muln_2x32`, 1×
 `ivp_packln_2x96`, 3× `ivp_floatn_2x32`, 1× `ivp_ufloat16nx16t`**. The representative
 bundle trace:
@@ -262,23 +258,21 @@ The ramp is constructed as:
 1. **Broadcast** the scalar `base` into every lane (`ivp_movva32 v31, a6`) and broadcast each
    per-dim/per-channel step into its own vector (`ivp_movva32 v1/v5/v6`). This is the
    `AR→vec` 32→32 bridge `movva32` (opcode `F0_S1_Ld 0x00602007`) from the
-   [vec-move batch](../../isa/ref/b09-vec-mov.md). `[HIGH/OBSERVED]`
+   [vec-move batch](../../isa/ref/b09-vec-mov.md).
 2. **Accumulate** the lane index into the ramp with `ivp_addn_2x32` — one add per dimension /
-   per tile — building the running `index` value across lanes. `[HIGH/OBSERVED]`
+   per tile — building the running `index` value across lanes.
 3. **Scale** by the step factor with `ivp_muln_2x32` (a 2×32-bit wide multiply, result in a
    `wv` wide accumulator), then **pack** the wide product back to 32-bit lanes with
-   `ivp_packln_2x96`. `[HIGH/OBSERVED]`
-4. **Add the base** (`ivp_addn_2x32 v8, v2, v31`) → `base + index*step`. `[HIGH/OBSERVED]`
+   `ivp_packln_2x96`.
+4. **Add the base** (`ivp_addn_2x32 v8, v2, v31`) → `base + index*step`.
 5. **Add the per-channel offset** (`channel_multiplier`, riding as one of the broadcast step
    vectors `v5`/`v6`) in the per-channel continuation
-   (`ivp_addn_2x32 v10,v10,v5`). `[field HIGH/OBSERVED; the v5/v6 = channel_multiplier
-   binding INFERRED-HIGH.]`
+   (`ivp_addn_2x32 v10,v10,v5`). `[HIGH field; INFERRED v5/v6 binding]`
 6. **(fp only)** convert int32→fp32 with `ivp_floatn_2x32` (3 sites) or uint→fp16 with
-   `ivp_ufloat16nx16t`. `[HIGH/OBSERVED]`
+   `ivp_ufloat16nx16t`.
 7. **Multi-tile loop**: `loopnez.w15` + `brdec.p` extend the ramp past one vector width —
    each tile adds a full-width step offset (`ivp_addn_2x32 v2,v2,v0`) so element *k* of tile
-   *t* is `base + (t*W + lane)*step`. `[HIGH/OBSERVED — the loop bundles; the exact loop-trip
-   register is MED through the desync.]`
+   *t* is `base + (t*W + lane)*step`. `[HIGH loop bundles; MED loop-trip reg]`
 
 ```c
 /* Recovered algorithm of iota_kernel<>/iota_impl<> (SUNDA bodies are the authority).
@@ -311,8 +305,7 @@ void iota_impl(const NEURON_ISA_TPB_D4_IOTA_STRUCT *op, bool FP /* template <tru
 > **NOTE — the in-register `0..W-1` lane ramp.** The per-lane base index (`lane` above) is
 > the per-element position within the vector; the body builds it once and reuses it across
 > tiles. This is the same lane-id source the gather/sort kernels consume — the standalone
-> Iota op just exposes it as the output. `[INFERRED-HIGH — the broadcast/add pattern; the
-> lane-id register is not byte-pinned to a struct field.]`
+> Iota op just exposes it as the output. `[INFERRED — lane-id reg not byte-pinned]`
 
 ---
 
@@ -332,16 +325,16 @@ class**. This is decisively determined from the bodies, not inferred from the ma
 | int-narrow op | — | `ivp_bminunx16` (lane narrowing) |
 | selected when `out_dtype` is | FP32 / FP32R / FP16 / BF16 | INT8/16/32, UINT8/16/32 |
 
-The proof is threefold and all three legs reproduce against the binary this session:
+The proof is threefold:
 
-* **The float-convert op count is 3 vs 0.** Re-disassembling the SUNDA bodies in-task:
-  `iota_kernel<true>@0x5f40` → `rg -c ivp_floatn_2x32` = **3** (plus one `ivp_ufloat16nx16t`);
-  `iota_kernel<false>@0x6100` → **0**. The `<false>` body shares the *identical* ramp core
+* **The float-convert op count is 3 vs 0.** In the SUNDA bodies,
+  `iota_kernel<true>@0x5f40` has **3** `ivp_floatn_2x32` (plus one `ivp_ufloat16nx16t`);
+  `iota_kernel<false>@0x6100` has **0**. The `<false>` body shares the *identical* ramp core
   (6× `movva32`, `muln_2x32`, `packln_2x96`) but never converts. `[HIGH/OBSERVED]`
 * **The `.xt.prop` record-size delta.** `<true>` = `0x108` > `<false>` = `0x0e4`, byte-read
-  from `readelf -SW` on every carve — consistent with the extra fp-convert tail. `[HIGH/OBSERVED]`
+  from `readelf -SW` on every carve — consistent with the extra fp-convert tail.
 * **The trampoline FP32 discriminator.** The trampoline loads `0xA` (FP32) as the dtype
-  constant (`movi a5,10`) and branches on it (§3.1). `[HIGH/OBSERVED]`
+  constant (`movi a5,10`) and branches on it (§3.1).
 
 > **CORRECTION — `<true>`/`<false>` is the fp/int CLASS, not dimensionality or direction.**
 > The anchor survey wrote `iota_kernel<0>`/`<1>`; the mangling is `ILb0E`/`ILb1E` = the
@@ -349,7 +342,7 @@ The proof is threefold and all three legs reproduce against the binary this sess
 > 1-D-vs-N-D (that is the runtime `DATA4D` `num_elem`/`step_elem`), **not** ascending-vs-
 > descending (that is the *sign* of `step_elem`), and **not** a base/offset variant (that is
 > `base`/`channel_multiplier`). The only compile-time axis is the output dtype class — the
-> 3-vs-0 `ivp_floatn_2x32` count is the byte-proof. `[HIGH/OBSERVED]`
+> 3-vs-0 `ivp_floatn_2x32` count is the byte-proof.
 
 ---
 
@@ -387,9 +380,9 @@ NEURON dtype, **including FP32R (`0xB`)**. The template body is selected by the 
 ```text
 (1) HOST: an Iota instruction (opcode 0x7e, D4_IOTA struct) is decode-validated by
     dbg_is_valid_iota — header/events/reserved-zero/out_dtype valid/channels 1..128/
-    dst writable in SBUF|PSUM/same_element_count.                       [HIGH/OBSERVED]
+    dst writable in SBUF|PSUM/same_element_count.
 (2) The POOL engine's kernel_info_table linear-scans its packed (spec<<16 | opcode<<24)
-    key for opcode 0x7e -> the iota TRAMPOLINE funcVA.                  [HIGH/OBSERVED]
+    key for opcode 0x7e -> the iota TRAMPOLINE funcVA.
        record = { u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA }
        SUNDA   table @0x02000760 (18 entries): idx8 { spec 0, 0x7e -> 0x01005e80 }
        CAYMAN_0 @0x02000380 (17): idx0 { spec 0, 0x7e -> 0x01000080 }
@@ -398,12 +391,12 @@ NEURON dtype, **including FP32R (`0xB`)**. The template body is selected by the 
     ALL spec=0 (no 0xf0 ExtendedInst escape for iota).
 (3) The trampoline (entry a1,32) reads the descriptor, tests out_dtype vs the FP32
     constant (0xA), and const16+callx8s the matching body:
-       <true>  (fp output, +int->fp32 convert)  OR  <false> (int output).  [HIGH/OBSERVED]
+       <true>  (fp output, +int->fp32 convert)  OR  <false> (int output).
 (4) The body broadcasts base+step into lanes (ivp_movva32), accumulates the ramp
     (ivp_addn_2x32) with the step factor (ivp_muln_2x32), adds the per-channel
     channel_multiplier offset, packs to the out_dtype lane width (ivp_packln_2x96),
     (fp: ivp_floatn_2x32 convert), writes dst_mem_pattern, and a multi-tile loop
-    (loopnez/brdec) extends sequences past one vector width.            [HIGH/OBSERVED]
+    (loopnez/brdec) extends sequences past one vector width.
 ```
 
 The trampoline funcVA (`0x...e80` / `0x...080`) is **distinct** from the two body
@@ -427,7 +420,7 @@ kernel_info_table scan.
 > **CORRECTION — Iota is NOT a SUNDA-unique kernel.** An earlier survey flagged
 > `iota_kernel<true>/<false>` as a "SUNDA-new kernel … not in CAYMAN", clustering it with
 > the genuinely SUNDA-only gather/embedding_update POOL kernels. **That framing is wrong.**
-> This session: (a) the `iota_impl<true>`/`<false>` mangled symbols (`_Z9iota_implILb1EEvv`,
+> In fact: (a) the `iota_impl<true>`/`<false>` mangled symbols (`_Z9iota_implILb1EEvv`,
 > `_Z9iota_implILb0EEvv`) are byte-present in `libnrtucode_internal.so` (9 raw hits) and in
 > the `.xt.prop` sections of the CAYMAN/MARIANA/MARIANA_PLUS carves; (b) the
 > `D4_IOTA` struct compile-verifies `sz=64` with identical offsets and `OPCODE_IOTA=0x7e` in
@@ -444,7 +437,7 @@ kernel_info_table scan.
 > gather/indirect_copy/dma_memcopy_indirect/embedding_update *bodies* **are** SUNDA-only as
 > `kernel_info_table` kernels (CAYMAN serves those via the DGE descriptor layer). Iota is
 > **not** in that set — it is universal. Only Iota's per-gen status is corrected here; the
-> SUNDA-only cluster stands. `[HIGH/OBSERVED]`
+> SUNDA-only cluster stands.
 
 ---
 
@@ -459,20 +452,20 @@ kernel_info_table scan.
   trustworthy and are reported structurally. The two `const16` body-build sites + the
   `callx8` + the float-op presence/count **are** byte-clean. `[flagged]`
 * The **CAYMAN/MARIANA/MARIANA_PLUS** iota bodies are *more* desynced under a stock linear
-  sweep (re-disassembling `0x0100..0x02c0` in-task returned raw bytes only, 0 decoded IVP
+  sweep (`0x0100..0x02c0` yields raw bytes only, 0 decoded IVP
   ops). They are pinned by: the iota `.xt.prop` func-starts (`0x100`/`0x2c0`, byte-read from
   the records — flags `0x2804` = func-start), the identical trampoline, the byte-near-identity
   to each other (CAYMAN vs MARIANA: 49/448 bytes differ in `<true>`, 33/312 in `<false>` —
   micro-schedule/literal-VA deltas only), and the compile-verified struct. The CAYMAN
   per-bundle IVP census is **not** independently re-listed; the SUNDA body is the algorithm
-  authority. `[the CAYMAN body's exact IVP slots are MED — desync; the kernel identity is HIGH.]`
+  authority. `[MED CAYMAN IVP slots; HIGH identity]`
 * `channel_multiplier` "= per-channel additive stride" and the register→struct-field binding
   (which `a`-reg holds base vs step vs `channel_multiplier`) are **INFERRED-HIGH** from the
   field names + the broadcast/`addn` pattern, not a fully-resynced data-flow trace. `[flagged]`
 * **MAVERICK firmware body NOT byte-confirmed** — the package's MAVERICK EXTISA carves are
   stripped (no `.xt.prop` names). MAVERICK iota is **header-HIGH** (opcode `0x7e` + struct
   compile-verified) and rests on the cross-gen invariance; the firmware *interior* is
-  INFERRED. `[flagged — v5 interiors header-OBSERVED only.]`
+  INFERRED. `[flagged — v5 header-OBSERVED only]`
 * The per-narrow-dtype (int8/16, uint) lane-pack arm of `<false>` and the bf16 path of
   `<true>` are MED (the `packln`/`floatn`/`bminunx16` ops are OBSERVED; the per-dtype
   lane-width branch is INFERRED from the standard GPSIMD pack model). `[flagged]`
@@ -553,7 +546,7 @@ gcc -I…/neuron_<gen>_arch_isa/tpb v_<gen>.c -o v_<gen> && ./v_<gen>
 
 ## 11. Confidence ledger
 
-**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile this session):
+**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile):
 
 * Opcode `IOTA=0x7e`; struct `D4_IOTA` (64 B) compile-verified all 4 gens (`src@12`,
   `out_dtype@33`, `num_active_channels@34`, `channel_multiplier@36`, `dst@44`);
@@ -570,7 +563,7 @@ gcc -I…/neuron_<gen>_arch_isa/tpb v_<gen>.c -o v_<gen> && ./v_<gen>
 * The ramp algorithm (SUNDA `<true>` census): 6× `ivp_movva32`, 7× `ivp_addn_2x32`, 1×
   `ivp_muln_2x32`, 1× `ivp_packln_2x96` + the multi-tile `loopnez`/`brdec` continuation.
 * The `<true>`=fp / `<false>`=int split: **3× `ivp_floatn_2x32` in `<true>` vs 0 in
-  `<false>`** (re-disassembled in-task) + the `.xt.prop` size diff + the trampoline FP32 const.
+  `<false>`** + the `.xt.prop` size diff + the trampoline FP32 const.
 * Per-gen: UNIVERSAL (SUNDA..MARIANA_PLUS OBSERVED; MAVERICK header-compile-verified). The
   earlier "SUNDA-unique" framing CORRECTED. `iota_impl` mangled symbols byte-present in
   `libnrtucode_internal.so`.

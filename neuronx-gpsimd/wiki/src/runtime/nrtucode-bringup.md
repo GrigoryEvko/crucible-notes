@@ -41,9 +41,10 @@ and the actual wire-level bring-up between them.
 
 ## 0. Master spine — eleven steps from `nrt_init` to `tdrv_destroy`
 
-Confidence tags: **HIGH/MED/LOW** × **OBSERVED** (disasm/reloc/string read this
-analysis) / **INFERRED** (derived) / **CARRIED** (from a prior cross-referenced
-decode). Orchestrator = `tdrv_init_one_mla_phase2` (build string
+Confidence tags: **HIGH/MED/LOW** × **OBSERVED** (disasm/reloc/string read from
+the binary) / **INFERRED** (derived) / **CARRIED** (from a cited sibling page).
+The page default is **HIGH·OBSERVED**; claims that depart from it carry an
+explicit tag. Orchestrator = `tdrv_init_one_mla_phase2` (build string
 `/opt/workspace/KaenaRuntime/tdrv/init.c`).
 
 | # | Phase | Driver symbol (`libnrt.so` VA) | What physically happens | Tag |
@@ -92,7 +93,6 @@ at `0x84432a`. A direct byte-seek confirms it:
 
 So the device-side body is installed as **`libnrtucode_extisa.so`** and that is the
 `dlopen` target; the adjacent `"nrtucode_g…"` run is the head of the dlsym name pool.
-[HIGH·OBSERVED]
 
 ### 1.2 `ucode_init_module` flow
 
@@ -149,7 +149,7 @@ NRT_STATUS ucode_init_module(const char *ucode_lib_path) {
 ```
 
 `ucode_teardown_module` @`0x225790` reverses this: `dlclose` + `free` the three strdup'd
-strings. [HIGH·OBSERVED]
+strings.
 
 ### 1.3 The 30 bound entry-points
 
@@ -192,7 +192,7 @@ strings. [HIGH·OBSERVED]
 The first 25 names are read verbatim from the `.rodata` pool; the bodies are decoded on
 the device-lib side ([nrtucode_core_t](nrtucode-core.md), [Object Model](object-model-graph.md),
 [Host Prelinker](prelinker-ucpl.md)). This page closes the seam those pages can only
-cite as "the host runtime". [HIGH·OBSERVED]
+cite as "the host runtime".
 
 ---
 
@@ -235,7 +235,7 @@ NRT_STATUS ucode_core_create(
 So a "core" = (context bound to the BAR0 `rw_impl` + the device-memory `mh_impl`) + the
 device-side `nrtucode_core_t` built at the given IRAM/DRAM/APB windows + a friendly name
 + the boot/claim step + a log channel. The boot step inside `on_ucode_booted` is where
-the device→host handshake of §7 actually fires. [HIGH·OBSERVED]
+the device→host handshake of §7 actually fires.
 
 ---
 
@@ -287,7 +287,7 @@ NRT_STATUS ucode_pooling_q7_core_create(const physical_core_t *pcore,
 Each of the 8 cores is placed at `iram_base + idx*stride`; its DRAM window starts one
 IRAM-window past its own IRAM base. The `&platform_rw_impl` / `&platform_memhandle_impl`
 vtables (§5) are what give the device lib BAR0 access **through** libnrt — this is the
-"build the core over BAR0" the task names. [HIGH·OBSERVED]
+"build the core over BAR0" the task names.
 
 > **NOTE — the `AL_HAL_POOLING_Q7 = 2` owner constant.** Bounded disasm shows
 > `mov $0x2,%eax` at `0x269818` and `mov $0x2,%edi` at `0x269866` feeding
@@ -298,7 +298,7 @@ vtables (§5) are what give the device lib BAR0 access **through** libnrt — th
 shape but uses `aws_hal_get_seq_params` (not `get_q7_params`), `tdrv_arch_get_nx_core_type`,
 and a 5-way table that selects the engine-name token in the friendly name. Those tokens
 are read byte-exact at `0x84636b`: `"TENSOR\0SCALAR\0GPSIMD\0VECTOR\0…"` (the NX engine
-display names; "GPSIMD" is the POOL engine's display name). [HIGH·OBSERVED]
+display names; "GPSIMD" is the POOL engine's display name).
 
 ---
 
@@ -308,7 +308,7 @@ The coretype passed to `ucode_lib_core_create` encodes (arch, engine). It is pro
 per-arch through the `tdrv_arch_ops` vtable @`0xc97180` (`+0x98` =
 `get_q7_pool_core_type`, `+0xb8` = `get_q7_params`).
 
-### 4.1 Q7-Pool coretype — three constant leaves, **verified this analysis**
+### 4.1 Q7-Pool coretype — three constant leaves
 
 Bounded disasm of each per-arch leaf:
 
@@ -319,7 +319,7 @@ Bounded disasm of each per-arch leaf:
 ```
 
 The same triplet `{6, 13, 21}` is `CSWTCH_94`/`CSWTCH_113` used by `ucode_init_module`'s
-`get_ext_isa` probe and by `ucode_set_q7_ucode_bins`. [HIGH·OBSERVED]
+`get_ext_isa` probe and by `ucode_set_q7_ucode_bins`.
 
 ### 4.2 NX engine coretype — 5-entry int32 tables (eng order PE/ACT/SP/DVE/POOL)
 
@@ -330,7 +330,7 @@ The same triplet `{6, 13, 21}` is `CSWTCH_94`/`CSWTCH_113` used by `ucode_init_m
 | MARIANA (@`0x9defe0`) | 18 | 15 | 17 | 16 | 19 |
 
 `CSWTCH_96 = {3, 10, 18}` = `{SUNDA, CAYMAN, MARIANA}_NX_PE` — the NX_PE coretype is the
-image-table key `ucode_init_module` uses for its default-image liveness probe. [HIGH·OBSERVED]
+image-table key `ucode_init_module` uses for its default-image liveness probe.
 
 ### 4.3 The full `NRTUCODE_CORE_*` enum (reconstructed)
 
@@ -399,7 +399,7 @@ that physical core. This is the `slot[0]` callback the boot handshake of §7 cal
 | `+0x20` | `0x2691d0` | `platform_memhandle_get_memhandle_soc_addr` |
 
 These are libnrt's concrete implementation of the abstract 5-slot vtable the device lib
-declares (`nrtucode_platform_memhandle_dummy.c.o` ships the no-op variant). [HIGH·OBSERVED]
+declares (`nrtucode_platform_memhandle_dummy.c.o` ships the no-op variant).
 
 ---
 
@@ -427,7 +427,7 @@ The `(coretype, region, flavor, &ptr, &size)` call shape matches the device-lib'
 `nrtucode_get_memory_image` resolver exactly — this is the host runtime consuming that
 resolver for the built-in Q7 ucode image. `ucode_get_q7_lib` @`0x2265a0` →
 `ucode_lib_get_ext_isa` (the ucode *library* image, opcode-`0x85` ext-ISA path);
-`ucode_get_q7_extram` @`0x2264f0` → the EXTRAM region. [HIGH·OBSERVED]
+`ucode_get_q7_extram` @`0x2264f0` → the EXTRAM region.
 
 ---
 
@@ -446,7 +446,7 @@ resolver for the built-in Q7 ucode image. `ucode_get_q7_lib` @`0x2265a0` →
 | other | nlog "Incompatible runtime state: %s" | `1` |
 
 So the custom-op Q7 image **must** be registered before `nrt_init`; afterward it is
-rejected. [HIGH·OBSERVED]
+rejected.
 
 ### 7.2 `tdrv_set_pool_eng_ucode` — store four globals
 
@@ -510,7 +510,7 @@ Bounded disasm of `write_padded` confirms the MMIO path:
 
 The IRAM/DRAM bytes are written into the Q7 over BAR0 (`al_mem_write_buf` + the indirect
 `*%r12` callback). The device-side landing in Q7 IMEM/DRAM and the subsequent reset are
-the [Boot / Reset Sequence](../uarch/boot-reset.md). [HIGH·OBSERVED]
+the [Boot / Reset Sequence](../uarch/boot-reset.md).
 
 ### 7.5 The boot/claim handshake — `nrtucode_core_on_ucode_booted` (device lib)
 
@@ -549,7 +549,7 @@ NRT_STATUS nrtucode_core_on_ucode_booted(nrtucode_core_t *core) {
 The ready magic `0x6099cb34` equals the carved ext-ISA image's `.globstruct[0]` (bytes
 `34 cb 99 60` LE); the claim word `0x502b2da1` is poked back through `write_device`. This
 is the precise device↔host ownership seam, and `ucode_core_create` runs it for every NX
-and Q7 core during build. [HIGH·OBSERVED]
+and Q7 core during build.
 
 > **CORRECTION (vs. the "boot copies the image" reading).** The function named
 > `on_ucode_booted` does **not** boot or copy anything — by the time it runs, the image
@@ -573,7 +573,7 @@ Q7 firmware writes and the host drains. The ring is built once per NeuronCore by
 ### 8.1 Fixed entry size
 
 `pool_stdio_get_entry_size` @`0x300a00` is a 6-byte leaf — bounded disasm:
-`b8 00 01 00 00  mov $0x100,%eax ; c3 ret` → **256 B** fixed entry. [HIGH·OBSERVED]
+`b8 00 01 00 00  mov $0x100,%eax ; c3 ret` → **256 B** fixed entry.
 
 ### 8.2 `pool_stdio_block_init`
 
@@ -617,7 +617,6 @@ NRT_STATUS pool_stdio_block_init(const physical_core_t *pcore, dmem_allocator_t 
 Call site = `tpb_eng_sw_init` (`tdrv_init` line 1597), **skipped** when
 `tdrv_arch_is_cmdk()` (simulator/cmodel). `entries_stdout =
 tpb_init_config->pool_stdout_queue_size_bytes / 0x100`; `entries_stderr = 0x400/0x100 = 4`.
-[HIGH·OBSERVED]
 
 ### 8.3 The per-queue structs (host + device descriptor)
 
@@ -649,8 +648,6 @@ On-device descriptor (the `…_queue_descriptions` slot):
 | `+0x18` | head VA |
 | `+0x20` | cursor VA (via `DMEM_GET_VA`) |
 
-[HIGH·OBSERVED]
-
 ### 8.4 Drain path
 
 `pool_stdio_queue_available_count` @`0x3010f0`: reads the device write-index at
@@ -662,13 +659,13 @@ returns the count of pending 256-B entries.
 entry `dmem_buf_copyout` 256 B from `data VA + (read_idx % cap)*0x100 + 0x10 header` into
 the host record, handling ring wraparound in two contiguous segments; advances the read
 index. This is the host-side drain of the GPSIMD `printf` ring (called by the log/poll
-path). [HIGH·OBSERVED]
+path).
 
 ### 8.5 Destroy
 
 `pool_stdio_block_destroy` @`0x300f50`: `aws_hal_q7_swap_file_io_table(tpb_mem_base, 0, 1)`
 detaches the Q7 file-IO table, then `dmem_free`s each queue's host + device buffers, frees
-the 0x440 HBM block, and zeroes the struct. [HIGH·OBSERVED]
+the 0x440 HBM block, and zeroes the struct.
 
 > **NOTE — `pool_stdio` is host-only.** The device custom-op archive (`libnrtucode.a`)
 > carries **no** `pool_stdio_*` symbol. The ring lives entirely in `libnrt.so` `tdrv` (the
@@ -770,7 +767,7 @@ Bridge globals: `ucode_lib_handle@c96a40` (dlopen handle); `ucode_external_lib_p
 `+0x110..` `stdout_queues`; `+0x2d0..` `stderr_queues`; `+0x490` `hbm_space_dmem` (the 0x440
 HBM block).
 
-Key function addresses (libnrt VAs, all sidecar-confirmed this analysis):
+Key function addresses (libnrt VAs, all sidecar-confirmed):
 
 | Symbol | VA | Symbol | VA |
 |---|---|---|---|
@@ -799,7 +796,7 @@ boot/claim: `nrtucode_core_on_ucode_booted@0x9b0ab0` (in `libnrtucode_internal.s
 
 ## 11. Confidence / open items
 
-- **HIGH·OBSERVED (re-verified this analysis):** the `dlopen` + 30-dlsym bridge and the
+- **HIGH·OBSERVED:** the `dlopen` + 30-dlsym bridge and the
   name `libnrtucode_extisa.so` (`.rodata` byte-seek); `ucode_core_create` /
   `ucode_pooling_q7_core_create` call chains and the tail into `ucode_core_create`
   (bounded disasm); the Q7-Pool coretype triplet `{6, 13, 21}` (three leaf disasms); the

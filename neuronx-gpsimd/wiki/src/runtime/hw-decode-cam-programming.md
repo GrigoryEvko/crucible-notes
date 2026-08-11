@@ -10,8 +10,9 @@
 > **Source of truth.** All host evidence is byte-exact from
 > `libnrt.so.2.31.24.0` (host x86-64, BuildID `8bb57aba…`, KaenaHal-2.31.0.0,
 > git `0b044f4ce`). Disassembly is bounded (`objdump --start/--stop`). Device
-> CSR semantics are cross-referenced to the SX-/DX- carves and the device-side
-> [dual-fetch](../firmware/seq/dual-fetch.md) page.
+> CSR semantics are cross-referenced to the device-image carves and the
+> device-side [dual-fetch](../firmware/seq/dual-fetch.md) page. The page default
+> is `HIGH, OBSERVED`; claims that depart from it carry an explicit tag.
 >
 > **ARCH WALL.** `sunda`/`cayman`/`mariana` = NC-v2/v3/v4 are byte-grounded in
 > this binary (per-arch KaenaHal `__FILE__`/symbol strings). NC-v5 and any
@@ -68,7 +69,7 @@ path.
 ## 1. The host dispatch — `hw_decode_init_tables` `@0x225150`
 
 The arch fan-out that wires the embedded `.rodata` blobs into the per-engine
-destination globals lives in a single function. `HIGH, OBSERVED`.
+destination globals lives in a single function.
 
 ```text
 0000000000225150 <hw_decode_init_tables>:
@@ -129,9 +130,9 @@ hw_decode_pe_table        @0xc969e0   hw_decode_pe_cam        @0xc96a20
 
 ## 2. The blob formats — CAM + PROFILE table
 
-The embedded blobs are byte-identical to the SX-IMG-26 device carve, so the
+The embedded blobs are byte-identical to the device-image carve, so the
 host library is shipping the exact image the device `PROFILE_CAM` block
-consumes. All values below are `HIGH, OBSERVED` (read directly from `.rodata`).
+consumes. All values below are read directly from `.rodata`.
 
 ### 2a. CAM blob — 64 slots × 16 bytes
 
@@ -198,7 +199,7 @@ breakpoint/profile descriptor consumed by the device `PROFILE_CAM` block.
 
 The per-engine device aperture is resolved by an arch-specific function that
 maps an **engine index** to a SoC base, then folds the bit-35 address down to
-TPB-local. `HIGH, OBSERVED`.
+TPB-local.
 
 ```c
 /* aws_hal_get_eng_hw_decode_table_params_cayman @0x47af40 (annotated) */
@@ -229,7 +230,7 @@ void get_eng_hw_decode_table_params_cayman(
 v4 bases.
 
 > **CORRECTION — engine-index → engine mapping (eng 2 = POOL, eng 3 = DVE).**
-> An earlier carve (DX-RT-04 §1.7) labelled the cases *eng 2 = DVE* and *eng 3 =
+> An earlier carve labelled the cases *eng 2 = DVE* and *eng 3 =
 > POOL*. **The actual callers prove the opposite.** Each
 > `<arch>_<eng>_hw_decode_table_init` passes a fixed engine index to
 > `get_eng_hw_decode_table_params_cayman @0x47af40`:
@@ -311,8 +312,8 @@ void cayman_set_disable_hw_decode(void *tpb /* rdi */, int value /* esi */)
 ```
 
 > **The CSR bundle.** `hw_decode` bundle base `0x4000`: `control@0x4000`,
-> `profile_cam_search_vector@0x4028`, `hw_decode_flush_cntr@0x402C` (SX-CSR-01
-> §6). The host RMW above touches `control.bit0`, which selects the device
+> `profile_cam_search_vector@0x4028`, `hw_decode_flush_cntr@0x402C`.
+> The host RMW above touches `control.bit0`, which selects the device
 > fetch FSM (the O1 mechanism — [dual-fetch §6](../firmware/seq/dual-fetch.md)).
 
 ---
@@ -321,8 +322,7 @@ void cayman_set_disable_hw_decode(void *tpb /* rdi */, int value /* esi */)
 
 This is the single most decisive artifact: the v3/v4 chain **inserts**
 `hw_decode_table_init` between `ucode_eng_init` and `dma_init`, and only the
-v3/v4 chain performs a **real** Q7 CSR release. `HIGH, OBSERVED` (call targets
-read directly).
+v3/v4 chain performs a **real** Q7 CSR release (call targets read directly).
 
 ```text
 CAYMAN  aws_hal_stpb_cayman_pooling_init @0x4737b0:
@@ -352,7 +352,7 @@ divergent release tails.
 
 ## 5. Q7 run-stall release — the host CSR path (Cayman/Mariana)
 
-### 5a. Reset state (`HIGH`, SX-CSR-01)
+### 5a. Reset state
 
 ```text
 q7.release_run_stall   CSR @0x3000 [7:0]   reset = 0xFF   (all 8 Q7 cores stalled)
@@ -361,7 +361,7 @@ adjacent: start_ctrl 0x3004; run_state_0..7 0x3008..0x3024;
           intr_ctrl 0x3028; intr_info 0x302C.. (per-core latch)
 ```
 
-### 5b. The host writers (`HIGH, OBSERVED`)
+### 5b. The host writers
 
 ```c
 /* aws_hal_arch_cayman_write_tpb_xt_local_reg_q7_release_run_stall @0x47b290
@@ -383,7 +383,7 @@ shot.
 
 ## 6. Q7 run-stall release — the SEQ/EVT_SEM path (Sunda)
 
-### 6a. The host hooks are no-ops (`HIGH, OBSERVED`)
+### 6a. The host hooks are no-ops
 
 ```c
 /* aws_hal_arch_sunda_write_tpb_xt_local_reg_q7_release_run_stall @0x4796e0
@@ -405,10 +405,10 @@ up under SEQ/SP control via the EVT_SEM fabric.
 > nop. The flow *looks* identical to Cayman at the chain level; the divergence
 > is entirely inside the leaf hook.
 
-### 6b. EVT_SEM substrate + address builders (`HIGH`)
+### 6b. EVT_SEM substrate + address builders
 
 ```text
-per-TPB 1 MiB EVT_SEM unit (SX-ADDR-08); for TPB_0 @ 0x2802700000:
+per-TPB 1 MiB EVT_SEM unit; for TPB_0 @ 0x2802700000:
   events  window @0x0000   (256 events)
   sem read @0x1000 / set @0x1400 / inc @0x1800 / dec @0x1C00   (256 sems)
 ```
@@ -432,7 +432,7 @@ uint64_t evt_cayman    (unsigned sem){ return 0x80270000 + 4*sem; }
 > `0x2701800` (== the `SEMAPHORE_INC` window `@0x1800`), not the stale
 > `0x2705C00` from P-3-65.
 
-### 6c. SP descriptor builders (`HIGH, OBSERVED`)
+### 6c. SP descriptor builders
 
 ```text
 add_evsem                     @0x2737d0
@@ -458,9 +458,9 @@ struct sp_sem_wait_desc {                       /* on-stack build           */
 
 ### 6d. The release/run handshake (`MED, INFERRED` — reconstructed)
 
-The full sequence is reconstructed from the OBSERVED address/descriptor builders
-plus DX-SEC-01; only the addresses are byte-observed in `libnrt`, the gating
-order lives in the SP/SEQ device program.
+The full sequence is reconstructed from the OBSERVED address/descriptor builders;
+only the addresses are byte-observed in `libnrt`, the gating order lives in the
+SP/SEQ device program.
 
 ```c
 /* Sunda Q7 bring-up rendezvous (reconstructed) */
@@ -480,8 +480,8 @@ order lives in the SP/SEQ device program.
 > **NOTE — boot sentinel (`MED, INFERRED`).** Prior device-image carves
 > (P-3-65/P-3-48) describe the Q7 ucode writing `0x6099CB34` to `DRAM[0]` after
 > release, with the host CAS-ing `→0x502B2DA1` to claim the core. These
-> constants live in the **device** ucode images, **not** re-observed in
-> `libnrt` this pass. The host-side counterpart symbol
+> constants live in the **device** ucode images and are **not** observed in
+> `libnrt`. The host-side counterpart symbol
 > `ucode_lib_core_on_ucode_booted @0xc96ad8` **is** confirmed present.
 
 ---
@@ -528,7 +528,7 @@ To reproduce v3/v4 Pool-engine bring-up:
 
 ## 9. Adversarial self-verification
 
-The top-5 primary claims, each re-checked with a bounded command against
+The top-5 primary claims, each checked with a bounded command against
 `libnrt.so.2.31.24.0`.
 
 | # | claim | bounded check | result |
@@ -539,7 +539,7 @@ The top-5 primary claims, each re-checked with a bounded command against
 | 4 | Blob counts `v2:0 / v3:16 / v4:16`; v3 POOL CAM size `0x400`, slots `{1,6,2,7}×0xff`; armed v3 POOL=47, v4 POOL=1 | `nm \| rg -c`; `python3` struct read `@0x863c40/0x863c60/0x85ab60` | **PASS** — all exact |
 | 5 | Two `pooling_init` chains: v3 inserts `hw_decode_table_init` (call `@0x473848`→`0x473650`); Sunda omits it; only v3 hits real q7 CSR | `objdump -d --start=0x4737b0 / 0x46e8d0 \| rg call` | **PASS** — call targets exact |
 
-**Additional verified during authoring (the CORRECTIONs):**
+**Additional confirmations (the CORRECTIONs):**
 
 - **eng-index map.** `cayman_{pe,act,pooling,dve}_hw_decode_table_init` pass
   `%edi = 0,1,2,3` respectively (`objdump` bounded), and
@@ -559,7 +559,7 @@ The top-5 primary claims, each re-checked with a bounded command against
   which `run_state_0..7` bit) is `INFERRED`; it lives in the SP/SEQ device
   program, not in `libnrt`.
 - Boot-sentinel constants `0x6099CB34` / `0x502B2DA1` are from prior
-  device-image carves, not re-observed in `libnrt` this pass.
+  device-image carves, not observed in `libnrt`.
 - Whether Mariana POOL profiling is later armed at runtime (file-override path,
   §1) vs permanently disarmed is unconfirmed.
 
@@ -575,8 +575,9 @@ The top-5 primary claims, each re-checked with a bounded command against
   per-arch `pooling_init` chains.
 - [Boot / Reset Sequence + Startup Config](../uarch/boot-reset.md) — the
   device-side Q7 reset vector and C-runtime that the host release un-stalls.
-- **PROF / CSR pages (Part 13, control/*)** — the device `hw_decode` CSR bundle
-  (`control@0x4000`, `profile_cam_search_vector@0x4028`,
-  `hw_decode_flush_cntr@0x402C`), the `q7.release_run_stall@0x3000` byte-mask,
-  and the EVT_SEM 1 MiB unit (inc window `@0x1800`) — *not yet authored; plain
-  text.*
+- [`tpb_xt_local_reg` CSR](../control/csr/tpb-xt-local-reg.md) and
+  [EVT_SEM address regions](../control/address/evt-sem-regions.md) (Part 13) — the
+  device `hw_decode` CSR bundle (`control@0x4000`,
+  `profile_cam_search_vector@0x4028`, `hw_decode_flush_cntr@0x402C`), the
+  `q7.release_run_stall@0x3000` byte-mask, and the EVT_SEM 1 MiB unit (inc window
+  `@0x1800`).

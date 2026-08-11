@@ -25,7 +25,7 @@ constants. Every device-opcode numeric value is cross-checked against the firmwa
 ledger; mismatches are flagged as **CORRECTION**, never silently reconciled.
 
 Confidence per [the Confidence & Walls model](../reference/confidence-model.md):
-`[HIGH/MED/LOW]` × `OBSERVED` (read-from-byte / shipped `.py` this pass) /
+`[HIGH/MED/LOW]` × `OBSERVED` (read-from-byte / shipped `.py`) /
 `INFERRED` (reasoned over OBSERVED) / `CARRIED` (re-used from a cited sibling page at
 its confidence). The `extracted/` trees are gitignored — reach them with
 `fd --no-ignore` or an absolute path.
@@ -181,13 +181,13 @@ all-gen `0x7b`. The three constraints triangulate uniquely to `0xE3`. `[HIGH/INF
 — the strongest triangulation; the residual is below.]`
 
 > **GOTCHA — the `SundaISel → 0xE3` numeric edge is forced, not byte-read.** The
-> `QuantizeMXCodeGen.so` does **not** spell the numeric opcode in any string read
-> this pass; the opcode is assigned downstream at the `isa_tpb` `get_isa_opcode`
+> `QuantizeMXCodeGen.so` does **not** spell the numeric opcode in any string read;
+> the opcode is assigned downstream at the `isa_tpb` `get_isa_opcode`
 > step (the same engine-poly mechanism the other compiler ops use). The `0xE3`
 > binding is therefore **INFERRED-HIGH** — engine (Vector) + op-name (QUANTIZE pack)
 > + gen-availability (v4-only) force it, and the firmware ledger independently lists
 > `0xE3 QUANTIZE_MX | DVE` as a real, dedicated opcode separate from `0x7b`. The
-> *forward* DVE FLIX body is not byte-decoded this pass (§7). `[flagged honestly.]`
+> *forward* DVE FLIX body is not byte-decoded (§7). `[flagged honestly.]`
 
 ---
 
@@ -391,8 +391,8 @@ docstring.]`
 
 ### 5.3 The block geometry, hard-pinned
 
-Grounded in **hard constants**, not inference — every one independently re-read this
-pass from the shipped production weight-prep:
+Grounded in **hard constants**, not inference — every one independently re-read from the
+shipped production weight-prep:
 
 | constant | value | source (shipped `.py`) |
 |---|---|---|
@@ -408,8 +408,7 @@ So a full SBUF partition column = 16 quad-blocks × 8 = 128 partitions; the on-d
 weight is `[E, H//4, 2I[x4]]` and the scale is `[E, H//32, 2I]` — one E8M0 per
 32-element group. The ×4-packed dtype byte-counts: `fp8_x4 = uint32` (4×8b),
 `fp4_x4 = uint16` (4×4b). This ties the `[8,4]=32` block, the 16-scale quadrant, and
-the 128-partition tile **field-for-field**. `[HIGH/OBSERVED — constants re-read this
-pass.]`
+the 128-partition tile **field-for-field**. `[HIGH/OBSERVED — constants re-read.]`
 
 ---
 
@@ -429,7 +428,7 @@ is cross-checked against the [140-opcode ledger](../firmware/kernels/opcode-cata
 
 `[opcode numerics + engine + gen-column CARRIED from the ledger §2.1/§2.3 and
 [pe-matmul](../firmware/kernels/pe-matmul.md) §2/§7; host engine tags OBSERVED in the
-nki bindings this pass; the `0xE3`-fwd binding INFERRED-HIGH per §2.3.]`
+nki bindings; the `0xE3`-fwd binding INFERRED-HIGH per §2.3.]`
 
 ### 6.1 Forward vs inverse — the direction split
 
@@ -522,18 +521,18 @@ consistent — `2^(scale−127) × value`:
 | **host torch** | `transform_weights.get_mxfp8_tensor_from_uint32`: `scales = scales.to(int32) − 127` then `torch.ldexp(sub, exp)` | OBSERVED (`:278`, `:312`) |
 | **device sim** | `nc_matmul_mx`: `scale_mult = 2.0**(scale_expanded − 127)`; `stat_scaled = stat × scale_mult`; `einsum("kiq,kjq→ij")` | OBSERVED (`:118-126`) |
 | **firmware** | FW-75 dequant datapath: nibble-unpack → ufloat → scale-MAC (`ivp_mulus4tan16xr16` / `ivp_dmulqa2n8xr8`) → clamp → `cvtg48` extract | CARRIED ([mx-dequant](../firmware/kernels/mx-dequant.md) §5) |
-| **ISS value model** | `xdref_addexp` / `addexpm` = "fp exponent-add (`ldexp`)" — the soft-float primitive realizing `2^(s−127) × value` as an exponent add | CARRIED (DX-ISS) |
+| **ISS value model** | `xdref_addexp` / `addexpm` = "fp exponent-add (`ldexp`)" — the soft-float primitive realizing `2^(s−127) × value` as an exponent add | CARRIED |
 
 `torch.ldexp(scale−127) == sim 2.0**(scale−127)× == FW-75 scale-MAC == ISS addexp` —
 **bit-exact across all four**. The same `−127` bias appears in **five** shipped torch
-dequant variants re-read this pass (`get_mxfp4_tensor` `:54`/`:84`,
+dequant variants (`get_mxfp4_tensor` `:54`/`:84`,
 `get_mxfp4_tensor_from_uint16` `:208`/`:243`, `get_mxfp8_tensor_from_uint32`
 `:278`/`:312`, `dequant_byte_4bit_tensor` `:123`/`:133`, and the LUT path), each
 ending in `torch.ldexp(sub, exp)`. `FP4_VALUES` (`transform_weights.py:28`) is the
 16-entry e2m1 codebook the inverse uses. `[HIGH — host/sim OBSERVED; FW + ISS CARRIED;
 the exact MAC-input-vs-PSUM-drain TAP of the PE-side scale is MED per pe-matmul §7.]`
 
-> **NOTE — the FORWARD divide leg has no single firmware-decode this pass.** The
+> **NOTE — the FORWARD divide leg has no single firmware-decode.** The
 > ledger pins `0xE3 QUANTIZE_MX | DVE` (the `0xe0`/`0xe1`/`0xe3` DVE band:
 > `SPARSITY_COMPRESS` / `RAND2` / `QUANTIZE_MX`), but the forward extract
 > (max-over-block biased exponent) + divide + FP8-pack is the **mirror** of the FW-75
@@ -598,7 +597,7 @@ To rebuild a Vision-Q7-compatible OCP-MX path:
   does not spell the opcode byte; `0xE3` is forced by engine + op-name + gen
   availability (§2.3) and corroborated by the ledger's dedicated `0xE3 QUANTIZE_MX |
   DVE` row, but the host-emitter → `0xE3` numeric step is not byte-read.
-- **The forward `0xE3` DVE FLIX body is not byte-decoded** this pass (§7); it is
+- **The forward `0xE3` DVE FLIX body is not byte-decoded** (§7); it is
   INFERRED-HIGH to be the mirror of the FW-75 dequant legs.
 - **The `0xE3` gen floor is RESOLVED** (no longer a desync flag): the floor is
   **NC-v4 (MARIANA)**, and the `nc == V5` predicate is the maverick header's gen-local

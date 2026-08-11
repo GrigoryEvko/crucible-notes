@@ -21,8 +21,8 @@
 > delta on this object). Binary identity: `122,956,336 B`, SONAME `libnrt.so.1`,
 > BuildID `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, 17,372 functions, with
 > `.debug_info` (not stripped). Tags: `HIGH/MED/LOW` × `OBSERVED` (read from
-> binary/DWARF/strings) / `INFERRED` / `CARRIED` (from a sibling task,
-> re-verified where possible).
+> binary/DWARF/strings) / `INFERRED` / `CARRIED` (from a sibling page). The page
+> default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 The device half of this loop — the on-core SEQ/GPSIMD fault that produces the
 record the host reads — lives in
@@ -78,7 +78,7 @@ All four enums are read verbatim from the shipped DWARF `.debug_info`
 (enumerator name + `DW_AT_const_value`). They are the skeleton on which the rest
 of the page hangs.
 
-### 1.1 Global runtime state — `NRT_INIT_STATE` `[HIGH/OBSERVED]`
+### 1.1 Global runtime state — `NRT_INIT_STATE`
 
 ```c
 enum NRT_INIT_STATE {        // DWARF type "NRT_INIT_STATE"
@@ -105,7 +105,7 @@ return register:
 > runtime object it inherited but is fenced from driving the devices. It is a
 > post-`fork()` defence, not a normal transition.
 
-### 1.2 Per-model state — `DLR_MODEL_STATE` (`dlr_model.state` @ +424) `[HIGH/OBSERVED]`
+### 1.2 Per-model state — `DLR_MODEL_STATE` (`dlr_model.state` @ +424)
 
 ```c
 enum DLR_MODEL_STATE {       // DWARF "DLR_MODEL_STATE" / "dlr_model_state_t"
@@ -125,7 +125,7 @@ preceded by `kelf_model` (a `dlr_kelf_model_t*` at +416) and followed by
 meaningful: this field is read and written across the async-exec worker thread
 and the API thread, so the compiler is forbidden from caching it.
 
-### 1.3 Per-inference state — `exec_state` (`exec_request_state.state` @ +0) `[HIGH/OBSERVED]`
+### 1.3 Per-inference state — `exec_state` (`exec_request_state.state` @ +0)
 
 ```c
 enum exec_state {            // DWARF "exec_state" / "exec_state_t"
@@ -148,7 +148,7 @@ compares are visible in the prologue:
 and the per-NC return codes follow immediately at **offset 4** as
 `NRT_STATUS exec_rets[2]` (one slot per NeuronCore of a dual-NC/LNC request).
 
-### 1.4 Per-step poller result — `ERP_STEP` `[HIGH/OBSERVED]`
+### 1.4 Per-step poller result — `ERP_STEP`
 
 ```c
 enum ERP_STEP {              // DWARF "ERP_STEP" (return of progress_one_step)
@@ -158,7 +158,7 @@ enum ERP_STEP {              // DWARF "ERP_STEP" (return of progress_one_step)
 };
 ```
 
-> **CORRECTION (vs DX-RT-07 §1.4).** The backing report tagged `ERP_STEP` with a
+> **CORRECTION.** An earlier reading tagged `ERP_STEP` with a
 > DIE address; in the shipped enum table the enumerators are **un-namespaced**
 > (`ERP_STEP_DONE`, not `ERP_STEP::…`), unlike the other three machines which
 > carry a `<scope>::` prefix on every member. The values are unchanged (0/1/2);
@@ -179,7 +179,7 @@ appears in §4.4.
 Two public entries share one loader. `nrt_load_collectives` wraps the same
 `nrt_load_util` with collective-communication validation on either side.
 
-### 2.1 Entry `[HIGH/OBSERVED]`
+### 2.1 Entry
 
 `nrt_load(const void* neff, size_t, int, nrt_model**, int, int) @0xa9fe0` does:
 
@@ -193,7 +193,7 @@ aa0a2:  call a9920  <_Z13nrt_load_utilPKvmiPP9nrt_modelii>   ; the real loader (
 `kmgr_trace_set_cc_global_id @0xdf750` + `kmgr_validate_replica_groups @0xe0470`
 (the replica-group ↔ comm-channel count check) after.
 
-### 2.2 `nrt_load_util @0xa9920` — host parse + admission gate `[HIGH/OBSERVED]`
+### 2.2 `nrt_load_util @0xa9920` — host parse + admission gate
 
 Call order (read off the disassembly):
 
@@ -217,9 +217,9 @@ a9e10:  41 bf 02 00 00 00   mov $0x2,%r15d    ; NRT_INVALID        (2)
 a9e64:  41 bf 04 00 00 00   mov $0x4,%r15d    ; NRT_RESOURCE       (4)
 ```
 
-> **CORRECTION (vs DX-RT-07 §2.2).** The report placed the load-failure
+> **CORRECTION.** An earlier reading placed the load-failure
 > immediates in `%ebx`/`%eax` at `0xa9a1d/0xa9ce2` (`$0x4`) and `0xa9d48/0xa9d80`
-> (`$0x2`). On re-disassembly the loader threads its status through **`%r15d`**,
+> (`$0x2`). The loader actually threads its status through **`%r15d`**,
 > and the actual `NRT_RESOURCE(4)` / `NRT_INVALID(2)` stores are at **`0xa9e64`**
 > and **`0xa9e10`**. The status *values* are correct; the register and the byte
 > offsets in the report are not. The state-guard immediates `0xe`/`0xd` also live
@@ -236,7 +236,7 @@ The "too few cores" path resolves to a distinct admission string,
 On any failure the loader releases the reserved vNC (`nrt_vnc_usage_dec @0xc1820`)
 and dumps diagnostics (`nrt_infodump @0x94030`, `nrt_core_dump @0x92b90`).
 
-### 2.3 `kmgr_load_nn_nc @0xde280` — NEFF → KELF → stage → install `[HIGH/OBSERVED]`
+### 2.3 `kmgr_load_nn_nc @0xde280` — NEFF → KELF → stage → install
 
 ```c
 // kmgr_load_nn_nc @0xde280 — the device-load orchestrator
@@ -267,7 +267,7 @@ nrt_status_t kmgr_load_nn_nc(...) {
 A NEFF whose version is outside the supported window is rejected with
 `NRT_UNSUPPORTED_NEFF_VERSION (10)`.
 
-### 2.4 / 2.5 KELF parse + stage `[HIGH/OBSERVED]`
+### 2.4 / 2.5 KELF parse + stage
 
 `dlr_kelf_load @0xe0830` → `kelf_load @0x49a6b0` parses the compiled KELF (kbin
 sections, mem_refs, patch table); a parse failure frees the half-built object via
@@ -280,7 +280,7 @@ sections, mem_refs, patch table); a parse failure frees the half-built object vi
 install, §2.6). On error it unwinds via `kbl_model_remove @0x306440` /
 `vtpb_info_shared_free @0x3148b0`.
 
-### 2.6 `kbl_model_add @0x3058e0` — the tdrv install phase `[HIGH/OBSERVED]`
+### 2.6 `kbl_model_add @0x3058e0` — the tdrv install phase
 
 This is where the NEFF becomes a live device program. Call order:
 
@@ -317,7 +317,7 @@ the full RAII-style unwind: `model_free.part.0 @0x3055f0`, `buf_free @0x265f90`,
 > v2/v3/v4 paths are byte-grounded; **Maverick (v5) is header-observed only — tag
 > any v5-interior claim INFERRED.**
 
-### 2.7 Load-path state machine `[HIGH/OBSERVED]`
+### 2.7 Load-path state machine
 
 ```
 require NRT_STATE_INIT  ──not──► NRT_UNINITIALIZED(13) / NRT_CLOSED(14)
@@ -333,13 +333,13 @@ require NRT_STATE_INIT  ──not──► NRT_UNINITIALIZED(13) / NRT_CLOSED(14
 
 ## 3. The model-unload / free path (ref-counted)
 
-### 3.1 `nrt_unload(nrt_model*) @0xaa190` `[HIGH/OBSERVED]`
+### 3.1 `nrt_unload(nrt_model*) @0xaa190`
 
 `nrt_state_get_string` (lifecycle guard) → `nrt_gconf` → **`kmgr_unload_nn @0xdc450`**
 (the teardown orchestrator) → `nrt_vnc_usage_dec @0xc1820` (release the vNC slot
 reserved at load).
 
-### 3.2 `kmgr_unload_nn @0xdc450` — inverse of `kmgr_load_nn_nc` `[HIGH/OBSERVED]`
+### 3.2 `kmgr_unload_nn @0xdc450` — inverse of `kmgr_load_nn_nc`
 
 ```c
 // kmgr_unload_nn @0xdc450
@@ -371,7 +371,7 @@ Tensor-info is freed through a separate API pair, independent of unload:
 
 ## 4. The `nrt` API error model
 
-### 4.1 `NRT_STATUS` — the single host return channel `[HIGH/OBSERVED]`
+### 4.1 `NRT_STATUS` — the single host return channel
 
 Read verbatim from DWARF. **28 enumerators**, in three numeric bands. The gaps at
 **8** and **12** are intentional (reserved); the enum is non-contiguous by design.
@@ -420,7 +420,7 @@ synchronous API result; Band B is "the inference ran (or was rejected) — here 
 its data verdict"; Band C is "the hardware faulted mid-inference." Only Band-C
 codes carry the fail-stop posture.
 
-### 4.2 `nrt_status_priority_t` — multi-NC error ranking `[HIGH/OBSERVED]`
+### 4.2 `nrt_status_priority_t` — multi-NC error ranking
 
 When several NeuronCores fault in one inference, the host returns the **worst**
 status to the caller. The ranking enum:
@@ -461,7 +461,7 @@ nrt_status_priority_t nrt_get_status_priority(int s) {
 }
 ```
 
-> **CORRECTION (vs DX-RT-07 §4.2).** The report summarised the mapper as
+> **CORRECTION.** An earlier reading summarised the mapper as
 > "codes in `[0x3ec..0x4b5]` (1004..1205) → priority 2 (HIGH)." The actual
 > disassembly is finer-grained and the endpoints are **not** HIGH:
 > `0x3ec` (1004, `COMPLETED_WITH_ERR`) and `0x4b5` (1205, `REPAIRABLE_HBM_UE`)
@@ -517,7 +517,7 @@ nrt_get_status_priority(s) x2;                        // rank worst across NCs
 return ERP_STEP_FATAL;                                // on any hardware fault
 ```
 
-> **CORRECTION (vs DX-RT-07 §4.3).** The report listed `NRT_EXEC_HW_ERR_NC_UE`
+> **CORRECTION.** An earlier reading listed `NRT_EXEC_HW_ERR_NC_UE`
 > (`0x4b2`, 1202) among the immediates emitted by this mapper. There is **no**
 > `$0x4b2` store anywhere in `exec_request_process_errors`
 > (`objdump … | rg 'mov.*\$0x4b2'` is empty across `0x260000..0x266000`). The
@@ -533,7 +533,7 @@ return ERP_STEP_FATAL;                                // on any hardware fault
 > GPSIMD/Vision-Q7 engine** — so a fault post-mortem always includes the Q7's
 > last instruction pointer.
 
-### 4.4 `exec_fatal_status` — the latched fatal cause `[HIGH/OBSERVED]`
+### 4.4 `exec_fatal_status` — the latched fatal cause
 
 ```c
 enum exec_fatal_status {     // DWARF "exec_fatal_status" / "exec_fatal_status_t"
@@ -551,7 +551,7 @@ enum exec_fatal_status {     // DWARF "exec_fatal_status" / "exec_fatal_status_t
 This enum *names* the seven fatal causes that select the FATAL-RT log message and
 the Band-C status returned.
 
-> **CORRECTION (vs DX-RT-07 §4.4).** The report describes
+> **CORRECTION.** An earlier reading describes
 > `exec_request_state.exec_fatal_status @+112` as "the internal discriminator"
 > as though it stores one `exec_fatal_status_t` enum value. The DWARF struct
 > layout shows the field at offset 112 is typed **`bool[2][7]`** — a per-NC
@@ -562,7 +562,7 @@ the Band-C status returned.
 > `NRT_STATUS` is then resolved through the priority ranking (§4.2). The enum
 > values themselves are confirmed.
 
-### 4.5 The error-record consumer — `notification_consume_error_block @0x2ff250` `[HIGH/OBSERVED]`
+### 4.5 The error-record consumer — `notification_consume_error_block @0x2ff250`
 
 The per-record decode (range `0x2ff250..0x3000d7`):
 
@@ -621,7 +621,7 @@ const char* v2_infer_error_get_isa_error_text(uint32_t id) {
 
 ## 5. Execution error-recovery (timeout, halt detection, poller transitions)
 
-### 5.1 The execute spine `[HIGH/OBSERVED]`
+### 5.1 The execute spine
 
 ```c
 nrt_execute @0x91de0
@@ -642,7 +642,7 @@ nrt_execute @0x91de0
 Resource cleanup on every exit: `kbl_free_feature_map_set @0x307d50` (in/out
 sets), `kmgr_exec_resources_free @0xdd350`, `nn_ref_decrement @0xdc110`.
 
-### 5.2 `kmgr_sync_exec @0xdca70` — the blocking path `[HIGH/OBSERVED]`
+### 5.2 `kmgr_sync_exec @0xdca70` — the blocking path
 
 ```c
 // kmgr_sync_exec @0xdca70 → kmgr_exec_wait @0xdcf80 → kbl_infer_exec_wait @0x307410
@@ -660,14 +660,14 @@ kmetric_update_nds_error_stats(kbl_infer_errors*) @0xe0f60;   // infer_error_fla
 kmetric_update_nds_exec_stats(int,int,NRT_STATUS) @0xe0d30;   // final status logged
 ```
 
-> **CORRECTION (vs DX-RT-07 §5.2).** The report calls
+> **CORRECTION.** An earlier reading calls
 > `kbl_infer_errors.infer_error_flags @+0` "the per-NC error bitmap." The DWARF
 > struct shows `kbl_infer_errors` is `size 9` with `infer_error_flags` typed
 > **`bool[9]`** — nine distinct boolean error flags (one byte each), not a packed
 > bitmap. The "field at +0" and its name are correct; its width and encoding are
 > a 9-byte array of flags.
 
-### 5.3 The completion drain (device → host) `[HIGH/OBSERVED]`
+### 5.3 The completion drain (device → host)
 
 ```c
 // exec_request_progress_one_step @0x263330
@@ -687,10 +687,10 @@ This drain consumes the host Notification-Queue / MSI-X interrupt path. The
 device raises the NQ interrupt; the host reads the cause register via
 `aws_hal_intc_read_cause` and treats a full ring as the fatal
 `EXEC_FATAL_STATUS_SW_NQ_OVERFLOW`. *(The device→host interrupt/NQ delivery
-mechanism itself — the planned `control/interrupt/*` Part-13 pages — is a separate
-topic; this page documents only the host-runtime consumer of it.)*
+mechanism itself — the [`control/interrupt/*`](../control/interrupt/device-host-notification.md)
+Part-13 pages — is a separate topic; this page documents only the host-runtime consumer of it.)*
 
-### 5.4 Timeout / halt detection `[HIGH/OBSERVED]`
+### 5.4 Timeout / halt detection
 
 The budget comes from the environment (`NEURON_RT_EXEC_TIMEOUT`) via `gconf` into
 the per-model exec-timeout region; `exec_request_state` carries a `timeout_ms` /
@@ -884,8 +884,10 @@ value is returned to the API caller unchanged. There is no host-side state that
   reset call on the fault path (§5.5); `release_run_stall` being a bring-up
   primitive only.
 * **WALL:** Maverick (NC-v5) is header-observed only — any v5-interior claim is
-  INFERRED. The device-side NQ/interrupt delivery (planned `control/interrupt/*`),
-  the device fault chain (planned `control/security/*`), and the full
-  `exec_request_state` census (planned `appendix/struct-exec-state-census`) are
-  separate not-yet-authored topics referenced here by name; this page documents
+  INFERRED. The device-side NQ/interrupt delivery
+  ([`control/interrupt/*`](../control/interrupt/device-host-notification.md)),
+  the device fault chain ([`control/security/*`](../control/security/boot-fault-overview.md)),
+  and the full `exec_request_state` census
+  ([`appendix/struct-exec-state-census`](../appendix/struct-exec-state-census.md)) are
+  separate topics referenced here by name; this page documents
   only the host-runtime consumer.

@@ -24,7 +24,7 @@ calls `pickle.load()`.
 > what a v5 address *does inside the silicon* is **INFERRED**. The byte-grounded behavioral
 > cross-check is the **CAYMAN (NC-v3)** flat YAML (`address_map_flat.yaml`); it is a
 > *different SoC instance* and is used only for the generational deltas in §6.
-> `[HIGH · OBSERVED]` for structure; `[* · INFERRED]` for v5 interiors.
+> `HIGH · OBSERVED` for structure; `[* · INFERRED]` for v5 interiors.
 
 Primary artifacts (all binary-derived, citeable):
 
@@ -42,11 +42,11 @@ Primary artifacts (all binary-derived, citeable):
 
 ---
 
-## 0. Self-verify — the five headline claims re-streamed this session `[HIGH · OBSERVED]`
+## 0. Self-verify — the five headline claims
 
-Before authoring, the five strongest claims were re-challenged directly against the `.json`
-mirror's **`name` key** (`rg -c '"name": "…<token>…"'` — text only, zero pickle risk). The
-`name` key occurs **exactly once per record** (`rg -c '"name":'` = 323,198 = the DB `len`),
+The five strongest claims are grounded directly against the `.json`
+mirror's **`name` key** (text only, zero pickle risk). The
+`name` key occurs **exactly once per record** (323,198 = the DB `len`),
 so a `name`-keyed token count is a true per-record count, not an inflated multi-field grep.
 
 > **GOTCHA — count off the `name` key, not the raw line.** A bare `rg -c '"[^"]*TOP_SP'`
@@ -54,7 +54,7 @@ so a `name`-keyed token count is a true per-record count, not an inflated multi-
 > `short_name` (184) and `json` schema-path (48) keys. The authoritative record count is
 > the `name`-keyed `5,912` (= 6,144 − 184 − 48). Every count on this page is `name`-keyed.
 
-| claim | re-streamed result | verdict |
+| claim | result | verdict |
 | --- | --- | --- |
 | TOP_SP carve | `name`-key `TOP_SP` = **5,912**; by view user_int **936** / secure_int **4,976** | ✅ matches |
 | EVT_SEM 256-array | `name`-key `EVT_SEM` = **504**; user_int **288** / secure_int **216** | ✅ matches |
@@ -62,16 +62,14 @@ so a `name`-keyed token count is a true per-record count, not an inflated multi-
 | Grand 323,198 by-view | `parent_names[1]` tally **79,104+244,040+24+24+5+1** | ✅ closes |
 | MISC peripheral set | URB/PLL/QSPI/GPIO/I²C/SPIS/PVT/DFX/scratchpad all `name`-key > 0 (§3) | ✅ present |
 
-Two absences were also re-confirmed (defining-by-what-is-*not*-there): `SDMA`, `RDM`,
+Two absences also hold (defining-by-what-is-*not*-there): `SDMA`, `RDM`,
 `SPAD`, `TSYNC` `name`-keyed counts are all **0** — Maverick names its DMA `DDMA`/`CDMA`,
 the Ring-Descriptor-Manager lives *inside* INTC as `INTC_RDM` (already in the ADDR-15
 lane), and the TOP_SP's SPAD `cc_op` program + device tsync are *runtime software structs*
-(loaded into TOP_SP RAM at runtime), **not** address-mapped register blocks. `[HIGH · OBSERVED]`
-
+(loaded into TOP_SP RAM at runtime), **not** address-mapped register blocks.
 ---
 
-## 1. The TOP_SP subtree — the collective sequencer (engine 5) `[HIGH · OBSERVED]`
-
+## 1. The TOP_SP subtree — the collective sequencer (engine 5)
 `TOP_SP` appears in **5,912** records (pkl == JSON mirror, byte-identical). By view:
 **user_int 936 / secure_int 4,976**. By `type`: `REGFILE` 4,984 / `TABLE` 800 / `NODE` 128.
 
@@ -104,8 +102,7 @@ SB2SB / DMA legs of a collective:
 
 `DGE_CMD_INJECT_TABLE` 1,152 records; `STREAM_TO_AXI` tables 960 (size `0x80` each).
 This command-injection table engine is a **Maverick addition** — Cayman's TOP_SP carried no
-such tables (§6). `[HIGH · OBSERVED]`
-
+such tables (§6).
 ### 1c. The TOP_SP CSR leaves (`top_sp_amzn.json`)
 
 The pkl record offsets match the on-disk `top_sp_amzn.json` schema byte-for-byte:
@@ -121,7 +118,6 @@ The pkl record offsets match the on-disk `top_sp_amzn.json` schema byte-for-byte
 order its emitted DMA descriptors: `wob / wob_wr_bypass / wob_wr_clear / wob_force_inorder
 / wob_use_wid_base / wob_wid_base`. `TPB_TOP_SP_SIDE_FABRIC` = 40 `NODE` records, size
 `0x80000` (512 KiB) — the side-fabric aperture wiring TOP_SP into the TPB tile fabric.
-`[HIGH · OBSERVED]`
 
 ### 1d. The NX sequencer core (`xtensa_nx.json`)
 
@@ -130,12 +126,10 @@ size `0x4000` = 16 KiB each, at TPB-parent offsets `+0x5000/+0x9000/+0xd000`, �
 TPB). Because it carries **no** `TOP_SP` token, it physically lands in the **ADDR-11 / TPB
 lane** (under `TPB_0`), *not* the TOP_SP lane — important for the non-double-counting
 partition in §4. The engine-5 sequencer core is address-mapped; only its *name path* sits
-under TPB. `[HIGH · OBSERVED]`
-
+under TPB.
 ---
 
-## 2. The sync / semaphore subtree `[HIGH · OBSERVED]`
-
+## 2. The sync / semaphore subtree
 ### 2a. The EVT_SEM 256-array (504 records)
 
 `name`-key `EVT_SEM` = **504** (24 `TPB_EVT_SEM` containers × 21 recs/instance; by view
@@ -171,23 +165,20 @@ window layout, view-relative.
 > a separate Maverick CSR schema. The 6 original windows and the 256/256 model are unchanged.
 
 `EVT_SEM` also appears as a `LOCAL_EVT_SEM_n` alias plane (the cluster-pseudo-base mirror;
-8 `LOCAL_EVT_SEM_0` + 8 `LOCAL_EVT_SEM_1`). `[HIGH · OBSERVED]`
-
+8 `LOCAL_EVT_SEM_0` + 8 `LOCAL_EVT_SEM_1`).
 ### 2b. COLLECTIVE_SYNC (48 records) — **Maverick-new**
 
 `name`-key `COLLECTIVE` = **48** (24 `LOCAL_` aliases). `type=REGFILE`, size `0x100000`
 (1 MiB) at parent-offset `+0x2180000`. This is the on-chip collective **barrier-sync**
 region the TOP_SP drives — the address-map home of the barrier→semaphore lowering. A
 `COLL_SYNC` short-name strip (16 + 16 reserved) sits inside it. **Cayman's YAML has 0**
-`COLLECTIVE` records — this is a v5 collective-acceleration addition (§6). `[HIGH · OBSERVED]`
-
+`COLLECTIVE` records — this is a v5 collective-acceleration addition (§6).
 ### 2c. SP_SHARED_RAM (144 records) — **Maverick-new**
 
 `name`-key `SP_SHARED` = **144** (8 banks `SHARED_RAM_BANK_0..7` × 16 + 8 `SP_SHARED_RAM`
 + 8 `LOCAL_SP_SHARED_RAM`). Container `type=NODE`, size `0x100000` (1 MiB) at `+0x2280000`
 — the shared scratch the SP sequencers and the TOP_SP share for collective state. Again
-**Cayman = 0** (§6). `[HIGH · OBSERVED]`
-
+**Cayman = 0** (§6).
 ### 2d. SPAD `cc_op` / device tsync — *not* address-mapped (absence)
 
 The TOP_SP's SPAD `cc_op` command table and the device tsync struct are **runtime software
@@ -195,19 +186,17 @@ structs** (the `cc_op` entry rides in the DMA CCE descriptor; the tsync struct i
 host-decoded), **not** register blocks. Confirming: `name`-key `SPAD` / `TSYNC` /
 `TIMESTAMP` = **0** records. The TOP_SP program is loaded *into* the TOP_SP RAM aperture at
 runtime; the address map exposes only the RAM window, never the program.
-`[HIGH · OBSERVED absence]`
+`[OBSERVED absence]`
 
 ### 2e. RDM lives in INTC — no double-count (absence)
 
 `name`-key `RDM` = **0**. The Ring-Descriptor-Manager is embedded as `INTC_RDM` (a `0x1000`
 APB block) *inside* the INTC family — already counted in the
 [`pkl-intc-sprot-security.md`](./pkl-intc-sprot-security.md) lane. It is **not** under
-TOP_SP. No double-count. `[HIGH · OBSERVED]`
-
+TOP_SP. No double-count.
 ---
 
-## 3. The MISC / residual subtree `[HIGH · OBSERVED]`
-
+## 3. The MISC / residual subtree
 Everything in this lane that is **not** TOP_SP / EVT_SEM / COLLECTIVE / SP_SHARED is a real,
 schema-bound block family — **no anonymous remainder**. Two families:
 
@@ -228,8 +217,6 @@ other lanes, the same keyword-vs-lane overlap §4 explains):
 | `regfile_{security,access,parity}_log.json`, `regfile_ras.json` | 1,656 / 1,728 ea | per-URB RAS / violation / parity log |
 | `READ_URB_0..n` / `WRITE_URB_0..n` | 64 ea | per-port read/write windows |
 
-`[HIGH · OBSERVED]`
-
 ### 3b. The PEB chiplet-management peripherals (the boot/clock/IO control plane)
 
 Each lives in the PEB `APB_IO` container. Bases are **view-relative** (the example column
@@ -249,20 +236,19 @@ domain); sizes and schemas are all verified on disk. The two count columns separ
 | `(HDIE_)SCRATCHPAD` | 1,616 | NODE | `…0019d00000` | `0x80000` | `hdie_scratchpad_amzn.json` |
 | `DFX` | 216 | mixed | — | — | debug / DFT |
 
-> **NOTE — name-keyword ≠ lane residual `[HIGH · OBSERVED]`.** The `name`-kw column above
+> **NOTE — name-keyword ≠ lane residual.** The `name`-kw column above
 > counts every record whose name contains the token *anywhere in the DB* (so `GPIO` 552
 > includes GPIO-named RAS/parity leaves that first-match into protection lanes). The
 > first-match **lane residual** for the PEB peripherals (the slice that lands in *this*
 > ADDR-16 lane and feeds §4) is **≈2,240**. Both numbers are correct; they answer different
 > questions (keyword family vs physical partition), exactly like every other family in §4.
 
-> **ABSENCE — no `EFUSE`/`BOOT` block `[HIGH · OBSERVED]`.** `name`-key `EFUSE` / `BOOT` = 0.
+> **ABSENCE — no `EFUSE`/`BOOT` block.** `name`-key `EFUSE` / `BOOT` = 0.
 > Efuse/boot is either folded into `GLOBS`/`PLL` or simply not address-mapped in this DB.
 
 ---
 
-## 4. THE GRAND COVERAGE TALLY — every subtree vs 323,198 `[HIGH · OBSERVED]`
-
+## 4. THE GRAND COVERAGE TALLY — every subtree vs 323,198
 This is the page's headline result: **does the union of all six engine subtrees account for
 every one of the 323,198 records, with zero remainder?** It does — but only once the
 **keyword-vs-lane** distinction is handled correctly.
@@ -339,7 +325,7 @@ The partition was computed two ways — by lane (token first-match) and by view
 | **per-view** 79,104 / 244,040 / 24 / 24 / 5 / 1 == [`pkl-db.md`](./pkl-db.md) §4 | EXACT ✓ |
 
 > **⚠ keyword-vs-lane — the TPB, PCIe and INTC lanes differ from their page headlines, and
-> that is correct `[HIGH · OBSERVED]`.** The sibling pages headline **keyword-family** counts
+> that is correct.** The sibling pages headline **keyword-family** counts
 > (which overlap); the §4.3 table uses **physical-partition lane** counts (non-overlapping).
 > The differences are *expected* and reconcile via §4.1's first-match distribution:
 >
@@ -484,7 +470,7 @@ v5 additions is **INFERRED**.
 
 ## 7. Confidence ledger
 
-**HIGH · OBSERVED** (re-streamed off the `name` key this session, pkl == JSON mirror):
+**HIGH · OBSERVED** (off the `name` key; pkl == JSON mirror):
 
 - TOP_SP family **5,912** (user_int 936 / secure_int 4,976); `type` split 4,984 / 800 / 128.
 - `SP_CLUSTER` **2,688** ⊂ TOP_SP (not additive); DGE cmd-inject 1,152 + stream-to-AXI 960.

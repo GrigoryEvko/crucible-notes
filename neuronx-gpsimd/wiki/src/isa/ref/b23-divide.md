@@ -26,27 +26,27 @@ seed forms:
   seed variants: the same compute, but the selector picks the remainder-emit mux so the residue is a
   first-class output rather than only a carry into the next step.
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from the
+Everything below is grounded in the shipped binaries: the **encoding** from the
 non-stripped `libisa-core.so` (`Opcode_ivp_<mnem>_Slot_f2_s2_mul_encode` thunks read byte-for-byte;
 the `Iclass_IVP_<MNEM>_args` operand descriptors and the `regfiles[]` table walked directly), the
 **value semantics** from the `opcode__ivp_div…__stage_5` reference bodies in `libfiss-base.so`
 (disassembled in place), the **issue timing** from the per-stage `F2_F2_S2_Mul_27_IVP_DIV…_inst_stageN`
 scoreboard bodies in `libcas-core.so`, and a byte-exact **encode/decode oracle** from the
-device-native `xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). All 14 were round-tripped
-through that device oracle this pass. Confidence tags per
+device-native `xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). All 14 round-trip
+through that device oracle. Confidence tags per
 [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-round-trip, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic re-confirmed this pass.** All five config DLLs are under
+> **NOTE — address arithmetic.** All five config DLLs are under
 > `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with `fd --no-ignore`
 > or an absolute path). `libfiss-base.so` (12 330 016 B, ET_DYN x86-64, **not stripped**; the 864
-> `module__xdref_*` value leaves + the `opcode__*__stage_5` reference bodies): `readelf -SW` this pass
+> `module__xdref_*` value leaves + the `opcode__*__stage_5` reference bodies): `readelf -SW`
 > gives `.text` (VMA `0x190430`) and `.rodata` (VMA `0x88ff00`) **VMA == file-offset**, while
 > `.data.rel.ro` (VMA `0xc17e80` ↔ file `0xa17e80`) carries the per-binary delta **`0x200000`** — **not**
 > libtpu's `0x400000`. `libisa-core.so` (9 690 712 B, not stripped) carries the same `0x200000` `.data`
 > delta, so `objdump -s -j .data` on the `Iclass_*_args` tables and the `regfiles[]` array must subtract
-> `0x200000`; the encode thunks live in `.text` (VMA == file). `[HIGH/OBSERVED]`
+> `0x200000`; the encode thunks live in `.text` (VMA == file).
 
 ---
 
@@ -64,11 +64,10 @@ across issued instructions. That is the structural test separating B23 from its 
   `recip_tab` LUT (`table__recip_tab @0x9553c0`). The B23 integer group has **no LUT and no `(a,b)`
   value leaf at all** — its math lives entirely inside the `opcode__…__stage_5` context body (§4). The
   fp seed slice is the domain of [B15 fp32 seeds (sp_lookup)](b15-sp-lookup.md) /
-  [B14 fp16 seeds](b14-hp-lookup.md); do not conflate the two. `[HIGH/OBSERVED — distinct symbols,
-  distinct slot scatter (§2), no integer divide leaf]`
+  [B14 fp16 seeds](b14-hp-lookup.md); do not conflate the two.
 * **The integer multiply group (`ivp_sem_vec_mul`) is NOT here** even though B23 *rides the multiply
   slot* (F2/S2/Mul). The divide reuses the multiplier lane's datapath at issue time, but it is its own
-  semantic group with its own selector class; the two rosters are disjoint. `[HIGH/OBSERVED]`
+  semantic group with its own selector class; the two rosters are disjoint.
 * **The shared vector ALU (`ivp_sem_vec_alu`) is NOT here.** ADD/SUB/MIN/MAX/ABS/AVG and the
   saturating/wrapping/signedness machinery are the
   [Formal Semantics I](../semantics/group-semantics-i.md) domain; B23 is the only family that *iterates*
@@ -76,18 +75,18 @@ across issued instructions. That is the structural test separating B23 from its 
 
 The [partition classifier](template-and-partition.md) routes B23 by the `ivp_sem_divide` membership;
 the integer-divide group is *exactly* the `_4STEP*`-suffixed mnemonics (the `div0`/`divn` fp roots are
-glob-adjacent but reclassified to the fp seed batches). `[HIGH/OBSERVED]`
+glob-adjacent but reclassified to the fp seed batches).
 
 > **GOTCHA — "divn" is two different things on this engine.** The token `divn` appears in both *this*
 > batch (`ivp_divn_2x32x16{s,u}_4step*` = a 32-bit-dividend ÷ 16-bit-divisor **integer** divide) **and**
 > in the fp family (`ivp_divnnxf16`, `ivp_divnn_2xf32` = the fp **Newton refine** step). They share no
 > selector, no slot scatter, and no value path. The integer `divn_2x32x16` is the `N/2`-lane wide
 > integer quotient; the fp `divn` is the iterative reciprocal correction. This page is **only** the
-> integer one. `[HIGH/OBSERVED]`
+> integer one.
 
 ---
 
-## 1. Roster and count verification `[HIGH/OBSERVED]`
+## 1. Roster and count verification
 
 Enumerated directly from the `libisa-core.so` symbol table — every mnemonic below has exactly one
 `Opcode_ivp_<mnem>_Slot_f2_s2_mul_encode` thunk and a matching `Iclass_IVP_<MNEM>_args` descriptor; the
@@ -120,10 +119,10 @@ regfile width]`
 
 ---
 
-## 2. Shared encoding — FLIX format F2, slot S2 (Mul) `[HIGH/OBSERVED]`
+## 2. Shared encoding — FLIX format F2, slot S2 (Mul)
 
 All 14 ops have **exactly one** placement: format **F2**, slot **S2**, slot-class **Mul** (the
-multiply lane of the wide F2 4-slot bundle). Counted directly from the symbol table this pass, every op
+multiply lane of the wide F2 4-slot bundle). Counted directly from the symbol table, every op
 has placement count **1**, the single slot `f2_s2_mul`:
 
 ```
@@ -151,7 +150,7 @@ division-by-zero exception argument (§4). `[HIGH/OBSERVED — stateArgs symbol]
 
 `Iclass_IVP_DIVNX16S_4STEP0_args` (`.data` VMA `0x845380` ↔ file `0x645380`, subtracting the `0x200000`
 delta) is an array of **16-byte operand descriptors** `{const char* name; uint64 dir}` (the `dir` low
-byte is an ASCII code: `0x6f` = `'o'` = output, `0x69` = `'i'` = input). Walked byte-for-byte this pass,
+byte is an ASCII code: `0x6f` = `'o'` = output, `0x69` = `'i'` = input). Walked byte-for-byte,
 the seed form resolves to exactly **five** descriptors, the first **two** marked `'o'`:
 
 ```
@@ -179,13 +178,13 @@ accumulator `vt`/`vu` are the implicit read-modify-write pair (the static iclass
 > `vu, vt, vs, vr` (second-output-first, the same convention the
 > [B21 DSEL dual-output](b21-select-shuffle.md) uses), but the device assembler accepts/prints the seed
 > form as `vt, vu, vr, vs, imm` and the step form as `vt, vu, vr, imm`. This page uses the **assembler**
-> order in all worked examples (§5), as that is what `xtensa-elf-objdump` round-trips. `[HIGH/OBSERVED]`
+> order in all worked examples (§5), as that is what `xtensa-elf-objdump` round-trips.
 
 ### 2.3 Register files — the operand classes
 
 The `regfiles[]` descriptor table in `libisa-core.so` (`.data.rel.ro` VMA `0x74a800` ↔ file `0x54a800`,
 **8 entries × 56 bytes**, between `regfile_views @0x74a780` and `funcUnits @0x74a9c0`) gives the
-bit-width and count per file (`width @+0x18`, `count @+0x1c`), decoded this pass:
+bit-width and count per file (`width @+0x18`, `count @+0x1c`), decoded:
 
 | idx | file | width | count | used by this batch |
 |----:|------|------:|------:|--------------------|
@@ -207,7 +206,7 @@ per-lane merge guard. `[HIGH/OBSERVED — width/count dwords decoded from the ta
 
 Each placement's `Opcode_ivp_<mnem>_Slot_f2_s2_mul_encode` is a two-instruction thunk `movl
 $imm32,(%rdi); ret` (the high opcode word at `0x4(%rdi)` is always 0); the `imm32` is the format-local
-opcode-selector template the assembler writes into the bundle. Read byte-for-byte this pass and decoded
+opcode-selector template the assembler writes into the bundle. Read byte-for-byte and decoded
 into the 9-bit primary selector `[29:21]` plus the step sub-selector field:
 
 | mnemonic | encode `imm32` | sel `[29:21]` | sub `[20:15]` |
@@ -232,10 +231,10 @@ Three structural facts fall straight out of these bytes:
 * **The six seed forms are six unique 9-bit selector classes `0x000..0x005`** — adjacent integers. The
   `Q` (`0x000`) and `SQ` (`0x001`) remainder seeds, the plain signed/unsigned 16-bit seeds (`0x002` /
   `0x003`), and the signed/unsigned 32/16 seeds (`0x004` / `0x005`) differ **only** in this selector;
-  the operand nibbles are identical across all six on the same registers (§5(b)). `[HIGH/OBSERVED]`
+  the operand nibbles are identical across all six on the same registers (§5(b)).
 * **All eight step / step-N forms share the escape selector `[29:21] = 0x1e`** and are disambiguated by
   the **6-bit** sub-selector below it: `{0x04,0x05,0x06,0x07}` = `_4STEP` for `{NX16S, NX16U,
-  2X32X16S, 2X32X16U}`, and `_4STEPN` = `_4STEP | 0x10` (`{0x14,0x15,0x16,0x17}`). `[HIGH/OBSERVED]`
+  2X32X16S, 2X32X16U}`, and `_4STEPN` = `_4STEP | 0x10` (`{0x14,0x15,0x16,0x17}`).
 * The selector const indexes the shared divide mux; the same datapath decodes it into the internal
   control fan-out signals the schedule exposes (`op_q`, `op_signed`, `op_32x16`, `op_first_step`,
   `op_last_step`) — i.e. `{is-Q, is-signed, is-32×16, is-seed, is-last}` are exactly the bits the
@@ -271,7 +270,7 @@ already folded into the threaded residue). `[HIGH/OBSERVED for the OUT/IN contig
 the 1-bit lane_ctrl position; MED/INFERRED for the exact MSB-first split of vt/vu/vr, pinned by §5
 per-register differentials.]`
 
-### 2.6 lane_ctrl is a true 1-bit field `[HIGH/OBSERVED]`
+### 2.6 lane_ctrl is a true 1-bit field
 
 The operand-semantic encode/decode helpers in `libisa-core.so` settle the width unambiguously:
 
@@ -290,7 +289,7 @@ the precise "which half" meaning]`
 
 ---
 
-## 3. Operand signatures (ICLASS) `[HIGH/OBSERVED]`
+## 3. Operand signatures (ICLASS)
 
 Each opcode has its own ICLASS (1 opcode / iclass). Two signature shapes:
 
@@ -469,11 +468,11 @@ sign/rounding convention and the Q-vs-non-Q output split.]`
 
 ---
 
-## 5. Worked bit-patterns — device-oracle round-trips `[HIGH/OBSERVED]`
+## 5. Worked bit-patterns — device-oracle round-trips
 
 Every bundle below was assembled by `xtensa-elf-as` (`XTENSA_CORE=ncore2gp`,
 `XTENSA_SYSTEM=…/XtensaTools/config`) and disassembled back to the exact mnemonic + operand spelling by
-`xtensa-elf-objdump` this pass. The hex is `objdump`'s 16-byte (128-bit) memory-order word; each divide
+`xtensa-elf-objdump`. The hex is `objdump`'s 16-byte (128-bit) memory-order word; each divide
 op alone → an F2 word with three NOP-filled sibling slots.
 
 **(a) Seed, signed 16-bit:**
@@ -493,7 +492,7 @@ ivp_divnx16sq_4step0 v3,v2,v1,v0,1 -> 0006014218a0850618200410b334252f  (sel 0x0
 ivp_divnx16q_4step0  v3,v2,v1,v0,0 -> 0006014200a0850618200410b334252f  (sel 0x000, lane_ctrl=0)
 ```
 
-The three differ only in the slot-local selector + the lane_ctrl bit. `[HIGH/OBSERVED]`
+The three differ only in the slot-local selector + the lane_ctrl bit.
 
 **(c) Seed, unsigned 16-bit, different regs + lane_ctrl=1:**
 
@@ -543,10 +542,10 @@ for both the step (4-token) and seed (5-token) forms, confirming the 1-bit width
 These match the MSB-first split field map (§2.5). `[HIGH/OBSERVED — per-register round-trip]`
 
 > **CORRECTION — the vr/vs operand-differential labels.** A conceptual reading labelled the byte-4
-> change `vs` and the byte-3 change `vr`. Re-probing per-register this pass, in the assembler order
+> change `vs` and the byte-3 change `vr`. Re-probing per-register, in the assembler order
 > `vt,vu,vr,vs` the **`vr`** (3rd token, `v1`) drives **byte[4]** (`20→24`) and the **`vs`** (4th token,
 > `v0`) drives **byte[6]** (`85→87`). The labels were swapped; the §2.5 split map is the corrected
-> ground truth. `[HIGH/OBSERVED]`
+> ground truth.
 
 ### 5.1 Round-trip ledger
 
@@ -554,11 +553,11 @@ All 14 `ivp_sem_divide` opcodes assembled and disassembled cleanly under `ncore2
 `xtensa-elf-objdump -d`), **14/14** mnemonics recovered, each a 16-byte F2 bundle with the divide in
 slot S2 (Mul) and the three siblings = NOP. Encoding (selector consts, field map) cross-checked against
 the encode-thunk bytes: 0 discrepancies. Operand arity/spelling pinned by the toolchain (seed = 5
-tokens with the trailing 1-bit imm; step = 4 tokens). `[HIGH/OBSERVED]`
+tokens with the trailing 1-bit imm; step = 4 tokens).
 
 ---
 
-## 6. Issue timing `[HIGH/OBSERVED]`
+## 6. Issue timing
 
 The divide ops live in the **deep vector pipe**. `libcas-core.so` models each as a 13-stage function set
 `F2_F2_S2_Mul_27_IVP_DIVNX16S_4STEP0_inst_stage0 … _inst_stage12` (the `stage_functions @0x21a3300`
@@ -615,21 +614,19 @@ vs `Q` vs 16- vs 32-width. `[HIGH/OBSERVED — per-stage symbols + the stage_fun
 * [B21 — Select / Shuffle / Compress](b21-select-shuffle.md) — the preceding committed batch boundary;
   the source of the dual-output (`vu, vt`) descriptor-order convention reused here.
 
-> **CORRECTION / DIVERGENCE LEDGER.**
+> **CORRECTION / DIVERGENCE LEDGER** (every entry `[HIGH/OBSERVED]`).
 > 1. **Step sub-selector is `[20:15]` (6-bit), not `[19:15]` (5-bit)** — the `_4STEPN` sub-values
 >    `0x14..0x17` require bit 20; the `_4STEPN = _4STEP | 0x10` relation is that bit (§2.4).
->    `[HIGH/OBSERVED]`
 > 2. **Operand-differential vr/vs labels swapped** — in assembler order `vt,vu,vr,vs`, `vr` drives
->    byte[4] and `vs` drives byte[6] (§5(g)); an earlier reading had them reversed. `[HIGH/OBSERVED]`
+>    byte[4] and `vs` drives byte[6] (§5(g)); an earlier reading had them reversed.
 > 3. **Cross-page: B15 attributes the "`divn` Newton-step macro" to "B23 divide".** B23 is **integer
 >    only** (`ivp_divn_2x32x16{s,u}_4step*`); the fp `divn`/`recipqli` Newton refine step is the
 >    *separate* fp DIVN.NXF16 family (`module__xdref_divn_…f`, `recip_tab` LUT), which the fp seed batches
 >    own. The `divn` token is overloaded (§0 GOTCHA); B15's reference to B23 should be read as "the
 >    *integer* `divn_2x32x16` lives in B23", not the fp Newton step. To reconcile on the B15 page.
->    `[HIGH/OBSERVED — distinct symbols + slot scatter]`
 > 4. **No integer divide value leaf** — unlike the ALU/select ops, B23 has no `module__xdref_div…`
 >    `(a,b,*out)` primitive; the only `xdref_div*` leaves are the fp reciprocal seeds. The integer math is
->    inside `opcode__…__stage_5` (§4). `[HIGH/OBSERVED]`
+>    inside `opcode__…__stage_5` (§4).
 > 5. **Result-latency reading** — the schedule encodes data/accumulator USE at stage 10 and the
 >    `vt`/`vu` results DEF at stage 12 (a 2-cycle producer→consumer span), with the `vt_out2`/`vu_out2`
->    bypass tap at stage 11 (§6). `[HIGH/OBSERVED]`
+>    bypass tap at stage 11 (§6).

@@ -52,10 +52,8 @@ in [`SUMMARY.md`](../SUMMARY.md); the shape is:
 
 Two structural rules are worth internalising before you start:
 
-- **`SUMMARY.md` is the contract.** Parts 1–16 are committed as a roadmap; a line
-  becomes a live link the moment its page ships. If a path you expect is still in
-  the roadmap comment block, the page is authored but not yet wired — check
-  `SUMMARY.md` for the canonical path.
+- **`SUMMARY.md` is the contract.** Parts 1–16 are committed as a roadmap; check
+  `SUMMARY.md` for the canonical path to any page.
 - **The core is gen-invariant; the firmware is not.** For the four shipped
   generations (Sunda / Cayman / Mariana / Mariana+) there is exactly one Xtensa
   core config — one `core-isa.h`, one `ConfigName Xm_ncore2gp`, one `uarchName

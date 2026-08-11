@@ -29,7 +29,7 @@ The byte-level row expansions live in the **per-instruction reference**
 
 Everything below is read **directly out of the shipped Tensilica libisa config library**
 `libisa-core.so` (`ncore2gp/config/`, sha256 `8fe68bf4…f143e451`, 9 690 712 bytes, ELF64
-x86-64, **not stripped**, 45 058 symbols), re-grounded against the binary this pass via `nm`,
+x86-64, **not stripped**, 45 058 symbols), via `nm`,
 `objdump -d`, `readelf -SW`, and a direct byte-parse of `opcodes[]`/`opcodedefs[]` — **never** a
 decompile grep. The value side is `libfiss-base.so` (sha256 `260b110c…`, 12 330 016 B). The
 device-native `xtensa-elf-objdump`/`xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) serve as an
@@ -52,7 +52,7 @@ real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive r
 > `.rodata` are VMA == file-offset.** The encode/field/slot thunks live in `.text` (`0x312c10`,
 > delta 0) and resolve direct; the *tables* (`opcodes` @ `0x6ce6c0`, `opcodedefs` @ `0x6e9640`)
 > live in `.data.rel.ro` (VMA `0x67bb00` → file `0x47bb00`). Do **not** carry over `libtpu.so`'s
-> `0x400000` `.data` delta — that is a different binary (`readelf -SW`, re-read this pass:
+> `0x400000` `.data` delta — that is a different binary (`readelf -SW`:
 > `.text` `0x312c10`/`0x312c10`; `.rodata` `0x3b6e40`/`0x3b6e40`; `.data.rel.ro`
 > `0x67bb00`/`0x47bb00`; `.data` `0x764040`/`0x564040`). `libisa-core.so` is in `extracted/`
 > (gitignored; reach with an absolute path or `fd --no-ignore`).
@@ -61,9 +61,9 @@ real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive r
 
 ## 1. The encoding-key facts in one block
 
-Every dimension this appendix indexes, with its binary witness — re-read this pass.
+Every dimension this appendix indexes, with its binary witness.
 
-| Dimension | Value | Binary witness (this pass) | Tag |
+| Dimension | Value | Binary witness | Tag |
 |---|---|---|---|
 | Config / uarch | `Xm_ncore2gp` / *Cairo*, Xtensa24/XEA3, NX1.1.4 | `config_table` @ `0x85ea40` (.data) | `[HIGH/OBSERVED]` |
 | **Shipped mnemonics** | **1534** | `num_opcodes` @ `0x3b61d0` = `mov $0x5fe` (=1534); `nm \| rg -o 'Opcode_(.+)_Slot_…_encode' \| sort -u \| wc -l` = 1534 | `[HIGH/OBSERVED]` |
@@ -151,8 +151,8 @@ illegal, not a size). `[HIGH/OBSERVED]`
 `{ char *name; char *format; char *nop; int position; void(*get); void(*set) }`. `bitoff` = the
 slot field's start bit; `width` = decoded slot-word bit-length (`[MED/INFERRED]`,
 machine-code-emulated, ±1–2 bits on scattered slots); `pos` = sequential issue index; `get` from
-`slots[i]`. All 46 names/positions/get-addresses/`<bitoff>` tokens re-read from `slots[]` + the
-`Slot_*_get` symtab this pass; every cell agrees.
+`slots[i]`. All 46 names/positions/get-addresses/`<bitoff>` tokens read from `slots[]` + the
+`Slot_*_get` symtab; every cell agrees.
 
 | # | slot | fmt | unit | pos | bitoff | width | get_fn |
 |---|---|---|---|:--:|:--:|:--:|---|
@@ -261,7 +261,7 @@ void Opcode_<mnem>_Slot_<slot>_encode(uint32_t *slotword) {
 * `C3` is `RET`. Single-lane thunks are 7 bytes (`C7 07 imm32 C3`), padded to alignment with a
   multi-byte NOP (`66 0F 1F 84 00 …`); 2-lane thunks are 14 bytes.
 
-### 3.2 Byte-exact samples (re-disassembled this pass)
+### 3.2 Byte-exact samples
 
 | thunk | bytes (literal) | word0 | word1 | lanes |
 |---|---|---|---|---|
@@ -340,7 +340,7 @@ is impractical and would duplicate the per-instruction reference. This appendix 
 
 ### 4.1 The per-slot placement census (the 12569, grouped by slot — byte-exact)
 
-Re-counted this pass by grouping all `Opcode_*_Slot_<slot>_encode` symbols
+Grouping all `Opcode_*_Slot_<slot>_encode` symbols
 (`nm libisa-core.so | rg -o 'Opcode_.+_Slot_([a-z0-9_]+)_encode' | sort | uniq -c`). Every slot
 hosts ≥ 1 opcode; the 46 per-slot counts total **12569** with zero slack.
 
@@ -373,7 +373,7 @@ NOP-only filler, not real issue units. The four `Inst16a` placements are exactly
 
 ### 4.2 The per-package mnemonic census (the 1534, grouped by package — byte-exact)
 
-Parsed this pass directly from `opcodes[i].package` (table `+0x08`, stride 72, all 1534 rows;
+Parsed directly from `opcodes[i].package` (table `+0x08`, stride 72, all 1534 rows;
 `.data.rel.ro` file = VMA − `0x200000`). 28 distinct packages, summing to exactly **1534**. This
 is the *roster* axis the appendix row's `mnemonic`/`iclass` columns draw from.
 
@@ -391,20 +391,20 @@ is the *roster* axis the appendix row's `mnemonic`/`iclass` columns draw from.
 | — | — | — | — | `xt_interrupt` | 1 |
 | — | — | — | — | `xt_trace` | 1 |
 
-**Total = 1534** (re-summed this pass). The name-prefix split is **`469 / 1065`** (non-`ivp_` /
+**Total = 1534.** The name-prefix split is **`469 / 1065`** (non-`ivp_` /
 `ivp_`); the package split puts **1072** in `xt_ivp32`. `[HIGH/OBSERVED]`
 
 > **CORRECTION — `package == xt_ivp32` (1072) is NOT the same predicate as `name starts ivp_`
 > (1065).** The 7 ops in `xt_ivp32` lacking the `ivp_` prefix are exactly
-> `{mulsone.h, mulsone.s, recipqli.s, rur.fcr, rur.fsr, wur.fcr, wur.fsr}` (re-confirmed by direct
-> byte-parse this pass). The scalar-FP `.h`/`.s` ops are package `xt_ivpn_scalarfp` (102), *scalar*
+> `{mulsone.h, mulsone.s, recipqli.s, rur.fcr, rur.fsr, wur.fcr, wur.fsr}` (confirmed by direct
+> byte-parse). The scalar-FP `.h`/`.s` ops are package `xt_ivpn_scalarfp` (102), *scalar*
 > by name, counting toward the **469** scalar total. Both axes are correct; never conflate them.
 
 ### 4.3 The representative-but-systematic encoding sweep — one row per `(format, slot, unit)`
 
 This sweep exhibits the master row schema for **every distinct `(format, slot, unit)` combination
 in the 46-slot grid** — so the schema is demonstrated across the entire grid, with each
-`template immediate` byte-disassembled this pass. The `opcode-selector CONST` and
+`template immediate` byte-disassembled. The `opcode-selector CONST` and
 `template immediate` columns are the *same value* (the `WORD0` the `C7 07 imm32` lays); they are
 listed separately to mirror the master row schema (`CONST` = the selector's logical role,
 `immediate` = its literal `WORD0`). Escape note: a literal `|` inside a cell is written `\|`.
@@ -432,9 +432,9 @@ listed separately to mirror the master row schema (`CONST` = the selector's logi
 | `nop` | N0 | `N0_S1_None` | none | `xt_core` | None-filler NOP | `0x00000000` |
 | `nop` | N2 | `N2_S1_Ld` | ld | `xt_core` | N2 ld-slot NOP | `0x00298904` |
 
-Every `template imm` above was disassembled from the named `Opcode_*_encode` thunk this pass.
+Every `template imm` above was disassembled from the named `Opcode_*_encode` thunk.
 Rows marked *(census: …)* exist in the placement census (§4.1) but are cited there rather than
-re-disassembled inline. `abs` (a base scalar op) is **not** legal in the vector-only
+disassembled inline. `abs` (a base scalar op) is **not** legal in the vector-only
 `*_S3_ALU`/`*_S2_Mul` slots (those carry only `ivp_*` ops), which is why the F0 ALU/Mul rows use
 `ivp_addnx16`/`ivp_mulnx16` and the scalar-slot rows use `abs`. This demonstrates the per-opcode
 slot-legality the matrix encodes: **a slot's roster is opcode-typed, not universal.**
@@ -473,16 +473,16 @@ with a single canonical encoding that collapses onto an already-shipped opcode b
 folded form would emit is still emitted by its base form), which is exactly why `1534/12569` is
 the right denominator for an encoding-completeness claim.
 
-The fold groups (base forms ship; fold variants are confirmed *absent* from the roster this pass):
+The fold groups (base forms ship; fold variants are confirmed *absent* from the roster):
 
-| folded group | n | what they are | roster check (this pass) |
+| folded group | n | what they are | roster check |
 |---|--:|---|---|
 | `xt_wide_branch` `.W18` macros | 24 | 18-bit wide-branch-offset macro expansions of `BEQ/BNE/BLT/…` | base forms (`beq`, `bnez`, …) + their `_w15` variants ship; **no `*_w18`** in roster (`rg w18` = 0) |
 | `xt_virtualops` pseudo-ops | 6 | `ADDI.A.N, CLAMPSF, FFS, POPC, POPCE, SEXTF` — pure assembler virtuals | `ffs/popc/clampsf/sextf` **absent** from the 1534 roster (re-checked = 0) |
 | residual authoring forms | 43 | the rest of the `+73` (`.W18`/alias/macro across branch-pred / halt / trace / interrupt) | the *base* forms ship; only their alias/wide variants fold |
 
 > **CORRECTION — `num_encode_fns` reproduces as 12569; the `12642` is NOT in this binary's
-> tables.** Re-verified this pass: `num_encode_fns` @ `0x3b6130` = `mov $0x3119,%eax` →
+> tables.** `num_encode_fns` @ `0x3b6130` = `mov $0x3119,%eax` →
 > `0x3119` = **12569**, and `nm | rg -c 'Opcode_.*_Slot_.*_encode'` = **12569** independently. The
 > `12642` figure is the TIE-DB authoring count, read from the decoded `Xtensa.tl`/`Xtensa.xml`,
 > never from `libisa-core.so`'s `opcodedefs[]`. Pairing `1534 ↔ 12642` or `1607 ↔ 12569`
@@ -545,9 +545,7 @@ The roll-up the 30 batches close onto: **`Σ m = 1534`** (1065 vector + 469 scal
 
 ---
 
-## 7. Adversarial self-verification — the five strongest claims, re-derived this pass
-
-Each re-derived independently from the binary, two ways where possible.
+## 7. Adversarial self-verification — the five strongest claims
 
 1. **`1534` shipped mnemonics.** `num_opcodes` @ `0x3b61d0` = `mov $0x5fe` → 1534; independently
    `nm | rg -o 'Opcode_(.+)_Slot_…_encode' | sort -u | wc -l` = **1534**; the 28-package
@@ -557,7 +555,7 @@ Each re-derived independently from the binary, two ways where possible.
    `num_slots` @ `0x3b6510` = `num_decode_fns` @ `0x3b64c0` = `mov $0x2e` (46); the format
    slot-count census `1+1+1+4+5+4+4+5+4+4+4+3+2+4` = **46**; the `length_table[256]` value census
    `{3:128,2:96,16:22,8:8,−1:2}` = **7 classes / 4 sizes**. `[HIGH/OBSERVED]`
-3. **Encode-thunk ABI `C7 07 imm32 [C7 47 04 imm32] C3`, `word1 == 0`.** Re-disassembled this pass:
+3. **Encode-thunk ABI `C7 07 imm32 [C7 47 04 imm32] C3`, `word1 == 0`.**
    `Opcode_addi_Slot_n0_s0_ldst_encode` @ `0x3389b0` = `c7 07 00 00 24 00 c3` (1-lane,
    `0x00240000`); `Opcode_mov_n_Slot_f0_s3_alu_encode` @ `0x3386b0` =
    `c7 07 00 d8 98 64  c7 47 04 00 00 00 00  c3` (2-lane, `word0=0x6498d800`, **`word1=0`**);
@@ -570,7 +568,7 @@ Each re-derived independently from the binary, two ways where possible.
    from the roster. The only valid pairings are `1534 ↔ 12569` and `1607 ↔ 12642`. `[HIGH/OBSERVED]`
    on the runtime count + fold; `[HIGH/CARRIED]` on the 12642 authoring total.
 5. **The 28-package census sums to 1534 (byte-parse, not decompile).** Parsing `opcodes[i].package`
-   (table `+0x08`, stride 72, `.data.rel.ro` file = VMA − `0x200000`) for all 1534 rows this pass
+   (table `+0x08`, stride 72, `.data.rel.ro` file = VMA − `0x200000`) for all 1534 rows
    yields 28 distinct packages summing to exactly **1534**, byte-identical to
    [the coverage tally §4.1](../isa/core/coverage-tally.md) (`xt_ivp32` 1072, `xt_core` 131,
    `xt_ivpn_scalarfp` 102, …, `xt_trace` 1). `[HIGH/OBSERVED]`
@@ -636,8 +634,8 @@ All in `libisa-core.so` (`ncore2gp/config/`) unless noted. `.text`/`.rodata`: VM
 
 ---
 
-*Provenance: every count, address, immediate, and template byte is `[HIGH/OBSERVED]` — read this
-pass from the count-accessor immediates (`objdump -d`), the `nm` symbol-family populations, the
+*Provenance: every count, address, immediate, and template byte is `[HIGH/OBSERVED]` — read
+from the count-accessor immediates (`objdump -d`), the `nm` symbol-family populations, the
 `opcodes[]`/`opcodedefs[]` raw byte-parse (`.data.rel.ro` file = VMA − `0x200000`), and the
 literal encode-thunk bytes of the shipped `libisa-core.so` (sha256 `8fe68bf4…f143e451`). The
 `12642`/`1607` authoring totals are `[HIGH/CARRIED]` from the decoded TIE-DB; `F4`/`F6` operand

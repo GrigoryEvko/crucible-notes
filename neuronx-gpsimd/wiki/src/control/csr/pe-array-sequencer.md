@@ -12,7 +12,8 @@
 > are byte-exact from the shipped Cayman register-description schema
 > `csrs/tpb/tpb_arr_seq_top_host_visible.json` (`AddrWidth 12 → 4 KiB`,
 > `SizeInBytes 0x1000`, `InterfaceType APB`, `RegfileFlavor POSEDGE`,
-> `DataWidth 32`). Confidence is tagged **HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED**.
+> `DataWidth 32`). The page default is **HIGH · OBSERVED**; claims that depart from
+> it carry an explicit **HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED** tag.
 >
 > **Per-gen applicability.** Byte-grounded for **Cayman / NC-v3** from this
 > schema. The same `tpb_arr_seq_top_host_visible.json` ships under `sunda`
@@ -30,7 +31,7 @@ images](../../images/cayman-pe.md) · [SIMD/MAC datapath](../../uarch/simd-datap
 
 ---
 
-## 1. Regfile metadata (HIGH · OBSERVED)
+## 1. Regfile metadata
 
 Top-level `RegFile` object, scalar fields verbatim from the schema:
 
@@ -52,10 +53,9 @@ replicates the bundle's register set `N` times at `BundleSizeInBytes` stride.
 
 ---
 
-## 2. Register-count verification (HIGH · OBSERVED) — **CONFIRMED 305**
+## 2. Register-count verification — **305 unique registers**
 
-Re-derived from scratch by enumerating
-`[.RegFile.RegistersBundleArrays[].Registers[]]`:
+Enumerating `[.RegFile.RegistersBundleArrays[].Registers[]]`:
 
 | idx | Bundle | base | `BundleSizeInBytes` | `ArraySize` | unique regs | fields | expanded |
 |---|---|---|---|---|---|---|---|
@@ -68,15 +68,14 @@ Re-derived from scratch by enumerating
 | 6 | `arr_seq_ififo_debug` | `0x840` | `0x04` | 1 | 1 | 1 | 1 |
 | | **SUM** | | | | **305** | **308** | **358** |
 
-- **Unique register definitions = 305** (6+98+98+98+3+1+1). Matches the task's
-  "~305" **exactly** — no CORRECTION needed on the headline count.
+- **Unique register definitions = 305** (6+98+98+98+3+1+1).
 - **BitFields = 308** (each register here has one field except the three
   `arr_seq_cfg` multi-field registers).
 - **Expanded (ArraySize applied) = 358**, occupying `0x000..0x843`; all 358
   absolute offsets are unique (no aliasing). Upper ~46% of the 4 KiB window
   (`0x844..0xFFF`) is unused/reserved.
 
-**Access / reset census (whole file, HIGH · OBSERVED):**
+**Access / reset census (whole file):**
 
 | Census | Result |
 |---|---|
@@ -89,15 +88,15 @@ The block is **96.4 % telemetry** (294/305 perf counters), ~2 % config
 (6/305, all in bundle 0), ~3 % debug (5/305 unique). There is exactly one
 write-pulse field (`perf_cntr_cfg.cntr_rst`) and no other side-effecting CSR.
 
-> **Reset-integrity note (HIGH · OBSERVED).** Grepping every `ResetValue` for
-> `b1` / `dead` / `bad` placeholder patterns returns nothing. The two
+> **Reset-integrity note.** No `ResetValue` in the file matches the
+> `b1` / `dead` / `bad` placeholder patterns. The two
 > `0xffffffff` resets are the deliberate "default-to-one" metal-ECO spares
 > (`spare_register2/3`); all other resets are genuine `0x0`. No placeholder-reset
 > artifact in this tpb-family block.
 
 ---
 
-## 3. Bundle 0 — `arr_seq_cfg`: the entire host-writable control surface (HIGH · OBSERVED)
+## 3. Bundle 0 — `arr_seq_cfg`: the entire host-writable control surface
 
 Base `0x000`, `BundleSizeInBytes 0x40`, `ArraySize 1`, 6 registers, 9 fields.
 **All 6 registers are RW — this is the complete host-writable control of the
@@ -131,7 +130,7 @@ CSR (see [§6](#6-arming-the-pe-array--the-host-sequence-med--inferred)).
 
 ---
 
-## 4. Bundles 1/2/3 — `arr_seq_ififo_perf_{weight_load,matmul,pe_regwrite}`: per-tile instruction telemetry (HIGH · OBSERVED)
+## 4. Bundles 1/2/3 — `arr_seq_ififo_perf_{weight_load,matmul,pe_regwrite}`: per-tile instruction telemetry
 
 The three perf bundles are **structurally byte-identical**: same 98 register
 names, same offsets, same field layout. A `diff` of each bank's `(offset, name)`
@@ -146,8 +145,8 @@ Each bank = **98 registers = 49 distinct counters × 2 halves**:
 - `<tile>_instr_cnt_lsb` → field `cntr_lsb` `[31:0]`, RO, reset `0x0` — low 32 bits.
 - `<tile>_instr_cnt_msb` → field `cntr_msb` **`[15:0]`**, RO, reset `0x0` — high 16 bits.
 
-> **CORRECTION vs SX-CSR-05 §4 (HIGH · OBSERVED).** The backing report calls
-> these "64-bit free-running counters" (`cntr_msb [31:0]`). The Cayman schema is
+> **CORRECTION — the per-tile counters are 48-bit, not 64-bit.** They are often
+> described as "64-bit free-running counters" (`cntr_msb [31:0]`). The Cayman schema is
 > unambiguous: **every one of the 147 MSB fields is `cntr_msb [15:0]`** (census:
 > 147 × `[15:0]` MSB, 147 × `[31:0]` LSB across the three banks). Each counter is
 > therefore **48-bit** (32 LSB + 16 MSB), not 64-bit. Reconstruct a counter as
@@ -173,7 +172,7 @@ registers**. The 128×128 array geometry and the 9 legal tile shapes are exposed
 dimension or partition-select register** in this host-visible window. The actual
 partition the array runs is selected by the Matmul/LdWeight micro-op, not a CSR.
 
-Tile **index** numbering (re-derived, MED · INFERRED): indices come from a 4×4
+Tile **index** numbering (MED · INFERRED): indices come from a 4×4
 grid of 32×32 quadrants, linearized row-major (index = `quadrant_row·4 +
 quadrant_col`). A tile of shape R×C occupies `(R/32)×(C/32)` quadrants and is
 named by its top-left quadrant's linear index. Verified index sets:
@@ -181,7 +180,7 @@ named by its top-left quadrant's linear index. Verified index sets:
 `64x64:{0,2,8,10}`, `64x32:{0,1,2,3,8,9,10,11}`, `32x128:{0,4,8,12}`,
 `32x64:{0,2,4,6,8,10,12,14}`, `32x32:{0..15}`.
 
-### 4.2 Full 49-counter offset map (HIGH · OBSERVED)
+### 4.2 Full 49-counter offset map
 
 Relative offsets within each bank; the `_lsb` register sits at the listed
 offset, `_msb` at `+0x4`. Bank bases: `weight_load 0x100`, `matmul 0x300`,
@@ -244,7 +243,7 @@ Gaps between shape-groups (`0x008..0x00F`, `0x048..0x04F`, `0x060..0x067`,
 padding so each group starts on an 8-byte boundary; the bank rounds up to
 `0x200`.
 
-> **Doc anomaly A1 (HIGH · OBSERVED).** Three counters' *field descriptions*
+> **Doc anomaly A1.** Three counters' *field descriptions*
 > carry the wrong tile index (generator-text bug; the register NAME and OFFSET
 > are correct): `tile_128x32_tile2_instr_cnt_{lsb,msb}` describe themselves as
 > "tile 3"; `tile_64x32_tile10_instr_cnt_msb` describes "tile 11" while its
@@ -252,7 +251,7 @@ padding so each group starts on an 8-byte boundary; the bank rounds up to
 > up to 9 strings are affected. **Trust the register name and offset, not the
 > description text.**
 >
-> **Doc anomaly A2 (HIGH · OBSERVED).** The distinguishing instruction class
+> **Doc anomaly A2.** The distinguishing instruction class
 > (weight_load vs matmul vs pe_regwrite) lives **only in the bundle name** — the
 > field descriptions are identical across banks ("…tile config … instruction
 > count LSB/MSB"). A consumer must use the bundle name, not the field text, to
@@ -261,7 +260,7 @@ padding so each group starts on an 8-byte boundary; the bank rounds up to
 
 ---
 
-## 5. Bundles 4/5/6 — debug-vector taps (HIGH · OBSERVED)
+## 5. Bundles 4/5/6 — debug-vector taps
 
 All RO, reset `0x0`, single `debug_vector_N` field `[31:0]` each — raw RTL probe
 taps ("brings out internal signals"); there are **no decoded status bits**
@@ -369,8 +368,8 @@ matmul-sequencing knobs that gate the array's response behavior.
 | **protected** | `tpb_arr_seq_top_protected` | 1 | **1** | a single `throttle_cfg` register |
 | **cluster** | `tpb_arr_seq_cluster_host_visible` | 3 | **17** | `arr_cluster_cfg` matmul-sequencing bits + array-stagger idle-timers + 36-way queue perf + rd-rsp debug |
 
-> **CORRECTION / refinement vs SX-CSR-05 (HIGH · OBSERVED).** SX-CSR-05 names the
-> protected sibling only generically. The Cayman `tpb_arr_seq_top_protected.json`
+> **CORRECTION / refinement — what the protected sibling actually holds.** It is
+> often named only generically. The Cayman `tpb_arr_seq_top_protected.json`
 > is **not** a config-mirror of `arr_seq_cfg` — it is a single register
 > `throttle_cfg @ 0x0` with two RW fields: `disable_throttle [8:0]`
 > (reset `0x1ff`, "Set to 1 to disable throttle feature; per XBUS") and
@@ -406,7 +405,7 @@ spare-register set. So:
 
 ---
 
-## 8. Negative results — what is NOT in this window (HIGH · OBSERVED)
+## 8. Negative results — what is NOT in this window
 
 Verified by exhaustive keyword scan
 (`fp32|fp16|bf16|int8|fp8|mxfp|psum|accumul|precision|dtype|quant`) over the
@@ -435,11 +434,11 @@ Every offset, name, bit position, access type, and reset value above is a
 byte-exact reading of `csrs/tpb/tpb_arr_seq_top_host_visible.json` (the shipped
 Cayman register-description schema, itself a binary-derived artifact). Counts
 (305 / 308 / 358; 49 counters; 9 tile shapes; 16/9 debug instances; the
-299 RO / 6 RW, 1 PulseOnW, 306×0 / 2×0xffffffff census) were re-derived from
-scratch via `jq` enumeration plus Python/bash arithmetic and cross-checked
-against the `.json.mako` generator (`types = ['weight_load','matmul',
-'pe_regwrite']`). Protected and cluster sibling data in §7 are byte-exact from
-`tpb_arr_seq_top_protected.json` and `tpb_arr_seq_cluster_host_visible.json`,
-used only to locate the matmul/throttle control that is absent from the target
-file. The **48-bit counter** width and the **`throttle_cfg`** protected-register
-contents are CORRECTIONS to SX-CSR-05, grounded directly in the Cayman schema.
+299 RO / 6 RW, 1 PulseOnW, 306×0 / 2×0xffffffff census) come from enumerating
+that schema and are cross-checked against the `.json.mako` generator
+(`types = ['weight_load','matmul','pe_regwrite']`). Protected and cluster
+sibling data in §7 are byte-exact from `tpb_arr_seq_top_protected.json` and
+`tpb_arr_seq_cluster_host_visible.json`, used only to locate the matmul/throttle
+control that is absent from the target file. The **48-bit counter** width and the
+**`throttle_cfg`** protected-register contents are CORRECTIONS, grounded directly
+in the Cayman schema.

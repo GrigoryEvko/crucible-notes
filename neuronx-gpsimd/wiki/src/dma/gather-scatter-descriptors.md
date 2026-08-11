@@ -10,7 +10,7 @@ address-generation mechanisms as annotated C naming the recovered symbols, and w
 concrete examples.
 
 Every struct offset, enum value, opcode byte, and validity predicate below is read byte-for-byte
-this pass from the shipped `aws-neuronx-gpsimd-customop-lib` `0.21.2.0` arch-isa headers
+from the shipped `aws-neuronx-gpsimd-customop-lib` `0.21.2.0` arch-isa headers
 (`neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/*.h`, each `ISA_STATIC_ASSERT(...==64)`);
 the `struct→opcode` binding from the shipped `instruction_mapping.json`; the firmware
 address-gen strings byte-exact from `libnrtucode_internal.so`; the CSR transpose port from the
@@ -56,11 +56,11 @@ are reached from NKI via `dma_copy_indirect` / `dma_gather_transpose`; the compu
 
 ---
 
-## 1. `INDIRECT1D` — the gather/scatter DGE word (`0xbb`) [HIGH/OBSERVED]
+## 1. `INDIRECT1D` — the gather/scatter DGE word (`0xbb`)
 
 `NEURON_ISA_TPB_DMA_INDIRECT1D_STRUCT`, 64 B, `ISA_STATIC_ASSERT(...==64)`. The struct **body is
 byte-identical** from sunda (NC-v2) through maverick (NC-v5) — a direct `diff` of the typedef
-across the two extreme generations is empty this pass. Header prose (verbatim): *"DmaIndirect
+across the two extreme generations is empty. Header prose (verbatim): *"DmaIndirect
 performs DMAs for a vector of dynamic indices (offsets) generated during execution. These dynamic
 indices can be applied to the source to perform a gather, or applied to the destination to perform
 a scatter, or two sets of independent indices for both gather and scatter in one instruction."*
@@ -104,7 +104,7 @@ memcopy-without-CCE vs CCE split, §1.4); `has_valid_idx_bound_check_reg` on **b
 (§6.2); `has_valid_indirect_dim_by_mode` (§1.1); `has_dma_indirect_valid_index_count` (the ≤4096
 cap, §1.2); and `has_dma_indirect_idx_addr_in_sbuf_partition0` (§1.3). [HIGH/OBSERVED]
 
-### 1.1 `DMA_INDIRECT_FLAGS` (1 byte, packed) [HIGH/OBSERVED — `common.h`]
+### 1.1 `DMA_INDIRECT_FLAGS` (1 byte, packed)
 
 ```c
 struct NEURON_ISA_TPB_DMA_INDIRECT_FLAGS {            /* LSB → MSB */
@@ -133,7 +133,7 @@ logic): when the relevant `start_addr` is *shape-from-register* (an `ADDR8` shap
 `scatter_dim` must be 0; in `DST_INDIRECTION`, `gather_dim` must be 0; `SRC_DST` checks both legs.
 [HIGH/OBSERVED]
 
-### 1.2 `ADDR8 src/dst_start_addr` — the shape-from-register mode [HIGH/OBSERVED]
+### 1.2 `ADDR8 src/dst_start_addr` — the shape-from-register mode
 
 `ADDR8` is an 8-byte union discriminated by a marker byte (`& 0xFC`, `ADDR8_MARKER_MASK`). Two
 independent bits drive it — bit 6 (`SHAPE_REG_BIT = 1<<6 = 0x40`) and bit 7
@@ -162,7 +162,7 @@ When shape-from-register is TRUE, `zero_num_elem_shape_reg_mode` forces the corr
 count). This is exactly how a runtime-sized gather — element count unknown at compile time — is
 expressed: the base *and* the count are register-sourced. [HIGH/OBSERVED — the two predicates]
 
-### 1.3 The index vectors — `src_idx_start_addr` / `dst_idx_start_addr` [HIGH/OBSERVED]
+### 1.3 The index vectors — `src_idx_start_addr` / `dst_idx_start_addr`
 
 Each is an `ADDR4` (4 B). `has_dma_indirect_idx_addr_in_sbuf_partition0` →
 `has_addr4_in_sbuf_partition0`: the active index vector(s) **must be register-sourced
@@ -172,7 +172,7 @@ descriptor path treats the index tensor as `UINT32`: the firmware string
 indirection-dim step is **replaced with `sizeof(uint32_t)=4`** at the index read (§3.3).
 [HIGH/OBSERVED — header predicate + firmware string]
 
-### 1.4 `compute_op` — the in-flight reduce [HIGH/OBSERVED — `DGE_COMPUTE_OP`]
+### 1.4 `compute_op` — the in-flight reduce
 
 ```c
 enum NEURON_ISA_TPB_DGE_COMPUTE_OP {
@@ -193,7 +193,7 @@ embedding-gradient accumulation): the firmware drives the IVP `SCATTERINC` path 
 the in-memory `mem[addr] += value` RMW; see [SuperGather §1.3](../isa/ref/b19-scatter-gather.md)).
 [HIGH/OBSERVED — enum + predicates]
 
-### 1.5 Active-channel constraint [HIGH/OBSERVED]
+### 1.5 Active-channel constraint
 
 `check_dma_indirect_indices(idx_num_active_channels)` requires both `check_active_channels(...)`
 **and** `idx_num_active_channels == POOLING_NUM_CHANNELS`, where `POOLING_NUM_CHANNELS == 128`. So
@@ -202,7 +202,7 @@ the `+14` field is not free — for both `INDIRECT1D` and `GATHER_XPOSE` it must
 
 ---
 
-## 2. `GATHER_XPOSE` — the gather-transpose DGE word (`0xf1`) [HIGH/OBSERVED]
+## 2. `GATHER_XPOSE` — the gather-transpose DGE word (`0xf1`)
 
 `NEURON_ISA_TPB_DMA_GATHER_XPOSE_STRUCT`, 64 B, `ISA_STATIC_ASSERT(...==64)`. **NC-v3+ only** — the
 header is **absent** from sunda (NC-v2: the file does not exist); mariana (NC-v4) and maverick
@@ -388,7 +388,7 @@ SIGNED `step_elem` is exactly the field `DIMPUSH` pushes (§5) and the source of
 
 ---
 
-## 4. The transpose tiling — the axi2sram xbar path [HIGH/OBSERVED]
+## 4. The transpose tiling — the axi2sram xbar path
 
 `GATHER_XPOSE (0xf1)` and its non-indexed sibling `DMA_TRANSPOSE (0xbd)` are realized by the SBUF
 **axi2sram crossbar** transposing the tile **while** the DMA streams it — *not* a datapath
@@ -417,7 +417,7 @@ the axi2sram port; the stride-swap is CARRIED from the [DMA/transpose opcode clu
 
 ---
 
-## 5. The DGE emit micro-op sequence — GENERATE / DIMPUSH / REGWRITE [HIGH/OBSERVED]
+## 5. The DGE emit micro-op sequence — GENERATE / DIMPUSH / REGWRITE
 
 Once the reshape engine resolves a reshape-kind + #DMA + post-reshape num/step, and a backend is
 selected, the DGE emits a descriptor **program** onto a target channel `DMA[d]` via three push
@@ -462,7 +462,7 @@ GENERATE count INFERRED-HIGH from the `Descriptor generation loop` string + gath
 
 ---
 
-## 6. `BOUND_CHECK_REG` — the per-descriptor / per-index validity gate [HIGH/OBSERVED]
+## 6. `BOUND_CHECK_REG` — the per-descriptor / per-index validity gate
 
 ```c
 struct NEURON_ISA_TPB_BOUND_CHECK_REG {        /* 1 B, ISA_STATIC_ASSERT(...==1) */
@@ -496,7 +496,7 @@ not disable the OOB notification, the index bound is honored. `INDIRECT1D` check
 `src_idx_bound_reg (+58)` and `dst_idx_bound_reg (+59)`. `GATHER_XPOSE` checks `src_idx_bound_reg`
 with `has_valid_idx_bound_check_reg_no_flags` (no flags coupling) and `dst_bound_reg` with
 `has_valid_bound_check_reg` keyed on the **dst `ADDR8` marker** (`dst_start_addr.addr_tbl_offs.marker`).
-[HIGH/OBSERVED — both predicates this pass]
+[HIGH/OBSERVED — both predicates]
 
 **Three enforcement levels** (reconciled):
 
@@ -516,15 +516,16 @@ CARRIED from [SuperGather](../isa/ref/b19-scatter-gather.md).]
 
 ---
 
-## 7. The two NKI gather lowerings tied to their descriptor forms [HIGH/OBSERVED]
+## 7. The two NKI gather lowerings tied to their descriptor forms
 
 The 2:1 NKI split (`local_gather` vs `nc_n_gather`, [indirection engine §2](../firmware/kernels/indirection-gather.md))
 maps to two distinct POOL compute structs.
 
-### 7.1 `S4D4_IC` (`INDIRECT_COPY 0xe7`) — `nki.isa.local_gather` [HIGH/OBSERVED — `s4d4_ic.h`]
+### 7.1 `S4D4_IC` (`INDIRECT_COPY 0xe7`) — `nki.isa.local_gather`
 
-POOL engine; the 8-core / 16-partition **software per-index loop** (mechanism B, §3.2). The
-gather case (the only one implemented; scatter and gather-scatter are documented-but-unsupported):
+POOL engine (struct `s4d4_ic.h`); the 8-core / 16-partition **software per-index loop**
+(mechanism B, §3.2). The gather case (the only one implemented; scatter and gather-scatter are
+documented-but-unsupported):
 
 | off | size | member | detail |
 | --- | ---- | ------ | ------ |
@@ -552,9 +553,10 @@ element blocks from `data_addr[index[i]]` to the dst tensor, 16-partition tiled,
 > **GOTCHA — the name trap.** "local" in `local_gather` is the SBUF-local 8-core/16-partition
 > loop — it does **not** route to `GATHER 0x68`. [HIGH/OBSERVED — struct + predicates]
 
-### 7.2 `S4D4_GT` (`GATHER 0x68`) — `nki.isa.nc_n_gather` [HIGH/OBSERVED — `s4d4_gt.h`]
+### 7.2 `S4D4_GT` (`GATHER 0x68`) — `nki.isa.nc_n_gather`
 
-POOL engine; the within-partition **PoolBuffer subset gather** (the HW vector-gather, mechanism A).
+POOL engine (struct `s4d4_gt.h`); the within-partition **PoolBuffer subset gather** (the HW
+vector-gather, mechanism A).
 Before this instruction runs, a `PoolBufferLoad` must fill up to 512 elements/channel into the
 Pool_Buffer; the gather then indexes a **window** of that buffer:
 
@@ -696,7 +698,7 @@ DGE: address += index[i] * indirection_step  (IVP_MULUSAN_2X32, indirection_step
 
 ## 9. Confidence and corrections
 
-**HIGH/OBSERVED** (read byte-exact this pass): every field offset of `INDIRECT1D` (sunda≡maverick,
+**HIGH/OBSERVED** (read byte-exact): every field offset of `INDIRECT1D` (sunda≡maverick,
 identical body), `GATHER_XPOSE` (mariana≡maverick, identical body; absent from sunda), `S4D4_IC`,
 `S4D4_GT` — all four `ISA_STATIC_ASSERT(...==64)`; the five opcode bytes
 (`0x68/0xbb/0xbd/0xe7/0xf1`) + `struct2opcode`; the `DMA_INDIRECT_FLAGS` bit layout +
@@ -719,7 +721,7 @@ exact transpose stride-swap the reshape engine writes (CARRIED from the DMA/tran
 **LOW**: the absolute register values bound to `bc_reg` at run (compiler/runtime policy); the §8
 numeric values (illustrative).
 
-**Corrections vs the field catalog** (all this-pass, HIGH/OBSERVED): (a) `INDIRECT1D +61 dma_configs`
+**Corrections vs the field catalog** (HIGH/OBSERVED): (a) `INDIRECT1D +61 dma_configs`
 is `priority_class:3` (0..4) + `reserved:5`, **not** "must be zero" — only the upper 5 bits are
 reserved (`is_valid_dma_configs`). (b) `addr8_shape_from_register` keys on the `SHAPE_REG_BIT (0x40)`,
 **not** `0x80/0xC0`; the `0x80` `ADDR_REG` marker is address-from-register with immediate shape and

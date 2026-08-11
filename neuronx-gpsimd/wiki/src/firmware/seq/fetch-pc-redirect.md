@@ -17,29 +17,29 @@ The reason this page exists as its own surface — rather than a paragraph insid
 — is that the **redirect block is where prior passes lost FLIX sync**. The SEQ runs on a
 config (`IsaMaxInstructionSize = 32`, Vision-Q7 FLIX) whose variable-length bundles defeat a
 linear-sweep disassembler at exactly the spans where the redirect arms and clears its pending
-flag. This page **re-carves the firmware image this session**, re-decodes those spans with the
-correct alignment, and pins the full chain: *poll → pending-redirect → advance → fetch `[a4]`
+flag. This page re-decodes those spans with the
+correct alignment and pins the full chain: *poll → pending-redirect → advance → fetch `[a4]`
 → `opcode − 0x41` → `bgeu 177` bound → table `@DRAM 0x80814` → `jx` → back-edge*.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string / config field / disassembler line read from a shipped artifact
-**this session**; `INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool
+`OBSERVED` = a byte / string / config field / disassembler line read from a shipped artifact;
+`INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool
 desync); `CARRIED` = consolidated from a cited cross-page anchor at its original confidence.
 Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
-(orientation).
+(orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an
+explicit tag.
 
-> **NOTE — what was re-run this session, and how.** The whole page is grounded in a fresh
-> independent carve of the SEQ base firmware out of the static archive `libnrtucode.a`, member
+> **NOTE — carve provenance + addressing.** The whole page is grounded in a carve of the SEQ
+> base firmware out of the static archive `libnrtucode.a`, member
 > `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o`. The carve `objcopy -O binary
-> --only-section=.rodata` reproduces **iram.bin = 116768 B (0x1c820), sha256
+> --only-section=.rodata` yields **iram.bin = 116768 B (0x1c820), sha256
 > `8e4412b9…ab9ed70a`** and **dram.bin = 28448 B (0x6f20), sha256 `7bdf6ed7…d6816ecd`**, with
 > head bytes `06 76 00 00 86 77 00 00` = `j 0x1dc` (reset vector). Decode is the native
 > `xtensa-elf-objdump` (GNU Binutils 2.34.20200201, Xtensa Tools 14.09) with
 > `XTENSA_CORE=ncore2gp` — the **only** config that decodes SEQ FLIX correctly; the scalar-LX
 > NCFW core mis-decodes (see [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md)).
-> `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0 iram.bin` ⇒ **exit 0, empty
-> stderr, 45,901 lines**. All IRAM offsets equal device IRAM VA (reset vector at byte 0); DRAM
+> All IRAM offsets equal device IRAM VA (reset vector at byte 0); DRAM
 > string offset = device DRAM VA − `0x80000` (the DRAM image loads at VA `0x80000`). For the
 > raw binary carve, `.text`/`.rodata` VMA == file offset by construction.
 
@@ -47,7 +47,7 @@ Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but 
 > algorithm is **identical** in the `POOL_PERF` build, but PERF strips every `call8 0x18b84`
 > log call and re-lays-out the code, so **every interior address below shifts in PERF**. The
 > DEBUG image keeps the `'S:'` format strings as named xrefs, so every step here has a string
-> anchor. **Do not** look up a DEBUG address in a PERF image. `[HIGH/OBSERVED]`
+> anchor. **Do not** look up a DEBUG address in a PERF image.
 
 ---
 
@@ -95,9 +95,9 @@ address-range guard.
 > the boot mode pick ([SEQ Boot / Entry Path](boot.md), [HW-Decode vs Sunda Dual
 > Fetch](dual-fetch.md)), the SEQ ships a **Sunda software-fetch** front-end (instruction-exact
 > here) and a **HW-decode** front-end (head + exits only; its body `@0x31ac` is a flagged FLIX
-> desync). The `fetch.hpp` logic this task owns is the **Sunda software-fetch** path. The
+> desync). The `fetch.hpp` logic this page owns is the **Sunda software-fetch** path. The
 > HW-decode body is out of scope and is noted where the two paths fork (the
-> `state[0x85070]` HW-decode flag, §4). `[HIGH/OBSERVED]`
+> `state[0x85070]` HW-decode flag, §4).
 
 ---
 
@@ -106,18 +106,20 @@ address-range guard.
 The SEQ's architectural program counter is a **64-bit value** held in the core's
 GENERAL-LR CSR pair, **not** in a GPR. `enter_run` materialises it onto the stack frame before
 entering the FSM, and the redirect machine writes it back. The two halves are one CSR-bundle
-register and its `+0x20`-stride sibling (`SX-CSR-01` general bundle, base `0x1000`, stride
+register and its `+0x20`-stride sibling (`CSR-01` general bundle, base `0x1000`, stride
 `0x20`; `0x1080 = 0x1060 + 0x20`).
 
-| Field | Holder | Read site | Write site | Tag |
-|---|---|---|---|---|
-| PC_lo | CSR `0x1060` (general LR) | enter_run `0x2d33`/`0x2d36` | redirect `0x5790` | `[HIGH/OBSERVED]` |
-| PC_hi | CSR `0x1080` (= `0x1060`+`0x20`) | enter_run `0x2d3d`/`0x2d40` | redirect `0x579c` | `[HIGH/OBSERVED]` |
-| PC snapshot lo/hi | stack `[a1+24]`/`[a1+28]` | written `0x2d38`/`0x2d42` | — | `[HIGH/OBSERVED]` |
-| Fetch cursor | reg `a4` | `l32i.n [a4]` `0x2e52`/`0x2e5d` | `s32i.n a2,[a4]` `0x2e50` | `[HIGH/OBSERVED]` |
-| Opcode width at boundary | **32-bit word**, low byte = opcode | `l32i.n` `0x2e5d` | — | `[HIGH/OBSERVED]` |
+All rows `[HIGH/OBSERVED]`:
 
-The enter_run prologue, OBSERVED this session (linear sweep, `--adjust-vma=0x0`):
+| Field | Holder | Read site | Write site |
+|---|---|---|---|
+| PC_lo | CSR `0x1060` (general LR) | enter_run `0x2d33`/`0x2d36` | redirect `0x5790` |
+| PC_hi | CSR `0x1080` (= `0x1060`+`0x20`) | enter_run `0x2d3d`/`0x2d40` | redirect `0x579c` |
+| PC snapshot lo/hi | stack `[a1+24]`/`[a1+28]` | written `0x2d38`/`0x2d42` | — |
+| Fetch cursor | reg `a4` | `l32i.n [a4]` `0x2e52`/`0x2e5d` | `s32i.n a2,[a4]` `0x2e50` |
+| Opcode width at boundary | **32-bit word**, low byte = opcode | `l32i.n` `0x2e5d` | — |
+
+The enter_run prologue (linear sweep, `--adjust-vma=0x0`):
 
 ```
 2d30:  42a400      movi    a4, 0x400          ; a4 = 0x00400000 (aperture high half — LOW)
@@ -135,10 +137,10 @@ The enter_run prologue, OBSERVED this session (linear sweep, `--adjust-vma=0x0`)
 > them: `0x2d30 movi`, `0x2d33 const16`, `0x2d36 l32i.n`. The **register identity** (a4 = CSR
 > `0x1060`) and the read of `0x1060+0x20` for the high half are unchanged and HIGH. The
 > absolute aperture base (`0x00400000` from the `movi`-high vs a flat `0x0` alias) is the only
-> LOW part of the address — the register *identity by low offset* is HIGH. `[HIGH/OBSERVED]`
+> LOW part of the address — the register *identity by low offset* is HIGH.
 
 ```c
-/* enter_run: materialise the 64-bit architectural PC from the CSR pair. [HIGH/OBSERVED]
+/* enter_run: materialise the 64-bit architectural PC from the CSR pair.
  * CSR_PC_LO = 0x1060 (general-LR), CSR_PC_HI = 0x1080 (= 0x1060 + 0x20).
  * The stride-0x20 sibling is read as [csr_pc_lo + 32] in the same a4 base. */
 static inline uint64_t seq_read_arch_pc(void) {
@@ -152,7 +154,7 @@ static inline uint64_t seq_read_arch_pc(void) {
 > **GOTCHA — `[a4+32]` is a *byte* offset of 32 = 8 words, not slot 32.** `l32i.n a4,[a4+32]`
 > adds **32 bytes** to the `0x1060` base, landing on `0x1080`. In C with a `uint32_t*` that is
 > index `8`, not `32`. Re-deriving the CSR map from "a4 plus 32" as a word index gives the
-> wrong register. `[HIGH/OBSERVED]`
+> wrong register.
 
 ---
 
@@ -179,7 +181,7 @@ The poll helper `0x6af4`, OBSERVED:
 ```
 
 ```c
-/* STEP 1: poll-surprises @0x6af4 — read the per-engine running flag. [HIGH/OBSERVED]
+/* STEP 1: poll-surprises @0x6af4 — read the per-engine running flag.
  * STATE_BASE = 0x855e0 (DRAM); the running flag is byte [STATE_BASE + 100], bit 0. */
 static inline bool seq_is_running(void) {
     return (*(volatile uint8_t *)(STATE_BASE + 100)) & 0x1u;
@@ -206,10 +208,10 @@ if (!seq_is_running()) return;   /* beqz a10,0x31a6 -> 0x31a9 retw.n : LOOP EXIT
 > redirecting…"` strings @DRAM `0x8197b`/`0x81951`) is real and is this page's subject — it just
 > runs **gated by** the surprise check rather than by a standalone `pending_redirect` function.
 > The two functions are adjacent in the same packed region. Authoritative treatment of the check:
-> [surprises-irq.md](surprises-irq.md) §2–§3. `[HIGH/OBSERVED]`
+> [surprises-irq.md](surprises-irq.md) §2–§3.
 
-The redirect block (`0x2daa`) — the span SX-FW-02 lost to FLIX desync, **re-synced this
-session**. The interior `0x2dba..0x2dd1` decodes as garbage under the linear sweep (the
+The redirect block (`0x2daa`) — the span FW-02 lost to FLIX desync, **re-synced**.
+The interior `0x2dba..0x2dd1` decodes as garbage under the linear sweep (the
 `.byte 0x8f`, a bogus `l32r a1,0xfffe9108`); the **clean resync** is at `0x2dd3`, and the
 arming/clearing instructions bracket it:
 
@@ -241,7 +243,7 @@ arming/clearing instructions bracket it:
 > bytes]`
 
 ```c
-/* STEP 2: pending-redirect arming/clear (lightweight per-iteration). [HIGH/OBSERVED]
+/* STEP 2: pending-redirect arming/clear (lightweight per-iteration).
  * REDIR_STATE = 0x5068; the heavy PC-rewrite is seq_redirect_execute() @0x5750, §4. */
 struct redir_state { uint8_t armed; /* [+0] */ /* ... */ uint8_t flag56; /* [+56] */ };
 
@@ -287,7 +289,7 @@ in-stream word in `a2`.
 
 ```c
 /* STEP 4: in-stream advance. The "next word" is the notify-consume result, NOT a raw
- * PC+len read here — the cursor write in STEP 5 is what commits the advance. [HIGH/OBSERVED] */
+ * PC+len read here — the cursor write in STEP 5 is what commits the advance. */
 uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queue, a2 = next */
 ```
 
@@ -306,7 +308,7 @@ uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queu
 > `0x41..0xf2` (`'A'..0xf2`) select a real handler — any high bits make the index exceed 177
 > (or wrap huge) and fall to the default. Reimplementations that mask `& 0xff` before the
 > subtract get the **same** dispatch result, but the firmware does **not** mask: it relies on
-> the bound to reject. `[HIGH/OBSERVED]`
+> the bound to reject.
 
 ### 2.6 STEP 6 — decode + 178-way dispatch
 
@@ -325,10 +327,10 @@ uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queu
 > compare of `177` against `index`. For an opcode below `0x41`, `opcode - 0x41` underflows to a
 > huge unsigned (e.g. `0x40 - 0x41 = 0xffffffff`), which is **greater** than 177, so the same
 > single branch rejects under-range opcodes *and* over-range opcodes. No separate lower-bound
-> test exists. `[HIGH/OBSERVED]`
+> test exists.
 
 ```c
-/* STEP 6: decode + dispatch. [HIGH/OBSERVED]  TABLE = DRAM 0x80814, 178 x 4 bytes. */
+/* STEP 6: decode + dispatch.  TABLE = DRAM 0x80814, 178 x 4 bytes. */
 uint32_t word  = *(volatile uint32_t *)cursor;   /* l32i.n [a4] */
 uint32_t index = word - 0x41u;                   /* addi -65 ; unsigned underflow on op<0x41 */
 if (index > 177u) {                              /* bgeu 177,index : single unsigned bound */
@@ -386,10 +388,10 @@ The two ways the PC moves are structurally distinct and must not be conflated.
 > translate, commit-and-clear-flag. The actual **CSR PC rewrite + cache-fill push** is function
 > `0x5750` (§4), called from `enter_run` setup (`0x5537`) and the resume/redirect sites
 > (`0x8657`, `0xcaea`). The "redirect" thus has a fast control half (per-iteration) and a slow
-> data half (the CSR/cache machine). `[HIGH/OBSERVED]`
+> data half (the CSR/cache machine).
 
 ```c
-/* The two PC-update paths, unified view. [HIGH/OBSERVED] */
+/* The two PC-update paths, unified view. */
 for (;;) {
     if (!seq_is_running()) return;             /* STEP 1 poll  (0x6af4) */
     seq_check_pending_redirect(&redir);        /* STEP 2 redirect arm/clear (0x6b0c..0x2def) */
@@ -429,11 +431,11 @@ pc=0x%llx"` `@DRAM 0x8134a`, `"S: Redir: phase=%x, iram_addr=0x%x, num_instr=%d"
        SW -> call8 0x5e88 (software cache fill) ; HW -> 0x59e7
 ```
 
-The PC write at `0x5790`/`0x579c` was **re-verified byte-exact this session** — it is the
+The PC write at `0x5790`/`0x579c` is **byte-exact** — it is the
 register-identity twin of the enter_run read (§1), just in the store direction:
 
 ```c
-/* seq_redirect_execute @0x5750 — commit the redirect target PC + push a cache fill. [HIGH/OBSERVED] */
+/* seq_redirect_execute @0x5750 — commit the redirect target PC + push a cache fill. */
 void seq_redirect_execute(const struct pc_desc *ctx) {
     LOG("Redirecting to pc=0x%llx", *(uint64_t *)ctx);
 
@@ -444,7 +446,7 @@ void seq_redirect_execute(const struct pc_desc *ctx) {
     /* translate + push {phase, iram_addr, num_instr}; then SW vs HW cache fill */
     struct cache_desc d = seq_translate_descriptor(STATE_BASE + 24);  /* 0x57a1 + helpers */
     LOG("Redir: phase=%x, iram_addr=0x%x, num_instr=%d", d.phase, d.iram_addr, d.num_instr);
-    if (state_byte(0x85070))      /* HW-decode-active flag (SX-FW-01) */
+    if (state_byte(0x85070))      /* HW-decode-active flag (FW-01) */
         seq_hw_cache_fill(&d);    /* 0x59e7 */
     else
         seq_sw_cache_fill(&d);    /* 0x5e88 */
@@ -476,19 +478,19 @@ void seq_redirect_execute(const struct pc_desc *ctx) {
 ## 5. The dispatch handoff — table → trampoline → Handler vtable
 
 The handoff is a **C++ virtual dispatch** reached through a thin trampoline. The table was
-re-decoded from `dram.bin` this session, byte-exact.
+decoded from `dram.bin`, byte-exact.
 
-**The 178-entry table** `@DRAM 0x80814` (`dram.bin` offset `0x814`):
+**The 178-entry table** `@DRAM 0x80814` (`dram.bin` offset `0x814`), all rows `[HIGH/OBSERVED]`:
 
-| Property | Value | Tag |
-|---|---|---|
-| Base | DRAM `0x80814` | `[HIGH/OBSERVED]` |
-| Count | **178** entries × 4 B (span `0x814..0xadc`, 712 B) | `[HIGH/OBSERVED]` |
-| Index | `opcode_byte − 0x41` | `[HIGH/OBSERVED]` |
-| Default target | `0x3198` (**123** entries) | `[HIGH/OBSERVED]` |
-| Real handlers | **55** entries, **all** in-range IRAM (`< 0x1c820`) | `[HIGH/OBSERVED]` |
+| Property | Value |
+|---|---|
+| Base | DRAM `0x80814` |
+| Count | **178** entries × 4 B (span `0x814..0xadc`, 712 B) |
+| Index | `opcode_byte − 0x41` |
+| Default target | `0x3198` (**123** entries) |
+| Real handlers | **55** entries, **all** in-range IRAM (`< 0x1c820`) |
 
-First real targets (independently dumped this session): `idx 0 'A'→0x3074`, `idx 2 'C'→0x309d`,
+First real targets (independently dumped): `idx 0 'A'→0x3074`, `idx 2 'C'→0x309d`,
 `idx 3 'D'→0x30ad`, `idx 4 'E'→0x3064`, `idx 5 'F'→0x2fee`, `idx 6 'G'→0x2ff6`, `idx 8
 'I'→0x3084`, `idx 18 'S'→0x30a5`.
 
@@ -513,7 +515,7 @@ opcode `0x53`, `idx 18 → 0x30a5`):
 ```
 
 ```c
-/* Dispatch handoff: opcode-indexed table -> trampoline -> Handler object -> vtable[0]. [HIGH/OBSERVED]
+/* Dispatch handoff: opcode-indexed table -> trampoline -> Handler object -> vtable[0].
  * The handoff register at the jx is a2 = the Handler OBJECT pointer.
  * The opcode/operand DATA is NOT passed in a register: it lives in (a) the PC cursor / fetched
  * word still resident in the engine, and (b) the per-engine state struct @DRAM 0x855e0. */
@@ -533,13 +535,13 @@ void seq_vthunk(struct Handler *h) {             /* 0x96d4 */
 > `l32i a2,[obj+0]` to get the vptr, then `callx8 a2` **on the vptr itself** — i.e. slot 0 is at
 > `vptr[0]`, with no `offset-to-top`/`typeinfo` header skip at the call (the header, if any,
 > sits *before* the vptr the object stores). Do not add `0x10` to reach "slot 0"; the object's
-> `[obj+0]` already points at the executable-pointer array. `[HIGH/OBSERVED]`
+> `[obj+0]` already points at the executable-pointer array.
 
 > **QUIRK — some handlers inline and skip the thunk.** Real handlers like the
 > `Event_Semaphore` op `0xa0` `@0x1e18` (`"S: Event_Semaphore"`) do the work directly in the
 > trampoline body instead of routing through `0x96d4`. The table-driven, vtable-dispatched form
 > above is the *common* path; the inline form is an optimisation for hot/simple opcodes. Both
-> tails return via `j 0x31a3`. `[HIGH/OBSERVED]`
+> tails return via `j 0x31a3`.
 
 **Unknown-opcode default → ErrorHandler** (the fetch/decode fault path):
 
@@ -557,7 +559,7 @@ void seq_vthunk(struct Handler *h) {             /* 0x96d4 */
 > sweep.** Under `--adjust-vma=0x0` the sweep enters `0x3198` mid-bundle and prints garbage
 > (`const16 a0,0xe500`). An **aligned** decode starting at `0x3198` gives the true
 > `l8ui a10,a4,0 ; call8 0x13f58` — the raw bytes are `a2 04 00  e5 db 10`. The default path
-> reloads the bad opcode from the cursor and calls the software ErrorHandler. `[HIGH/OBSERVED]`
+> reloads the bad opcode from the cursor and calls the software ErrorHandler.
 
 Sibling ErrorHandler arms: `HandleIllegalInstruction` `@0x13f80` (`"Illegal Instruction(0x%x)"`
 `@0x83b35`), `"FP Error(%d)"` (`0x83acb` `@0x13f16`), `"Int Div Zero Error"` (`0x83aeb`
@@ -568,7 +570,7 @@ Sibling ErrorHandler arms: `HandleIllegalInstruction` `@0x13f80` (`"Illegal Inst
 > dispatch index fails `bgeu 177`) is a **hard fault** → ErrorHandler. An out-of-range **fetch
 > address** (the PC is outside `[lo,hi]`) is **skip-with-warning**, not a fault — that is the
 > address guard in §6. Keep them distinct: the opcode bound and the PC-range bound are separate
-> two-level guards. `[HIGH/OBSERVED]`
+> two-level guards.
 
 ---
 
@@ -595,7 +597,7 @@ bound=[0x%llx, 0x%llx]"` `@DRAM 0x81864`, `"...0x%llx smaller than lower bound 0
 ```
 
 ```c
-/* is_pc_in_bounds @0x68d0 — gate a fetch address against the [lo,hi] sequence bounds. [HIGH/OBSERVED]
+/* is_pc_in_bounds @0x68d0 — gate a fetch address against the [lo,hi] sequence bounds.
  * Returns false (OOB) on pc < lower OR pc > upper; true otherwise. The two 64-bit compare
  * helpers 0x57c18/0x47c64 are the lo/hi long-compare primitives (signed/unsigned form MED). */
 bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
@@ -606,7 +608,7 @@ bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
 }
 ```
 
-**The two callers** — re-grepped this session, exactly two `call8 0x68d0` sites:
+**The two callers** — exactly two `call8 0x68d0` sites:
 
 | Caller | Context | On in-bounds | On out-of-bounds |
 |---|---|---|---|
@@ -619,7 +621,7 @@ bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
 > resolve the situation through the normal stop/redirect machinery. The hard fault is reserved
 > for an out-of-range *opcode value* (§5), a different guard entirely. This is the NX-030
 > PC-bounds enforcement; its host-API surface and the `[lo,hi]` provisioning are
-> [SEQ PC-Bounds Enforcement + Host API](pc-bounds.md). `[HIGH/OBSERVED]`
+> [SEQ PC-Bounds Enforcement + Host API](pc-bounds.md).
 
 ---
 
@@ -628,20 +630,20 @@ bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
 The SEQ runs on the Vision-Q7 NX `ncore2gp` config. The **fetch hardware** pulls a fixed
 32-byte window per fetch and the **decoder** consumes a variable-length FLIX bundle inside it —
 which is exactly why a linear sweep desyncs at the redirect/guard prologues above. The config
-fields, OBSERVED this session:
+fields (all rows `[HIGH/OBSERVED]`):
 
-| Field | Value | Source | Tag |
-|---|---|---|---|
-| `IsaMaxInstructionSize` | **32** | `ncore2gp-params:31` | `[HIGH/OBSERVED]` |
-| `XCHAL_MAX_INSTRUCTION_SIZE` | **32** (`/* max instr bytes (3..8) */`) | `core-isa.h:53` | `[HIGH/OBSERVED]` |
-| `XCHAL_INST_FETCH_WIDTH` | **32** bytes | `core-isa.h:228` | `[HIGH/OBSERVED]` |
-| `XCHAL_ICACHE_LINESIZE` | **64** bytes | `core-isa.h:291` | `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_VISION` | **1** (Vision P5/P6/Q7) | `core-isa.h:206` | `[HIGH/OBSERVED]` |
-| `XCHAL_VISION_TYPE` | **7** (Q7) | `core-isa.h:208` | `[HIGH/OBSERVED]` |
-| `XCHAL_VISION_SIMD16` | **32** (512-bit) | `core-isa.h:207` | `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_FLIX3` | **0** | `core-isa.h:202` | `[HIGH/OBSERVED]` |
-| `TargetHWVersion` | `NX1.1.4` | `ncore2gp-params:21` | `[HIGH/OBSERVED]` |
-| `uarchName` / `arch` | `Cairo` / `Xtensa24` | `ncore2gp-params:24,25` | `[HIGH/OBSERVED]` |
+| Field | Value | Source |
+|---|---|---|
+| `IsaMaxInstructionSize` | **32** | `ncore2gp-params:31` |
+| `XCHAL_MAX_INSTRUCTION_SIZE` | **32** (`/* max instr bytes (3..8) */`) | `core-isa.h:53` |
+| `XCHAL_INST_FETCH_WIDTH` | **32** bytes | `core-isa.h:228` |
+| `XCHAL_ICACHE_LINESIZE` | **64** bytes | `core-isa.h:291` |
+| `XCHAL_HAVE_VISION` | **1** (Vision P5/P6/Q7) | `core-isa.h:206` |
+| `XCHAL_VISION_TYPE` | **7** (Q7) | `core-isa.h:208` |
+| `XCHAL_VISION_SIMD16` | **32** (512-bit) | `core-isa.h:207` |
+| `XCHAL_HAVE_FLIX3` | **0** | `core-isa.h:202` |
+| `TargetHWVersion` | `NX1.1.4` | `ncore2gp-params:21` |
+| `uarchName` / `arch` | `Cairo` / `Xtensa24` | `ncore2gp-params:24,25` |
 
 > **GOTCHA — `XCHAL_HAVE_FLIX3 = 0` does NOT mean "no FLIX".** The basic 3-way FLIX option is
 > off, but the **Vision** option (`XCHAL_HAVE_VISION = 1`, type 7 / Q7) carries its own
@@ -649,7 +651,6 @@ fields, OBSERVED this session:
 > footprint, not the generic FLIX3's. This is the same trap documented for the sibling core in
 > [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md): reading `FLIX3=0` as
 > "scalar" mis-models the SEQ. The SEQ **is** FLIX/VLIW; only the *generic* FLIX3 flag is 0.
-> `[HIGH/OBSERVED]`
 
 > **QUIRK — the *architectural* fetch is 32-byte FLIX, but the SEQ *opcode* is 1 byte.** Two
 > fetch granularities coexist: the **hardware** Xtensa fetch unit pulls 32-byte FLIX bundles of
@@ -657,13 +658,13 @@ fields, OBSERVED this session:
 > program** it runs is a higher-level `'S:'`-opcode stream where each "instruction" is the
 > low byte of a 32-bit word read through cursor `a4`. The `IsaMaxInstructionSize=32` governs the
 > former (how the SEQ's own code is fetched/decoded); the `opcode − 0x41` dispatch governs the
-> latter (how the SEQ interprets its instruction stream). Do not conflate the two. `[HIGH/OBSERVED]`
+> latter (how the SEQ interprets its instruction stream). Do not conflate the two.
 
 ---
 
 ## 8. CSR / DRAM cross-reference
 
-| Offset | `SX-CSR-01` name | Role in the fetch front-end | Sites | Tag |
+| Offset | `CSR-01` name | Role in the fetch front-end | Sites | Tag |
 |---|---|---|---|---|
 | CSR `0x1060` | general LR | **PC_lo**: read at enter_run; WRITTEN on redirect | `0x2d33` read / `0x5790` write | `[HIGH/OBSERVED]` |
 | CSR `0x1080` | general LR (`0x1060`+`0x20`) | **PC_hi**: read at enter_run; WRITTEN on redirect | `0x2d3d` read / `0x579c` write | `[HIGH/OBSERVED]` |
@@ -690,8 +691,8 @@ fields, OBSERVED this session:
 
 ## 9. Adversarial self-verification
 
-Five strongest claims, each re-challenged against the **re-carved image this session** (carve
-SHAs match: `iram.bin 8e4412b9…`, `dram.bin 7bdf6ed7…`; disassembly exit 0, 45,901 lines):
+Five strongest claims and the byte evidence for each (carve SHAs `iram.bin 8e4412b9…`,
+`dram.bin 7bdf6ed7…`):
 
 | # | Claim | Challenge | Verdict |
 |---|---|---|---|
@@ -711,7 +712,7 @@ SHAs match: `iram.bin 8e4412b9…`, `dram.bin 7bdf6ed7…`; disassembly exit 0, 
 
 ## 10. Honesty ledger / desync spans
 
-**HIGH/OBSERVED (re-run this session):**
+**HIGH/OBSERVED:**
 
 - Carve reproduced: `iram.bin` 116768 B / sha256 `8e4412b9…ab9ed70a`, `dram.bin` 28448 B /
   sha256 `7bdf6ed7…d6816ecd`; head bytes match the reset-vector anchor `j 0x1dc`.

@@ -10,7 +10,7 @@ layers of the stack:
   (`aws-neuronx-gpsimd-customop-lib` 0.21.2.0, the four per-arch copies
   `neuron_{sunda(v2),cayman(v3),mariana(v4),maverick(v5)}_arch_isa/tpb/`), and
 - the **host-runtime encoder enums** carried in `libnrt.so` (NRT, the host
-  process that lowers the pseudo-ops), re-extracted directly from that binary's
+  process that lowers the pseudo-ops), extracted directly from that binary's
   DWARF (`.debug_info`, BuildID `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`).
 
 The collective subsystem is unusual in that **the same logical operation set is
@@ -24,8 +24,8 @@ re-implementation error — they agree on operation *names* but disagree on
 *values*.
 
 Every value below is anchored to its defining symbol and `file:line` (ISA
-headers) or DWARF DIE offset (`libnrt.so`). Confidence is tagged `HIGH/MED/LOW`
-× `OBSERVED/INFERRED/CARRIED`.
+headers) or DWARF DIE offset (`libnrt.so`). The page default is `[HIGH/OBSERVED]`;
+claims that depart from it carry an explicit tag.
 
 > **Source-of-truth contract.** The committed op pages
 > ([`trigger-collective`](./trigger-collective.md),
@@ -173,7 +173,7 @@ FP22 partial fp32 type"* (this `0xB` overlap surfaces as the `RESERVED` alias in
 
 ## 3. Host runtime collective enums (`libnrt.so` DWARF)
 
-All bodies below were re-extracted **directly from `libnrt.so`'s DWARF this pass**
+All bodies below are extracted **directly from `libnrt.so`'s DWARF**
 (`objdump --dwarf=info`; `DW_TAG_enumeration_type` → `DW_TAG_enumerator` →
 `DW_AT_const_value`). Underlying type is a 4-byte enum. The DIE offset is given
 for each so the extraction is re-runnable.
@@ -262,7 +262,7 @@ reduction_type_t, …)` and `direct_reduce_send_*`.
 > same signature. This matches the `all-reduce.md` callout exactly. `[HIGH/OBSERVED
 > — DW_AT_const_value 0/1/2 read from DIEs <0x60c99c>/<0x60c9a2>/<0x60c9a8>.]`
 
-> **CORRECTION — argument position.** SX-CCL-11 §3.5 described `reduction_type_t`
+> **CORRECTION — argument position.** CCL-11 §3.5 described `reduction_type_t`
 > as the *"2nd argument"* of `recv_reduce_*`. The demangled libnrt signature is
 > `recv_reduce_send(enc_half_chunk_index, SDMA_CCETYPE, reduction_type_t, bool,
 > bool)` (`@0x16ad70`), so it is the **3rd** argument (`SDMA_CCETYPE` is 2nd).
@@ -271,8 +271,8 @@ reduction_type_t, …)` and `direct_reduce_send_*`.
 
 ### 3.6 `enc_mesh_event_type` — the mesh event-tape event kinds (DIE `<0x34a50>`)
 
-The mesh-variant "event tape" event kinds. SX-CCL-11 pinned only the first 7;
-the **full 61-enumerator body** was recovered this pass. The enum is **partitioned
+The mesh-variant "event tape" event kinds. CCL-11 pinned only the first 7;
+the **full 61-enumerator body** was recovered. The enum is **partitioned
 by algorithm phase** via named sentinels (`ENC_*_NUM_EVENT_START` /
 `ENC_*_NUM_EVENT_TYPE`), which alias the first/last ordinal of each phase block —
 this is the per-algorithm event-window layout the mesh sema overlay
@@ -286,7 +286,7 @@ this is the per-algorithm event-window layout the mesh sema overlay
 | `23..52` | **RDH** (`ENC_RDH_NUM_EVENT_START=23`, `ENC_RDH_NUM_EVENT_TYPE=53`) | `EVT_RH_STEP_0..9=23..32` (`EVT_RDH_LOCAL_HANDSHAKE=32 EVT_RDH_AXES_HANDSHAKE=33`), `EVT_RD_STEP_0..6=34..40`, `EVT_RDH_AXES_HANDSHAKE_2=41`, `EVT_1DEV_RDH/RD/RH_STEP_*=42..46`, `EVT_2DEV_RD_STEP_0..4=47..51`, `EVT_RDH_LOCAL_PEER_HANDSHAKE=52` |
 
 The `EVT_FUNCTION_BARRIER_FIRST_COLL` / `_LAST_COLL` events tie to the NCFW
-function-barrier. `[HIGH/OBSERVED — all 61 DW_AT_const_value read this pass; the
+function-barrier. `[HIGH/OBSERVED — all 61 DW_AT_const_value read; the
 phase-start aliases (=8, =14, =23, =53) confirm the 4-phase partitioning.]`
 
 ### 3.7 `encd_neigh` — the SB2SB peer selector (DIE `<0x3a703>`)
@@ -305,7 +305,7 @@ The host analogue of the device `lnc_size_fmt` peer grouping.
 | `7` | `ENCD_NEIGH_NEXT_PEER_RMTV` | |
 | `8` | `ENCD_NEIGH_INVALID` | == `ENCD_NEIGH_NUM` (count) |
 
-`[HIGH/OBSERVED — ordinals read this pass; INVALID/NUM both const_value 8.]`
+`[HIGH/OBSERVED — ordinals read; INVALID/NUM both const_value 8.]`
 
 ---
 
@@ -498,8 +498,8 @@ after the instruction fully completes, vs `READ` = after reads-done), `+0x80` =
 > **CORRECTION / GENERATIONAL DELTA.** On NC-v5 (maverick), `WAIT_MODE` and
 > `UPDATE_MODE` are a **different enum** from the other three gens. The barrier op
 > pages diffed the barrier *structs* (byte-identical across all four arches) but
-> not the mode *enums*, so this delta was not previously flagged. Confirmed this
-> pass by a 4-arch md5 diff: cayman == mariana == sunda; maverick differs.
+> not the mode *enums*, so this delta was not previously flagged. Confirmed by a
+> 4-arch md5 diff: cayman == mariana == sunda; maverick differs.
 
 `WAIT_MODE` (maverick, common.h:331):
 - **DROPS the entire EVENT family** — `WAIT_FOR_EVT_{SET, SET_THEN_CLEAR, CLEAR,
@@ -580,7 +580,7 @@ NCFW mesh event tape (with the `sema_shift_offset`/`sema_mask` overlay);
 ## 8. The (op × scope × alg) legality table
 
 The host `__select_algorithms` assigns an `enc_alg_type` per LEG; each leg's legal
-set is one of the `.rodata` assertion strings below (dumped byte-exact this pass).
+set is one of the `.rodata` assertion strings below (dumped byte-exact).
 A **hierarchical** collective carries FIVE per-leg choices — the runtime log
 string (`@0x7ed4b0`, OBSERVED) is: *"Hier algorithm selections - alg_intra_allg
 %d alg_intra_redsct %d alg_inter_allr %d alg_inter_allg %d alg_inter_redsct %d"*.
@@ -635,7 +635,7 @@ Key gating facts (OBSERVED):
 - **SB2SB op gating**: `"We do not support SB2SB for op type %d"` — only a subset
   of op types use the on-chip SB2SB (`0xBF`) leg.
 
-`[legality strings HIGH/OBSERVED — re-dumped this pass; the matrix is the direct
+`[legality strings HIGH/OBSERVED — the matrix is the direct
 transcription. Which numeric alg a given (world-size, dtype, topology) resolves to
 depends on the enc_can_post_* thresholds — MED, not enumerated.]`
 
@@ -661,7 +661,7 @@ depends on the enc_can_post_* thresholds — MED, not enumerated.]`
 
 ## 10. Cross-arch stability
 
-4-arch md5 diff this pass (sunda v2 / cayman v3 / mariana v4 / maverick v5):
+4-arch md5 diff (sunda v2 / cayman v3 / mariana v4 / maverick v5):
 
 | status | enums |
 |---|---|

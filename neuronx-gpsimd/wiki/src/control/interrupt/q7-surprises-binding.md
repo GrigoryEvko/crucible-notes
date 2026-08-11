@@ -36,14 +36,15 @@ Related:
 [CSR — Xtensa Q7 Debug / OCD](../csr/xtensa-q7.md) ·
 [CSR — TPB Xtensa Local Reg](../csr/tpb-xt-local-reg.md).
 
-**Confidence legend.** `HIGH` = byte-exact from the disasm/schema or re-verified here.
+**Confidence legend.** The page default is `HIGH · OBSERVED`; claims that depart from
+it carry an explicit tag. `HIGH` = byte-exact from the disasm/schema.
 `MED` = strong inference from naming + cross-file. `LOW` = plausible, flagged.
 `OBSERVED` = read from a shipped artifact (disasm bytes / CSR schema). `INFERRED` =
 reasoned. `CARRIED` = consolidated from a named sibling page, not re-derived here.
 
 ---
 
-## 0. Provenance — what was disassembled `[HIGH · OBSERVED]`
+## 0. Provenance — what was disassembled
 
 Everything in §1–§5 derives from disassembling the **shipped device firmware** with the
 **shipped Cadence Xtensa toolchain**:
@@ -75,7 +76,7 @@ image lives at VA `0x80000`); a `const16 aX,8 ; const16 aX,0xNNNN` pair builds D
 
 ---
 
-## 1. The determination — POLLED, not interrupt-DRIVEN `[HIGH · OBSERVED]`
+## 1. The determination — POLLED, not interrupt-DRIVEN
 
 The decisive test is **negative evidence at the ISA level**. A core that takes leveled
 Xtensa hardware interrupts *must* contain `rsil` (raise/lower interrupt level to mask)
@@ -99,7 +100,7 @@ vector**. This is the firmware-side correlate of the architectural finding that 
 — only the single-dispatch **XEA3** *exception* model (`EPC1`/`EXCCAUSE`/`EXCVADDR`/`VECBASE`
 + `MS`/`IEVEC`/`ISB`/`ISL`/`KSL`) plus the `ActiveInterrupt`/`ActivePriority`/`CurrentPriority`
 arbitration **state** that the config exposes without leveled delivery.
-`[CARRIED · XEA3 arch §1–§2; firmware census re-verified here]`
+`[CARRIED · XEA3 arch §1–§2; firmware census OBSERVED here]`
 
 > **CORRECTION — this core is XEA3, not "single-level XEA2".** Earlier wording on
 > this page called the model a "single-level **XEA2** exception model" and the
@@ -116,7 +117,7 @@ arbitration **state** that the config exposes without leveled delivery.
 > XEA2 leveled model — it is precisely why XEA3 omits them. The polled-not-vectored
 > firmware conclusion on every page is **unchanged**; only the architecture name is
 > corrected. See [`xea3-interrupt-architecture.md`](./xea3-interrupt-architecture.md)
-> §1 for the byte-grounded register-file proof. `[HIGH · OBSERVED]`
+> §1 for the byte-grounded register-file proof.
 
 The lone `waiti` per image sits in an idle/quiesce primitive inside a FLIX-desynced
 fragment, **not** on the FSM run-loop path — it is not a run-loop interrupt-wait.
@@ -129,7 +130,7 @@ fragment, **not** on the FSM run-loop path — it is not a run-loop interrupt-wa
 > 3. the custom **`intr_info`** CSR — *read once* at the dispatcher boundary (§4), a
 >    metadata latch, not a vector entry.
 
-### 1a. The vector table is exception + window only `[HIGH · OBSERVED]`
+### 1a. The vector table is exception + window only
 
 The head of `nx_iram` is the standard `ncore2gp` XEA3 vector region: a reset jump, the
 windowed-ABI overflow/underflow handlers (`l32e`/`s32e` runs), and an `EXCVADDR`-save
@@ -138,7 +139,7 @@ Level-2..6 EXCVEC). `VECBASE` is programmed exactly **once** at boot (single
 `wsr.vecbase` site in the whole image), inside `_start`, after I-cache invalidate and
 before `MEMCTL`/`WindowBase`/MPU. The Q7 compute image has the *identical* single
 `wsr.vecbase` and the same exception+window vector shape. Having no leveled interrupt SRs
-(§1), the config consequently has no leveled interrupt vectors. `[HIGH · OBSERVED]`
+(§1), the config consequently has no leveled interrupt vectors.
 
 > **CORRECTION — the Q7 *debug* "vectors" are a different interface.** The
 > `xtensa_q7` OCD aperture (`@0x4000`, see [#914](../csr/xtensa-q7.md)) exposes
@@ -151,7 +152,7 @@ before `MEMCTL`/`WindowBase`/MPU. The Q7 compute image has the *identical* singl
 
 ---
 
-## 2. The on-die Q7 IRQ CSR surface `[HIGH · OBSERVED]`
+## 2. The on-die Q7 IRQ CSR surface
 
 A SoC interrupt destined for this engine does **not** land on an Xtensa SR. It lands on a
 custom per-core CSR bundle in the TPB local-register aperture
@@ -180,7 +181,7 @@ is the sequencer's own. `[CARRIED · #914 / address pages corroborate per-Q7-cor
 
 ---
 
-## 3. The "surprises" mechanism — poll + handler (instruction-exact) `[HIGH · OBSERVED]`
+## 3. The "surprises" mechanism — poll + handler (instruction-exact)
 
 A "surprise" is, in the firmware's own vocabulary, **an unexpected async event the
 firmware checks for between instructions**. The naming comes straight from the DEBUG
@@ -203,7 +204,7 @@ build's embedded `S:`-format strings in `nx_dram` (source file `surprises.hpp`):
 > EVT_SEM / `run_state`) and has no surprises subsystem of its own.
 > `[HIGH · OBSERVED — string presence/absence]`
 
-### 3a. The poll `poll-surprises @0x6af4` — FSM step 1 `[HIGH · OBSERVED]`
+### 3a. The poll `poll-surprises @0x6af4` — FSM step 1
 
 The cheap "is there any async work?" gate. It returns the per-engine work-pending /
 running flag from DRAM state, and is the **first thing the FSM checks on every
@@ -221,7 +222,7 @@ Called from **two** sites: `0x2d81` (the Sunda FSM) and `0x31c0` (the HW-decode 
 both the loop continue/exit test. On a nonzero flag the FSM descends to `check_surprises`.
 `[HIGH · OBSERVED — 2 call sites]`
 
-### 3b. The check `sunda_check_surprises @0x6b0c` `[HIGH · OBSERVED]`
+### 3b. The check `sunda_check_surprises @0x6b0c`
 
 ```
 6b0c:  entry a1,64 ; s32i a2,[a1+16] ; l32i a2,[a1+16]
@@ -245,7 +246,7 @@ and the handle call]`
 > **`[INFERRED]` only — not asserted**. This is the explicit `surprises.hpp` poll-internals
 > boundary (§5). `[MED non-claim]`
 
-### 3c. The handler `sunda_handle_surprises @0x6cf4` `[HIGH · OBSERVED]`
+### 3c. The handler `sunda_handle_surprises @0x6cf4`
 
 `0x6ce0` is a thin wrapper; the body is `0x6cf4` (`entry a1,48`). It is a **bit-mask
 dispatcher** over a 2-byte surprise word at frame `[a1+8]`/`[a1+9]`, with named arms:
@@ -285,7 +286,7 @@ Every bit-test, log-string load, the `0x0014` CSR read (built as `const16 ...,20
 two `call8 0xa304` asserts, and the boolean return are **instruction-exact**. Both assert
 sites load the function-name string (`sunda_handle_surprises` @ `0x6d7e`/`0x6e20`) and the
 file string (`surprises.hpp` @ `0x6d84`/`0x6e26`), confirmed by a `const16`-immediate
-scan. `[HIGH · OBSERVED]`
+scan.
 
 ### 3d. The surprise taxonomy `[HIGH · OBSERVED for names + reactions]`
 
@@ -313,7 +314,7 @@ host-arms-via-which-CSR tie to the breakpoint bundle is MED/INFERRED, grounded i
 
 ## 4. The SoC-IRQ → Q7 binding `[HIGH · MED]`
 
-### 4a. The firmware dispatcher `handle_interrupt_ @0x4c5c` `[HIGH · OBSERVED]`
+### 4a. The firmware dispatcher `handle_interrupt_ @0x4c5c`
 
 The top-level dispatcher **reads `nx.intr_info` (CSR `0x001C`)** and branches on its value:
 
@@ -332,7 +333,6 @@ The top-level dispatcher **reads `nx.intr_info` (CSR `0x001C`)** and branches on
 The `const16 ...,28` (= `0x1C`) read at `0x4c62` is the **only** `0x001C` site in the
 whole image (byte-scan = 1). The source-file string `interrupt_handler.hpp`
 (`0x811db`) and `handle_interrupt_` (`0x81203`) confirm this function's identity.
-`[HIGH · OBSERVED]`
 
 So `intr_info` is a **three-state metadata latch read at a boundary**: `0` = idle, `1` =
 run, `≥2` = fatal-assert. There is no vector entry; the dispatcher polls the latch.
@@ -354,7 +354,7 @@ external-register based (matching the heavy `rer`/`wer` usage and the **complete
 — byte-verified, **0** `const16` sites — of any memory-mapped store to `0x0018` `intr_ctrl`
 in the clean disasm).
 
-> **CORRECTION — `const16` site census (byte-scan, re-verified).** `nx.intr_ctrl`
+> **CORRECTION — `const16` site census (byte-scan).** `nx.intr_ctrl`
 > (`0x0018`) has **0** sites — the SEQ **never** issues a memory-mapped store to
 > `intr_ctrl` at all (verified two ways: no `const16 …,24`/`…,0x18` in the disasm, and
 > the only raw byte-scan hit `X4 18 00` is the false positive `const16 a3,0xe18`).
@@ -365,9 +365,9 @@ in the clean disasm).
 > also **does not** program the eight Q7-*compute* cores' per-core intr CSRs — those are
 > host/management-driven, consistent with the SEQ being the *sequencer* that feeds the
 > compute cores via EVT_SEM / `run_state`, not their interrupt controller.
-> `[HIGH · OBSERVED — re-verified; the earlier "0x0018 = 1 site" figure was wrong]`
+> `[HIGH · OBSERVED — the earlier "0x0018 = 1 site" figure was wrong]`
 
-### 4c. EVT_SEM vs true-IRQ — the resolution `[HIGH]`
+### 4c. EVT_SEM vs true-IRQ — the resolution
 
 The firmware's *primary* cross-engine async surface is the **EVT_SEM hardware
 semaphore/event array** (256 events + 256 32-bit semaphores, op-windowed
@@ -511,7 +511,7 @@ orthogonal management-delivery side.
 
 ---
 
-## 8. Function & CSR map `[HIGH · OBSERVED]`
+## 8. Function & CSR map
 
 | Address / CSR | Identity | Role |
 |---|---|---|

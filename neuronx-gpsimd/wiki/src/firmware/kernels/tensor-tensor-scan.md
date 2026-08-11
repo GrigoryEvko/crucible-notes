@@ -15,8 +15,8 @@ Everything below is derived **solely from static analysis** of the shipped GPSIM
 carved out of `libnrtucode_internal.so` (sha256 `b7c67e89…`, **10,276,288 B**), disassembled with the
 shipped Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) inside the shipped `gpsimd_tools`
 package, plus the shipped public ISA C headers (`aws_neuron_isa_tpb_*.h`, `instruction_mapping.json`)
-and the host symbol table (`nm`). Every claim carries a confidence tag `HIGH/MED/LOW ×
-OBSERVED/INFERRED/CARRIED`. The scan combine math is grounded in the [ALU_OP matrix](alu-op-matrix.md)
+and the host symbol table (`nm`). Claims that depart from the page default `HIGH/OBSERVED`
+carry an explicit confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. The scan combine math is grounded in the [ALU_OP matrix](alu-op-matrix.md)
 and the [scan formal semantics](../../isa/semantics/group-semantics-ii.md).
 
 ---
@@ -60,7 +60,7 @@ compute body and is `[MED/INFERRED]` — see §3f.
 
 ---
 
-## 2. The opcode — `TENSOR_TENSOR_SCAN_ARITH = 0xe5` (`// Y`, all four gens) `[HIGH/OBSERVED]`
+## 2. The opcode — `TENSOR_TENSOR_SCAN_ARITH = 0xe5` (`// Y`, all four gens)
 
 The enumerator is byte-identical across all four arch-isa `common.h` trees, every one marked `// Y`
 (maintained, not deprecated):
@@ -76,7 +76,7 @@ The enumerator is byte-identical across all four arch-isa `common.h` trees, ever
 > (e.g. ScalarTensorTensor `0x9d`/`0x9e`, TensorCumulative `0x4E`/`0x5E`). The scan does **not**: an
 > `rg 'SCAN_BITVEC|TENSOR_TENSOR_SCAN_BITVEC'` over all four arch-isa `common.h` trees returns **zero**
 > matches. The only scan opcode in the enum is `_SCAN_ARITH`. The prefix scan is therefore an
-> arith-datapath-only op — there is no integer-bit-logic scan instruction. `[HIGH/OBSERVED]`
+> arith-datapath-only op — there is no integer-bit-logic scan instruction.
 
 The sibling opcodes that share the struct (and the two cousins it is most confused with) — verbatim
 from MARIANA `common.h`, identical values on every gen:
@@ -238,13 +238,13 @@ the per-gen 17/21 split is canonical in the [ALU-op matrix §3.1](alu-op-matrix.
 > Why the difference? In TensorTensorScan, `op1` is the **elementwise tensor-combine stage** (fusing the
 > second tensor `src1`), *not* the running-accumulate combiner — so it carries the full `general_arith`
 > freedom. The scan's *running* combine (the prefix accumulation, §3d) is a **separate** op realized by
-> the rotate-combine datapath, distinct from `op0`/`op1`. `[HIGH/OBSERVED]`
+> the rotate-combine datapath, distinct from `op0`/`op1`.
 
 > **GOTCHA — `op0/op1` exclude `Divide` and the int-engine band, but the dtype gate accepts int32.**
 > A subtlety worth stating: `op0`/`op1` cannot be `DivideInt`/`AddInt`/etc. (the `0xC4..` integer-engine
 > opcodes are filtered by `!is_valid_int_aluop`), yet int32/uint32 *operands* are accepted (§6). The
 > integer datapath is reached through the **generic** arith ops (`Add`, `Mult`, …) operating on int
-> dtypes, not through the dedicated `*Int` opcodes. `[HIGH/OBSERVED]`
+> dtypes, not through the dedicated `*Int` opcodes.
 
 ### 3c. The scan-emit contract — one out per in
 
@@ -360,7 +360,7 @@ Q7_POOL `kernel_info_table` entry for it (it shares the DVE-only dispatch surfac
 The dispatch was byte-decoded from the carved MARIANA NX_DVE DEBUG IRAM/DRAM (container sha256
 `b7c67e89…`). `[self-names + worker + stub HIGH/OBSERVED; opcode→descriptor literal LOW/out-of-carve]`
 
-### 4a. The DVE self-name string `S: TensorTensorScan` `[HIGH/OBSERVED]`
+### 4a. The DVE self-name string `S: TensorTensorScan`
 
 The literal `"S: TensorTensorScan"` is present in the firmware blob **four times** — once per carved
 DVE image (the four-generation build) — verified directly against the host binary
@@ -383,7 +383,7 @@ carved MARIANA DVE DEBUG DRAM, the string sits at DRAM offset **`0x2a30`** (CAYM
 > `S2S2D2_STT` members (ScalarTensorTensor `0x9d`/`0x9e`, SelectReduce `0xea`) do **not** appear as
 > `S: …` device strings in this blob — an `rg` for `S: ScalarTensorTensor` / `S: SelectReduce` returns
 > zero. The `S:`-prefixed self-name is the DVE *scan-worker* convention (shared by `0xe5` and `0xe6`);
-> the non-scan STT/reduce members route through different worker naming. `[HIGH/OBSERVED]`
+> the non-scan STT/reduce members route through different worker naming.
 
 ### 4b. The worker funcVA (MARIANA `0xd2fc`) `[HIGH/OBSERVED on the skeleton]`
 
@@ -392,7 +392,7 @@ The worker entry is `0xd2fc` (`36 61 00` = `entry a1, 48`). It LOGs its self-nam
 MARIANA DVE IRAM (`rg`-verified unique binding into the `0x2a30` DRAM self-name string). The `entry
 a1,48` frame (vs the `a1,80` of the STT-arith / CacheCumulative workers) signals a **conditional
 self-name dispatcher**: `0xd31c`/`0xd32c` load descriptor pointers `0x2a50`/`0x2a60` on a config-flag
-branch (`bbci a2,0`) before the LOG. `[HIGH/OBSERVED]`
+branch (`bbci a2,0`) before the LOG.
 
 ### 4c. The registration stub (MARIANA `0x2244`) `[stub edges HIGH/OBSERVED; descriptor literal LOW]`
 
@@ -529,7 +529,7 @@ The dtype gate (`is_valid_tensor_tensor_scan`, header 89–93, verbatim):
 `s2s2d2_stt_imm0_dtype` (header 230) for the scan (an arith-family op, no bitvec branch):
 `is_const_ptr_dve(imm0_src) || (imm0_dtype == FP32)` — i.e. the scalar comes from a **pointer/reg-ptr**
 (dtype from memory) **or** an **inline** `imm0` is **always FP32** (the FP32-hub soft-float convention).
-`is_const_ptr_dve` = `{PointerImmediate, RegPtrImmediate}` (`common.h:1705`). `[HIGH/OBSERVED]`
+`is_const_ptr_dve` = `{PointerImmediate, RegPtrImmediate}` (`common.h:1705`).
 
 **Accepted dtypes** — the full valid set on `src0/src1/imm0` (`AllowFP32R::False`):
 `{fp8_e3, fp8_e4, fp8_e5, fp16, bf16, fp32, int8/16/32, uint8/16/32, int64, uint64}` minus FP32R; `out`
@@ -559,7 +559,7 @@ DVE compute (the per-element 64-bit handling is the shared arith path). `[MED]`
 
 ---
 
-## 7. Per-generation presence `[HIGH/OBSERVED]`
+## 7. Per-generation presence
 
 | gen | opcode `0xe5` | `S2S2D2_STT` | scan validity fn | `S: TensorTensorScan` DRAM | worker | wired? |
 |---|---|---|---|---|---|---|

@@ -13,24 +13,24 @@ all in package `xt_ivp32`, all on the vector (`ivp_`) axis; the
 [partition classifier](template-and-partition.md) routes these here by the `rep|splat|bcast|inj`
 verb match plus the regular-extract scope this page is chartered with (§0).
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (`Opcode_<mnem>_Slot_<slot>_encode` thunks read byte-for-byte, the `opcodes[]` table
 walked directly for `opc#`/iclass/package), the **value semantics** by *executing* the matching
 `module__xdref_*` leaves in `libfiss-base.so` live in-process (license-free), the **slot/issue model**
 from the `opcode__/regload__/writeback__` per-op bodies in `libfiss-base.so`, and a byte-exact
 **encode/decode oracle** from the device-native `xtensa-elf-as`/`xtensa-elf-objdump`
-(`XTENSA_CORE=ncore2gp`). Confidence tags per
-[the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-re-used at a sibling page's confidence.
+(`XTENSA_CORE=ncore2gp`). The page default is `[HIGH/OBSERVED]` (read-from-byte /
+proven-by-execution); claims that depart from that default carry an explicit tag per
+[the Confidence & Walls model](../../reference/confidence-model.md) — `[MED/INFERRED]` = reasoned
+over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic re-confirmed this pass.** `libisa-core.so` (sha256
+> **NOTE — address arithmetic.** `libisa-core.so` (sha256
 > `8fe68bf462ce76ee17dfbe2167ff8443d473a66385ed115364e9677bf143e451`, 9 690 712 B, ET_DYN x86-64, not
-> stripped). `readelf -SW` this pass: `.text` (`0x312c10`) and `.rodata` (`0x3b6e40`) are
+> stripped). Per `readelf -SW`: `.text` (`0x312c10`) and `.rodata` (`0x3b6e40`) are
 > **VMA == file-offset**; `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) carries the per-binary
 > delta **`0x200000`** — **not** libtpu's `0x400000`. The `opcodes[]` table is at VMA `0x6ce6c0` (file
 > `0x4ce6c0`), stride **72**. Encode thunks live in `.text` (VMA == file). Both libraries are in
-> `extracted/` (gitignored; reach with `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> `extracted/` (gitignored; reach with `fd --no-ignore` or an absolute path).
 
 ---
 
@@ -74,7 +74,7 @@ single vector lane) selects one source/destination lane; there is **no per-outpu
 > are *not* real mnemonics.** Two facts a reimplementer must internalise before pairing a mnemonic.
 > (a) The `nm` roster contains **no** `splat*`, `bcast*`, or `dup*` opcode — the broadcast verb the
 > ISA actually ships is **`rep`** (`ivp_repnx16` and siblings); "splat" is conceptual prose, not a
-> symbol (`nm libisa-core.so | rg 'splat|bcast|dup'` over the opcode glob = ∅, this pass). (b) The
+> symbol (`nm libisa-core.so | rg 'splat|bcast|dup'` over the opcode glob = ∅). (b) The
 > `extr*` family is OWNED HERE, overriding the §4.2 first-match glob, on the explicit scope charter
 > above; B21's stub and roll-up are written to *not* re-count the twelve `extr*` mnemonics. Sum
 > arithmetic (§6) is the proof there is no double-count. `[HIGH/OBSERVED]`
@@ -85,7 +85,7 @@ single vector lane) selects one source/destination lane; there is **no per-outpu
 
 | Fact | Value | Binary source |
 |---|---|---|
-| Axis / package | vector (`ivp_`) / **`xt_ivp32`** for all 21 | `opcodes[].package` @ `+0x08`, parsed for all 21 rows this pass `[HIGH/OBSERVED]` |
+| Axis / package | vector (`ivp_`) / **`xt_ivp32`** for all 21 | `opcodes[].package` @ `+0x08`, parsed for all 21 rows |
 | Mnemonics this batch | **21** | §2; `nm libisa-core.so` distinct `Opcode_ivp_(rep\|inj\|extr\|dextr\|extract)*` |
 | Placements this batch | **285** | per-mnemonic `nm \| rg -c` sum (§6): `102+54+45+8+60+16` |
 | Value leaves this batch | **20** distinct `module__xdref_*` (rep/inj/extr) | `nm libfiss-base.so \| rg module__xdref_'(rep\|replo\|inj\|extr\|dextr)'` (§4) |
@@ -93,7 +93,7 @@ single vector lane) selects one source/destination lane; there is **no per-outpu
 | Dominant slot class | **S3_ALU** (every mnemonic), + S0_LdSt / S2_Mul reach for `rep`/`inj`/`extrpr`; **S1_Ld** for `extract*` | `opcodedefs[]` slot tokens (§2.5) |
 | Encode-thunk ABI | `C7 07 imm32 [C7 47 04 0] C3` — `imm32` = the `(opcode×slot)` selector, `word1==0` (S3_ALU) | [flix-encoding §6.1](../core/flix-encoding.md) |
 | Lane-index source | **immediate** (`rep`/`inj`/`extr`/`extrpr`), **AR register** (`extrvr`), **vec lane** (`extrprvr`) | device oracle (§5) |
-| `t`-form predication | **shared base value leaf** + a `vbool`-masked merge `writeback__*t` (RMW) | `writeback__ivp_repnx16t` @`0x4bfa30` `[HIGH/OBSERVED]` |
+| `t`-form predication | **shared base value leaf** + a `vbool`-masked merge `writeback__*t` (RMW) | `writeback__ivp_repnx16t` @`0x4bfa30` |
 | Oracle | `xtensa-elf-as`/`objdump`, `XTENSA_CORE=ncore2gp` | **13 of 21 round-trip byte-exact** (§5) |
 
 > **The batch is one lane-mux with three index sources and four ports.** Every op in this batch is a
@@ -110,9 +110,11 @@ single vector lane) selects one source/destination lane; there is **no per-outpu
 
 Columns: `mnemonic` · `lanes×width` (the dtype shape — `nx16`=32×16b over the 512-bit `vec`,
 `2nx8`=64×8b, `n_2x32`=16×32b, `n_4x64`=8×64b) · representative **`FLIX slot · opcode-sel imm`** (the
-`Opcode_<mnem>_Slot_<slot>_encode` thunk's `movl $imm`, disassembled this pass) · `opc#` (the
+`Opcode_<mnem>_Slot_<slot>_encode` thunk's `movl $imm`, disassembled) · `opc#` (the
 `opcodes[]` row index, read by walking the table at file `0x4ce6c0`, stride 72) · `src→dst` lane/scalar
-bridge · device `bytes` of the bundle · one-line semantics · `[conf]`. The selector imm is for the
+bridge · device `bytes` of the bundle · one-line semantics. Rows of §2.1–§2.3 are `[HIGH/OBSERVED]`,
+the non-`t` forms additionally **proven by execution**; §2.4 keeps its per-row tag because its
+evidence varies. The selector imm is for the
 **named representative slot only** — the selector is per-`(opcode×slot)`
 ([flix-encoding §6.2 two-tier rule](../core/flix-encoding.md); the B01 GOTCHA holds here). `word1==0`
 for every S3_ALU thunk (the upper lane carries no selector bits); `extract*` is an S1_Ld single-word
@@ -124,14 +126,14 @@ The `rep<shape>` op reads lane `k` (an immediate index) of source `vec` `vs` and
 **every** lane of dest `vec` `vd`. The `t` suffix adds a `vbool` mask operand: only lanes whose mask
 bit is set are written (the rest keep their old value — a read-modify-write merge, §4.3).
 
-| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics | conf |
-|---|---|---|---|---|---|---|---|
-| `ivp_repnx16`   | 32×16 | `f0_s3_alu` `0x86900020` | 364 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 16-bit lanes, k=imm | `[HIGH/OBSERVED by exec]` |
-| `ivp_rep2nx8`   | 64×8  | `f0_s3_alu` `0x86900000` | 366 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 8-bit lanes | `[HIGH/OBSERVED by exec]` |
-| `ivp_repn_2x32` | 16×32 | `f0_s3_alu` `0x81000010` | 368 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 32-bit lanes | `[HIGH/OBSERVED by exec]` |
-| `ivp_repnx16t`  | 32×16 | `f0_s3_alu` `0x80300010` | 980 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, `vbool` write-enable | `[HIGH/OBSERVED]` |
-| `ivp_rep2nx8t`  | 64×8  | `f0_s3_alu` `0x80300000` | 979 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, 8-bit | `[HIGH/OBSERVED]` |
-| `ivp_repn_2x32t`| 16×32 | `f0_s3_alu` `0x81000000` | 981 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, 32-bit | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics |
+|---|---|---|---|---|---|---|
+| `ivp_repnx16`   | 32×16 | `f0_s3_alu` `0x86900020` | 364 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 16-bit lanes, k=imm |
+| `ivp_rep2nx8`   | 64×8  | `f0_s3_alu` `0x86900000` | 366 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 8-bit lanes |
+| `ivp_repn_2x32` | 16×32 | `f0_s3_alu` `0x81000010` | 368 | `vec[k]`→`vec`(all) | 8/2 | `vd[*] = vs[k]`, 32-bit lanes |
+| `ivp_repnx16t`  | 32×16 | `f0_s3_alu` `0x80300010` | 980 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, `vbool` write-enable |
+| `ivp_rep2nx8t`  | 64×8  | `f0_s3_alu` `0x80300000` | 979 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, 8-bit |
+| `ivp_repn_2x32t`| 16×32 | `f0_s3_alu` `0x81000000` | 981 | `vec[k]`→`vec`(masked) | 8/2 | masked broadcast, 32-bit |
 
 ### 2.2 Inject — boolean-to-lane (`injbi*`, drop one `vbool` bit into one `vec` lane)
 
@@ -140,11 +142,11 @@ into lane `k` (immediate) of the dest while leaving all other lanes unchanged: a
 keyed by an immediate position. The leaf builds `mask = 1<<k`, sign-broadcasts the boolean to all-ones
 or all-zero, and does `out = (vec & ~mask) | (bit & mask)` (§4.4).
 
-| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics | conf |
-|---|---|---|---|---|---|---|---|
-| `ivp_injbinx16`  | 32×16 | `f0_s3_alu` `0x869000e1` | 1068 | `vbool`→`vec[k]` | 8/2 | inject boolean into 16-bit lane k=imm | `[HIGH/OBSERVED by exec]` |
-| `ivp_injbi2nx8`  | 64×8  | `f0_s3_alu` `0x869040e1` | 1066 | `vbool`→`vec[k]` | 8/2 | inject boolean into 8-bit lane | `[HIGH/OBSERVED by exec]` |
-| `ivp_injbin_2x32`| 16×32 | `f0_s3_alu` `0x86900040` | 1070 | `vbool`→`vec[k]` | 8/2 | inject boolean into 32-bit lane | `[HIGH/OBSERVED by exec]` |
+| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics |
+|---|---|---|---|---|---|---|
+| `ivp_injbinx16`  | 32×16 | `f0_s3_alu` `0x869000e1` | 1068 | `vbool`→`vec[k]` | 8/2 | inject boolean into 16-bit lane k=imm |
+| `ivp_injbi2nx8`  | 64×8  | `f0_s3_alu` `0x869040e1` | 1066 | `vbool`→`vec[k]` | 8/2 | inject boolean into 8-bit lane |
+| `ivp_injbin_2x32`| 16×32 | `f0_s3_alu` `0x86900040` | 1070 | `vbool`→`vec[k]` | 8/2 | inject boolean into 32-bit lane |
 
 ### 2.3 Extract → AR scalar (`extr*`, pull lane[k] out to a 32-bit AR register)
 
@@ -153,12 +155,12 @@ form **sign-extends** the 16-bit lane to 32 bits. `extrvrn_2x32` is the variable
 lane index comes from an **`AR` register** (`a2`) rather than an immediate, and is interpreted
 byte-granularly (§4.5 quirk).
 
-| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics | conf |
-|---|---|---|---|---|---|---|---|
-| `ivp_extrnx16`    | 32×16→32 | `f0_s3_alu` `0x80e68200` | 524 | `vec[k]`→`AR` | 8/2 | AR = **sign-ext**(vs[k] as int16), k=imm | `[HIGH/OBSERVED by exec]` |
-| `ivp_extr2nx8`    | 64×8→32  | `f0_s3_alu` `0x86a60000` | 1218 | `vec[k]`→`AR` | 8/2 | AR = vs[k] (8-bit lane) | `[HIGH/OBSERVED by exec]` |
-| `ivp_extrn_2x32`  | 16×32→32 | `f0_s3_alu` `0x80878304` | 1212 | `vec[k]`→`AR` | 8/2 | AR = vs[k] (32-bit lane), k=imm | `[HIGH/OBSERVED by exec]` |
-| `ivp_extrvrn_2x32`| 16×32→32 | `f0_s3_alu` `0x80ee8300` | 1219 | `vec[byte k]`→`AR` | 8/2 | AR = vs[k], **k from AR reg** (byte-granular, bound 0x40) | `[HIGH/OBSERVED by exec]` |
+| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | bytes | semantics |
+|---|---|---|---|---|---|---|
+| `ivp_extrnx16`    | 32×16→32 | `f0_s3_alu` `0x80e68200` | 524 | `vec[k]`→`AR` | 8/2 | AR = **sign-ext**(vs[k] as int16), k=imm |
+| `ivp_extr2nx8`    | 64×8→32  | `f0_s3_alu` `0x86a60000` | 1218 | `vec[k]`→`AR` | 8/2 | AR = vs[k] (8-bit lane) |
+| `ivp_extrn_2x32`  | 16×32→32 | `f0_s3_alu` `0x80878304` | 1212 | `vec[k]`→`AR` | 8/2 | AR = vs[k] (32-bit lane), k=imm |
+| `ivp_extrvrn_2x32`| 16×32→32 | `f0_s3_alu` `0x80ee8300` | 1219 | `vec[byte k]`→`AR` | 8/2 | AR = vs[k], **k from AR reg** (byte-granular, bound 0x40) |
 
 ### 2.4 Extract → predicate / boolean (`extrpr*`, `dextrpr`, `extract*`)
 
@@ -199,7 +201,7 @@ mnemonics fall into exactly four placement families, distinguished by **which FL
 > out-of-range guard that returns 0 (§4.5), whereas the immediate form masks the index to the lane
 > count (`& 0xf` for 16 lanes). A reimplementation that models one "extract with variable index" is
 > wrong: the two have distinct iclasses and distinct index semantics. The same split exists for the
-> predicate destination (`extrprn_2x32` imm vs `extrprvrn_2x32` vec-indexed). `[HIGH/OBSERVED]`
+> predicate destination (`extrprn_2x32` imm vs `extrprvrn_2x32` vec-indexed).
 
 ---
 
@@ -273,7 +275,7 @@ uint32_t extrn_2x32(const uint32_t vs[16], unsigned k) {
 The decisive asymmetry inside the extract family: **`extrnx16` sign-extends, the 8- and 32-bit forms
 do not** (the 8-bit `extr2nx8` zero-extends the byte; the 32-bit `extrn_2x32` is width-exact). A
 reimplementation that always zero-extends a 16-bit lane to AR is wrong for `extrnx16`
-(`0x8000 → 0xFFFF8000`, not `0x00008000` — proven live in §4.2). `[HIGH/OBSERVED by execution]`
+(`0x8000 → 0xFFFF8000`, not `0x00008000` — proven live in §4.2).
 
 ### 3.2 The predicate-destination extract — `extrpr*` (lane → b32_pr, high word zeroed)
 
@@ -292,7 +294,7 @@ void extrprn_2x32(uint64_t *pr, const uint32_t vs[16], unsigned k) {
 
 Executed live (§4): `extrpr_n_2x32` lane k returns `{lo = vs[k], hi = 0}` for k ∈ {0,1,8,15} — the high
 word is unconditionally zero, so a `b32_pr` produced this way is a *zero-extended* lane, never
-sign-extended (contrast the AR-destination `extrnx16` which sign-extends). `[HIGH/OBSERVED by execution]`
+sign-extended (contrast the AR-destination `extrnx16` which sign-extends).
 
 ---
 
@@ -302,7 +304,7 @@ The `module__xdref_*` value leaves in `libfiss-base.so` are the per-element tran
 **callable in-process via ctypes with no license** ([coverage-tally §5](../core/coverage-tally.md)).
 The ABI is `void leaf(int ctx, <ins…>, T *out)`; for the lane ops the lane index is a leading `int`
 argument and the `vec` operands are pointers to 64-byte register images. **Ten leaves were disassembled
-*and executed live* this pass**, all bit-exact certificates of the lane semantics.
+*and executed live***, all bit-exact certificates of the lane semantics.
 
 ### 4.1 Lane broadcast — `rep_nx16` / `rep_n_2x32` / `rep_2nx8` (executed live)
 
@@ -336,7 +338,7 @@ rep_2nx8  lane=63: out[0]=out[63]=0x7f            all-64-same=True              
 All three lane widths (8/16/32) confirmed: the selected lane appears identically in **every** output
 lane (32 / 64 / 16), the rest of the register is overwritten. The lane index masks to the lane count
 (`&0x1f`, `&0x3f`, `&0xf`). This is the **lane-broadcast certificate** — `out[l] = in[k]` for all l,
-k=immediate. `[HIGH/OBSERVED by execution]`
+k=immediate.
 
 ### 4.2 Lane extract to AR — width & sign-extension (executed live)
 
@@ -378,7 +380,6 @@ whose mask bit is **1 takes the broadcast**. The unmasked `repnx16` has a separa
 (`vd[l] = mask[l] ? vs[k] : vd[l]`, reading the old `vd`), not a conditional that zeros the false lanes
 — identical to B09's `mov2nx8t` and the [B03](b03-vec-alu-rest.md) `t`-throttle convention. The device
 oracle confirms the extra operand: `IVP_REPNX16T v3, v1, 5, vb2` (a `vbool` `vb2` write-enable, §5).
-`[HIGH/OBSERVED]`
 
 ### 4.4 Inject — boolean-into-lane (executed live)
 
@@ -405,7 +406,7 @@ injbi_16 pred=0x0000 bit=1 lane=15 -> 0x8000   injbi_16 pred=0xffff bit=0 lane=8
 `out = (pred & ~(1<<lane)) | (bit ? (1<<lane) : 0)`, bit-exact for all sweeps. The boolean is taken as
 its low bit (`bit&1`), broadcast to the full mask, and the dest lane is the only one changed — a
 **single-lane masked merge**, the structural inverse of the boolean `extract*`. The device oracle
-spells the `vbool` source: `IVP_INJBINX16 v3, vb0, 5` (§5). `[HIGH/OBSERVED by execution]`
+spells the `vbool` source: `IVP_INJBINX16 v3, vb0, 5` (§5).
 
 ### 4.5 The variable-index extract — `extrvr_n_2x32` (byte-granular, bounded, executed live)
 
@@ -432,7 +433,7 @@ offset); `idx > 0x40` returns 0. This is **structurally different** from the imm
 (which masks the index to the lane count and reads aligned 32-bit lanes). The AR-sourced index is a raw
 byte position with an out-of-range floor — a reimplementation must implement the byte-granular window +
 bound, not a clean lane select. The device oracle confirms the AR operand:
-`IVP_EXTRVRN_2X32 a3, v1, a2` (§5). `[HIGH/OBSERVED by execution]`
+`IVP_EXTRVRN_2X32 a3, v1, a2` (§5).
 
 ### 4.6 Predicate extract & boolean extract (executed live)
 
@@ -443,12 +444,11 @@ boolean lane to a 2-bit field by replicating bit0 (`shl $0x1f; sar $0x1f; and $0
 ```
 extrpr_n_2x32 lane=0  -> 0x000000000000cc00  (hi word = 0)   lane=15 -> 0x...cc0f  hi=0   OK
 extractbl in=0x0 -> 0x00   in=0x1 -> 0x03   in=0x2 -> 0x00   in=0x3 -> 0x03   in=0xff -> 0x03
-extractbh in=0x1 -> 0x03   in=0x2 -> 0x00   (identical body to extractbl this pass)
+extractbh in=0x1 -> 0x03   in=0x2 -> 0x00   (identical body to extractbl)
 ```
 
 `extrpr*` zero-extends the lane into the 64-bit predicate; `extract{bl,bh}` map a boolean's low bit to a
-2-bit `xtbool2` field (`0/1 → 0x0/0x3`, replicating the bit across both positions). `[HIGH/OBSERVED by
-execution]`
+2-bit `xtbool2` field (`0/1 → 0x0/0x3`, replicating the bit across both positions).
 
 ### 4.7 The scalar-narrow replicate helpers — `rep_16_8` / `replo8_16_16` (executed live)
 
@@ -463,8 +463,7 @@ replo8_16_16(0x1234)=0x3434  replo8_16_16(0xabcd)=0xcdcd  replo8_16_16(0xab00)=0
 
 `rep_16_8 = (x<<8)|x`; `replo8 = (lo<<8)|lo` where `lo = x & 0xff`. These are the per-element building
 blocks the wider `rep_2nx8` lane-broadcast composes (a byte splat realised lane-wise); they appear as
-discrete leaves because the dtype-typed leaf set enumerates the narrow-element cases. `[HIGH/OBSERVED by
-execution]`
+discrete leaves because the dtype-typed leaf set enumerates the narrow-element cases.
 
 ---
 
@@ -499,19 +498,18 @@ Three structural facts the oracle pins:
   take an **immediate** third operand (`v3, v1, 5`); `extrvrn_2x32` takes an **AR register** (`a3, v1,
   a2`); the device assembler *rejects* the wrong arity (`IVP_EXTRNX16 a3, v1, a2` → "invalid symbolic
   operand", confirming the immediate form will not accept a register, and vice-versa). This is the
-  encoding proof of the §2.5 GOTCHA. `[HIGH/OBSERVED]`
+  encoding proof of the §2.5 GOTCHA.
 * **The destination file round-trips exactly as the bridge matrix predicts.** `extr* a3, v1` (AR
   dest), `extrpr* pr3, v1` (`b32_pr` dest), `rep* v3, v1` (vec dest), `inj* v3, vb0` (vec dest, `vbool`
   src), `extractbl vb3, vb1` (`vbool` both). The register short-names (`a`/`v`/`pr`/`vb`) round-trip as
-  [register-files](../core/register-files.md) specifies. `[HIGH/OBSERVED]`
+  [register-files](../core/register-files.md) specifies.
 * **The `t`-form's fourth operand is a `vbool`.** `IVP_REPNX16T v3, v1, 5, vb2` round-trips with the
   mask register spelled — the encoding-level witness for the §4.3 predicated-writeback merge.
-  `[HIGH/OBSERVED]`
 
 The eight not shown (`repnx16t`-family 8-bit/32-bit, `injbi2nx8`/`injbin_2x32`, `extrprvrn_2x32`,
 `dextrprn_2x32`, `extrnx16`-variants, and the boolean `extractbh`) either share the spelling of a shown
-sibling or use an operand class the bare oracle probe didn't spell (`extrvr`/`dextr` need specific
-file+arity combinations the probe sweep didn't land); they are documented from the encode thunk + the
+sibling or use an operand class the bare oracle probe did not spell (`extrvr`/`dextr` need specific
+file+arity combinations the probe sweep did not land); they are documented from the encode thunk + the
 executed value leaf instead (§2, §4). The device byte order is the assembler's packed-bundle layout and
 is **not** byte-identical to the §2 slot-normalised selector imm (a different representation); they
 agree **structurally** — the placement exists, the mnemonic, register files, and index source
@@ -521,7 +519,7 @@ round-trip — which is the property the oracle certifies. `[HIGH/OBSERVED]`
 
 ## 6. Batch coverage tally — 21 mnemonics / 285 placements
 
-Re-counted this pass with `nm libisa-core.so | rg -c 'Opcode_ivp_<mn>_Slot_…_encode'` per mnemonic
+Counted with `nm libisa-core.so | rg -c 'Opcode_ivp_<mn>_Slot_…_encode'` per mnemonic
 (never the decompile — [coverage-tally §0 GOTCHA](../core/coverage-tally.md)). Every one of the 21
 grounds to ≥ 8 placements; **none ungrounded**.
 
@@ -550,55 +548,51 @@ distinct `module__xdref_*` leaves (the 18 lane leaves + the 2 scalar-narrow help
 > `repn_2x32t` are 3 of the 21 mnemonics and contribute 51 of the 285 placements, but they resolve to
 > the **same** base value leaf as the unmasked form (§4.3); the predication is in `writeback__*t`, not a
 > distinct `xdref`. So the value-leaf count (20) is *below* the lane-op count, exactly as the roll-up
-> model expects (one leaf serves a dtype/predication family). `[HIGH/OBSERVED]`
+> model expects (one leaf serves a dtype/predication family).
 
 ---
 
 ## 7. Adversarial self-verification — the five strongest claims
 
-Each re-challenged against the binary this pass; failures fixed.
-
 1. **"21 mnemonics / 285 placements; `extr*` is B16's by the scope charter, overriding the §4.2 B21
-   glob."** Re-run: `nm libisa-core.so | rg -o 'Opcode_ivp_(rep|inj|extr|dextr|extract)[a-z0-9_]*_Slot'
-   | sort -u` = **21** distinct; the per-mnemonic placement sum = **285** (`102+54+27+18+8+60+16`,
-   re-summed this pass). There are **no** `splat`/`bcast`/`dup` opcodes (the broadcast verb is `rep`).
-   The §6 table sums 285; the 21 roll into the 1065 vector axis. **Confirmed.** `[HIGH/OBSERVED]`
-2. **"`rep` is a lane broadcast: `out[l] = in[k]` for *all* l, k=immediate."** Re-challenged by
-   executing `rep_nx16`/`rep_n_2x32`/`rep_2nx8` live: every output lane (32 / 16 / 64) equalled the
+   glob."** `nm libisa-core.so | rg -o 'Opcode_ivp_(rep|inj|extr|dextr|extract)[a-z0-9_]*_Slot'
+   | sort -u` = **21** distinct; the per-mnemonic placement sum = **285** (`102+54+27+18+8+60+16`).
+   There are **no** `splat`/`bcast`/`dup` opcodes (the broadcast verb is `rep`).
+   The §6 table sums 285; the 21 roll into the 1065 vector axis. **Confirmed.**
+2. **"`rep` is a lane broadcast: `out[l] = in[k]` for *all* l, k=immediate."** Executing
+   `rep_nx16`/`rep_n_2x32`/`rep_2nx8` live: every output lane (32 / 16 / 64) equalled the
    selected source lane for k ∈ {0,1,7,15,31,32,63}, with the index masked to the lane count
    (`&0x1f`/`&0xf`/`&0x3f`). A non-broadcast (e.g. copy) implementation would leave non-`k` lanes
-   distinct. **Confirmed by execution.** `[HIGH/OBSERVED by execution]`
+   distinct. **Confirmed by execution.**
 3. **"`extrnx16` SIGN-extends the 16-bit lane to AR; the predicate-destination `extrpr*` and 8-bit
    `extr2nx8` ZERO-extend."** Executed `extr_nx16(0x8000) = 0xFFFF8000`, `extr_nx16(0xffff) =
    0xFFFFFFFF` (sign) vs `extrpr_n_2x32` returning `{lo=lane, hi=0}` (zero, high word explicitly
    cleared). Two distinct extension behaviours by destination file — a reimplementation that uses one
-   rule is wrong at the 16-bit signed boundary. **Confirmed by execution.** `[HIGH/OBSERVED by
-   execution]`
+   rule is wrong at the 16-bit signed boundary. **Confirmed by execution.**
 4. **"The `t`-form is a `vbool`-masked RMW merge (mask-0 lanes keep the old destination), sharing the
-   base value leaf."** Re-challenged: (a) `nm | rg 'rep.*t'` over the `module__xdref_` glob = ∅ (no
+   base value leaf."** Three witnesses: (a) `nm | rg 'rep.*t'` over the `module__xdref_` glob = ∅ (no
    distinct value leaf); (b) `writeback__ivp_repnx16t` @ `0x4bfa30` is `new = (computed & mask) | (old &
    ~mask)` per lane (disassembled); (c) the device oracle spells the mask operand:
    `IVP_REPNX16T v3, v1, 5, vb2`. A zero-fill model would be wrong on mask-0 lanes. **Confirmed.**
-   `[HIGH/OBSERVED]`
 5. **"`extrn_2x32` (immediate index) and `extrvrn_2x32` (AR-register index) are different opcodes with
-   different index semantics."** Re-challenged: distinct opc# (1212 vs 1219), distinct iclass
+   different index semantics."** Distinct opc# (1212 vs 1219), distinct iclass
    (`IVP_EXTRN_2X32` vs `IVP_EXTRVRN_2X32`), distinct device syntax (`extrn_2x32 a3,v1,3` immediate vs
    `extrvrn_2x32 a3,v1,a2` register — the assembler rejects the cross), and distinct executed
    semantics: `extr_n_2x32` masks the index to lane count and reads aligned lanes; `extrvr_n_2x32` is
    **byte-granular** with a `cmp $0x40` out-of-range floor (`idx=1 → byte-shifted window`,
-   `idx>0x40 → 0`). **Confirmed by execution.** `[HIGH/OBSERVED by execution]`
+   `idx>0x40 → 0`). **Confirmed by execution.**
 
 **Ungrounded / flagged items** (honest residue): (a) The `dextrprn_2x32` **dual-lane pairing** — that
 it extracts *two* lanes into a `b32_pr` *pair* — is `[HIGH/OBSERVED]` from the leaf name suffix
 (`_64_512_512_32_32`, two 512-bit ins) and the `d`-prefix, but the **exact two source-lane fields** in
-the encoding are `[MED/INFERRED]` (the device oracle did not round-trip its specific operand class this
-pass; the encode thunk and opc# are OBSERVED). (b) The `extractbl` vs `extractbh` **low/high
-distinction** — both leaf bodies disassembled to the *identical* `-(in&1)&3` this pass, so the
+the encoding are `[MED/INFERRED]` (the device oracle did not round-trip its specific operand class;
+the encode thunk and opc# are OBSERVED). (b) The `extractbl` vs `extractbh` **low/high
+distinction** — both leaf bodies disassemble to the *identical* `-(in&1)&3`, so the
 low-vs-high difference is in the **source-lane selector field** of the encoding (different selector
 imms: `0x4a0ee0` vs `0x4a0de0`), not the value body; the semantic label (`bl`=low half, `bh`=high half
 of the boolean pair) is `[MED/INFERRED]` from the mnemonic + the `+1`-stepped selector. (c) The
 `extrprvrn_2x32` **vec-lane index source** is `[HIGH/OBSERVED]` from the `vr` infix matching `extrvr`'s
-register-index pattern, but its index was not driven live this pass (the leaf takes a vec-image index
+register-index pattern, but its index was not driven live (the leaf takes a vec-image index
 arg). None is a missing decode or a missing transfer semantics — every row has a resolved encode thunk,
 an `opc#`/iclass/package from a direct `opcodes[]` walk, a value leaf, and (for 13 of 21) a device
 round-trip.
@@ -608,7 +602,7 @@ round-trip.
 ## 8. Function & symbol map
 
 `libisa-core.so` unless noted. `.text`/`.rodata`: VMA == file. `.data.rel.ro`: file = VMA − `0x200000`
-(re-confirmed `readelf -SW` this pass — **not** libtpu's `0x400000`).
+(`readelf -SW` — **not** libtpu's `0x400000`).
 
 | Symbol / table | Addr | Role |
 |---|---|---|

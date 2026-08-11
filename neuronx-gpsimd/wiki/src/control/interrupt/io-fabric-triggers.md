@@ -20,7 +20,7 @@ the APB address chain in
 
 ---
 
-## 1. Top-line facts (HIGH · OBSERVED)
+## 1. Top-line facts
 
 | fact | value | evidence |
 |---|---|---|
@@ -42,7 +42,7 @@ never against a decompile grep.
 > reimplementer must not infer clock domain, reset, or MSI-X mask state from this
 > artifact; they are not encoded here. This is the same 5-key schema as
 > `sdma_triggers.yaml` (see [`schema-atlas.md`](schema-atlas.md) and
-> [`sdma-triggers.md`](sdma-triggers.md)). (HIGH · OBSERVED)
+> [`sdma-triggers.md`](sdma-triggers.md)).
 
 ### 1.1 Per-entry schema
 
@@ -68,7 +68,7 @@ Every entry is a 5-key mapping. Verbatim from `intc_notific_intr[0]`:
 
 ---
 
-## 2. The 17 level-triggered (`edge_triggered:false`) sources (HIGH · OBSERVED)
+## 2. The 17 level-triggered (`edge_triggered:false`) sources
 
 Everything else (the 226 retrigger / notific / errtrig / sprot / cntrl / pos_wr_nacc
 sources) is edge. The level set is exactly:
@@ -90,7 +90,7 @@ event is edge. (data HIGH · OBSERVED; pattern MED · INFERRED)
 
 ---
 
-## 3. Sub-block grouping (HIGH · OBSERVED)
+## 3. Sub-block grouping
 
 Six comment banners partition the file (line numbers from the raw YAML):
 
@@ -139,7 +139,7 @@ The 128-bit AXI-write retrigger vector. All 128 entries share one description:
 that re-asserts a trigger. This is the single largest group (53% of the file). Source
 capacity is consistent with the `intc_1grp` INTC at `INTC_NUM_GROUPS×32` — the 128
 retrigger lines occupy a full 4-group's worth of vector width even on a 1-group instance
-(see [`../csr/intc-1group-apintc.md`](../csr/intc-1group-apintc.md) §3a). (HIGH · OBSERVED)
+(see [`../csr/intc-1group-apintc.md`](../csr/intc-1group-apintc.md) §3a).
 
 ### GROUP B — `intc_notific_intr[0..24]` (25, all edge)
 
@@ -158,7 +158,7 @@ One base signal physically split across two file regions:
 
 `intr_bvalid_id_not_expected / _id_not_free / _not_empty`, `intr_linked_list_overflow`,
 `intr_bvalid_err`, `intr_wstrb_err`, `intr_spurious_resp`. Bvalid/linked-list integrity
-of the io-fabric AXI→APB write path. (HIGH · OBSERVED)
+of the io-fabric AXI→APB write path.
 
 ### GROUP E — sengine + io-fabric AXI2APB + apbblk (14, mixed)
 
@@ -195,7 +195,7 @@ Two 25-entry banks under the `# All available FIS_ERRRIG triggers` banner:
 The `[16..24]` user-bank condition descriptions are byte-identical to GROUP B
 `intc_notific_intr[0..8]` (same nine NOTIFIC causes). See
 [`../csr/fis-errtrig-spad.md`](../csr/fis-errtrig-spad.md) §3.4 for the FIS errtrig SPAD
-detail. (HIGH · OBSERVED)
+detail.
 
 ---
 
@@ -235,14 +235,14 @@ matching the GROUP B / GROUP H cause descriptions. The errtrig **trigger** routi
 > field names; they appear only inside descriptions (`coal_ctrl.force_use_coal`'s text
 > for overlap; the enable register pair is named `wr_buf_enable_lo/hi`, not `wr_buffer`).
 > Bind the trigger by NOTIFIC condition bit, not by string-matching the YAML cause to a
-> register name. (HIGH · OBSERVED)
+> register name.
 
 > **NOTE — `notific_10` vs `notific_1` are the same 47-register schema.** Both files have
 > identical register and field NAMES; the only difference is the `Parameters` block:
 > `NUM_SW_Q` = 10 vs 1 (and `SW_Q_RESET_TO_ALL_1` = 1023 vs 1), which sizes the
 > `notific_nq` array and the `@NUM_SW_Q-1:0` fields. The IO-fabric top NOTIFIC uses the
-> `_10_` variant; the per-FIS errtrig NOTIFIC uses the `_1_` variant. (HIGH · OBSERVED;
-> see [`../csr/notific-queue.md`](../csr/notific-queue.md) §8.)
+> `_10_` variant; the per-FIS errtrig NOTIFIC uses the `_1_` variant. (See
+> [`../csr/notific-queue.md`](../csr/notific-queue.md) §8.)
 
 ### 4.3 GROUP C / GROUP E AXI2APB + apbblk → `iofabric` / `apbblk`
 
@@ -255,8 +255,7 @@ matching the GROUP B / GROUP H cause descriptions. The errtrig **trigger** routi
   of transaction"*), and `axi2apb_0_timeout_ctrl` [@0x20] whose description is verbatim
   **"A write to this register clears the timeout interrupt"** (field `clear` @0). The
   `axi2apb_1` quad mirrors at @0x24–0x34. The `timeout_type.valid` bit @1 is the
-  `..._timeout_type_valid_in` trigger source. (HIGH · OBSERVED — direct name+semantics
-  match)
+  `..._timeout_type_valid_in` trigger source.
 - `io_fabric_apbblk_list_intr_r[0..1]` bind to `csrs/apbblk/apbblk.json` (bundles
   `apbblk_ctrl` @0x0, `apbblk_cam_ctrl` @0x100, `apbblk_cam` @0x400). The interrupt fires
   on a CAM block-list hit, gated per-CAM by `apbblk_cam_ctrl.cam_ctrl_grp.intr_en_0..7`
@@ -266,7 +265,7 @@ matching the GROUP B / GROUP H cause descriptions. The errtrig **trigger** routi
   (`address` @31:0), the `blocked/allowed_{read,write}_count_{lo,hi}` (+`_shadow`)
   counters, and the CAM `address`/`mask` (`val` @31:0). xref:
   `peb_apb_io_{0,1}_amzn_io_fabric_blk_{0,1}: csrs/apbblk/apbblk.json` plus the
-  per-sengine `…_amzn_se_{0,1}_fabric_blk_{0,1}`. (HIGH · OBSERVED)
+  per-sengine `…_amzn_se_{0,1}_fabric_blk_{0,1}`.
 - GROUP C `intr_bvalid*` / `linked_list` / `wstrb` / `spurious` belong to the same
   io-fabric AXI→APB write path but are **not** exposed as named registers in
   `iofabric_model.json` (no `bvalid`/`linked_list`/`wstrb`/`spurious` register, field, or
@@ -290,7 +289,7 @@ matching the GROUP B / GROUP H cause descriptions. The errtrig **trigger** routi
 watchdog is `apb_timeout.ctrl` (*"AMZN Chain EPs APB Timeout"*, field `limit` @31:0,
 *"0=Disabled"*). The chain/EP decode + APB timeout raises the `fis_cntrl_intr[0..4]`
 posted-write slave errors. `apb_decode.user_fis_block_id_override` (`new_block_id` @9:1,
-`en` @0) ties to the USER-FIS EP path. (HIGH · OBSERVED; see
+`en` @0) ties to the USER-FIS EP path. (See
 [`../csr/fis-errtrig-spad.md`](../csr/fis-errtrig-spad.md) §2.8.)
 
 ### 4.5 GROUP G fis_sprot → `sprot`
@@ -310,16 +309,17 @@ each of the five `{ar,r,aw,w,b}_stall` registers carries `trigger_on_rresp` @24,
 xref confirms each FIS sub-block: `…_sprot_amzn_remapper → amzn_remapper.json`,
 `…_sprot_qos → qos_prot.json` (per-SDMA path) or `qos_host_visible.json` (the IO-fabric
 read-only monitor view), `…_sprot_user_remapper → user_remapper.json`,
-`…_sprot_qos_pmu → qos_pmu.json`. (HIGH · OBSERVED)
+`…_sprot_qos_pmu → qos_pmu.json`.
 
-> **CORRECTION (vs SX-INT-02 §4 GROUP G).** SX-INT-02 attributes the bit-1/2/3
-> delta-monitor / tmu sources to `qos_prot.json`. Direct JSON inspection refines this:
+> **CORRECTION — the delta-monitor / tmu register family.** An earlier attribution
+> placed the bit-1/2/3
+> delta-monitor / tmu sources in `qos_prot.json`. Direct JSON inspection refines this:
 > the **delta-monitor** bundle (`delta_mon`) and the **AXI timeout** counters
 > (`axi_rd_timeout`/`axi_wr_timeout`) live in **`amzn_remapper.json`**; `qos_prot.json`
 > holds only the trigger *arming* controls (`trigger_on_{bresp,rresp}`, `*_timeout_en` in
 > `nts_isolation`) and the LFSR traffic-shaper — there is no `delta`/`tmu` register name
 > in `qos_prot.json`. Both files are part of the sprot chain, so the routing claim stands;
-> the register-family attribution is corrected here. (HIGH · OBSERVED)
+> the register-family attribution is corrected here.
 
 > **QUIRK — qos_pmu says "16" but defines 8 counter blocks.** `qos_pmu_intr_sts.val` is
 > `@15:0` (*"Interrupt status for each of 16 PMU Counters"*), yet only eight physical
@@ -332,7 +332,7 @@ read-only monitor view), `…_sprot_user_remapper → user_remapper.json`,
 
 ---
 
-## 5. Routing into the INTC (HIGH · OBSERVED)
+## 5. Routing into the INTC
 
 The IO-fabric sources collect into the **`io_intc_rdm`** INTC aggregator — the io-fabric
 analogue of SDMA's `udma_gen`-style INTC. The xref shows the placement explicitly:
@@ -376,13 +376,12 @@ These counts are held identical to the io-fabric APB INTC trigger inventory esta
 | total | **243** | ✓ | ✓ | consistent |
 
 No CORRECTION is raised on the routing counts: this page's per-group counts agree exactly
-with the committed CSR siblings (`#922`/`#923`/`#918`) and with the backing report
-SX-INT-02. (The only correction in this page is the GROUP-G register-family attribution,
-§4.5.)
+with the committed CSR siblings (`#922`/`#923`/`#918`). (The only correction in this page
+is the GROUP-G register-family attribution, §4.5.)
 
 ---
 
-## 6. Anomalies and quirks (HIGH · OBSERVED)
+## 6. Anomalies and quirks
 
 > **QUIRK A1 — the `# Abort signals from blocks` block is commented out (L645–L658).**
 > It is **not** part of the 243 (every line begins with `#`). It is a Mako generator

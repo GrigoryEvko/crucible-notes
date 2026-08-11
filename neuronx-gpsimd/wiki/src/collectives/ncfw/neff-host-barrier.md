@@ -29,15 +29,16 @@ Two binaries back this page, and the distinction matters:
 > stream-processors increment them. Neither involves the Q7 SIMD ucode (which ships
 > in `libnrtucode_extisa.so`). See [NCFW DRAM Images + ctx_log](ncfw-dram-ctx-log.md).
 
-**Provenance & confidence.** Every fact below is read **this session** from two
-shipped host libraries with stock binutils (`readelf` / `nm` / `objdump -M intel` /
-`sha256sum`), the IDA-recovered sidecars (functions / structures / enums / strings /
-disasm — themselves binary-derived), and a Python ELF/byte/struct reader. Lawful
+**Provenance & confidence.** Every fact below is read from two shipped host
+libraries with stock binutils (`readelf` / `nm` / `objdump -M intel` / `sha256sum`),
+the IDA-recovered sidecars (functions / structures / enums / strings / disasm —
+themselves binary-derived), and a Python ELF/byte/struct reader. Lawful
 interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
-snapshot consulted. Tags follow the
+snapshot consulted. The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag, per the
 [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte /
-size / symbol / disassembler output read from a binary **this pass**; `CARRIED` =
-OBSERVED in a cited prior carve and reused; `INFERRED` = reasoned over those. Callouts:
+size / symbol / disassembler output read from a binary; `CARRIED` = OBSERVED in a
+cited prior carve and reused; `INFERRED` = reasoned over those. Callouts:
 **QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **NOTE**
 (orientation), **CORRECTION** (overturns a prior reading).
 
@@ -49,9 +50,9 @@ OBSERVED in a cited prior carve and reused; `INFERRED` = reasoned over those. Ca
 
 ---
 
-## 0. Target binaries (anchors match this session)
+## 0. Target binaries
 
-| Field | Value | How verified `[HIGH/OBSERVED]` |
+| Field | Value | How verified |
 |---|---|---|
 | `libncfw.so` path | `…/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libncfw.so` | `fd --no-ignore` |
 | `libncfw.so` size | **615640** bytes | `stat -c %s` |
@@ -177,7 +178,7 @@ nothing more. The IDA struct `neff_host_barrier_configs_t` (size `0x10`) confirm
 > semaphore CSR pointers; the field types differ only in their IDA names
 > (`soc_addr_t` vs `semaphore_t`, both `{ addr_t addr; }` = 8 bytes).
 
-### 2.1 `.rodata` strings that prove the shape (all read this session)
+### 2.1 `.rodata` strings that prove the shape
 
 | VMA | bytes |
 |---|---|
@@ -228,8 +229,8 @@ struct neff_host_barrier_configs_t {            // size 0x10
 
 ## 3. The `device_barrier` struct — `ncfw_log_neff_device_barrier_config @0xfef5`
 
-Re-verified byte-for-byte this session (every offset OBSERVED via its load
-instruction). Reproduced for self-containment, with one field the logger does **not**
+Verified byte-for-byte (every offset OBSERVED via its load instruction). Reproduced
+for self-containment, with one field the logger does **not**
 expose, recovered from the IDA struct.
 
 | off | size | field | type | load (sunda/v2 copy) |
@@ -308,7 +309,7 @@ HIGH/OBSERVED; "counter delta" INFERRED MED]`
 
 ### 4.1 What makes 4 steps — the compile-time tables (`libnrt .rodata`)
 
-Four named const arrays, **raw bytes read this session** from
+Four named const arrays, **raw bytes** from
 `…_rodata.bin` (VMA == file offset, base `0x7cf000`):
 
 | symbol | VMA | bytes |
@@ -387,7 +388,7 @@ enum barrier_operation_t {         // field1 (the RETURNED operation)
 ; _ZL24search_barr_type_in_step14barrier_type_tiP19barrier_operation_tPi  @0xf58a0
 ;   search_barr_type_in_step(barrier_type_t edi, int step esi,
 ;                            barrier_operation_t* rdx, int* rcx) -> bool
-;   [HIGH/OBSERVED — full 155-byte body read this session]
+;   [HIGH/OBSERVED — full 155-byte body]
 f58a2: lea r14, _ZL23barrier_algorithm_steps
 f58ba: call nrt_is_neuron_switch_v1_family
 f58c8: cmovnz r14, algorithm_steps_for_switch_family     ; pick table by fabric
@@ -619,7 +620,7 @@ switch-family table selection (`{1,4,4,1}` + `barrier_algorithm_steps` vs `{1,2,
 
 ## 8. Confidence summary
 
-**HIGH / OBSERVED (read directly this session):**
+**HIGH / OBSERVED (read directly):**
 
 * `host_barrier` = exactly 2 `soc_addr` (`barrier_start@+0x00` via `ncfw_log_addr`,
   `barrier_done@+0x08` inline), 16 B; `neff_host_barrier_configs_t` size `0x10` (§2).
@@ -630,7 +631,7 @@ switch-family table selection (`{1,4,4,1}` + `barrier_algorithm_steps` vs `{1,2,
 * Step descriptor: 4 steps, 52-B stride (13i<<2 proof), `m2s`/`s2m` u16,
   `barrier_sema[4]` u64 @`+0x4`, `target_sema_val[4]` u32 @`+0x24`; both children loop
   4× (stride 8 / stride 4) (§4.0).
-* Device struct offsets `0x00`..`0x123` re-verified, plus the unlogged
+* Device struct offsets `0x00`..`0x123`, plus the unlogged
   `total_desc_n@+0x11C` from the IDA struct (§3).
 * 4-step algorithm tables: `barrier_step_sizes {1,4,4,1}` / switch `{1,2,2,1}`;
   `barrier_algorithm_steps[step][entry]={type,op}` raw bytes; consumer

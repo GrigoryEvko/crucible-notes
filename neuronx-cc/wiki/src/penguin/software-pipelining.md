@@ -21,20 +21,22 @@ This is one of two software-pipelining mechanisms in the toolchain, and they are
 | **Allocation widener** | `_allocate_tensor` @ `0x40820` — `block/bank_shape ×= buffer_count` (4× `imul`) |
 | **Annotation it reads** | `axis.num_stages` (int > 1) **or** `child.stage_id` (+ optional `child.execution_order`) |
 
-> **CORRECTION — two addresses in the prior method roster were swapped.** Earlier recovery notes attribute the *"extend the iteration space and add predicates"* work to `_create_software_pipeline_schedule` @ `0x47600` and the ISL/legality drive to `schedule_software_pipeline` @ `0x21050`. Reading the decompiled bodies, it is the reverse split of duties: **`schedule_software_pipeline` @ `0x21050`** is the function that holds the predicate machinery (`pred_ge`, `pred_lt`, `addPredicate`, `stealChildren`, `replaceChild`, the *"Created new loop with bounds"* and *"Processing stage"* logs), while **`_create_software_pipeline_schedule` @ `0x47600`** holds the ISL **schedule-tree** band construction (`band_shift`, `band_get_partial_schedule`, `add_band`, `add_sequence_filter`, `MultiUnionPwAff`, `from_union_pw_aff`, `get_child_domain_union_set`, `ScheduleNode`, `val_on_domain`). The ISL **legality gate** itself (`NeuronIslDependenceAnalysis`, `check_valid_schedule`, `DependenceViolation`, `DependenceType`, `is_sequential_axis`) lives in **`schedule_axis_hierarchy` @ `0x38fe0`**. All three confirmed by the `__pyx_n_s_*` reference set in each decompiled body.
+The three top-level method names invite a natural — and wrong — division of labour, so it is worth pinning the split up front. **`schedule_software_pipeline` @ `0x21050`** holds the predicate machinery: `pred_ge`, `pred_lt`, `addPredicate`, `stealChildren`, `replaceChild`, and the *"Created new loop with bounds"* / *"Processing stage"* logs. **`_create_software_pipeline_schedule` @ `0x47600`** holds none of that; it is purely the ISL **schedule-tree** band construction (`band_shift`, `band_get_partial_schedule`, `add_band`, `add_sequence_filter`, `MultiUnionPwAff`, `from_union_pw_aff`, `get_child_domain_union_set`, `ScheduleNode`, `val_on_domain`). The ISL **legality gate** (`NeuronIslDependenceAnalysis`, `check_valid_schedule`, `DependenceViolation`, `DependenceType`, `is_sequential_axis`) is in neither of those — it lives in **`schedule_axis_hierarchy` @ `0x38fe0`**.
+
+> **GOTCHA — the two "software_pipeline" names are not driver-and-helper.** `_create_software_pipeline_schedule` does *not* create the pipeline; it only builds the parallel ISL band. The actual IR rewrite is entirely in `schedule_software_pipeline`.
 
 ## Stage-count selection — a decision, not a search
 
 The stage count `N` is **user-supplied** through one of two mutually-exclusive annotation modes; the transform only *resolves, validates, and applies* it. There is no cost model, no II search, no recurrence/resource-MII. The resolution is done in `_create_schedule_context` (`0x306f0`, docstring *"Create scheduling context based on num\_stages attribute or stage\_id annotation"*), which builds a `ScheduleContext` object (the `__pyx_n_s_ScheduleContext` constructor is referenced at `0x306f0`) carrying the resolved stage groups.
 
-**Mode A — coarse `num_stages` attribute** *(CONFIRMED — class docstring + identifier pool).* The loop **axis** carries an integer attribute `num_stages > 1`. The body is sliced into `num_stages` equal stage-groups **in program order**: group *k* is the *k*-th contiguous slice of the body. This is the path a NKI kernel author takes by simply declaring `num_stages` on a loop. The class docstring: *"Automatically implements software pipelining based on user-specified 'num\_stages' attribute. … Target loops must have 'num\_stages' attribute > 1. … Divides loop body into pipeline stages."*
+**Mode A — coarse `num_stages` attribute.** The loop **axis** carries an integer attribute `num_stages > 1`. The body is sliced into `num_stages` equal stage-groups **in program order**: group *k* is the *k*-th contiguous slice of the body. This is the path a NKI kernel author takes by simply declaring `num_stages` on a loop. The class docstring: *"Automatically implements software pipelining based on user-specified 'num\_stages' attribute. … Target loops must have 'num\_stages' attribute > 1. … Divides loop body into pipeline stages."*
 
-**Mode B — fine `stage_id` per-child annotation** *(CONFIRMED — `__pyx_n_u_stage_id`, `__pyx_n_u_stage_ids` interned at `0x306f0`).* Each **child statement** of the loop carries a `stage_id` attribute; children are grouped by `stage_id`. This is the manually-scheduled path: the author assigns each instruction to a stage and may additionally supply a per-instruction `execution_order` (`__pyx_n_u_execution_order` / `_orders` at `0x306f0`) to interleave the stages globally (see *Instruction reordering* below).
+**Mode B — fine `stage_id` per-child annotation** (`__pyx_n_u_stage_id` / `__pyx_n_u_stage_ids` interned at `0x306f0`). Each **child statement** of the loop carries a `stage_id` attribute; children are grouped by `stage_id`. This is the manually-scheduled path: the author assigns each instruction to a stage and may additionally supply a per-instruction `execution_order` (`__pyx_n_u_execution_order` / `_orders` at `0x306f0`) to interleave the stages globally (see *Instruction reordering* below).
 
 ```c
 /* _create_schedule_context @ 0x306f0 — stage-count resolution (decision procedure).
    Cython -O3 inlined the body across the 0x306f0/0x1ef70/0x38fe0 cluster; symbols
-   confirmed from the __pyx_n_u_/__pyx_kp_u_ reference set in each. */
+   recovered from the __pyx_n_u_/__pyx_kp_u_ reference set in each. */
 int resolve_num_stages(Axis *axis, ScheduleContext *ctx) {
     PyObject *num_stages = PyObject_GetAttr(axis, "num_stages");   /* Mode A probe   */
     PyObject *child_stage_ids = collect_stage_ids(axis.children);  /* Mode B probe   */
@@ -61,7 +63,9 @@ int resolve_num_stages(Axis *axis, ScheduleContext *ctx) {
 }
 ```
 
-> **CORRECTION — the "Cannot use both…" raise is an `AssertionError`, not `TypeError`.** The decompiled body at `0x1ef70:1017` raises the message via `_Pyx_Raise((PyTypeObject *)_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_use_both_num_stages_attri, …)` — a plain Python `assert`. The `PyExc_TypeError` site at `0x30771` is unrelated: its disassembly (`lea rdx, "_create_schedule_context"`, format string `"%.200s() takes %.8s %zd positional argument…"`, `PyErr_Format`) is the **Cython argument-count guard** for the `_create_schedule_context` wrapper, not the mode conflict.
+The mode conflict is a plain Python `assert`: `0x1ef70:1017` raises via `_Pyx_Raise((PyTypeObject *)_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_use_both_num_stages_attri, …)`, so callers see an `AssertionError` and the check vanishes under `python -O`.
+
+> **GOTCHA — the nearby `PyExc_TypeError` is not the mode conflict.** The `PyExc_TypeError` site at `0x30771` (`lea rdx, "_create_schedule_context"`, format `"%.200s() takes %.8s %zd positional argument…"`, `PyErr_Format`) is the Cython argument-count guard for the `_create_schedule_context` wrapper, an unrelated site.
 
 ```text
 DECISION SUMMARY — the literal answer to "how many stages?"
@@ -77,13 +81,13 @@ DECISION SUMMARY — the literal answer to "how many stages?"
 - monotonic — *"Stage IDs must be monotonically increasing, but found "* `<…>`
 - order all-or-nothing — *"Mix of None and non-None execution\_orders is invalid: "* `<…>` / *"All execution\_orders are None - valid"*
 - per-stage order monotonic — *"Execution orders within stage "* `<s>` *" must be monotonically increasing, but found "* `<…>`
-- every instr in an ordered stage has an order — *"Execution order for instruction "* `<…>` *" is None, but should be defined"* (`__pyx_kp_u_Execution_order_for_instruction` + `__pyx_kp_u_is_None_but_should_be_defined`, both confirmed at `0x47600`)
+- every instr in an ordered stage has an order — *"Execution order for instruction "* `<…>` *" is None, but should be defined"* (`__pyx_kp_u_Execution_order_for_instruction` + `__pyx_kp_u_is_None_but_should_be_defined`, both referenced at `0x47600`)
 
 A `disable_execution_order_check` option skips the order-consecutiveness rule.
 
 ## Target-loop gating
 
-`_is_target_loop` @ `0x1ef70` (docstring *"Check if this is a loop we want to schedule"*) is the filter. Its disassembly is a chain of `PyObject_RichCompare` (the `num_stages > 1` test) and `PyObject_IsTrue` branches; the interned token set and confirmed `__pyx_n_s_is_canonical` / `__pyx_n_s_tripcount` references fix the gates:
+`_is_target_loop` @ `0x1ef70` (docstring *"Check if this is a loop we want to schedule"*) is the filter — a chain of `PyObject_RichCompare` (the `num_stages > 1` test) and `PyObject_IsTrue` branches. The interned token set, together with the `__pyx_n_s_is_canonical` / `__pyx_n_s_tripcount` references, fixes the gates:
 
 | Gate | Rule | Reject diagnostic |
 |---|---|---|
@@ -107,7 +111,7 @@ Unlike `N` (user-supplied), the buffer count is **per-tensor and derived**. It i
 buffer_count(t) = max(use_stages(t)) − min(def_stages(t)) + 1
 ```
 
-**The "subtract then add-one" is present byte-for-byte in the cp310 disassembly** (this is the firmest single fact on the page). In `_get_tensor_buffer_size_requirement`:
+The "subtract then add-one" is visible instruction-for-instruction in the cp310 disassembly of `_get_tensor_buffer_size_requirement`:
 
 ```text
 0x2d1f7 / 0x2f3e8 / 0x2f5fe : call __Pyx_GetBuiltinName     ; load `min` / `max` builtins,
@@ -122,7 +126,7 @@ buffer_count(t) = max(use_stages(t)) − min(def_stages(t)) + 1
 /* get_def_use @ 0x2a660 + _get_tensor_buffer_size_requirement @ 0x2bd00 */
 void compute_buffer_sizes(Region *pipelined, map<Tensor,int> *tensor_buffer_size) {
     for (Tensor t : pipelined.local_tensors) {
-        /* WHICH TENSORS QUALIFY — confirmed diagnostics @ 0x2bd00 */
+        /* WHICH TENSORS QUALIFY — diagnostics @ 0x2bd00 */
         if (!t.isNeuronLocalTensor() || t.isInputOrOutput())
             continue;   /* "<t> is not NeuronLocalTensor or isInputOrOutput, skip" */
         StageSet def_stages = stages_where_defined(t);   /* via LiveVariableAnalysis def */
@@ -138,7 +142,7 @@ void compute_buffer_sizes(Region *pipelined, map<Tensor,int> *tensor_buffer_size
 }
 ```
 
-**Interpretation** *(STRONG):* double/triple-buffering is an **output** of the stage assignment, not an independent knob. For the canonical `num_stages = 3` worked example, tensor `A` (defined in stage 0, used in stage 1) gets `1 − 0 + 1 = 2` (double buffering); a tensor live across two stage hops gets `3` (triple). The deeper the def→use skew, the more buffers.
+The consequence: double/triple-buffering is an **output** of the stage assignment, not an independent knob. For the canonical `num_stages = 3` worked example, tensor `A` (defined in stage 0, used in stage 1) gets `1 − 0 + 1 = 2` (double buffering); a tensor live across two stage hops gets `3` (triple). The deeper the def→use skew, the more buffers.
 
 > **GOTCHA — PSUM is refused here.** `_allocate_tensor` raises `NotImplementedError` on a `NeuronPSUMTensor` (the `__pyx_n_s_NeuronPSUMTensor` token is in the pool; the message says *not supported yet*). PSUM ring rotation is left entirely to the backend `address_rotation_psum` — see the handoff section.
 
@@ -146,9 +150,9 @@ void compute_buffer_sizes(Region *pipelined, map<Tensor,int> *tensor_buffer_size
 
 This is the structural heart, and the way it differs from the backend is the headline. The backend's three regions **emerge** from the list scheduler (separate basic blocks, hoisted fill, drained tail). This pass materializes the three regions **explicitly but logically**: there is no physical prologue or epilogue code — the regions are *predicated slices of a single extended loop*. The work is done in `schedule_software_pipeline` @ `0x21050` (the function whose docstring is *"Implements software pipelining by extending the iteration space and adding predicates."*).
 
-**Step 1 — extend the trip count.** A new axis `new_axis` with a new induction variable `new_iv` is built with upper bound `ub + (num_stages − 1)`; the old iv is rewritten to `new_iv` everywhere. The body is moved onto the new axis via the IR `stealChildren` / `replaceChild` methods (both `__pyx_n_s_stealChildren` / `_replaceChild` confirmed at `0x21050`). Log on creation: *"Created new loop with bounds ["* `<lb>` *","* `<ub'>` *"]"*.
+**Step 1 — extend the trip count.** A new axis `new_axis` with a new induction variable `new_iv` is built with upper bound `ub + (num_stages − 1)`; the old iv is rewritten to `new_iv` everywhere. The body is moved onto the new axis via the IR `stealChildren` / `replaceChild` methods (`__pyx_n_s_stealChildren` / `_replaceChild`, both referenced at `0x21050`). Log on creation: *"Created new loop with bounds ["* `<lb>` *","* `<ub'>` *"]"*.
 
-**Step 2 — per-stage predicate insertion (= the three regions).** For each stage `s` in `0..N−1`, two affine guards are attached to that stage's instructions via the IR `addPredicate` method. The guard constructors are referenced as **module-global callables** `pred_ge` and `pred_lt` (`__pyx_n_s_pred_ge` / `__pyx_n_s_pred_lt`, both confirmed at `0x21050`, loaded via `_Pyx_GetBuiltinName` / `_Pyx__GetModuleGlobalName`):
+**Step 2 — per-stage predicate insertion (= the three regions).** For each stage `s` in `0..N−1`, two affine guards are attached to that stage's instructions via the IR `addPredicate` method. The guard constructors are referenced as **module-global callables** `pred_ge` and `pred_lt` (`__pyx_n_s_pred_ge` / `__pyx_n_s_pred_lt`, both referenced at `0x21050`, loaded via `_Pyx_GetBuiltinName` / `_Pyx__GetModuleGlobalName`):
 
 ```c
 /* schedule_software_pipeline @ 0x21050 — predicate machinery (decompiled symbol order) */
@@ -201,18 +205,18 @@ This matches the embedded `num_stages = 3` worked example exactly:
 
 ### The parallel ISL schedule-tree (band shift)
 
-In parallel with the predicate form, `_create_software_pipeline_schedule` @ `0x47600` expresses the same pipeline as a **band shift on the ISL schedule tree**. Its confirmed call surface — `get_child_domain_union_set`, `from_union_pw_aff`, `val_on_domain`, `MultiUnionPwAff`, `UnionPwAff`, `band_get_partial_schedule`, `band_shift`, `add_band`, `add_sequence_filter`, `get_schedule`, `ScheduleNode` — is the polyhedral encoding of the per-stage `i − s` offset, built over stock `islpy` (`__pyx_n_s_isl` / `_islpy` referenced module-wide). This schedule object is what the legality gate then checks.
+In parallel with the predicate form, `_create_software_pipeline_schedule` @ `0x47600` expresses the same pipeline as a **band shift on the ISL schedule tree**. Its call surface — `get_child_domain_union_set`, `from_union_pw_aff`, `val_on_domain`, `MultiUnionPwAff`, `UnionPwAff`, `band_get_partial_schedule`, `band_shift`, `add_band`, `add_sequence_filter`, `get_schedule`, `ScheduleNode` — is the polyhedral encoding of the per-stage `i − s` offset, built over stock `islpy` (`__pyx_n_s_isl` / `_islpy` referenced module-wide). This schedule object is what the legality gate then checks.
 
 ## Dependence analysis — what it reads, and the legality gate
 
 The picture is two-sided and subtle.
 
-**(i) Stage assignment is NOT dependence-derived** *(CONFIRMED — class docstring "No automatic dependency analysis").* No modulo schedule, no II search, no MII. The user owns which instruction is in which stage (the `num_stages` slice or the `stage_id` map).
+**(i) Stage assignment is NOT dependence-derived.** The class docstring says so outright — *"No automatic dependency analysis"*. No modulo schedule, no II search, no MII. The user owns which instruction is in which stage (the `num_stages` slice or the `stage_id` map).
 
 **(ii) Legality IS dependence-checked, via a full ISL polyhedral layer** — and this pass is the *only* Penguin client that drives it (cross-ref [5.17 — ISL legality](isl-schedule-tree-legality.md)). The gate lives in `schedule_axis_hierarchy` @ `0x38fe0`, whose decompiled body references `NeuronIslDependenceAnalysis` (the ISL dependence-graph builder, imported at module init — 6× in `pymod_exec`), `LiveVariableAnalysis` (def/use liveness feeding `get_def_use`), `is_sequential_axis`, `check_valid_schedule` (the final legality gate), `DependenceType` and `DependenceViolation` (the verdict). On a violating reorder/shift the pass reports the interned fragments *"checked dependences between Axis of size "* `<…>`, *"<…> causes dependencies to be violated:"* `<edges>`, *"found first violation in "* `<…>`.
 
 ```c
-/* schedule_axis_hierarchy @ 0x38fe0 — recurse + legality gate (symbol-confirmed surface) */
+/* schedule_axis_hierarchy @ 0x38fe0 — recurse + legality gate (recovered call surface) */
 void schedule_axis_hierarchy(Axis *root) {
     for (Axis *axis : walk(root)) {
         if (!_is_target_loop(axis)) continue;            /* §gating, 0x1ef70           */
@@ -239,9 +243,9 @@ void schedule_axis_hierarchy(Axis *root) {
 
 ## Instruction reordering and allocation widening
 
-**`_reorder_instructions` @ `0x267c0`** *(CONFIRMED docstring).* In Mode B with `execution_order` set, this interleaves instructions across stages into the user's requested global order — the mechanism that lets a manual pipeline place `load(i+2)` ahead of `compute(i)`. Docstring: *"Reorder instructions in the loop body based on execution\_order. groups: instruction groups per stage; execution\_orders: per-group orders (None = keep original position)."* When all orders are `None` it logs *"No execution\_order specified, keeping original stage order"*.
+**`_reorder_instructions` @ `0x267c0`.** In Mode B with `execution_order` set, this interleaves instructions across stages into the user's requested global order — the mechanism that lets a manual pipeline place `load(i+2)` ahead of `compute(i)`. Docstring: *"Reorder instructions in the loop body based on execution\_order. groups: instruction groups per stage; execution\_orders: per-group orders (None = keep original position)."* When all orders are `None` it logs *"No execution\_order specified, keeping original stage order"*.
 
-**`allocate` @ `0x253f0` + `_allocate_tensor` @ `0x40820`** *(CONFIRMED).* `allocate` *"identifies which tensors require buffering and expands their allocated memory along the pipeline axis by the calculated buffer factor."* `_allocate_tensor` does the widen. The mechanic is confirmed firsthand: **four `imul rdx, rax`** at `0x40fe0`, `0x412f0`, `0x41508`, `0x41d4b` — the block-shape × `buffer_count` multiply along the pipeline-axis dimension.
+**`allocate` @ `0x253f0` + `_allocate_tensor` @ `0x40820`.** `allocate` *"identifies which tensors require buffering and expands their allocated memory along the pipeline axis by the calculated buffer factor."* `_allocate_tensor` does the widen, and the mechanic is visible directly: **four `imul rdx, rax`** at `0x40fe0`, `0x412f0`, `0x41508`, `0x41d4b` — the block-shape × `buffer_count` multiply along the pipeline-axis dimension.
 
 ```c
 /* _allocate_tensor @ 0x40820 — block/bank shape ×= buffer_count along the pipeline axis */
@@ -320,14 +324,19 @@ A given loop takes exactly one. The "upstream heuristic that picks N" referenced
 
 Imported IR/ISL surface (interned import strings): `neuronxcc.starfish.penguin.ir.ir` / `.Axis` / `.Stmt`; `…targets.tonga.TongaTensor` / `.TongaISAInst`; `…targets.transforms.TargetLowering` (base pass), `.TongaLiveInterval`, `.experimental.TongaIslDependenceAnalysis`; runtime imports `NeuronIslDependenceAnalysis`, `LiveVariableAnalysis`; `neuronxcc.starfish.support.LogContext`. IR methods used: `stealChildren`, `replaceChild`, `replaceUseOfWith`, `addPredicate`, `resetAllocation`, `isInputOrOutput`, `get/set_attrs_dict`, `get_tuple_name`.
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+The principal claims on this page and where they come from:
 
-1. **`buffer_count = (max_use − min_def) + 1`** — *holds.* `_PyNumber_Subtract` @ `0x2fbff`, then `__pyx_int_1` loaded as op2 @ `0x2fc3c`, then `__Pyx_PyInt_AddObjC` @ `0x2fc5c`, then `_PyObject_SetItem` @ `0x2fcba`, all in the `0x2bd00` SoftwarePipelineCodeGen disasm. Byte-for-byte.
-2. **`_allocate_tensor` widens shape by `buffer_count` (4× `imul`)** — *holds.* `imul rdx, rax` at `0x40fe0`, `0x412f0`, `0x41508`, `0x41d4b` in the `0x40820` disasm, paired with the `Updated_allocated_{block,bank}_shape` log strings.
-3. **The mode-conflict raise is an `AssertionError`, not `TypeError`** — *corrected and holds.* `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_use_both_num_stages_attri, …)` at `0x1ef70:1017`; the `PyExc_TypeError` @ `0x30771` is the Cython arg-count guard (format string `"%.200s() takes %.8s %zd positional argument…"`), a different site.
-4. **The predicate machinery lives in `schedule_software_pipeline` @ `0x21050`, the ISL band in `_create_software_pipeline_schedule` @ `0x47600`** — *corrected and holds.* `pred_ge`/`pred_lt`/`addPredicate`/`stealChildren`/`Created_new_loop_with_bounds`/`Processing_stage` are all in the `0x21050` body; `band_shift`/`band_get_partial_schedule`/`MultiUnionPwAff`/`add_sequence_filter` are all in the `0x47600` body. The prior roster swapped their docstring duties.
-5. **The ISL legality gate (`NeuronIslDependenceAnalysis`, `check_valid_schedule`, `DependenceViolation`) is in `schedule_axis_hierarchy` @ `0x38fe0`** — *corrected and holds.* `__pyx_n_s_NeuronIslDependenceAnalysis`, `_check_valid_schedule`, `_DependenceViolation`, `_DependenceType`, `_is_sequential_axis` all resolve to the `0x38fe0` decompiled body (and `NeuronIslDependenceAnalysis`/`LiveVariableAnalysis` are imported 6× each at `pymod_exec`).
+- **`buffer_count = (max_use − min_def) + 1`** — read directly off the instruction stream: `PyNumber_Subtract` @ `0x2fbff`, `__pyx_int_1` loaded as op2 @ `0x2fc3c`, `__Pyx_PyInt_AddObjC` @ `0x2fc5c`, `PyObject_SetItem` @ `0x2fcba`, all inside the `0x2bd00` body.
+- **`_allocate_tensor` widens shape by `buffer_count`** — the four `imul rdx, rax` at `0x40fe0`, `0x412f0`, `0x41508`, `0x41d4b` in the `0x40820` body, paired with the `Updated_allocated_{block,bank}_shape` log strings.
+- **The mode-conflict raise is an `AssertionError`** — `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_use_both_num_stages_attri, …)` at `0x1ef70:1017`, distinct from the arg-count `PyErr_Format` at `0x30771`.
+- **Predicate machinery vs ISL band** — `pred_ge` / `pred_lt` / `addPredicate` / `stealChildren` / `Created_new_loop_with_bounds` / `Processing_stage` all resolve inside `0x21050`; `band_shift` / `band_get_partial_schedule` / `MultiUnionPwAff` / `add_sequence_filter` all resolve inside `0x47600`.
+- **The ISL legality gate** — `__pyx_n_s_NeuronIslDependenceAnalysis`, `_check_valid_schedule`, `_DependenceViolation`, `_DependenceType`, `_is_sequential_axis` all resolve inside the `0x38fe0` body; `NeuronIslDependenceAnalysis` and `LiveVariableAnalysis` are each imported 6× at `pymod_exec`.
 
-**Tagged as INFERRED / not byte-walked:** the exact `AffinePredicate` immediate per stage (`pred_ge = i − s ≥ 0`, `pred_lt = i − (ub + s) < 0`) is STRONG from the worked example + `pred_ge`/`pred_lt` naming, but the affine call args are hidden behind Cython's vectorcall and were not reduced to a single literal. Whether `_reorder_instructions` runs before or after predicate insertion inside the apply step is INFERRED (both are present; ordering not forced by the disasm). The `ScheduleContext` field layout beyond the recovered locals (`stage_children`, `stage_accesses`, `stage_units`, `group_sizes`, `stage_config`, `stage_distance`, `num_stages`) is not fully enumerated. The ISL dependence-graph *construction* detail is delegated to `NeuronIslDependenceAnalysis` / `TongaIslDependenceAnalysis` (separate modules — only the call surface is recovered here).
+## Limits of this reading
+
+- The exact `AffinePredicate` immediate per stage (`pred_ge = i − s ≥ 0`, `pred_lt = i − (ub + s) < 0`) is **[INFERRED]** from the worked example plus the `pred_ge` / `pred_lt` naming; the affine call arguments sit behind Cython's vectorcall and were not reduced to literals.
+- Whether `_reorder_instructions` runs before or after predicate insertion inside the apply step is **[UNRESOLVED]** — both calls are present, but the disassembly does not force an order.
+- The `ScheduleContext` field layout is only partially enumerated: `stage_children`, `stage_accesses`, `stage_units`, `group_sizes`, `stage_config`, `stage_distance`, `num_stages` are recovered; there may be more.
+- ISL dependence-graph *construction* is delegated to `NeuronIslDependenceAnalysis` / `TongaIslDependenceAnalysis`, separate modules — only the call surface into them is described here.

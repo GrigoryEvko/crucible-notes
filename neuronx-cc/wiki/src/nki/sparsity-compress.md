@@ -55,7 +55,7 @@ core_v4::is_valid_neuron_engine_instruction  @0x1502120   (per-instruction valid
 
 The sparsity validators are adjacent to `PeManageSeed`, `Activate2`, and `Ldweights-MX` in the dispatch chain — all **PE-array (Matmult) engine** micro-ops. They are **not** in the Pool/Act vector branch. This places `SparsityCompress`/`Tag` as PE-front-end ops that pre-process the moving (activation) operand into a `(values, tag)` pair the array consumes.
 
-> **CORRECTION — "compress" is a PE-array op, not a DVE/vector op.** The op name (and the historical D-series notes) suggest a DVE datamove. The validation dispatch proves otherwise: the validators sit between `is_valid_pe_manage_seed` and `is_valid_activate2`/`is_valid_smx1_lw`, inside the Matmult-engine branch. The simulator reinforces this — there is *no* `birsim::visitInstSparsityCompress`; the only sim datapath that touches the compressed format is the matmul consumer (`visitInstMatmultSparse`, [§5](#5-consumer-contract)).
+> **GOTCHA — "compress" is a PE-array op, not a DVE/vector op.** The name reads like a vector-engine datamove; the validation dispatch says otherwise, placing both validators between `is_valid_pe_manage_seed` and `is_valid_activate2`/`is_valid_smx1_lw` inside the Matmult-engine branch. The simulator agrees: there is no `birsim::visitInstSparsityCompress` at all, and the only sim datapath touching the compressed format is the matmul consumer ([§5](#5-consumer-contract)).
 
 ### Algorithm — the opcode gate
 
@@ -67,7 +67,7 @@ char is_valid_sparsity_compress(/* a1 = core_version */ ..., char a7 /* opcode b
     if (a1 != 4) return 0;                       // core_v4 ONLY — op absent on v2/v3-enum cores
     if (!is_valid_enum(4, opcode, ...)) return 0;
     char has_events = has_valid_neuron_events(4, opcode, ...);
-    if (opcode != -32) return 0;                 // -32 == 0xE0 == 224  -> SparsityCompress  [CONFIRMED]
+    if (opcode != -32) return 0;                 // -32 == 0xE0 == 224  -> SparsityCompress
     if (!has_events) return 0;
     /* … tensor + dtype + invariant checks (§2, §3) … */
 }
@@ -75,7 +75,7 @@ char is_valid_sparsity_compress(/* a1 = core_version */ ..., char a7 /* opcode b
 
 `SparsityCompressTag` is identical in shape but gates on `opcode != -31` (`-31 == 0xE1 == 225`), verified at the top of `is_valid_sparsity_compress_tag` `@0x149bb80`.
 
-The opcode-name table (`core_v4::enum_variant_string_opcode` `@0x143fd80`) `strncpy`s case 224 → `"SparsityCompress"` and case 225 → `"SparsityCompressTag"` (mnemonic strings interned in `libwalrus.so` `.rodata`; both confirmed present by `strings`). Case 6 → `"Ldtags"` is the consumer opcode of [§5](#5-consumer-contract).
+The opcode-name table (`core_v4::enum_variant_string_opcode` `@0x143fd80`) `strncpy`s case 224 → `"SparsityCompress"` and case 225 → `"SparsityCompressTag"` (both mnemonic strings are interned in `libwalrus.so` `.rodata`). Case 6 → `"Ldtags"` is the consumer opcode of [§5](#5-consumer-contract).
 
 ### Function Map
 
@@ -131,13 +131,13 @@ if (!is_valid_dtype(dst_dtype, 0, ...)) return 0;             // write (FP32R al
 if (!is_valid_dtype(in_dtype,  1, ...)) return 0;
 if (!is_valid_dtype(tag_dtype, 1, ...)) return 0;
 
-// (b) DTYPE PAIRING  [CONFIRMED @0x14b8dee]:
+// (b) DTYPE PAIRING  @0x14b8dee:
 //   in_dtype in {13,14,15} pairs with tag_dtype == 5   (group A)
 //   in_dtype in {6,7}      pairs with tag_dtype == 9   (group B)
 if ( ((u8)(in_dtype - 13) > 2 || tag_dtype != 5)
   && ((u8)(in_dtype - 6 ) > 1 || tag_dtype != 9) ) return 0;
 
-// (c) STRUCTURAL 4:1 ELEMENT-COUNT INVARIANT  [CONFIRMED @0x14b8e14]:
+// (c) STRUCTURAL 4:1 ELEMENT-COUNT INVARIANT  @0x14b8e14:
 //   cmov-mask the OUT product by which axis `compress_dim_sel` folds, then require
 //   4 * (full OUT element count)  ==  (masked OUT product) * (IN element count).
 int d0 = out_d0, d1 = out_d1, d2 = out_d2;       // (mapped to v36/v37/v38 in decomp)
@@ -147,12 +147,12 @@ if ((u8)(sel - 4) >= 2) d2 = 1;
 if (4 * out_d0 * out_d1 * out_d2 != d0 * d1 * d2 * in_d0 * in_d1 * in_d2) return 0;  // the *4*
 if ((u32)(d0 * d1 * d2) <= 3) return 0;          // keep at least one full group of 4
 
-// (d) reserved/zero bitfields + subdim range  [CONFIRMED @0x14b8eb1]:
+// (d) reserved/zero bitfields + subdim range  @0x14b8eb1:
 if (HIWORD(reserved) || tail_qword | (mask_qword & 0xFFFF0000FF000000)
     || (u8)(sel - 2) > 2                          // compress_dim_sel in {2,3,4}
     || ((u8)(subdim_count - 8) > 1 && (u8)(subdim_count - 32) > 1)) return 0;  // {8,9}|{32,33}
 
-// (e) SBUF/quant predicate + final accept  [CONFIRMED @0x14b8f02]:
+// (e) SBUF/quant predicate + final accept  @0x14b8f02:
 if (quant_flag == 0 ||
     (quant_flag == 1
      && (((nch - 64) & 0xBF) == 0 || (nch & 0xBF) == 0x20)      // active-channel quant alignment
@@ -181,7 +181,7 @@ The `*4*` literal on line (c) is the structured group size. The compressed DST h
 // is_valid_sparsity_compress_tag @0x149bb80
 if (a1 != 4) return 0;                            // core_v4 only
 /* … is_valid_enum / has_valid_neuron_events … */
-if (opcode != -31) return 0;                      // -31 == 0xE1 == 225  [CONFIRMED]
+if (opcode != -31) return 0;                      // -31 == 0xE1 == 225
 
 // (1) 2-D operand validation (vs tensor3d for 0xE0):
 if (!tensor2d_valid(tag_dst, ..., 0,1,1)) return 0;    // tag (write)
@@ -192,7 +192,7 @@ if (!tensor2d_valid(op2,     ..., 1,0,1)) return 0;
 //     otherwise the subdim must be in {3,5,9}:
 //     0x228 = 0b10_0010_1000  -> bits 3,5,9 set.
 result = (subdim_flag) ? (sel == 5 && flag == 1)
-                       : (subdim <= 9 && ((0x228 >> subdim) & 1));   // {3,5,9}  [CONFIRMED]
+                       : (subdim <= 9 && ((0x228 >> subdim) & 1));   // {3,5,9}
 
 if (!is_valid_sparsity_compress_tag_subdim_count(...)) return 0;     // §3 tail, below
 
@@ -324,7 +324,7 @@ The `+0x21` shift `{0,4,8,12}` is the key wire artifact: it picks which of the f
 | `NumElementsPerPartition` | `+0x1A` | per-partition tag element count | HIGH |
 | packed `{1,1}` | `+0x1C` | `0x10001` | HIGH |
 | `tag_dtype_code` | `+0x20` | `sub_1348870(tagAP.field48)` | HIGH |
-| `row_group_shift` | `+0x21` | `{0,4,8,12}` from row-group code | CONFIRMED (values) / HIGH (offset) |
+| `row_group_shift` | `+0x21` | `{0,4,8,12}` from row-group code | CERTAIN (values) / HIGH (offset) |
 | col-group size | `+0x26` | `tagAP.field80->field8` | MEDIUM |
 | `row_group` code | `+0x2C` | `translateToRowGroup(pos, max(size,colgrp))` | CERTAIN |
 
@@ -337,7 +337,7 @@ int tag_decode(short tag_word, int lane /* 0..3 */) {
     for (int k = 0; k < lane; ++k) v >>= 4;         // shift 4 bits per lane
     return v & 0xF;                                  // low nibble = dense column index
 }
-//  ==>  dense_position(lane) = (tag_word >> (4 * lane)) & 0xF      [CONFIRMED]
+//  ==>  dense_position(lane) = (tag_word >> (4 * lane)) & 0xF
 
 // birsim::InstVisitor::visitInstMatmultSparse @0x1f0a10 — consumer asserts + scatter
 void visitInstMatmultSparse(bir::InstMatmultSparse &inst) {
@@ -412,7 +412,7 @@ packed as (127, 126, 125, 124), ..., (3, 2, 1, 0), (255, 254, 253, 252), ..., an
 
 So within each 128-column window, the four nibbles of a `uint16` map to columns in **descending** order: the first packed nibble goes to column 127, the next to 126, and so on. The producer (`sparsity.py`) pre-flips so that when the `sub_1A1D70` decode reads nibbles back in lane order (lane0, lane1, …), the lane sequence lines up with the dense column sequence the hardware expects. A reimplementer who packs in ascending column order will produce a tag stream the array reads transposed.
 
-> **CORRECTION — "first nibble" is column 127, not column 0.** It is tempting to read `[3:0]` (lane0) as "first" and assign it column 0. The docstring forbids this: the *first packed* `uint4` is column 127. The bit position (lane index) and the column index run in *opposite* directions within a window. The decode lambda reads `(tw >> (4*lane)) & 0xF` in increasing lane order, and the producer's pre-flip is what makes increasing lane ↔ the descending column packing land on the correct dense column.
+> **GOTCHA — the "first" nibble is column 127, not column 0.** Reading `[3:0]` (lane0) as "first" and assigning it column 0 inverts the mapping: the *first packed* `uint4` is column 127, so bit position and column index run in opposite directions within a window. The decode reads `(tw >> (4*lane)) & 0xF` in increasing lane order, and the producer's pre-flip is what makes increasing lane land on the correct descending dense column.
 
 ### Format summary table
 
@@ -463,25 +463,32 @@ So `SparsityCompress` (0xE0) is a pure **structural gather + index-pack** keyed 
 
 ## Grounding and the stripped ISA .so
 
-> **CORRECTION — `isa_tpb/sunda/neuron_isa.…so` is stripped, and carries none of this.** A prior note suggested the sparsity opcodes/constants could be read directly from `neuron_isa.cpython-310-…so`. They cannot. **Disambiguate first:** the wheel ships *two* binaries named `neuron_isa.cpython-310-…so`. The Python-facing intrinsic module the 6.4.x pages cite — `neuronxcc/nki/isa/neuron_isa.…so` — is **unstripped** (full `.symtab` + DWARF, ~1937 symbols), but it is only the `nisa.*` legality/lowering veneer and holds none of the PE-front-end sparsity opcodes. The *hardware* ISA-opcode binary — `neuronxcc/isa_tpb/sunda/neuron_isa.…so` — is the one a reader would reach for the opcode table, and **that** one is **stripped** (`file` reports `stripped`; `readelf -S` shows no `.symtab` and no `.debug_*`; only `.dynsym` with 305 symbols — opcode *typeinfo* like `NEURON_ISA_TPB_OPCODE` but no sparsity members). `strings` on it yields **no** `SparsityCompress`/`compress`/`Ldtags` hits. Every sparsity opcode string, validator, and codegen symbol on this page lives in **`libwalrus.so`** (and the consumer in `libBIRSimulator.so`). Both also lack a static `.symtab` — `nm -C` returns "no symbols", so every cited address was recovered via `nm -DC` (dynamic) plus the IDA decompile sidecars. The mnemonic strings `"SparsityCompress"`, `"SparsityCompressTag"`, `"Ldtags"`, `"LDTAGS"`, and the symbol `generateLoadTagsSparse` are all confirmed present in `libwalrus.so`'s `.rodata`/`.dynsym`.
+The wheel ships **two** binaries named `neuron_isa.cpython-310-…so`, and neither is where the sparsity opcodes live.
 
-### Confidence summary
+- `neuronxcc/nki/isa/neuron_isa.…so` is **unstripped** (full `.symtab` + DWARF, ~1937 symbols), but it is only the `nisa.*` legality/lowering veneer — no PE-front-end sparsity opcodes.
+- `neuronxcc/isa_tpb/sunda/neuron_isa.…so` is the hardware ISA-opcode binary, and it is **stripped**: no `.symtab`, no `.debug_*`, only a 305-symbol `.dynsym` carrying opcode *typeinfo* such as `NEURON_ISA_TPB_OPCODE` but no sparsity members. It yields no `SparsityCompress`/`compress`/`Ldtags` strings at all.
+
+> **GOTCHA —** the obvious place to look for the sparsity opcode table is the `isa_tpb` ISA binary, and it is stripped of exactly that. Every sparsity opcode string, validator, and codegen symbol on this page lives in `libwalrus.so`, with the consumer in `libBIRSimulator.so`.
+
+Both of those also lack a static `.symtab` — `nm -C` returns "no symbols" — so every address cited here comes from `nm -DC` (dynamic) plus the IDA decompile sidecars. The mnemonics `"SparsityCompress"`, `"SparsityCompressTag"`, `"Ldtags"`, `"LDTAGS"` and the symbol `generateLoadTagsSparse` are all present in `libwalrus.so`'s `.rodata`/`.dynsym`.
+
+### Evidence summary
 
 | Claim | Confidence | Anchor |
 |---|---|---|
-| Opcodes 0xE0/0xE1 + names; PE-engine grouping | CONFIRMED | validator `!= -32`/`!= -31` gates; dispatch chain order |
-| `4 * out == in` structural invariant | CONFIRMED | `0x14b8e14` cmov-masked product compare |
-| Tag = `uint16` packing 4 × `uint4`; flipped col order | CONFIRMED | `to_compressed_sparse` docstring (verbatim) |
-| Nibble decode `(tag>>(4*lane))&0xF` | CONFIRMED | `sub_1A1D70` @ `0x1a1d70` |
-| `translateToRowGroup` LUT `{1,2,4,8}`/`{3,12}`/`15` | CONFIRMED | `.rodata 0x1DD33F0` bytes `01 02 04 08`; fn `0x1089e70` |
-| Row-group → shift `{0,4,8,12}` | CONFIRMED | `generateLoadTagsSparse` switch @ `0x135e960` |
-| LoadTags 64-byte bundle, opcode 6 | CONFIRMED | `fwrite(…,0x40,…)`; case 6 = `Ldtags` |
-| Consumer asserts (`%4==0`, `==128`) | CONFIRMED | `0x1f0a10` @ `+0x18E2`/`+0x18E8` |
-| Mask is structural, no magnitude prune | CONFIRMED | zero top-k/argsort/abs strings in `sparsity.so` |
+| Opcodes 0xE0/0xE1 + names; PE-engine grouping | CERTAIN | validator `!= -32`/`!= -31` gates; dispatch chain order |
+| `4 * out == in` structural invariant | CERTAIN | `0x14b8e14` cmov-masked product compare |
+| Tag = `uint16` packing 4 × `uint4`; flipped col order | CERTAIN | `to_compressed_sparse` docstring (verbatim) |
+| Nibble decode `(tag>>(4*lane))&0xF` | CERTAIN | `sub_1A1D70` @ `0x1a1d70` |
+| `translateToRowGroup` LUT `{1,2,4,8}`/`{3,12}`/`15` | CERTAIN | `.rodata 0x1DD33F0` bytes `01 02 04 08`; fn `0x1089e70` |
+| Row-group → shift `{0,4,8,12}` | CERTAIN | `generateLoadTagsSparse` switch @ `0x135e960` |
+| LoadTags 64-byte bundle, opcode 6 | CERTAIN | `fwrite(…,0x40,…)`; case 6 = `Ldtags` |
+| Consumer asserts (`%4==0`, `==128`) | CERTAIN | `0x1f0a10` @ `+0x18E2`/`+0x18E8` |
+| Mask is structural, no magnitude prune | CERTAIN | zero top-k/argsort/abs strings in `sparsity.so` |
 | `INST_UNION` field offsets (Sec 2/3) | HIGH | register loads at validator heads |
-| dtype enum ids 5/9/13..15/6,7 → named types | INFERRED | ordinals confirmed; type names in dtype-enum ref |
-| `compress_dim_sel` 2/3/4 → named axis | INFERRED | reconstructed from cmov masking; no naming string |
-| in-HW micro-sequencing of the compress op | SPECULATIVE | op never executed in the simulator — only validated/codegen'd/consumed |
+| dtype enum ids 5/9/13..15/6,7 → named types | MEDIUM | ordinals confirmed; type names in dtype-enum ref |
+| `compress_dim_sel` 2/3/4 → named axis | MEDIUM | reconstructed from cmov masking; no naming string |
+| in-HW micro-sequencing of the compress op | LOW | op never executed in the simulator — only validated/codegen'd/consumed |
 
 ---
 

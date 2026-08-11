@@ -45,7 +45,7 @@ clean C arch-isa headers (`aws_neuron_isa_tpb_s4d4_tr.h`, `aws_neuron_isa_tpb_co
   executed on the Q7/POOL cores — a different mechanism at a different layer (§6). `[HIGH/OBSERVED —
   grep over all 5 NX engines]`
 
-* **THE OPERAND STRUCT** — `NEURON_ISA_TPB_S4D4_TR_STRUCT`, **64 bytes, compile-verified** this pass
+* **THE OPERAND STRUCT** — `NEURON_ISA_TPB_S4D4_TR_STRUCT`, **64 bytes, compile-verified**
   (`gcc`: `sizeof==64`, every offset measured). One `TENSOR4D` src + one `TENSOR4D` dst +
   `in_dtype`/`out_dtype` + `num_active_channels` + `negated` + **`op:ALU_OP@36`** + `op_dim@37` +
   `mask_enable@38` + `reserved1[5]@39`. For StreamTranspose the **`op@36` field is the transpose
@@ -65,13 +65,13 @@ clean C arch-isa headers (`aws_neuron_isa_tpb_s4d4_tr.h`, `aws_neuron_isa_tpb_co
   **SBUF/PSUM↔SBUF/PSUM** in-pipe, transpose = **lane permute** in the vector registers. DGE
   `DmaGatherTranspose`: **descriptor-gen** on Q7/POOL, **16×128 xbar tiles**, **2B** dtypes,
   **HBM↔SBUF**, transpose = **stride permutation** realized by the DMA xbar HW. Distinct mechanisms,
-  engines, tile geometry (§6). `[HIGH/OBSERVED]`
+  engines, tile geometry (§6).
 
 * **PER-GEN PRESENCE** — the ISA (opcode `0x6b` + the `S4D4_TR` struct + `is_valid_stream_transpose`
   predicates) is present **SUNDA(v3) → MARIANA_PLUS(v4+)** (struct byte-identical, opcode stable). The
   verbose DVE decode-**trace** arm (the `S: Stream-Transpose` label + per-type print dispatch) is
   **CAYMAN+** only — SUNDA's DVE DEBUG image carries no `S:` decode-trace table. v5/MAVERICK is
-  header-OBSERVED only; interiors INFERRED (§7). `[HIGH/OBSERVED]`
+  header-OBSERVED only; interiors INFERRED (§7).
 
 ---
 
@@ -94,8 +94,8 @@ isolates StreamTranspose to the DVE alone:
 
 `[HIGH/OBSERVED — `rg -a -c` over all five carved CAYMAN NX DEBUG DRAMs]`
 
-> **CORRECTION vs the backing report — the DGE-transpose discriminator.** SX-FW-59 §1b implied the POOL
-> image is distinguished by carrying *"GATHER TRANSPOSE"*. Re-grounded this pass: **no literal
+> **CORRECTION — the DGE-transpose discriminator.** FW-59 §1b implied the POOL
+> image is distinguished by carrying *"GATHER TRANSPOSE"*. In fact **no literal
 > `"GATHER TRANSPOSE"` string exists** in any engine. The DGE descriptor-transpose label
 > `tensor_reshape_transpose` is present in **all five** NX engine DRAMs (shared firmware string), so it
 > is **not** a POOL discriminator. The POOL-specific DGE strings are `S: TensorGather` and
@@ -109,7 +109,7 @@ The DVE engine identity is independently witnessed by its DVE-only strings in th
 `S: DveReadIndices` (`0x2ea0`), the dispatch banner `S: Dispatch opcode=0x%x` (`0x0de0`),
 `S: NX in HW Decode mode` (`0x0e36`), and the `seq/src/uarch.hpp` source-path label. *DVE* =
 *Decoupled Vector Engine*, the GPSIMD NX vector compute engine; StreamTranspose runs in **this**
-engine's datapath. `[HIGH/OBSERVED]`
+engine's datapath.
 
 > **GOTCHA — there are two GPSIMD "transposes" and they are NOT the same instruction.** A
 > reimplementer scanning the firmware for a transpose will find `tensor_reshape_transpose` (the DGE
@@ -203,7 +203,7 @@ There is **one** `const16`-lo reference to the Stream-Transpose string per image
 ## 3. The instruction family — `S4D4_TR` (eleven opcodes, one struct)
 
 `instruction_mapping.json` (`struct2opcode`, OBSERVED) binds `NEURON_ISA_TPB_S4D4_TR_STRUCT` to
-**eleven** opcodes — read byte-exact this pass:
+**eleven** opcodes — read byte-exact:
 
 ```
 NEURON_ISA_TPB_S4D4_TR_STRUCT -> [
@@ -264,7 +264,7 @@ they diverge only in **how `op@36` is interpreted and validated**:
 > the bytes through the transpose network only". A reimplementer must read `op@36` and **reject**
 > StreamTranspose if it is not `Bypass`. `[HIGH/OBSERVED — header predicate + `ALU_OP` enum]`
 
-> **CORRECTION vs the backing report.** SX-FW-59 §0/§4 (and tensor-reduce.md §6) describe `op@36` as
+> **CORRECTION.** FW-59 §0/§4 (and tensor-reduce.md §6) describe `op@36` as
 > *"`op:ALU_OP`"*. That is correct as the **field type**, but for StreamTranspose specifically the
 > field is **not** a free ALU op — it is the validity-pinned transpose-mode byte that *must* equal
 > `Bypass`. This page makes that explicit: `op@36` is shared real estate whose meaning is opcode-keyed,
@@ -277,7 +277,7 @@ they diverge only in **how `op@36` is interpreted and validated**:
 
 Source: `aws_neuron_isa_tpb_s4d4_tr.h:28` (CAYMAN, *"ISA header for NC-v3"*). Reproducing the header's
 `typedef struct` and compiling with `gcc -I <cayman tpb>`, the `ISA_STATIC_ASSERT(sizeof == 64)` holds
-and every offset is measured (this pass — `op@36`, `op_dim@37`, `mask_enable@38`, `dst@44`):
+and every offset is measured (`op@36`, `op_dim@37`, `mask_enable@38`, `dst@44`):
 
 ```c
 typedef struct NEURON_ISA_TPB_S4D4_TR_STRUCT {
@@ -306,7 +306,7 @@ negated@35 op@36 op_dim@37 mask_enable@38 reserved1@39 dst@44`. `[HIGH/OBSERVED 
 > `mask_enable@38`, `dst_mem_pattern`. It **leaves unused / forces-zero**: `negated@35` (reduce-only),
 > `reserved1[5]@39`. `mask_enable@38` is the one field StreamTranspose **uses non-trivially that the
 > Copy/Cast/Reduce siblings force to zero** — for them `mask_enable_zero` is asserted; for
-> StreamTranspose `mask_enable_valid` permits `{0,1}` (§4.1). `[HIGH/OBSERVED]`
+> StreamTranspose `mask_enable_valid` permits `{0,1}` (§4.1).
 
 ### 4.1 `NEURON_ISA_TPB_TENSOR4D` (20 B)
 
@@ -377,8 +377,8 @@ The supporting predicates (`common.h`, OBSERVED verbatim):
 > tile is smaller than 32×32. This is *why* StreamTranspose got its own decode arm (§2.2): the common
 > arm has no place for a `mask_enable=1`. `[HIGH/OBSERVED — header predicate]`
 
-> **CORRECTION vs the backing report — StreamTranspose's dtype set is `is_valid_dtype` (NOT
-> `is_valid_dtype_64`).** SX-FW-59 §4a noted *"NO U64/I64"*; this is grounded here: the
+> **CORRECTION — StreamTranspose's dtype set is `is_valid_dtype` (NOT
+> `is_valid_dtype_64`).** FW-59 §4a noted *"NO U64/I64"*; this is grounded here: the
 > `is_valid_stream_transpose` predicate calls **`is_valid_dtype`**, which internally invokes
 > `dtype_uint64_illegal_check(.., DtypeAllowU64::False)` and `dtype_int64_illegal_check(..,
 > DtypeAllowI64::False)` (`common.h:1312-1317`) — **U64/I64 are excluded**. The *TensorReduce* family
@@ -397,7 +397,7 @@ The supporting predicates (`common.h`, OBSERVED verbatim):
 > rule reads `out_dtype` with `DtypeAllowFP32R::True`, but `s4d4_tr_same_src_dst_type` immediately
 > requires `out_dtype == in_dtype`, and `in_dtype` forbids `fp32r`. So in practice **one** dtype is
 > shared src/dst, never `fp32r`, never cast. The transpose is **pure position movement** — `op=Bypass`
-> + `in==out`. `[HIGH/OBSERVED]`
+> + `in==out`.
 
 ---
 
@@ -444,10 +444,10 @@ identifies as the transpose/gather primitives:
 | `ivp_dseln_2x32t` | **7** | dual-output predicated 32-bit select | `DSEL.T` (32-bit) |
 | `ivp_dselnx16` / `ivp_dseln_2x32` | 1 ea. | dual-output (non-predicated) butterfly | `DSEL` |
 
-`[HIGH/OBSERVED — counts from the `xtensa-elf-objdump` full-image harvest of cay_dve_iram (`rg -o
+Counts are from the `xtensa-elf-objdump` full-image harvest of cay_dve_iram (`rg -o
 'ivp_[a-z0-9_]+' | sort | uniq -c`); the top permute primitive is `ivp_sel2nx8i_s4` (48). SUNDA's DVE
 IRAM carries the same roster at higher counts (sel2nx8i_s4=153, dselnx16t=120, dextrprn_2x32=49) —
-it performs the SW transpose via these primitives even without the `S:` decode-trace logging.]`
+it performs the SW transpose via these primitives even without the `S:` decode-trace logging.
 
 The **DSEL** op is the key primitive: from [B21 §1](../../isa/ref/b21-select-shuffle.md), `DSEL` is the
 *dual-output deal/zip* that writes **two** result vectors (`vu`, `vt`) from the same source pair in one
@@ -582,7 +582,7 @@ other side. There are **two unrelated transpose mechanisms** in the device, at t
 > holds exactly. `[HIGH for the mechanism split; the use-case rationale INFERRED-HIGH]`
 
 The descriptor side is documented end-to-end at [dge-reshape.md](../dge/dge-reshape.md); the SB2SB
-descriptor ring the `sb2sb` reshape feeds is the planned
+descriptor ring the `sb2sb` reshape feeds is the
 [gather/scatter descriptors](../../dma/gather-scatter-descriptors.md) page.
 
 ---
@@ -603,7 +603,7 @@ descriptor ring the `sb2sb` reshape feeds is the planned
 **interior** (decode arm, transpose body) was **not** byte-grounded — INFERRED from header + opcode-map
 parity. `[HIGH header / INFERRED interior]`
 
-² No MAVERICK `NX_DVE` device image was carved in this analysis — v5 runtime DVE behaviour is
+² No MAVERICK `NX_DVE` device image was carved — v5 runtime DVE behaviour is
 header-OBSERVED only, not claimed. `[LOW/flagged]`
 
 ³ SUNDA's DVE DEBUG DRAM (14 KB vs CAYMAN's 28 KB) carries the `decode.cpp`/`uarch.hpp` **assert**
@@ -611,7 +611,6 @@ strings but **not** the per-instruction-type `S:` decode-trace print table — S
 minimal/older decode-trace path. The opcode `0x6b` ISA + the `S4D4_TR` struct are fully present in SUNDA
 (compile-verified). So the **instruction** exists from v3; the verbose DVE decode-trace machinery is
 **CAYMAN+**. The `S4D4_TR` struct is gcc-verified byte-identical across SUNDA/MARIANA/CAYMAN.
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — engine attribution.** The cross-gen opcode matrix coarsely tags `0x6b` as
 > *"NX/POOL"*; the finer evidence (the `S: Stream-Transpose` grep over **all five** NX engines, §2.1)
@@ -636,10 +635,10 @@ minimal/older decode-trace path. The opcode `0x6b` ISA + the `S4D4_TR` struct ar
 * **No HW transpose (OBSERVED absence).** `nm -D`/`strings` over `libfiss-base.so`/`libisa-core.so`/
   `libcas-core.so` find no `ivp_*transp*` — the "no dedicated HW transpose" finding is grounded, not
   assumed.
-* **IVP counts re-grounded.** The `ivp_sel*`/`ivp_dsel*` site counts are taken from the
+* **IVP counts.** The `ivp_sel*`/`ivp_dsel*` site counts are taken from the
   `xtensa-elf-objdump` full-image harvest (`rg -o 'ivp_[a-z0-9_]+' | sort | uniq -c`), not the
   decompile; the dominant permute roster is `ivp_sel2nx8i_s4`, `ivp_dselnx16t`, `ivp_sel2nx8i`,
-  `ivp_dseln_2x32t` (the exact tallies vary by image and are re-counted per carve).
+  `ivp_dseln_2x32t` (the exact tallies vary by image).
 * **`mask_enable=1` geometry.** The `_t` predicated `dsel` forms are present and implement the
   partial-tile mask; the exact tile-boundary lane-kill geometry is not byte-decoded. `[MED]`
 * **v5/MAVERICK.** Header-OBSERVED only; DVE image not carved — interior INFERRED. `[LOW/flagged]`
@@ -683,7 +682,7 @@ minimal/older decode-trace path. The opcode `0x6b` ISA + the `S4D4_TR` struct ar
 
 * [DGE Reshape Engine](../dge/dge-reshape.md) — the **descriptor/xbar transpose** (`DmaGatherTranspose`,
   16×128 tiles, DMA-level), the explicit contrast to this page's datapath transpose (§6).
-* [Gather/Scatter Descriptors](../../dma/gather-scatter-descriptors.md) *(planned)* — the SB2SB
+* [Gather/Scatter Descriptors](../../dma/gather-scatter-descriptors.md) — the SB2SB
   descriptor ring the DGE `sb2sb` reshape-transpose feeds; the descriptor-level transpose's downstream.
 * [ISA Batch 21 — Select / Shuffle / Compress](../../isa/ref/b21-select-shuffle.md) — the
   `ivp_sel`/`ivp_shfl`/`ivp_dsel` lane-routing crossbar this transpose composes from (the `DSEL`
@@ -707,8 +706,8 @@ minimal/older decode-trace path. The opcode `0x6b` ISA + the `S4D4_TR` struct ar
 helpers, and `POOLING_NUM_CHANNELS=128` are read byte-exact from the CAYMAN/SUNDA/MARIANA/MAVERICK
 arch-isa headers (`aws_neuron_isa_tpb_s4d4_tr.h`, `aws_neuron_isa_tpb_common.h`) shipped in the
 `aws-neuronx-gpsimd-customop-lib` package, cross-checked against `instruction_mapping.json`
-(`struct2opcode`). The `S4D4_TR` `sizeof==64` + field offsets are **compile-verified** with `gcc` this
-pass. The DVE-exclusivity, the decode-type label table, the StreamTranspose decode arm bytes (entry +
+(`struct2opcode`). The `S4D4_TR` `sizeof==64` + field offsets are **compile-verified** with `gcc`.
+The DVE-exclusivity, the decode-type label table, the StreamTranspose decode arm bytes (entry +
 `const16` + `call8` + struct-read) re-decoded identical CAYMAN/MARIANA/MARIANA_PLUS, the DVE engine
 identity, the IVP lane-permute vocabulary, the absence of any HW transpose, and the per-gen presence are
 read from the carved `img_<GEN>_NX_DVE_DEBUG_<SEG>` device images (`.rodata` of the `libnrtucode.a`

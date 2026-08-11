@@ -21,9 +21,9 @@ This page closes the **GPSIMD scan family**: TensorCumulative (`0x4E`/`0x5E`, te
 cross-tile accumulator).
 
 Everything below derives **solely** from static analysis of the shipped GPSIMD device-firmware blob carved
-from `libnrtucode_internal.so` (sha256 `b7c67e89…`, **10,276,288 B**, re-verified this pass), the shipped
+from `libnrtucode_internal.so` (sha256 `b7c67e89…`, **10,276,288 B**), the shipped
 public ISA C headers (`aws_neuron_isa_tpb_s4d4_tr.h`, `aws_neuron_isa_tpb_common.h`,
-`instruction_mapping.json` — each `gcc`/`jq`-verified this pass), and the device DEBUG self-name strings
+`instruction_mapping.json` — each `gcc`/`jq`-verified), and the device DEBUG self-name strings
 carved with `strings -a`. The scan datapath vocabulary is carried from the FLIX-decode/TIE-semantics passes
 as cited. Every claim carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` per the
 [confidence model](../../reference/confidence-model.md). Combiner math is grounded in the
@@ -37,11 +37,11 @@ as cited. Every claim carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRE
 |---|------|----------|-----|
 | 1 | `TensorCumulative` = opcode **pair** `0x4E` (`TENSOR_CUMULATIVE_ARITH_OP`, 78) / `0x5E` (`TENSOR_CUMULATIVE_BITVEC_OP`, 94), both `// Y` maintained, **byte-identical value on all four gens**. | `common.h` mariana `:188`/`:189`, sunda `:180`/`:181`, cayman `:183`/`:184`, maverick `:191`/`:192` (4-gen diff) | HIGH/OBSERVED |
 | 2 | It binds the **64-byte** `NEURON_ISA_TPB_S4D4_TR_STRUCT` — the **Tensor-Reduce family** struct — shared with 11 opcodes (Reduce `0x42`/`0x52`, TransposeReduce `0x83`/`0x84`, Copy `0x46`, Cast `0x47`, Reciprocal `0x48`, StreamShuffle `0x6a`, StreamTranspose `0x6b`). | `instruction_mapping.json` `struct2opcode[NEURON_ISA_TPB_S4D4_TR_STRUCT]` (`jq`, verbatim) | HIGH/OBSERVED |
-| 3 | **Tensor-only scan**: the struct has **one** input tensor (`src_mem_pattern@12`, `MEM_PATTERN4D`, 20 B) and **one** output (`dst_mem_pattern@44`, 20 B), a **single** combiner `op@36` (`ALU_OP`), an **explicit** axis `op_dim@37` (`TENSOR_SUBDIM`). **No** imm, **no** `accumulator_cmd`, **no** second tensor, **no** `REDUCE_OP` field. | `s4d4_tr.h:28-43` + `gcc` compile-verify (sizeof 64, offsets identical sunda/mariana/maverick, this pass) | HIGH/OBSERVED |
+| 3 | **Tensor-only scan**: the struct has **one** input tensor (`src_mem_pattern@12`, `MEM_PATTERN4D`, 20 B) and **one** output (`dst_mem_pattern@44`, 20 B), a **single** combiner `op@36` (`ALU_OP`), an **explicit** axis `op_dim@37` (`TENSOR_SUBDIM`). **No** imm, **no** `accumulator_cmd`, **no** second tensor, **no** `REDUCE_OP` field. | `s4d4_tr.h:28-43` + `gcc` compile-verify (sizeof 64, offsets identical sunda/mariana/maverick) | HIGH/OBSERVED |
 | 4 | The **SCAN-emit contract**: `s4d4_tr_same_src_dst_count` ⇒ `same_element_count_m4d(src,dst)` — one out-element per in-element. Tensor-Reduce instead uses a collapse contract on the **same** struct. | `s4d4_tr.h:235-237` verbatim | HIGH/OBSERVED |
 | 5 | The `0x4E`/`0x5E` split is an **op-class split**: both forbid `Divide`/`Pow`/`Mod`; arith ⇒ `is_arith_op(op)`, bitvec ⇒ `is_bitvec_op(op)`. The arith branch uses `is_arith_op` (**not** `is_general_arith_op`) — so it **alone** among the three scans admits the integer-engine band (`AddInt`/`MultInt`/…/`ModInt`) and `Rsqrt`. | `tensor_cumulative_valid_alu_op` (`s4d4_tr.h:213-222`) + `is_arith_op`/`is_bitvec_op`/`is_general_arith_op` (`common.h:1859`/`:1892`/`:1910`) verbatim | HIGH/OBSERVED |
 | 6 | **`negated@35` forced 0** (`has_zero_negated_field`) — a concrete reduce-vs-scan difference: Tensor-Reduce arith permits `negated ∈ {0,1}`. | `s4d4_tr.h:107-108` + `:190-211` (vs `:96-105`) verbatim | HIGH/OBSERVED |
-| 7 | **Dispatch = DVE only**, via the **grouped** self-name worker `"S: Tensor-Cumulative/Copy/Cast/Stream-Shuffle"` (4 copies = the DVE gens). **No** `"P:"` cumulative name; `0x4E`/`0x5E` **absent** from both Q7_POOL `kernel_info` tables. | `strings -a -t x` @ `0x18d1c3`/`0x4274a4`/`0x6ef1c9`/`0x8af573` (this pass) + POOL-table absence (carried) | HIGH/OBSERVED |
+| 7 | **Dispatch = DVE only**, via the **grouped** self-name worker `"S: Tensor-Cumulative/Copy/Cast/Stream-Shuffle"` (4 copies = the DVE gens). **No** `"P:"` cumulative name; `0x4E`/`0x5E` **absent** from both Q7_POOL `kernel_info` tables. | `strings -a -t x` @ `0x18d1c3`/`0x4274a4`/`0x6ef1c9`/`0x8af573` + POOL-table absence (carried) | HIGH/OBSERVED |
 | 8 | **DTYPE**: `is_valid_dtype` gate ⇒ FP8/FP16/BF16/FP32 + INT8/16/32 + UINT8/16/32; FP32R **out-only**; **INT64/UINT64 excluded** (unlike Tensor-Reduce); int32/uint32 **accepted** (unlike CacheCumulative). Bitvec adds `in==out ∈ {UINT8,UINT16,UINT32,INT32}` with `LogicalShiftRight`→INT32. | `s4d4_tr.h:196-197`/`:224-233` + `common.h:1455` verbatim | HIGH/OBSERVED |
 | 9 | **Per-gen**: scan-defining contract byte-identical on all four gens; deltas are evolutionary plumbing only (sunda/cayman `start_addr`/`t4d`, no indirect-quadrant + narrow int band; mariana/maverick `check_m4d` + indirect-quadrant + full int band). | 4-gen header diff + compile-verify | HIGH/OBSERVED |
 
@@ -62,8 +62,8 @@ out[i] = out[i-1]  op@36  in[i]          along op_dim@37 (X/XY/XYZ/XYZW),  out_c
 | `0x4E` | `TENSOR_CUMULATIVE_ARITH_OP` (78) | `// Y` | `S4D4_TR` | all 4 |
 | `0x5E` | `TENSOR_CUMULATIVE_BITVEC_OP` (94) | `// Y` | `S4D4_TR` | all 4 |
 
-Per-gen opcode lines (`rg`, this pass): sunda `common.h:180`/`:181`; cayman `:183`/`:184`; mariana
-`:188`/`:189`; maverick `:191`/`:192`. `[HIGH/OBSERVED]`
+Per-gen opcode lines (`rg`): sunda `common.h:180`/`:181`; cayman `:183`/`:184`; mariana
+`:188`/`:189`; maverick `:191`/`:192`.
 
 The **opcode neighbourhood** (mariana, verbatim) shows the `Arith=0x4x` / `Bitvec=0x5x` layout the family uses:
 
@@ -92,13 +92,13 @@ structs, with **three distinct** operand arities:
 | `0xe5` | `TENSOR_TENSOR_SCAN_ARITH` | `S2S2D2_STT` (64 B) | two-tensor combine then scan (arith-only) |
 | `0xe6` | `TENSOR_SCALAR_CACHE_CUMULATIVE` | `S3D3_TS` (64 B) | scalar-fold scan with persistent cache |
 
-`common.h:305`/`:306` (mariana) verbatim. The full §9 table closes the comparison. `[HIGH/OBSERVED]`
+`common.h:305`/`:306` (mariana) verbatim. The full §9 table closes the comparison.
 
 ---
 
 ## 3. The operand struct — `S4D4_TR` (64 B), compile-verified
 
-`gcc` compile-verify this pass (a real C program that `#include`s each gen's
+`gcc` compile-verify (a real C program that `#include`s each gen's
 `aws_neuron_isa_tpb_s4d4_tr.h` and prints `offsetof`/`sizeof`) printed **byte-identical** layouts on
 sunda/mariana/maverick:
 
@@ -120,7 +120,7 @@ typedef struct NEURON_ISA_TPB_S4D4_TR_STRUCT {
 } NEURON_ISA_TPB_S4D4_TR_STRUCT;                    // sizeof MEM_PATTERN4D = 20, sizeof SUBDIM = 1
 ```
 
-Compile-output (this pass, all three testable gens identical): `sizeof=64`,
+Compile-output (all three testable gens identical): `sizeof=64`,
 `src=12 in_dtype=32 out_dtype=33 nchan=34 negated=35 op=36 op_dim=37 mask=38 rsvd=39 dst=44`,
 `sizeof MEM_PATTERN4D=20 sizeof SUBDIM=1`. `[HIGH/OBSERVED — s4d4_tr.h:28-43 + gcc offsetof]`
 
@@ -143,13 +143,12 @@ COPY 0x46, CAST 0x47, RECIPROCAL 0x48, STREAM_SHUFFLE 0x6a, STREAM_TRANSPOSE 0x6
 The struct's own header banner (`s4d4_tr.h:13-24`, all 4 gens verbatim) names the same set and pins the scan
 semantics: *"TensorCumulative[Arith/Bitvec]Op — performs a cumulative operation on all elements in an input
 tensor, along a given axis."* TensorCumulative is the **scan member** of this 11-op reduce/movement family.
-`[HIGH/OBSERVED]`
 
 ---
 
 ## 4. The validity contract — `is_valid_tensor_cumulative`
 
-Source: `aws_neuron_isa_tpb_s4d4_tr.h` (mariana `190-237`), verbatim this pass. As annotated pseudocode:
+Source: `aws_neuron_isa_tpb_s4d4_tr.h` (mariana `190-237`), verbatim. As annotated pseudocode:
 
 ```c
 // s4d4_tr.h:190-211 — verbatim, all 4 gens (mariana/maverick add the two indirect_quadrant lines)
@@ -258,7 +257,7 @@ The dispatch surface is resolved from the device DEBUG self-name strings carved 
 
 ### 5.1 The grouped DVE self-name
 
-The blob carries exactly **one** self-name for the cumulative op, and it is **grouped** — confirmed this pass:
+The blob carries exactly **one** self-name for the cumulative op, and it is **grouped**:
 
 ```
 $ strings -a -t x libnrtucode_internal.so | rg 'Tensor-Cumulative/Copy/Cast/Stream-Shuffle'
@@ -272,7 +271,7 @@ $ strings -a -t x libnrtucode_internal.so | rg 'Tensor-Cumulative/Copy/Cast/Stre
 TensorCumulative"` standalone name. The grouped name bundles the four `S4D4_TR` **movement-class** ops that
 move/transform elements one-out-per-in **without** a cross-lane fold: Copy (`0x46`), Cast (`0x47`),
 StreamShuffle (`0x6a`), and the scan-emit Cumulative (`0x4E`/`0x5E`). `[HIGH/OBSERVED — strings -a -t x +
-the per-gen BEGIN markers, this pass]`
+the per-gen BEGIN markers]`
 
 The DVE worker self-name table reads contiguously, listing this group **alongside** separate workers (cayman,
 verbatim ordering):
@@ -292,7 +291,7 @@ cayman+mariana cross-checked]`
 
 ### 5.2 Not a POOL kernel
 
-There is **no** `"P:"` cumulative self-name — re-confirmed this pass (`strings -a | rg -i 'P[0-9%]*: .*Cumulative'`
+There is **no** `"P:"` cumulative self-name (`strings -a | rg -i 'P[0-9%]*: .*Cumulative'`
 returns nothing). The blob's only `"P:"` reduce/movement names are
 `P%i: TensorReduceBitvec : num_chans=%0d`, `P%i: Copy : num_chans = %0d`, `P%i: Cast : num_chans = %0d` (and
 the POOL `unimplemented tensor-reduce ALU op` handler). And `0x4E`/`0x5E` are **absent** from both carved
@@ -321,7 +320,7 @@ CAYMAN POOL opcodes : 41 45 46 47 51 52 7b 7c 7d 7e be f0 f2                  (n
 ```
 
 The SEQ-side `"S: Dispatch opcode=0x%x"` + `"S: BEGIN on cayman"` markers anchor the dispatcher (`@0x18c100`/
-`@0x18c119`, this pass). The dispatcher + grouped-worker self-name are HIGH/OBSERVED; the per-op intra-worker
+`@0x18c119`). The dispatcher + grouped-worker self-name are HIGH/OBSERVED; the per-op intra-worker
 branch is MED — the worker body FLIX/literal-desyncs under stock `xtensa-elf-objdump` (the recurring
 `.byte 0x2f/0x4f/0x5f/0x6f/0x8f` FLIX literal-pool lead bytes). `[dispatcher + grouped worker HIGH/OBSERVED;
 per-op branch MED/INFERRED]`
@@ -413,7 +412,7 @@ bool is_valid_dtype(Dtype d, DtypeAllowFP32R allow_fp32r) {   // common.h:1455 v
 
 Dtype ordinals per `common.h`: `INVALID=0, UINT64=1, INT8=2, UINT8=3, INT16=4, UINT16=5, BFLOAT16=6,
 FP16=7, INT32=8, UINT32=9, FP32=0xA, FP32R=0xB, INT64=0xC, FP8_EXP3=0xD, FP8_EXP4=0xE, FP8_EXP5=0xF`.
-Channels `1..128`. `[HIGH/OBSERVED]`
+Channels `1..128`.
 
 > **Two dtype deltas vs the scan siblings:**
 >
@@ -442,7 +441,7 @@ bool tensor_cumulative_valid_dtype(Inst i) {
 
 So `0x5E` requires `in==out`, the dtype ∈ `{UINT8, UINT16, UINT32, INT32}`, and `LogicalShiftRight` only on
 INT32. The `0x4E` arith opcode carries **no** extra dtype constraint beyond §7.1. This mirrors the bitvec
-narrowing in `tensor_reduce_valid_dtype`. `[HIGH/OBSERVED]`
+narrowing in `tensor_reduce_valid_dtype`.
 
 ---
 
@@ -467,17 +466,17 @@ The per-gen deltas are **evolutionary plumbing, not scan semantics**:
 - **(i) channel/count check.** SUNDA/CAYMAN use `start_addr_active_channels` + `same_element_count_t4d` and
   **no** indirect-quadrant checks; MARIANA/MAVERICK use `check_m4d_active_channels` +
   `same_element_count_m4d` + `indirect_quadrant_check_src4d{,_dst4d}`. Both enforce `src.count == dst.count`
-  (the SCAN-emit contract). `[HIGH/OBSERVED]`
+  (the SCAN-emit contract).
 - **(ii) int-band width.** SUNDA defines **only** `AddInt`/`MultInt`/`SubtractInt` (`0xC4`-`0xC6`) of the int
   band (no `DivideInt`/`ModInt` — confirmed `common.h` sunda `:948-950` with no `0xC7`/`0xC8`), so its
   `is_arith_op` int support is narrower; the full band (`AddInt`/…/`ModInt`) is MARIANA+. The practical `0x4E`
-  arith op set is therefore slightly larger on mariana/maverick. `[HIGH/OBSERVED]`
+  arith op set is therefore slightly larger on mariana/maverick.
 
 > **NOTE — MAVERICK / v5 is header-observed.** The MAVERICK opcode line, struct, and validity functions are
 > read from the shipped MAVERICK arch-isa header (byte-grounded) and the MAVERICK DVE self-name is present in
 > the blob (`@0x8af573`). The *interior* MAVERICK worker datapath is not independently byte-decoded here; v5
 > interior behaviour is INFERRED from the shared family engine. SUNDA defines the opcode+struct but its DVE
-> worker blob was not separately carved this pass (it shares the earliest blob layout). `[header
+> worker blob was not separately carved (it shares the earliest blob layout). `[header
 > HIGH/OBSERVED; v5 interior INFERRED]`
 
 ---
@@ -524,15 +523,14 @@ scan family is closed — three opcodes, three structs, one shared `rotrn ⊕ co
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct header verbatim / compile-output / `jq` / `strings -a` self-name string, this
-pass):
+**HIGH / OBSERVED** (direct header verbatim / compile-output / `jq` / `strings -a` self-name string):
 
 - Opcode `TENSOR_CUMULATIVE_ARITH 0x4E` / `BITVEC 0x5E`, `// Y` maintained, byte-identical value all four gens
   (`common.h` per-gen lines §2); the opcode neighbourhood (RNG `0x4D` / PtrMulti `0x4F`/`0x5F`) and the
   three-scan-op disambiguation.
 - `S4D4_TR` binds TensorCumulative + the 11-op reduce/movement family (`struct2opcode`, `jq`, verbatim §3.1);
   the 64-B struct (`src@12, in_dtype@32, out_dtype@33, nchan@34, negated@35, op@36, op_dim@37, mask@38,
-  reserved@39, dst@44`; sizeof 64) **compile-verified byte-identical** sunda/mariana/maverick this pass — no
+  reserved@39, dst@44`; sizeof 64) **compile-verified byte-identical** sunda/mariana/maverick — no
   imm field, no `accumulator_cmd`, no `REDUCE_OP`, no second tensor.
 - `is_valid_tensor_cumulative` (§4): single `op@36`, `is_valid_subdim(op_dim)` axis, `s4d4_tr_same_src_dst_count`
   = `same_element_count_m4d` (SCAN-emit one-out-per-in), `has_zero_negated_field` (`negated` forced 0, unlike
@@ -548,7 +546,7 @@ pass):
   mar_plus/mav; offsets `0x18d1c3`/`0x4274a4`/`0x6ef1c9`/`0x8af573`), its absence as a standalone or `"P:"`
   name; the `"P:"` reduce/copy/cast surface present but **no** `"P:"` cumulative; `0x4E`/`0x5E` absent from
   both Q7_POOL `kernel_info` tables (CARRIED) — DVE-only via the movement-class grouped worker.
-- Container sha256 `b7c67e89…` (10,276,288 B) re-verified this pass.
+- Container sha256 `b7c67e89…` (10,276,288 B).
 
 **MED / INFERRED:**
 

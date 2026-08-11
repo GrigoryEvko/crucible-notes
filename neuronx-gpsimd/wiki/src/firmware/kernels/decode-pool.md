@@ -20,7 +20,7 @@
 > `decode_pool` is the namesake **operation**, not the dispatcher. The two functions live
 > `~0x4a50` bytes apart (`0x01000bc0` vs `0x01005610`), carry different `.xt.prop`
 > coverage, and self-name differently in the DEBUG trace (`"P%i: Pool : …"` vs
-> `"P%i: … dispatch …"`). `[HIGH/OBSERVED]`
+> `"P%i: … dispatch …"`).
 
 This page anchors the `decode_pool` kernel's **dispatch role and table linkage** — *where*
 it sits in the `kernel_info_table`, *how* opcode `0x45` reaches it, *what* its entry
@@ -36,8 +36,8 @@ The POOL core runs on the Vision-Q7 NX `ncore2gp` ("Cairo") datapath core
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the scalar-LX decode rule decodes the
 *different* NCFW management core and is wrong here.
 
-> **NOTE — the exact object decoded this session.** Every fact below was re-derived from a
-> fresh independent carve out of the static archive `libnrtucode.a`. The canonical image
+> **NOTE — the exact object decoded.** The carve source is the static archive
+> `libnrtucode.a`. The canonical image
 > is archive member `img_CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_contents.c.o`; its `.rodata`
 > payload (file off `0x60`, size `0xA260`) **is** the embedded Vision-Q7 device SO
 > (`== internal_CAYMAN_0.so`):
@@ -57,10 +57,10 @@ The POOL core runs on the Vision-Q7 NX `ncore2gp` ("Cairo") datapath core
 > (`img_CAYMAN_Q7_POOL_DEBUG_DRAM_contents.c.o` `.rodata`, 89,344 B,
 > sha256 `226f4254…f6f0128e`); this PERF image strips them, so its kernel name comes from
 > the `.xt.prop._Z11decode_poolb` section. The `'P%i:'` strings are used purely as name
-> anchors. `[HIGH/OBSERVED]`
+> anchors.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` = reasoned
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` = reasoned
 over OBSERVED facts (often across a FLIX/literal-pool desync); `CARRIED` = consolidated
 from a cited cross-page anchor at its original confidence. Crossed with `HIGH`/`MED`/`LOW`.
 Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation trap),
@@ -111,24 +111,26 @@ switch. It is structurally a *kernel*, not a *dispatcher*. `[HIGH/OBSERVED]`
 
 ## 1. Key facts
 
-| Fact | Value | Anchor | Conf |
-|---|---|---|---|
-| Entry trampoline | `0x01000b90` (file off `0xc90`) | xxd; `kernel_info_table` idx3 funcVA | `[HIGH/OBSERVED]` |
-| Impl body | `0x01000bc0` (file off `0xcc0`) | `.xt.prop._Z11decode_poolb` FUNC-START | `[HIGH/OBSERVED]` |
-| Mangled / demangled | `_Z11decode_poolb` → `decode_pool(bool)` | section [17] name + `c++filt` | `[HIGH/OBSERVED]` |
-| `.xt.prop` section | [17] file off `0x85bc`, size `0x108` (22 records) | `readelf -SW` | `[HIGH/OBSERVED]` |
-| Body extent | `0x01000bc0 .. 0x01000d9a` (`~0x1da` B) | max prop end-VA | `[HIGH/OBSERVED]` |
-| `.bss` state slot | `0x02000458` (loaded by trampoline) | trampoline `const16` bytes | `[HIGH/OBSERVED]` |
-| Table index | idx **3** of 17 | linear-scan order; reloc census | `[HIGH/OBSERVED]` |
-| Table row bytes | `00 00 00 45 90 0b 00 01` @ file off `0x7418` | xxd | `[HIGH/OBSERVED]` |
-| Opcode / spec | `0x45` ('E', 69) / `0` | row `+3` / `+2` | `[HIGH/OBSERVED]` |
-| Packed key | `0x45000000` = `(0x45<<24)\|(0<<16)` | native-LE u32 of row `[0..4]` | `[HIGH/OBSERVED]` |
-| funcVA reloc | `R_XTENSA_RELATIVE` @ `0x0200039c` (= base+3·8+4) | `readelf -rW` | `[HIGH/OBSERVED]` |
-| Trampoline shape | `entry a1,32 ; const16 state ; FLIX ; const16 impl ; callx8 ; movi a2,0 ; retw.n` | byte-exact | `[HIGH/OBSERVED]` |
-| Inner classifier | `pool_func` @ S4D4_PL `+36`, enum `{NONE=0,MAX=1,AVG=2}` | shipped ISA header | `[HIGH/OBSERVED]` |
-| 0xF0 re-use | specs 3,4 `const16 a0,0x01000b90` → re-enter trampoline | route bytes `04 90 0b` | `[HIGH/OBSERVED]` |
-| Per-gen | idx3/trampoline/body/`.xt.prop` invariant across CAYMAN/MARIANA/MARIANA_PLUS | byte compare §6 | `[HIGH/OBSERVED]` |
-| MAVERICK / v5 | EXTISA_0 not in this archive | absence | `[CARRIED/INFERRED]` |
+All rows `[HIGH/OBSERVED]` except the last.
+
+| Fact | Value | Anchor |
+|---|---|---|
+| Entry trampoline | `0x01000b90` (file off `0xc90`) | xxd; `kernel_info_table` idx3 funcVA |
+| Impl body | `0x01000bc0` (file off `0xcc0`) | `.xt.prop._Z11decode_poolb` FUNC-START |
+| Mangled / demangled | `_Z11decode_poolb` → `decode_pool(bool)` | section [17] name + `c++filt` |
+| `.xt.prop` section | [17] file off `0x85bc`, size `0x108` (22 records) | `readelf -SW` |
+| Body extent | `0x01000bc0 .. 0x01000d9a` (`~0x1da` B) | max prop end-VA |
+| `.bss` state slot | `0x02000458` (loaded by trampoline) | trampoline `const16` bytes |
+| Table index | idx **3** of 17 | linear-scan order; reloc census |
+| Table row bytes | `00 00 00 45 90 0b 00 01` @ file off `0x7418` | xxd |
+| Opcode / spec | `0x45` ('E', 69) / `0` | row `+3` / `+2` |
+| Packed key | `0x45000000` = `(0x45<<24)\|(0<<16)` | native-LE u32 of row `[0..4]` |
+| funcVA reloc | `R_XTENSA_RELATIVE` @ `0x0200039c` (= base+3·8+4) | `readelf -rW` |
+| Trampoline shape | `entry a1,32 ; const16 state ; FLIX ; const16 impl ; callx8 ; movi a2,0 ; retw.n` | byte-exact |
+| Inner classifier | `pool_func` @ S4D4_PL `+36`, enum `{NONE=0,MAX=1,AVG=2}` | shipped ISA header |
+| 0xF0 re-use | specs 3,4 `const16 a0,0x01000b90` → re-enter trampoline | route bytes `04 90 0b` |
+| Per-gen | idx3/trampoline/body/`.xt.prop` invariant across CAYMAN/MARIANA/MARIANA_PLUS | byte compare §6 |
+| MAVERICK / v5 | EXTISA_0 not in this archive | absence `[CARRIED/INFERRED]` |
 
 ---
 
@@ -136,8 +138,7 @@ switch. It is structurally a *kernel*, not a *dispatcher*. `[HIGH/OBSERVED]`
 
 The dispatch loop and `decode_pool` are **separate functions** with separate roles. The
 dispatch loop's distinguishing arithmetic — the `kernel_info_table` base/end getters and
-the `(end−base)>>3` count — was re-disassembled byte-0-aligned this session and lives at a
-**different VMA** from `decode_pool`:
+the `(end−base)>>3` count — lives at a **different VMA** from `decode_pool`:
 
 ```
 base getter @0x010055f8 :  36 41 00  entry a1,32
@@ -166,7 +167,7 @@ clusters (§7). It is emphatically **not** an alias of the dispatcher.
 > `decode_tensor_dequantize` (idx 16). It is a **kernel-internal decode stage**, not the
 > engine-level instruction decoder. The engine-level decoder is the dispatch loop at
 > `0x01005610`. A reimplementer who reads "decode_pool" as "the function that decodes which
-> pool kernel to run" has the layering exactly inverted. `[HIGH/OBSERVED]`
+> pool kernel to run" has the layering exactly inverted.
 
 ---
 
@@ -200,7 +201,7 @@ operation, and CAYMAN reuses that numbering. `[HIGH/OBSERVED]`
 
 `.rela.got` carries exactly **17** `R_XTENSA_RELATIVE` (type `0x05`) relocations, one per
 record at `r_offset = table_base + 8·i + 4` for `i = 0..16`. The relocation for **idx 3**
-sits at `0x02000380 + 3·8 + 4 = 0x0200039c` — confirmed present this session:
+sits at `0x02000380 + 3·8 + 4 = 0x0200039c`:
 
 ```
 0200039c  00000005 R_XTENSA_RELATIVE  0     ← idx 3 funcVA slot (decode_pool)
@@ -208,14 +209,13 @@ sits at `0x02000380 + 3·8 + 4 = 0x0200039c` — confirmed present this session:
 
 This independently fixes the 8-byte stride, `funcVA @ +4`, the key being a literal
 (non-relocated) compare value, and idx 3's position. The key bytes are **not** relocated.
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — `decode_pool` is found by a *keyed linear scan*, not a direct index.** The
 > table is in **registration order** (`7e 7c 7d 45 51 41 f0×5 52 46 47 be f2 7b`), not
 > ascending — `decode_pool`'s `0x45` is the *fourth* entry, not the 0x45th. A
 > reimplementation that direct-indexes by opcode reads garbage; scan linearly comparing the
 > packed `(opcode, spec)` key (`O(17)`). The `index 3` here is the *scan position*, not a
-> computed offset. `[HIGH/OBSERVED]`
+> computed offset.
 
 ---
 
@@ -257,7 +257,6 @@ The `.bss` membership of the state slot is confirmed by section geometry:
 `.globstruct` is `0x02000408..0x02000450`; `.bss` is `0x02000450..0x0200048c` (NOBITS,
 zero-init). `0x02000458` falls **inside `.bss`** — a zero-initialised per-kernel
 state/scratch pointer, written at runtime, not part of the dispatch table.
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — the trampoline is `entry a1,32 … callx8 0x01000bc0`, NOT
 > `entry a1,64 … callx8 0x01006ee8`.** An earlier pass disassembled this trampoline as
@@ -267,14 +266,14 @@ state/scratch pointer, written at runtime, not part of the dispatch table.
 > the bogus `36 81 00 → entry a1,64`). The byte-exact truth — raw bytes `36 41 00 …`,
 > byte-0-aligned decode — is `entry a1,32`, state slot `0x02000458`, and the work call is
 > `callx8 a2` with `a2 = 0x01000bc0` (**not** `0x01006ee8`). The body VMA `0x01000bc0` was
-> always correct; only the trampoline disasm was the desync artifact. `[HIGH/OBSERVED]`
+> always correct; only the trampoline disasm was the desync artifact.
 
 > **NOTE — the trampoline lives *outside* the `decode_pool` `.xt.prop` coverage.** The
 > `.xt.prop._Z11decode_poolb` records (§5) cover the **body** `0x01000bc0..0x01000d9a`;
 > the trampoline at `0x01000b90` is its own 0x30-byte stub *before* the body, with no
 > `.xt.prop` of its own. The table funcVA (`0x01000b90`) and the named worker
 > (`0x01000bc0`) are deliberately split: the table points at the trampoline, the trampoline
-> tail-calls the named body. `[HIGH/OBSERVED]`
+> tail-calls the named body.
 
 ---
 
@@ -315,7 +314,7 @@ Eight `0x08` (DATA) spans are interleaved into the body — literal pools embedd
 mis-renders the literal words as FLIX bundles (the documented Vision-Q7 desync). Decoding
 this body with the native objdump prints raw FLIX words and `.byte` for `~25%` of the span;
 those mis-decoded words and any out-of-`.text` call targets are **not** reported as real.
-`[HIGH/OBSERVED for the span map; the in-body instruction stream is partly DESYNC]`
+`[HIGH/OBSERVED span map; body partly DESYNC]`
 
 > **NOTE — the inner SIMD pooling math is OUT OF SCOPE here and reported only structurally.**
 > The body's `ivp_*` Vision-Q7 vector primitives (the windowed max / sum / scale datapath)
@@ -407,7 +406,7 @@ classification, at a different layer:
 By the time `decode_pool` runs, the opcode is already validated as `0x45` (or `0xf0` via
 §7); `decode_pool`'s own validity check is purely on the operand fields. The avg/max choice
 is keyed by `pool_func @ +36` — **not by opcode and not by spec**: one table row, one
-kernel, two inline arms. `[switch structure HIGH/OBSERVED; in-body FLIX arms structural]`
+kernel, two inline arms. `[HIGH/OBSERVED switch; FLIX arms structural]`
 
 > **QUIRK — `pool_scale` removes division from the avg-pool datapath.** The shipped header
 > states `pool_scale` holds `1/(R·S)` precomputed by the host (0.25 for 2×2, 0.1111… for
@@ -433,7 +432,7 @@ avg/max Pool instruction. `[HIGH/OBSERVED]`
 **PATH 2 — `0xF0` EXTENDED spec-3 and spec-4 (the Rand/Cptc band re-using `decode_pool`):**
 both `0xF0` extended trampolines materialise `const16 a0, 0xb90` (bytes `04 90 0b`),
 routing into the **same** `decode_pool` entry `0x01000b90`, but with their **own** `.bss`
-state slots. Verified byte-exact this session:
+state slots, byte-exact:
 
 ```
 spec 4  @0x010037a8 (file off 0x38a8):
@@ -487,7 +486,6 @@ state slot.** `decode_pool` is a *shared operand-decode machine* that three tabl
 > *Rand/Cptc* rows **borrow `decode_pool`'s entry** as a shared decode subroutine. The
 > selection that lands a `0xF0` instruction on spec 3 vs 4 is the same packed-key linear
 > scan that handles every other opcode — the spec byte is part of the key, nothing special.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -523,11 +521,11 @@ section/offset. `[HIGH/OBSERVED]`
 > So the entry VMA (`0x01000b90`), impl VMA (`0x01000bc0`), state slot (`0x458`), entry
 > frame (`a1,32`), table row, and `.xt.prop` section/offset are invariant; the per-build
 > FLIX micro-schedule is **not**. "Identical `.xt.prop`" means identical *metadata at the
-> same offset*, not identical *code bytes*. `[HIGH/OBSERVED]`
+> same offset*, not identical *code bytes*.
 
 > **NOTE — MAVERICK / v5 is header-only here; its `decode_pool` interior is INFERRED.** The
 > EXTISA_0 POOL image for MAVERICK is **not present** in this `libnrtucode.a`, so the
-> MAVERICK `decode_pool` body/trampoline could not be byte-verified this session. The
+> MAVERICK `decode_pool` body/trampoline is not byte-verified. The
 > dispatch arrangement (`0x45 → idx3 → decode_pool`, 8-byte keyed table, packed-key linear
 > scan) is **CARRIED** as the expected MAVERICK arrangement from the CAYMAN/MARIANA
 > invariance, but its interiors are **INFERRED**, not OBSERVED. Flag every v5 `decode_pool`
@@ -567,7 +565,7 @@ To wire `decode_pool` into a Vision-Q7-compatible POOL engine:
 
 ## 10. Adversarial self-verification
 
-Five strongest claims, each re-challenged against the re-carved CAYMAN image this session
+Five strongest claims, each re-challenged against the re-carved CAYMAN image
 (carve sha256 `910d41c3…b4b55527`, 41,568 B):
 
 | # | Claim | Challenge | Verdict |
@@ -584,13 +582,13 @@ Five strongest claims, each re-challenged against the re-carved CAYMAN image thi
 > *dispatch geometry and `.xt.prop` metadata*, **not** the FLIX code bytes, which differ
 > per build (§8). (c) The DEBUG strings are slightly fuller than earlier shorthand:
 > `"P%i: Running max_pool with period = %0d and num = %0d."` (with spaces around `=`), at
-> `dbg_dram.bin` off `0x1fbf`; re-grepped exact this session.
+> `dbg_dram.bin` off `0x1fbf`.
 
 ---
 
 ## 11. Honesty ledger
 
-**HIGH / OBSERVED (direct byte / section / reloc / string read this session):**
+**HIGH / OBSERVED (direct byte / section / reloc / string read):**
 
 - `decode_pool` ROLE: it is the Pool **kernel** (idx 3, opcode `0x45`), a leaf called by
   the dispatch loop (`0x01005610`), **not** the loop and **not** its alias — `~0x4a50`

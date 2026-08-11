@@ -38,7 +38,7 @@ The router is a single jump-table `switch` inside
 bir::IRVisitor<birsim::InstVisitor,void>::visit(bir::Instruction&)   @0x26b380
 ```
 
-keyed on the 32-bit `InstructionType` field at `Instruction+0x58` — the *same* field [`InstructionType`](instruction-type.md) (`sameInst`, family masks) and the BIR-JSON serializer dispatch on. There is **no** opcode/wire remap in the dispatch: every kernel name lines up 1:1 with the canonical `InstructionType` name (`IT 4 = Activation → visitInstActivation`; `IT 8 = Matmult → visitInstMatmult`; `IT 46 = IndirectSaveAccumulate → visitInstIndirectSaveAccumulate`). **[CONFIRMED]** — `switches.json` records `func_addr 0x26b380`, `inst_addr 0x26b3fd`, `default_addr 0x26bc6c`, `ncases 110`, and the 110 `(value→target)` pairs join byte-exact to the disassembly.
+keyed on the 32-bit `InstructionType` field at `Instruction+0x58` — the *same* field [`InstructionType`](instruction-type.md) (`sameInst`, family masks) and the BIR-JSON serializer dispatch on. There is **no** opcode/wire remap in the dispatch: every kernel name lines up 1:1 with the canonical `InstructionType` name (`IT 4 = Activation → visitInstActivation`; `IT 8 = Matmult → visitInstMatmult`; `IT 46 = IndirectSaveAccumulate → visitInstIndirectSaveAccumulate`). The switch metadata records `func_addr 0x26b380`, `inst_addr 0x26b3fd`, `default_addr 0x26bc6c`, `ncases 110`, and the 110 `(value→target)` pairs join byte-exact to the disassembly.
 
 ### 1.1 The pre-switch control-flow interception
 
@@ -59,9 +59,9 @@ Before the switch is even reached, three structured-CF opcodes are pulled out by
 0x26b3fd: jmp  rax                       ; jpt_26B3FD, rel-table base 0x5F4E08
 ```
 
-So `Loop` (105) / `DynamicForLoop` (106) / `DoWhile` (108) **tail-jump out before `enterInstruction` and before the switch** — they recurse the visitor over their region bodies (the `enterInstLoop` / `enterInstDoWhile` / `enterInstDynamicForLoop` hooks fire there instead). **[CONFIRMED — disasm + tail-jump targets.]**
+So `Loop` (105) / `DynamicForLoop` (106) / `DoWhile` (108) **tail-jump out before `enterInstruction` and before the switch** — they recurse the visitor over their region bodies (the `enterInstLoop` / `enterInstDoWhile` / `enterInstDynamicForLoop` hooks fire there instead).
 
-> **GOTCHA — the switch table still has dead slots for 105/106/108.** The jump table emitted at `jpt_26B3FD` contains `110` value→target pairs, and the slots for values `105`, `106`, `108` *do* point at the base block `0x26b400` (IDA even annotates `0x26b400` as "cases 0,2,7,18,47,56,68,77,93,100,**104-106,108**"). Those three table entries are **never executed**: the pre-switch `cmp eax,0x69/0x6A/0x6C` intercepts them first. A naive reading of `switches.json` therefore counts **14** values routed to `0x26b400`; the true *runtime* base set is **11**. Do not conflate the static table slot with the dynamic route. **[CONFIRMED — `jq` over `switches.json` gives `base_to_400 = 14`; disasm proves the three are dead.]**
+> **GOTCHA — the switch table still has dead slots for 105/106/108.** The jump table emitted at `jpt_26B3FD` contains `110` value→target pairs, and the slots for values `105`, `106`, `108` *do* point at the base block `0x26b400` (IDA even annotates `0x26b400` as "cases 0,2,7,18,47,56,68,77,93,100,**104-106,108**"). Those three table entries are **never executed**: the pre-switch `cmp eax,0x69/0x6A/0x6C` intercepts them first. A naive reading of `switches.json` therefore counts **14** values routed to `0x26b400`; the true *runtime* base set is **11**. Do not conflate the static table slot with the dynamic route: counting table slots gives 14, but three of them are unreachable.
 
 ### 1.2 The four routing classes (sums to 110)
 
@@ -87,7 +87,7 @@ case-target 0x26bc27  →  call thunk 0xecb30  (`ff 25 4a 42 1a 02` = jmp cs:off
                        →  body 0x2012d0  (birsim::InstVisitor::visitInstActivation)
 ```
 
-So the dispatch `call` hits a thunk; the thunk tail-jumps to the body. F-strand per-op pages read the **body VA**. The sidecar pairing (thunk `<0x180000`, body `≥0x180000`, same demangled name) confirms all 93 such pairs. **[CONFIRMED.]**
+So the dispatch `call` hits a thunk; the thunk tail-jumps to the body. F-strand per-op pages read the **body VA**. The thunk↔body pairing (thunk `<0x180000`, body `≥0x180000`, same demangled name) resolves all 93 such pairs.
 
 ### 1.4 The 110-row table
 
@@ -223,7 +223,7 @@ enterModule @0x1accc0
   → leaveModule @0x1a9c20
 ```
 
-`enterModule` reads the target arch (`bir::Module::getArch` / `getArchModel`) and constructs the core memory state from it — it builds a `birsim::MemoryObject` (16-byte element seed) and copies the VNC (virtual-neuron-core) manager. This is where per-arch SBUF/PSUM/DRAM sizing and core count enter the simulation (chain `*(getArchModel()+8)+16)+40)+8`). **[STRONG.]**
+`enterModule` reads the target arch (`bir::Module::getArch` / `getArchModel`) and constructs the core memory state from it — it builds a `birsim::MemoryObject` (16-byte element seed) and copies the VNC (virtual-neuron-core) manager. This is where per-arch SBUF/PSUM/DRAM sizing and core count enter the simulation (chain `*(getArchModel()+8)+16)+40)+8`).
 
 ### 2.1 The per-BB driver is semaphore-ordered, not a linear walk
 
@@ -246,15 +246,15 @@ syncState.checkEventsAllClear();  // assert no dangling semaphore events at BB e
                                   //   dumpState on mismatch
 ```
 
-So instruction **order** within a BB is the dynamic ready-order driven by semaphore set/wait edges across `bir::EngineType`-partitioned queues — **not** the static list order. `TpbEngines` (ctor `TpbEngines(SyncState&, BasicBlock&, size_t)`) provides `getNextInstruction` / `allFinished` / `countTotalRemainingInsts`, and `fetchAllEngineInst<InstAllEngineBarrier|InstExit>` for the cross-engine barrier/exit joins. **[STRONG — call sequence read off `0x20cd60`.]**
+So instruction **order** within a BB is the dynamic ready-order driven by semaphore set/wait edges across `bir::EngineType`-partitioned queues — **not** the static list order. `TpbEngines` (ctor `TpbEngines(SyncState&, BasicBlock&, size_t)`) provides `getNextInstruction` / `allFinished` / `countTotalRemainingInsts`, and `fetchAllEngineInst<InstAllEngineBarrier|InstExit>` for the cross-engine barrier/exit joins. The call sequence above is read off `0x20cd60`.
 
-Inter-BB control transfer rides the `Terminator` family kernels (`UnconditionalBranch`/`CompareAndBranch`/`Return`/`Exit`/`Break`) plus the `ControlFlowIRVisitor::visitInstCall` path (IT 84 `@0x26bc90`), which pass block-argument values to the successor BB's parameters. The structured-CF ops `Loop`/`DynamicForLoop`/`DoWhile` ([§1.1](#11-the-pre-switch-control-flow-interception)) recurse the visitor over their region bodies, threading carried induction state across iterations; `visitInstInParallelLoop` `@0x20c940` / `visitInstLoopParallel` `@0x20cc60` drive the loop-parallel variants. **[INFERRED — region recursion is supported by the pre-switch tail-jumps + the `enterInst{Loop,DoWhile,DynamicForLoop}` hooks; the exact iteration/carried-state threading is left to the planned 7.40 loop-execution page.]**
+Inter-BB control transfer rides the `Terminator` family kernels (`UnconditionalBranch`/`CompareAndBranch`/`Return`/`Exit`/`Break`) plus the `ControlFlowIRVisitor::visitInstCall` path (IT 84 `@0x26bc90`), which pass block-argument values to the successor BB's parameters. The structured-CF ops `Loop`/`DynamicForLoop`/`DoWhile` ([§1.1](#11-the-pre-switch-control-flow-interception)) recurse the visitor over their region bodies, threading carried induction state across iterations; `visitInstInParallelLoop` `@0x20c940` / `visitInstLoopParallel` `@0x20cc60` drive the loop-parallel variants. Region recursion follows from the pre-switch tail-jumps plus the `enterInst{Loop,DoWhile,DynamicForLoop}` hooks; the exact iteration and carried-state threading is **INFERRED**, and belongs to the planned loop-execution page.
 
 ---
 
 ## 3. The state object — `birsim::InstVisitor` (~3760 bytes)
 
-The whole machine state lives inside **one** object. Every offset below is pinned to a write in the constructor `birsim::InstVisitor::InstVisitor(Memory*, SyncMode, name, Config, bool, size_t, bool)` `@0x1bc330`, or to a one-line accessor. CERTAIN unless noted.
+The whole machine state lives inside **one** object. Every offset below is pinned to a write in the constructor `birsim::InstVisitor::InstVisitor(Memory*, SyncMode, name, Config, bool, size_t, bool)` `@0x1bc330`, or to a one-line accessor. Every row is CERTAIN unless noted.
 
 | Offset (dec / hex) | Field | Anchor |
 |---|---|---|
@@ -279,7 +279,7 @@ The whole machine state lives inside **one** object. Every offset below is pinne
 
 The constructor also installs a **SIGFPE (signal 8) handler** (`sub_1A1E40` via `sigaction`) — the sim traps FP exceptions during numeric kernels — binds the Config into the Memory (`Memory::setBirSimConfig`), and asserts `PWPSim::Simulator::use_pwp_table()` unless the config disables it (`"Assertion failure: sim.use_pwp_table()"`, `inst_visitor.cpp:391/1411`).
 
-> **GOTCHA — `InstVisitor+0x3E0` is the FIRST WORD of the MT19937-64 state (`mt[0]=42`), not a standalone "magic 42" sentinel.** The constructor's seed loop and `mti@+3488=312` ([§6.1](#61-host-mt19937-64--inline-at-instvisitor0x3e0)) prove it is the host RNG state. The two scratch `MemoryObject`s at `+0x2F8`/`+0x370` are an arch-seed scratch (`enterModule`-filled) plus a second accumulator; field-naming inside them is **[INFERRED]** (IDA has no `birsim::*` types in `structures.json` — the layout is reconstructed from ctor writes and accessors).
+> **GOTCHA — `InstVisitor+0x3E0` is the FIRST WORD of the MT19937-64 state (`mt[0]=42`), not a standalone "magic 42" sentinel.** The constructor's seed loop and `mti@+3488=312` ([§6.1](#61-host-mt19937-64--inline-at-instvisitor0x3e0)) prove it is the host RNG state. The two scratch `MemoryObject`s at `+0x2F8`/`+0x370` are an arch-seed scratch (`enterModule`-filled) plus a second accumulator; field-naming inside them is **INFERRED** — there are no recovered `birsim::*` type definitions, so the layout comes from ctor writes and accessors.
 
 ---
 
@@ -302,7 +302,7 @@ The constructor also installs a **SIGFPE (signal 8) handler** (`sub_1A1E40` via 
 
 ### 4.1 SBUF / PSUM / DRAM are a property of the key, not separate buffers
 
-The SBUF vs PSUM vs DRAM distinction is a property of the **`MemoryLocation`** (`MemoryType` at `MemLoc+216`), not of separate physical arrays. Each tensor lazily gets **one** `MemoryObject` the first time it is written (`createIfNotExist @0x1730c0`). `getMap @0x16e5a0` routes: a **shared** (cross-core) `MemoryLocation` resolves to the second `DenseMap` (`Memory+104`); everything else to the local one (`Memory+8`). The `DenseMap` *value* is `pair<shared_ptr<MemoryObject>, uint32>` — the `uint32` is a refcount, managed by `createIfNotExist` / `decrementRef`. `birsim::PhysicalMemory` (ctor `@0x175680`) is the arch-aware subclass that sizes per-partition banks from the Module's arch. **[CONFIRMED.]**
+The SBUF vs PSUM vs DRAM distinction is a property of the **`MemoryLocation`** (`MemoryType` at `MemLoc+216`), not of separate physical arrays. Each tensor lazily gets **one** `MemoryObject` the first time it is written (`createIfNotExist @0x1730c0`). `getMap @0x16e5a0` routes: a **shared** (cross-core) `MemoryLocation` resolves to the second `DenseMap` (`Memory+104`); everything else to the local one (`Memory+8`). The `DenseMap` *value* is `pair<shared_ptr<MemoryObject>, uint32>` — the `uint32` is a refcount, managed by `createIfNotExist` / `decrementRef`. `birsim::PhysicalMemory` (ctor `@0x175680`) is the arch-aware subclass that sizes per-partition banks from the Module's arch.
 
 Address-space guards in the binary spell out the model:
 
@@ -331,7 +331,7 @@ Address-space guards in the binary spell out the model:
                                           //   interval to (MemoryLocation*, Instruction*)
 ```
 
-The DATA array is `memset 0xFF` at construction — that `0xFF` sentinel is what the read-before-write checker keys on. The `interval_map` drives the dataflow checkers `checkUninitMemReadHelper @0x290320` / `checkWriteWithoutReadHelper @0x28b1a0` / `checkPinnedSBWriteHelper @0x291080`. **[CONFIRMED — ctor field writes + checker bodies.]**
+The DATA array is `memset 0xFF` at construction — that `0xFF` sentinel is what the read-before-write checker keys on. The `interval_map` drives the dataflow checkers `checkUninitMemReadHelper @0x290320` / `checkWriteWithoutReadHelper @0x28b1a0` / `checkPinnedSBWriteHelper @0x291080`.
 
 ### 4.3 AP → backing-slice resolution — `runAP`
 
@@ -357,7 +357,7 @@ for ((off, runlen) in intervals)
   }
 ```
 
-The PSUM accumulate branch reads the per-byte "written" shadow to decide COPY (first write) vs ACCUMULATE (subsequent). Guards: `"MemoryObject::runAP the dtype between AP and MemObj must be the same"`; `"Reading X bytes … out of bounds"`. **[CONFIRMED.]**
+The PSUM accumulate branch reads the per-byte "written" shadow to decide COPY (first write) vs ACCUMULATE (subsequent). Guards: `"MemoryObject::runAP the dtype between AP and MemObj must be the same"`; `"Reading X bytes … out of bounds"`.
 
 For the **indirect** (gather/scatter) APs, `Memory::obtainDataAddrsInByte(targetAP, indicesAP, outAP) @0x179610` (`Memory.cpp:427`) derives the flat per-partition byte addresses from the arch model (`NumIndirectIndicesPerTile`), asserting `"TensorIndirect Indices data type must be uint16"`. The exact per-dim stride loop is the subject of the planned per-op scatter/gather pages.
 
@@ -374,7 +374,7 @@ MemoryObject::resetAccumulation(PAP&, Inst*, isPSUM, accumType) @0x2931f0
   subsequent MACs in the group += via runAP's accumulate branch.
 ```
 
-The per-function "auto psum accumulate" attribute (Function attr key 19) overrides this; `resetAccumulation` reads it from the Function's attribute map. **[CONFIRMED — assert string + MemLoc offsets cross-checked against the [`MemoryLocation`](memory-location.md) field map.]**
+The per-function "auto psum accumulate" attribute (Function attr key 19) overrides this; `resetAccumulation` reads it from the Function's attribute map; the MemLoc offsets cross-check against the [`MemoryLocation`](memory-location.md) field map.
 
 ---
 
@@ -384,7 +384,7 @@ The per-function "auto psum accumulate" attribute (Function attr key 19) overrid
 
 `RegState` (at `InstVisitor+0x150`) is the scalar/GPR state read/written by the register-ALU opcodes (`RegisterAlu` IT 73, `RegisterMove` IT 74, `CompareAndBranch` IT 78, `GetGlobalRankId` IT 11, `GetCurProcessingRankID` IT 66, `ReadVarAddr` IT 41, `TensorLoad`/`TensorSave` IT 75/76).
 
-`initPhyRegSim(Module*) @0x198470`: for each **data-path** engine (`bir::isDataPathEngine`), allocate `arch.NumPhysicalRegisters` (arch model `+60`) entries of **16 bytes** each — `{uint32 value (init 0xFFFFFFFF = -1), Register* sym (init 0)}` — held in a per-engine map (Rb-tree keyed by engine id). `write() @0x19b460` indexes `base[16*RegId] = value`, `base[16*RegId+8] = Register*`; physical writes are width-checked (`"Physical register write can only be 32-bit or 64-bit for now"`). Symbolic registers (`createSymReg` / `writeSym`) live in a separate map. `get(Argument&) @0x196fe0` discriminates `Arg.kind==11` (`RegisterAccess`) vs `Arg.kind==3` (`RegisterAP`); 64-bit values use Hi/Lo `Argument` pairs. **[CONFIRMED for the entry stride + width check; the full 64-bit Hi/Lo arithmetic is read at signature level — INFERRED for the per-engine key encoding.]**
+`initPhyRegSim(Module*) @0x198470`: for each **data-path** engine (`bir::isDataPathEngine`), allocate `arch.NumPhysicalRegisters` (arch model `+60`) entries of **16 bytes** each — `{uint32 value (init 0xFFFFFFFF = -1), Register* sym (init 0)}` — held in a per-engine map (Rb-tree keyed by engine id). `write() @0x19b460` indexes `base[16*RegId] = value`, `base[16*RegId+8] = Register*`; physical writes are width-checked (`"Physical register write can only be 32-bit or 64-bit for now"`). Symbolic registers (`createSymReg` / `writeSym`) live in a separate map. `get(Argument&) @0x196fe0` discriminates `Arg.kind==11` (`RegisterAccess`) vs `Arg.kind==3` (`RegisterAP`); 64-bit values use Hi/Lo `Argument` pairs. The entry stride and width check are read directly; the 64-bit Hi/Lo arithmetic is read only at signature level, and the per-engine key encoding is **INFERRED**.
 
 ### 5.2 `birsim::SyncState` — a flat 256-`uint32` semaphore array
 
@@ -407,7 +407,7 @@ v2 = operator new(0x400u);          // 1024 bytes
 *((_QWORD*)this + 7) = (char*)this + 40;   // touched-id Rb-tree, self-rooted when empty
 ```
 
-So the bank is exactly **256 `uint32` counters**, all zero. A side Rb-tree of "touched" semaphore IDs lets `checkEventsAllClear` flag a dangling event at BB end. **[CONFIRMED — `operator new(0x400)` + the `+128` end pointer.]**
+So the bank is exactly **256 `uint32` counters**, all zero. A side Rb-tree of "touched" semaphore IDs lets `checkEventsAllClear` flag a dangling event at BB end.
 
 Wait/update semantics, verbatim from `needWait @0x19e4b0` and `actOn(Update&) @0x19e300`:
 
@@ -426,7 +426,7 @@ mode 4 → dec(id, 1);   // asserts value==1
 else   → assert("false && \"Unhandled semaphore update command\"");
 ```
 
-`read(id) @0x19e480` bounds-checks `id < (end-begin)>>2 = 256`. `inc`/`dec`/`set` each mark the id in the touched-tree, then mutate `sema[id]`. The driver hooks `actOnWait(Inst*) @0x1a1750` / `actOnUpdate(Inst*) @0x1a0300` pull the inst's wait/update sets from its `SyncInfo`; `clearGroupSemaphores(vector<uint>) @0x19e750` is the `GroupResetSemaphores` (IT 14) kernel. The `shared_ptr<NeuronCoresManager>` makes cross-core semaphore events visible (collectives/remote-DMA route through the same manager). **[CONFIRMED — `needWait`/`actOn` decompiled bodies.]**
+`read(id) @0x19e480` bounds-checks `id < (end-begin)>>2 = 256`. `inc`/`dec`/`set` each mark the id in the touched-tree, then mutate `sema[id]`. The driver hooks `actOnWait(Inst*) @0x1a1750` / `actOnUpdate(Inst*) @0x1a0300` pull the inst's wait/update sets from its `SyncInfo`; `clearGroupSemaphores(vector<uint>) @0x19e750` is the `GroupResetSemaphores` (IT 14) kernel. The `shared_ptr<NeuronCoresManager>` makes cross-core semaphore events visible (collectives/remote-DMA route through the same manager).
 
 ---
 
@@ -468,7 +468,7 @@ y ^= (y >> 43);
 result = y + distr;                    // distr = 0xFFFFFFFF00000000 (see GOTCHA)
 ```
 
-> **QUIRK — the temper masks are textbook MT19937-64; the "correction" is the `std::uniform_int_distribution` adapter, not the generator.** IDA recovers the full `std::mersenne_twister_engine` template instantiation, and its parameters are *exactly* the canonical MT19937-64 constants: word size 64, `n=312`, `m=156`, `r=31`, `a=0xB5026F5AA96619E9`, tempering `(u,d)=(29, 0x5555…)`, `(s,b)=(17, 0x71D67FFFEDA60000)`, `(t,c)=(37, 0xFFF7EEE000000000)`, `l=43`, init multiplier `f=0x5851F42D4C957F2D`. There is **no** deviation in the recurrence or temper. What *looks* like a deviation in the decompile is the trailing `+ distr` and the lazily-`__cxa_guard`-initialised static `getRandomInt<uint32_t>::distr = 0xFFFFFFFF00000000` — that is the `std::uniform_int_distribution<uint32_t>`'s un-set-params sentinel and the high-half mask the adapter folds onto a 64-bit temper to produce a 32-bit draw. The MT engine itself is bit-exact to the standard. **[CONFIRMED — the `_M_gen_rand` template instantiation and all four masks are read verbatim from `visitInstMemset`; the `distr` static and its `__cxa_guard` are in the same body.]**
+> **QUIRK — the temper masks are textbook MT19937-64; the "correction" is the `std::uniform_int_distribution` adapter, not the generator.** IDA recovers the full `std::mersenne_twister_engine` template instantiation, and its parameters are *exactly* the canonical MT19937-64 constants: word size 64, `n=312`, `m=156`, `r=31`, `a=0xB5026F5AA96619E9`, tempering `(u,d)=(29, 0x5555…)`, `(s,b)=(17, 0x71D67FFFEDA60000)`, `(t,c)=(37, 0xFFF7EEE000000000)`, `l=43`, init multiplier `f=0x5851F42D4C957F2D`. There is **no** deviation in the recurrence or temper. What *looks* like a deviation in the decompile is the trailing `+ distr` and the lazily-`__cxa_guard`-initialised static `getRandomInt<uint32_t>::distr = 0xFFFFFFFF00000000` — that is the `std::uniform_int_distribution<uint32_t>`'s un-set-params sentinel and the high-half mask the adapter folds onto a 64-bit temper to produce a 32-bit draw. The MT engine itself is bit-exact to the standard. The `_M_gen_rand` template instantiation, all four masks, the `distr` static and its `__cxa_guard` are all in the one `visitInstMemset` body.
 
 ### 6.2 Device Xorwow — per-op, allocated on demand
 
@@ -487,7 +487,7 @@ counter += 362437;
 return counter + t;
 ```
 
-`Rand2` (IT 97) and `Dropout` (IT 65) build a `std::vector<XorwowState>` (4 lanes per partition for `Rand2`), seed each from the instruction's `Seed` operand, and stream Xorwow values. `Rand` (IT 60) is the **gen-1** path: it reads the op's PRNG **kind** field (`RandomAlgorithmKind` at `InstRand+0xF0`) and selects one of `"Supported PRNGs are LFSR/PCG32/PHILOX_1: "` — *not* Xorwow (`getDtypeSize(Seed.getType()) == 4` / `"Invalid seed type"` guard the seed dtype). All three gen-1 generators are implemented (LFSR taps `{32,22,2,1}`, PCG-XSH-RR 64/32, Philox-4x32-10) — see the [dedicated RNG kernels page](sim-bn-rng-collective-dma.md#21-gen-1--visitinstrand-it-60-3-way-prng-switch). `RandGetState`/`RandSetState` (IT 98/99) and `Get`/`SetRandState` (IT 58/59) read/write the device state vector to/from a tensor — the RNG-state save/restore opcodes. **[Xorwow body CONFIRMED here; the gen-1 LFSR/PCG32/Philox bodies are CONFIRMED on the dedicated page (per-constant `movabs`/tap anchors).]**
+`Rand2` (IT 97) and `Dropout` (IT 65) build a `std::vector<XorwowState>` (4 lanes per partition for `Rand2`), seed each from the instruction's `Seed` operand, and stream Xorwow values. `Rand` (IT 60) is the **gen-1** path: it reads the op's PRNG **kind** field (`RandomAlgorithmKind` at `InstRand+0xF0`) and selects one of `"Supported PRNGs are LFSR/PCG32/PHILOX_1: "` — *not* Xorwow (`getDtypeSize(Seed.getType()) == 4` / `"Invalid seed type"` guard the seed dtype). All three gen-1 generators are implemented (LFSR taps `{32,22,2,1}`, PCG-XSH-RR 64/32, Philox-4x32-10) — see the [dedicated RNG kernels page](sim-bn-rng-collective-dma.md#21-gen-1--visitinstrand-it-60-3-way-prng-switch). `RandGetState`/`RandSetState` (IT 98/99) and `Get`/`SetRandState` (IT 58/59) read/write the device state vector to/from a tensor — the RNG-state save/restore opcodes. The Xorwow body is read here; the gen-1 LFSR/PCG32/Philox bodies are pinned on the dedicated page via per-constant `movabs`/tap anchors.
 
 ---
 
@@ -495,7 +495,7 @@ return counter + t;
 
 `nki_klr_sim` is the **standalone functional-verification arm** of the beta2 KLIR path: take a serialized KLR program on the command line, lower it to BIR in-process, run that BIR on this simulator, and golden-check the outputs against `.npy` files. It is the file-driven counterpart of the in-compiler `bir_sim` walrus pass. It is a **separate binary** (not part of `libBIRSimulator.so`).
 
-> **GOTCHA — `nki_klr_sim` does NOT embed the simulator; it dynamically links it.** `readelf -d` lists `NEEDED: libBIRSimulator.so, libpwp_sim.so, libBIR.so, …`, and the `birsim::*` symbols seen at high addresses in `nki_klr_sim` are 8-byte PLT trampolines, not bodies. Confirmed by the import table: `nki_klr_sim` imports `birsim::InstVisitor::visit(bir::Module&)`, `compareOutputs`, `writeOutputs`, `load_npy_to_object`, and `NeuronCoresManager::setInstVisitorforCore` from `libBIRSimulator`. The 110-case dispatch, the per-op math, and the `allclose` loop all live in `libBIRSimulator.so`. **[CONFIRMED — `native_imports.json` lists the five `UND birsim::…` symbols.]**
+> **GOTCHA — `nki_klr_sim` does NOT embed the simulator; it dynamically links it.** `readelf -d` lists `NEEDED: libBIRSimulator.so, libpwp_sim.so, libBIR.so, …`, and the `birsim::*` symbols seen at high addresses in `nki_klr_sim` are 8-byte PLT trampolines, not bodies. Confirmed by the import table: `nki_klr_sim` imports `birsim::InstVisitor::visit(bir::Module&)`, `compareOutputs`, `writeOutputs`, `load_npy_to_object`, and `NeuronCoresManager::setInstVisitorforCore` from `libBIRSimulator` — five `UND birsim::…` symbols in its import table. The 110-case dispatch, the per-op math, and the `allclose` loop all live in `libBIRSimulator.so`.
 
 ### 7.1 The driver flow
 
@@ -509,7 +509,7 @@ main(argc, argv, envp):
     return 0;
 ```
 
-**STAGE A** (`sub_4D3B20 @0x4d3b20`) loads the KLR file (`sub_4D2820`, `nki_klr_sim.cpp:31`): it asserts the **exact** version `major==0 && minor==0 && patch==12` (KLR format **0.0.12**) and `contents->tag == klr::Contents::Tag::lnc`. It then mints a `bir::Module` (arch from `--target` via `string2ArchLevel`), lowers KLR→BIR (the `libwalrus` `lowerKLIRToNKI` family, statically linked here), and **binds** each `--input-files` / `--output-files` `.npy` to its `MemoryLocation` via `setFile` — the output files are the **golden** tensors. **[CONFIRMED — full body read; version + tag asserts.]**
+**STAGE A** (`sub_4D3B20 @0x4d3b20`) loads the KLR file (`sub_4D2820`, `nki_klr_sim.cpp:31`): it asserts the **exact** version `major==0 && minor==0 && patch==12` (KLR format **0.0.12**) and `contents->tag == klr::Contents::Tag::lnc`. It then mints a `bir::Module` (arch from `--target` via `string2ArchLevel`), lowers KLR→BIR (the `libwalrus` `lowerKLIRToNKI` family, statically linked here), and **binds** each `--input-files` / `--output-files` `.npy` to its `MemoryLocation` via `setFile` — the output files are the **golden** tensors.
 
 **STAGE B** runs the pipeline; `bir_sim`'s `runPhysicalCore @0x5863b0` is the per-core driver. Per core it:
 
@@ -529,23 +529,23 @@ main(argc, argv, envp):
 - For each output `MemoryLocation`, load the matching golden `.npy` (`load_npy_to_object`); guard dtype (`"Golden and Generated Files should have same Dtype"`) and shape (`"Matrix dimension mismatch"`).
 - `ArrayEqual` first; on miss → `AllClose`: pass iff `|gen − gold| <= abs + rel*|gold|` (numpy-allclose semantics), NaN/inf-aware (`"with mismatched NaNs"` / `"…infinities"`). A TBB `blocked_range` `parallel_for` runs the per-tensor compare; `CallCompare<Dtype>::computeMemoryObjectHash` gives a quick-equality hash.
 
-> **GOTCHA — a golden mismatch FAILS compilation.** When `compareOutputs` returns "mismatch", the driver emits the captured diff at ERROR level and raises `NeuronAssertion` ErrorCode `1455` (LNC, `bir_sim.cpp:405`, fatal) or `1454` (non-LNC, `bir_sim.cpp:407`) — both resolve to `RESOLUTION_CONTACT_SUPPORT` — **unless** `--ignore-mismatch-error` is set. `--birsim-output-flatten` flattens multi-dim tensors to 1-D before the `allclose` ("FLATTENED " path). The `checkOutputs` variant (gated by `--check-inst-output-NaN`) is the NaN/inf sanity check. **[CONFIRMED — `runPhysicalCore` body + the 1454/1455 assert sites; the element-wise `allclose` inner loop is read at functor-dispatch level, INFERRED for the exact histogram binning.]**
+> **GOTCHA — a golden mismatch FAILS compilation.** When `compareOutputs` returns "mismatch", the driver emits the captured diff at ERROR level and raises `NeuronAssertion` ErrorCode `1455` (LNC, `bir_sim.cpp:405`, fatal) or `1454` (non-LNC, `bir_sim.cpp:407`) — both resolve to `RESOLUTION_CONTACT_SUPPORT` — **unless** `--ignore-mismatch-error` is set. `--birsim-output-flatten` flattens multi-dim tensors to 1-D before the `allclose` ("FLATTENED " path). The `checkOutputs` variant (gated by `--check-inst-output-NaN`) is the NaN/inf sanity check. The `runPhysicalCore` body and the 1454/1455 assert sites are direct; the element-wise `allclose` inner loop is read only at functor-dispatch level, so the exact histogram binning is **INFERRED**.
 
 This makes the simulator the same tool used to validate **both** an already-allocated BIR (post-allocator, physical memory, skip the SB coloring allocator) **and** an unallocated KLR (pre-allocator, symbolic memory, run coloring) — the auto-decision rides the bir-json's presence/absence of `{partition_offset, free_offset}` per tensor. Cross-references: the reference evaluator the golden tensors ultimately trace back to is [`xla_infergoldens`](../frontend/xla-infergoldens.md); the opcode enum the dispatch keys on is [`InstructionType`](instruction-type.md).
 
 ---
 
-## 8. Adversarial self-verification
+## 8. Evidence summary
 
-The five strongest claims were re-checked against the binary:
+The five strongest claims and their anchors:
 
-1. **110-case dispatch.** `switches.json` for `func_addr 0x26b380` reports `ncases 110` with 110 listed `(value→target)` pairs; the `visit` disassembly's prologue (`mov eax,[rsi+0x58]; cmp eax,0x69`) and the three pre-switch tail-jumps match byte-for-byte. **VERIFIED.** *Subtlety surfaced:* the static table routes **14** values to the base block `0x26b400` (incl. the three dead CF slots); the *runtime* base set is 11. Documented as a GOTCHA ([§1.1](#11-the-pre-switch-control-flow-interception)). **[CONFIRMED.]**
-2. **State sub-models.** `getRegState = this+336` and `getSyncState = this+416` are one-line accessors; the ctor writes `Memory*` at `+312` and constructs `PWPSim::Simulator` at `+664`. **VERIFIED. [CONFIRMED.]**
-3. **MT19937 corrections.** The seed loop (`mt[0]=42`, `×0x5851F42D4C957F2D`, `>>62`, terminate at 312, `mti=312`), the full `std::mersenne_twister_engine` template parameters, and the four temper masks are read verbatim from `visitInstMemset`. The only "correction" is the `uniform_int_distribution` adapter (`distr=0xFFFFFFFF00000000`, `__cxa_guard`-initialised); the generator is textbook-exact. **VERIFIED. [CONFIRMED.]**
-4. **`nki_klr_sim` pipeline.** Its `native_imports.json` lists the five `UND birsim::…` symbols (visit / compareOutputs / writeOutputs / load_npy_to_object / setInstVisitorforCore) — so the tool links the sim, does not embed it. **VERIFIED. [CONFIRMED.]** *Caveat:* the `nki_klr_sim` body addresses in [§7](#7-the-nki_klr_sim-driver--klr--bir--sim--golden-check) come from the standalone tool's own report (cp310-pinned); the corpus IDA DB for that binary is cp312 (addresses drift). The *import relationship* is verified directly on the cp312 DB.
-5. **DenseMap memory model.** The `Memory` ctor installs the local `DenseMap` at `+8` and the shared map at `+104`; `getMap` routes shared vs local. The `MemoryObject` ctor allocates the DATA array (`memset 0xFF`) and the optional shadow (`memset 0x00`). The `Semaphores` ctor's `operator new(0x400)` + `+128` end pointer prove the 256-slot bank. **VERIFIED. [CONFIRMED.]**
+1. **110-case dispatch.** `switches.json` for `func_addr 0x26b380` reports `ncases 110` with 110 listed `(value→target)` pairs; the `visit` disassembly's prologue (`mov eax,[rsi+0x58]; cmp eax,0x69`) and the three pre-switch tail-jumps match byte-for-byte. *Subtlety:* the static table routes **14** values to the base block `0x26b400` (incl. the three dead CF slots); the *runtime* base set is 11 — the discrepancy is the GOTCHA in [§1.1](#11-the-pre-switch-control-flow-interception).
+2. **State sub-models.** `getRegState = this+336` and `getSyncState = this+416` are one-line accessors; the ctor writes `Memory*` at `+312` and constructs `PWPSim::Simulator` at `+664`.
+3. **MT19937 corrections.** The seed loop (`mt[0]=42`, `×0x5851F42D4C957F2D`, `>>62`, terminate at 312, `mti=312`), the full `std::mersenne_twister_engine` template parameters, and the four temper masks are read verbatim from `visitInstMemset`. The only "correction" is the `uniform_int_distribution` adapter (`distr=0xFFFFFFFF00000000`, `__cxa_guard`-initialised); the generator is textbook-exact.
+4. **`nki_klr_sim` pipeline.** Its `native_imports.json` lists the five `UND birsim::…` symbols (visit / compareOutputs / writeOutputs / load_npy_to_object / setInstVisitorforCore) — so the tool links the sim, does not embed it. *Caveat:* the `nki_klr_sim` body addresses in [§7](#7-the-nki_klr_sim-driver--klr--bir--sim--golden-check) come from the standalone tool's own report (cp310-pinned); the corpus IDA DB for that binary is cp312 (addresses drift). The *import relationship* is verified directly on the cp312 DB.
+5. **DenseMap memory model.** The `Memory` ctor installs the local `DenseMap` at `+8` and the shared map at `+104`; `getMap` routes shared vs local. The `MemoryObject` ctor allocates the DATA array (`memset 0xFF`) and the optional shadow (`memset 0x00`). The `Semaphores` ctor's `operator new(0x400)` + `+128` end pointer pin the 256-slot bank.
 
-**Honest re-verify ceiling.** Pinned at the strongest level: the dispatch table, the four routing classes, the `InstVisitor`/`Memory`/`MemoryObject`/`Semaphores` field maps, the MT19937-64 generator, the Xorwow body, and the `nki_klr_sim` import relationship. **Not** fully pinned (left to the planned per-op pages 7.35–7.40 and the debugger page 7.41): the `runAP` multi-dim stride loop element-by-element; the `interval_map` node-internal merge; the loop/do-while carried-state threading; the device PRNG-kind dispatch beyond Xorwow; the `compareOutputs` element-wise histogram binning; and the `RegState` 64-bit Hi/Lo register-pair arithmetic. The `visit` *defining* C body is unavailable (Hex-Rays failed on it) — the dispatch table here is reconstructed from `switches.json` + the `.asm` + the thunk↔body sidecar pairing, which is complete and unambiguous for the table itself.
+**Ceiling.** Pinned at the strongest level: the dispatch table, the four routing classes, the `InstVisitor`/`Memory`/`MemoryObject`/`Semaphores` field maps, the MT19937-64 generator, the Xorwow body, and the `nki_klr_sim` import relationship. **Not** fully pinned (left to the planned per-op pages 7.35–7.40 and the debugger page 7.41): the `runAP` multi-dim stride loop element-by-element; the `interval_map` node-internal merge; the loop/do-while carried-state threading; the device PRNG-kind dispatch beyond Xorwow; the `compareOutputs` element-wise histogram binning; and the `RegState` 64-bit Hi/Lo register-pair arithmetic. The `visit` *defining* C body is unavailable (Hex-Rays failed on it) — the dispatch table here is reconstructed from the switch metadata, the disassembly, and the thunk↔body pairing, which together are complete and unambiguous for the table itself.
 
 ---
 

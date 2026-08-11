@@ -10,9 +10,9 @@ Two `hlo-opt` passes collapse structurally-identical work back onto a single can
 
 - **#76 `neuron-preprocess-kernel-duplicate-remover`** (`xla::hilo::NeuronPreprocessKernelDuplicateRemover`, `Run` @0x1fbff50). A dedup pass for **flash-attention preprocess kernels** emitted as `AwsNeuronCustomNativeKernel` custom-calls. It finds the *first* such kernel (`FindFirstPreprocessKernel` @0x1fbf760), validates a `q`/`kv` slice pair, then for every other kernel whose deeply-nested inner kernel carries the **same backend-config string** (`IsFlashAttentionKernel` @0x1fbf9f0) it clones the canonical `first` onto that duplicate's operands — after substituting the canonical `q`/`kv` tile-ref slices via two `HloInstruction::IdenticalInternal` (@0x967d3c0) checks — and re-points the duplicate's users at the clone.
 
-Both are stateless 8-byte `HloModulePass` subclasses (vptr-only, no member state). Both end with a single `xla::HloDCE::Run` over the module that removes the now-unused duplicates. This page documents both passes' **dedup keying** explicitly, reproduces both `Run` bodies and their helpers as annotated C pseudocode against the real symbols, and adversarially re-checks the five strongest claims against the binary.
+Both are stateless 8-byte `HloModulePass` subclasses (vptr-only, no member state). Both end with a single `xla::HloDCE::Run` over the module that removes the now-unused duplicates. This page documents both passes' **dedup keying** explicitly and reproduces both `Run` bodies and their helpers as annotated C pseudocode against the real symbols.
 
-> **CROSS-REF.** This page covers the dedup half of backing report B23. The *other* half of B23 — `DeletePermute` (#89, `aws_neuron_delete_permute`), the OpExpander that strips degenerate `all-reduce`/`collective-permute` collectives — is documented on **[4.6 — Flip-Collective OpExpander Family](flip-collective-opexpander.md)** and is **not** re-covered here. For the all-gather *combiner* (which fuses sibling gathers rather than deduping identical ones), see **[4.5 — Collective Combiners](collective-combiners.md)**; the combiner and this remover are complementary — the combiner makes one big gather out of *different* gathers, this remover makes one gather out of *identical* ones.
+> **CROSS-REF.** A third, closely-related pass — `DeletePermute` (#89, `aws_neuron_delete_permute`), the OpExpander that strips degenerate `all-reduce`/`collective-permute` collectives, matcher @0x1f79470 and expander @0x1f79490 — is documented on **[4.6 — Flip-Collective OpExpander Family](flip-collective-opexpander.md)** and is **not** re-covered here. For the all-gather *combiner* (which fuses sibling gathers rather than deduping identical ones), see **[4.5 — Collective Combiners](collective-combiners.md)**; the combiner and this remover are complementary — the combiner makes one big gather out of *different* gathers, this remover makes one gather out of *identical* ones.
 
 | | |
 |---|---|
@@ -24,13 +24,13 @@ Both are stateless 8-byte `HloModulePass` subclasses (vptr-only, no member state
 | helpers | `FindFirstPreprocessKernel` @0x1fbf760 (616 B) · `IsFlashAttentionKernel` @0x1fbf9f0 (421 B) · `xla::Cast<HloSliceInstruction>` @0x1fbfd10 |
 | **Shared callees** | `IdenticalInternal` @0x967d3c0 · `CloneWithNewOperands` @0x967fbe0 · `ReplaceAllUsesWith` @0x967a910 · `HloComputation::AddInstruction` @0x96370d0 · `HloDCE::Run` @0x913fb70 · `HloOpcodeString` @0x96bb550 |
 
-> **NOTE — decompile-skipped binary.** `hlo-opt` is built with `NVOPEN_IDA_SKIP_DECOMPILE`; there is no Hex-Rays output, only disassembly. Every function symbol, opcode byte, string, and field offset cited here is read straight from the disasm / IDA `_function_addresses.json` and is **CERTAIN**; the exact branch structure of the open-addressing hash probe and the clone-loop operand dance is reconstructed from disasm and tagged where it weakens to HIGH/MED.
+> **NOTE — decompile-skipped binary.** `hlo-opt` is built with `NVOPEN_IDA_SKIP_DECOMPILE`, so there is no Hex-Rays output — only disassembly. Every function symbol, opcode byte, string and field offset cited here is read straight from the disasm and the IDA `_function_addresses.json`. Two things are reconstructions rather than reads, and are flagged where they appear: the branch structure of the open-addressing hash probe, and the operand handling inside the clone loop.
 
 ---
 
 ## Opcode Decode Oracle
 
-Both passes test the single opcode byte at `HloInstruction+0x14`. Every byte below is resolved against the authoritative `xla::HloOpcodeString` switch @0x96bb550 (CERTAIN):
+Both passes test the single opcode byte at `HloInstruction+0x14`. Every byte below is resolved against the authoritative `xla::HloOpcodeString` switch @0x96bb550:
 
 | byte | opcode | used by |
 |---|---|---|
@@ -46,7 +46,7 @@ Both passes test the single opcode byte at `HloInstruction+0x14`. Every byte bel
 | 0x78 (120) | `tuple` (kTuple) | #106 FindRawParameter forwarding |
 | 0x0D (13) | PrimitiveType `TUPLE` | #76 FindFirst output-shape gate |
 
-> **QUIRK — operand count is `field >> 1`.** Throughout both bodies, the operand count is read as `[inst+0x18] >> 1`, and user-count tests as `[inst+0x38] & 3`. The low bit of the operand-list field is an inlined-vs-heap flag; the count lives in the high bits. Reading `[inst+0x18]` raw and comparing to a count is a classic off-by-2×-plus-one mistake when reimplementing — always shift right by one first. (CERTAIN — the `>>1` idiom is reused at every operand/user site in both passes.)
+> **QUIRK — operand count is `field >> 1`.** Throughout both bodies, the operand count is read as `[inst+0x18] >> 1`, and user-count tests as `[inst+0x38] & 3`. The low bit of the operand-list field is an inlined-vs-heap flag; the count lives in the high bits. Reading `[inst+0x18]` raw and comparing to a count is a classic off-by-2×-plus-one mistake when reimplementing — always shift right by one first. The `>>1` idiom recurs at every operand and user site in both passes.
 
 ---
 
@@ -58,7 +58,7 @@ Tensor-parallel and FSDP lowerings shard a weight `parameter` and emit one `all-
 
 ### Entry Point
 
-`Run` @0x1f8e890. Mangled symbol (CONFIRMED in `_function_addresses.json`):
+`Run` @0x1f8e890. Mangled symbol, as it appears in `_function_addresses.json`:
 
 ```
 _ZN3xla4hilo40NeuronDuplicateParameterAllGatherRemover3RunEPNS_9HloModuleERK…flat_hash_set…
@@ -100,7 +100,7 @@ Map equality requires, in order, all of:
 3. **`xla::Shape::Equal`** of the AG **output** shape (full, layout-sensitive);
 4. **deep `replica_groups` equality** — per-group size compare then `memcmp` of the `long[]` group data.
 
-> **GOTCHA — the gather dimension is NOT a key column.** Reading the tuple, you might expect `all_gather_dimension` (`[ag+0x258]`), `constrain_layout` (`[ag+0x250]`), and `use_global_device_ids` (`[ag+0x260]`) to be stored explicitly. They are not. They are captured **implicitly**: the output `Shape` (elem [4]) encodes the gather dimension and gathered extent, and the `replica_groups` (elem [5]) encode the device participation. Two gathers with the same parameter, same output shape, same dtype, and same replica-groups are duplicates regardless of how those fields were spelled. (CERTAIN — the key tuple has exactly six elements and none is `dim`/`constrain`/`global-id`.)
+> **GOTCHA — the gather dimension is NOT a key column.** Reading the tuple, you might expect `all_gather_dimension` (`[ag+0x258]`), `constrain_layout` (`[ag+0x250]`), and `use_global_device_ids` (`[ag+0x260]`) to be stored explicitly. They are not. They are captured **implicitly**: the output `Shape` (elem [4]) encodes the gather dimension and gathered extent, and the `replica_groups` (elem [5]) encode the device participation. Two gathers with the same parameter, same output shape, same dtype, and same replica-groups are duplicates regardless of how those fields were spelled. The key tuple has exactly six elements, and none of them is `dim`, `constrain` or `global-id`.
 
 So in plain English: **two all-gathers are duplicates iff they trace back to the same `parameter` through the same index chain, and have the same output shape (incl. layout), same element dtype, and identical replica-groups.**
 
@@ -109,7 +109,7 @@ So in plain English: **two all-gathers are duplicates iff they trace back to the
 `FindRawParameter(this, start, all_gather)` @0x1f8d640 snapshots the all-gather's attributes once at entry, then walks `start` upward through forwarding ops until it bottoms out at a `parameter` (or stops on a non-forwarding op, leaving the raw-param pointer null → the gather is skipped).
 
 ```c
-// FindRawParameter @0x1f8d640 — returns the key struct (CERTAIN: opcodes & GetReplicaGroups)
+// FindRawParameter @0x1f8d640 — returns the key struct
 KeyStruct FindRawParameter(Self* this, HloInstruction* node, HloInstruction* ag) {
     key.primtype = ag->shape().element_type();          // 0x1f8d693  tuple elem [2]
     // assert ag is the all-gather FAMILY: (opcode & ~2)==4 matches 4 (all-gather) OR 6 (all-gather-start)
@@ -144,9 +144,9 @@ KeyStruct FindRawParameter(Self* this, HloInstruction* node, HloInstruction* ag)
 }
 ```
 
-> **NOTE — the convert is shape-guarded.** A `convert` is tunnelled through only when its operand and result shapes are `Shape::Equal` (the `Shape::Equal::operator()` call @0x1f8e142). That restricts it to pure bitcast/layout converts; a dtype-changing convert *stops* the walk (and the gather is left undeduped). This is the only forwarding op with a guard — gte/tuple/opt-barrier/nested-all-gather are tunnelled unconditionally. (CERTAIN — the only `Shape::Equal` call in FindRawParameter sits on the `convert` arm.)
+> **NOTE — the convert is shape-guarded.** A `convert` is tunnelled through only when its operand and result shapes are `Shape::Equal` (the `Shape::Equal::operator()` call @0x1f8e142). That restricts it to pure bitcast/layout converts; a dtype-changing convert *stops* the walk (and the gather is left undeduped). This is the only forwarding op with a guard — gte/tuple/opt-barrier/nested-all-gather are tunnelled unconditionally, and the sole `Shape::Equal` call in `FindRawParameter` sits on the `convert` arm.
 
-The up-walk logs each hop (`Finding raw parameter for instruction:`, `Found get-tuple-element at index:`, `Found convert operation, moving to its input`, `Found optimization barrier, moving to its input` — all CONFIRMED in the binary), making FindRawParameter trivial to trace at `--v=2`.
+The up-walk logs each hop (`Finding raw parameter for instruction:`, `Found get-tuple-element at index:`, `Found convert operation, moving to its input`, `Found optimization barrier, moving to its input` — all present verbatim in the binary), making FindRawParameter trivial to trace at `--v=2`.
 
 ### Run — keep-first / replace-rest / DCE
 
@@ -184,7 +184,7 @@ return changed;
 
 The duplicate is **never explicitly removed** in the loop — `ReplaceAllUsesWith` makes it unused, and the single trailing `HloDCE::Run` (gated on `changed`) reaps it. The kept gather is the **first inserted** for the key, i.e. the post-order-earliest gather wins.
 
-> **GOTCHA — dedup is intra-computation only.** `seen` is rebuilt per computation (zeroed @0x1f8eedb at the top of each computation loop). Identical gathers of the same parameter in *different* computations are not folded together. (CERTAIN.)
+> **GOTCHA — dedup is intra-computation only.** `seen` is rebuilt per computation (zeroed @0x1f8eedb at the top of each computation loop). Identical gathers of the same parameter in *different* computations are not folded together.
 
 ---
 
@@ -198,14 +198,14 @@ Flash-attention lowering emits a *preprocess* kernel — an `AwsNeuronCustomNati
 
 `Run` @0x1fbff50. Pass object is 8 bytes (vptr only); registrar @0x1e70820 stores vptr `off_411FE0` (= `_ZTV…` @0x411fd0 + 0x10). `name()` @0x1fbf700 returns the 0x2A-byte StringRef `neuron-preprocess-kernel-duplicate-remover`.
 
-> **CORRECTION.** An earlier sketch (registry survey S2-02 §4.3) described this as a trivial "if `Identical`, replace, erase" loop and placed the `q`/`kv` `kReshape` assertions inside `IsFlashAttentionKernel`. The binary disagrees on three counts, corrected throughout below: (1) the `q`/`kv` slice + reshape RET_CHECKs live in **`Run`**, not in `IsFlashAttentionKernel` (which is a pure backend-config/operand-chain predicate); (2) the rewrite is `CloneWithNewOperands(first)` → `AddInstruction` → `ReplaceAllUsesWith(clone)`, not `ReplaceAllUsesWith(first)`; (3) `IdenticalInternal` is called **twice per duplicate** to substitute the canonical `q`/`kv` slices, not once as a top-level identity gate.
+> **GOTCHA — this is not an "if identical, replace, erase" loop.** Three details are easy to guess wrong: the `q`/`kv` slice and reshape RET_CHECKs live in **`Run`**, not in `IsFlashAttentionKernel` (which is a pure backend-config / operand-chain predicate); the rewrite re-points users at a *fresh clone* of the canonical kernel, not at the canonical kernel itself; and `IdenticalInternal` runs **twice per duplicate** to substitute the canonical `q`/`kv` slices, rather than once as a top-level identity gate.
 
 ### FindFirstPreprocessKernel — finding the canonical kernel
 
 `FindFirstPreprocessKernel(module)` @0x1fbf760 returns the first `AwsNeuronCustomNativeKernel` custom-call matching a flash-attention fingerprint, or `nullptr`.
 
 ```c
-// FindFirstPreprocessKernel @0x1fbf760 (HIGH; field semantics of array_state MED)
+// FindFirstPreprocessKernel @0x1fbf760
 for (comp in module->computations())
   for (I in comp->instructions()) {
     if (I->opcode() != 0x2B /*kCustomCall*/) continue;                 // 0x1fbf7e3 cmp [..+14h],2Bh
@@ -229,7 +229,7 @@ The trailing-dim doubling (`2*d_op0 == d_self`) is the flash-attention fingerpri
 `IsFlashAttentionKernel(inst, name)` @0x1fbf9f0, where `name` is the **first kernel's backend-config raw string** (captured by `Run`). An instruction is a *duplicate* iff it is an `AwsNeuronCustomNativeKernel` whose deeply-nested inner preprocess kernel carries the **same backend-config string** as `first`, while the outer kernel is **not** byte-identical to `first`.
 
 ```c
-// IsFlashAttentionKernel @0x1fbf9f0 (HIGH; chain depth CERTAIN, sub-graph semantics MED)
+// IsFlashAttentionKernel @0x1fbf9f0
 bool IsFlashAttentionKernel(HloInstruction* inst, const std::string& name) {
     if (inst->opcode() != 0x2B /*kCustomCall*/) return false;          // 0x1fbfa01
     n = inst->operand_count >> 1;
@@ -251,17 +251,17 @@ bool IsFlashAttentionKernel(HloInstruction* inst, const std::string& name) {
 }
 ```
 
-> **QUIRK — the backend-config string IS the dedup key.** The match is byte-equality of the *inner* kernel's backend-config raw string against `first`'s, with the early `memcmp==0 ⇒ false` excluding `first` itself and any exact clone. The fixed five-/six-level `operand(0)` descent is the canonical flash-attn preprocess wiring (outer custom-call → reshape/slice chain → inner custom-call). The `n <= 7 ⇒ false` guard requires the matched outer kernel to carry **≥ 8 operands** (the `7` is a verbatim immediate at 0x1fbfa7c). The descent depth and the operand count are CERTAIN from disasm; the precise HLO sub-graph each `operand(0)` hop walks is INFERRED (would need a real flash-attn dump to pin) — MED.
+> **QUIRK — the backend-config string IS the dedup key.** The match is byte-equality of the *inner* kernel's backend-config raw string against `first`'s, with the early `memcmp==0 ⇒ false` excluding `first` itself and any exact clone. The fixed five-/six-level `operand(0)` descent is the canonical flash-attn preprocess wiring (outer custom-call → reshape/slice chain → inner custom-call). The `n <= 7 ⇒ false` guard requires the matched outer kernel to carry **≥ 8 operands** (the `7` is a verbatim immediate at 0x1fbfa7c). The descent depth and the operand count come straight from the disasm; the precise HLO sub-graph each `operand(0)` hop walks is [INFERRED] and would need a real flash-attention dump to pin.
 
 ### Run — validate q/kv, clone-per-duplicate, DCE
 
 ```c
-// Run @0x1fbff50 (logic HIGH; clone-loop flow MED)
+// Run @0x1fbff50
 first = FindFirstPreprocessKernel(module);                            // 0x1fbff94
 if (first == nullptr) return false;
 name = first->backend_config().GetRawStringWithoutMutex();            // 0x1fbffb7
 
-// FOUR RET_CHECKs (all in Run, all CONFIRMED strings):
+// FOUR RET_CHECKs, all in Run; each message string is quoted at its address:
 RET_CHECK(first->user_count() == 2);                                  // str @0x387ba0
 u0 = first->users()[0];  u1 = first->users()[1];
 RET_CHECK(u0->opcode()==0x6E && u1->opcode()==0x6E /*kSlice*/);       // str @0x370698
@@ -299,14 +299,14 @@ return changed;
 
 ### IdenticalInternal as used here
 
-`HloInstruction::IdenticalInternal` @0x967d3c0 (1549 B). Both call sites push the same four trailing bools; on x86-64 the last `push 1` is `arg_0`, so the flags decode (CERTAIN) to:
+`HloInstruction::IdenticalInternal` @0x967d3c0 (1549 B). Both call sites push the same four trailing bools; on x86-64 the last `push 1` is `arg_0`, so the flags decode to:
 
 ```
 layout_sensitive = true,  ignore_channel_id = false,
 ignore_commutative_operand_order = false,  sharding_must_match = false
 ```
 
-The two `FunctionRef` comparators are `std::equal_to<HloInstruction const*>` and `std::equal_to<HloComputation const*>` — i.e. **pointer-identity**. So `IdenticalInternal` here is *layout-sensitive shape + opcode + backend-config equality with pointer-equal operands/computations*, **not** a recursive structural deep-compare. Per-call, it is the genuine "is this duplicate's q/kv ref the canonical one" decision. Prologue early-exits (CERTAIN): `this==&other ⇒ true`; opcode mismatch ⇒ false; `ShapeUtil::Equal(shape)` when layout-sensitive; then the operand/computation FunctionRefs.
+The two `FunctionRef` comparators are `std::equal_to<HloInstruction const*>` and `std::equal_to<HloComputation const*>` — i.e. **pointer-identity**. So `IdenticalInternal` here is *layout-sensitive shape + opcode + backend-config equality with pointer-equal operands/computations*, **not** a recursive structural deep-compare. Per-call, it is the genuine "is this duplicate's q/kv ref the canonical one" decision. Its prologue early-exits are, in order: `this==&other ⇒ true`; opcode mismatch ⇒ false; `ShapeUtil::Equal(shape)` when layout-sensitive; then the operand/computation FunctionRefs.
 
 The four RET_CHECKs use `xla::status_macros::MakeErrorStream` with file `hilo/hlo_passes/neuron_preprocess_kernel_duplicate_remover.cc` (str @0x3285e8); a failure returns the StatusOr error early.
 
@@ -329,23 +329,20 @@ Neither pass calls `RemoveInstruction` / `DetachFromOperandsAndUsers` in its rew
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+- **The all-gather dedup key really is six elements, with no `dim` column.** The `raw_hash_set` template symbol at the `prepare_insert` site names exactly `tuple<HloInstruction*, long, PrimitiveType, long, Shape, vector<vector<long>>>`, and the node-offset stores (`+0x158` / `+0x160` / `+0x168` / `+0x170`) account for every scalar. There is no store of `[ag+0x258]` anywhere — the gather dimension enters only through the output `Shape`.
+- **The `FindRawParameter` up-walk and its guard.** The opcode arms read directly as `cmp al,4Ch` (0x1f8d6f1), `cmp al,3Ah` (0x1f8d6f9), `cmp al,78h` (0x1f8d701), `cmp al,48h` (0x1f8d709) and `cmp al,25h` (0x1f8d711); `and eax,0FFFFFFFDh` (0x1f8d6c5) is the `(op&~2)==4` all-gather-family test; and the single `Shape::Equal::operator()` call (0x1f8e142) sits on the `convert` arm, which is what makes that one arm shape-guarded.
+- **`IdenticalInternal` runs twice, layout-sensitively.** Two distinct call sites (0x1fc0287, 0x1fc02ef) target `IdenticalInternal` @0x967d3c0, both pushing `1,0,0,0` so that `arg_0 = layout_sensitive = true` and the rest are false; the operand and computation `FunctionRef`s are `std::equal_to<…const*>`, i.e. pointer equality.
+- **Both passes are stateless and erase only via DCE.** Each registrar performs `operator new(8)` plus a single vptr store (`off_4115C0` / `off_411FE0`); neither `Run`'s callee set contains `RemoveInstruction` or `DetachFromOperandsAndUsers`; both terminate in `HloDCE::Run` @0x913fb70 — `changed`-gated at 0x1f8eea2 for the all-gather remover, an unconditional tail for the preprocess remover.
 
-**1. "The AllGather dedup key is a 6-element tuple rooted on parameter pointer-identity, and `dim`/`constrain`/`global-id` are NOT key columns."**
-*Challenge:* could the dim be folded in as a seventh scalar? *Re-check:* the `raw_hash_set` template symbol at the `prepare_insert` site names exactly `tuple<HloInstruction*, long, PrimitiveType, long, Shape, vector<vector<long>>>` — six elements, last two being `Shape` and `replica_groups`. The node-offset stores (`+0x158/+0x160/+0x168/+0x170`) account for all scalars; there is no store of `[ag+0x258]`. **CONFIRMED** — implicit-via-Shape, not a separate column.
+## Limits of this reading
 
-**2. "FindRawParameter tunnels through gte/tuple/opt-barrier/convert/all-gather and stops at parameter, with the convert shape-guarded."**
-*Challenge:* are those opcode bytes right, and is the convert really guarded? *Re-check:* read the disasm directly — `cmp al,4Ch` (0x1f8d6f1), `cmp al,3Ah` (0x1f8d6f9), `cmp al,78h` (0x1f8d701), `cmp al,48h` (0x1f8d709), `cmp al,25h` (0x1f8d711); the only `Shape::Equal::operator()` call (0x1f8e142) sits on the convert arm; `and eax,0FFFFFFFDh` (0x1f8d6c5) gives the `(op&~2)==4` all-gather-family test. **CONFIRMED — every opcode byte and the guard verified in-binary.**
+Four gaps remain open:
 
-**3. "DeletePermute is the OTHER half of B23 and is documented on 4.7, not here."**
-*Challenge:* did I accidentally absorb it? *Re-check:* matcher @0x1f79470 (`cmp dl,7` / `cmp dl,1Dh` / `or eax,edx`) and expander @0x1f79490 (`mutable_operand(0)`) are byte-verified but **intentionally excluded** from this page's body per scope; only cross-referenced to [4.6](flip-collective-opexpander.md). **CONFIRMED — scope honored.**
+- The precise HLO sub-graph at each `operand(0)` hop in `IsFlashAttentionKernel`, and the meaning of the `> 7` operand-count guard, are [INFERRED]; a real flash-attention preprocess dump would pin them.
+- The `array_state` dims byte-offset layout behind `FindFirstPreprocessKernel`'s doubling check is reconstructed from the repeated access idiom. The rank test is solid; the exact element offsets are not.
+- The dedup-map open-addressing probe (SSE group scan ~0x1f8ec14) is summarised as "absl `raw_hash_set` find/insert" rather than stepped instruction by instruction.
+- The tuple-key scalars [1] and [3] (`node+0x158` / `+0x168`) both default to −1 and are populated from gte/tuple `tuple_index()`. Their outer-versus-inner roles on nested tuples are not pinned down — but since they participate in the equality as opaque longs, this does not affect the dedup-correctness statement.
 
-**4. "Preprocess Run runs IdenticalInternal twice with layout_sensitive=true and pointer-identity comparators."**
-*Challenge:* one call or two, and which flags? *Re-check:* two distinct call sites (0x1fc0287, 0x1fc02ef) into `IdenticalInternal` @0x967d3c0; both push `1,0,0,0` (so `arg_0=layout_sensitive=true`, rest false); the operand/computation FunctionRefs are `std::equal_to<…const*>` (pointer-equal). **CONFIRMED.** The exact operand-substitution branch order (clone-loop flow) remains **MED** — disasm-reconstructed, not Hex-Rays-verified.
-
-**5. "Both passes are stateless 8-byte HloModulePass subclasses that erase via a trailing stock HloDCE."**
-*Challenge:* could either erase inline? *Re-check:* both registrars do `operator new(8)` + a single vptr store (`off_4115C0` / `off_411FE0`); neither `Run`'s callee set contains `RemoveInstruction`/`DetachFromOperandsAndUsers`; both terminate in `HloDCE::Run` @0x913fb70. **CONFIRMED.** #106's HloDCE is `changed`-gated (0x1f8eea2); #76's is an unconditional tail.
-
-> **GAPS (open).** (a) The precise HLO sub-graph at each `operand(0)` hop in `IsFlashAttentionKernel`, and the `>7` operand-count semantics, are INFERRED (MED) — a real flash-attn preprocess dump would pin them. (b) The `array_state` dims byte-offset layout used by `FindFirstPreprocessKernel`'s doubling check is reconstructed from the repeated access idiom (rank HIGH, exact element offsets MED). (c) The dedup-map open-addressing probe (SSE group scan ~0x1f8ec14) is summarised as "absl raw_hash_set find/insert", not stepped. (d) The tuple-key scalars [1]/[3] (`node+0x158`/`+0x168`) both default to -1 and are populated from gte/tuple `tuple_index()`; their outer-vs-inner roles on nested tuples are MED but, being opaque longs in the equality, do not affect the dedup-correctness statement.
+The operand-substitution branch order inside the preprocess clone loop is likewise disasm-reconstructed rather than read from pseudocode.

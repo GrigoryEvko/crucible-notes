@@ -8,9 +8,8 @@ pitch, every RESERVED pad, the `LOCAL_REG` control block, the
 `q7_release_run_stall` boot doorbell, and the placement of the whole cluster
 inside the 32.0625 GiB `TPB_0` decode window.
 
-Every base/size on this page was re-extracted from the RTL-generated address-map
-artifact and re-derived numerically; nothing is carried from a sibling page
-without an in-place re-check.
+Every base/size on this page is taken from the RTL-generated address-map artifact
+and derived numerically; nothing is carried from a sibling page.
 
 **Primary artifact (binary-derived, citeable):**
 `extracted/nested/cayman-arch-regs_tgz/output/address_map/address_map_flat.yaml`
@@ -19,8 +18,8 @@ without an in-place re-check.
 `LOCAL_REG` register file) and the node→schema map
 `output/address_map/address_map_json_xref.yaml`.
 
-> **Confidence convention.** Each claim is tagged `HIGH/MED/LOW` ×
-> `OBSERVED/INFERRED/CARRIED`. Cayman = NC-v3 ("mariana"), and every value below
+> **Confidence convention.** Claims that depart from the page default
+> `HIGH/OBSERVED` carry an explicit tag. Cayman = NC-v3 ("mariana"), and every value below
 > is byte-grounded in the NC-v3 artifact (`OBSERVED`). NC-v5 ("maverick")
 > equivalents are `INFERRED` (same IP family, same `tpb_xt_local_reg.json`
 > shipped in `arch-headers/maverick/`, but per-arch population not re-walked
@@ -37,7 +36,7 @@ The `TPB_0` container and its POOL children are leaf rows in the flat YAML.
 L866: TPB_0   base 0x000002000000000   size 0x000000804000000
 ```
 
-**Size re-derivation (`HIGH/OBSERVED`).** The YAML size field is
+**Size derivation.** The YAML size field is
 `0x804000000`, not `0x802000000`:
 
 ```
@@ -51,8 +50,7 @@ end = base + size = 0x2000000000 + 0x804000000 = 0x2804000000
 > = 32.0625 GiB**, *not* `0x802000000`. `0x802000000` would be 32.03125 GiB and
 > does not appear at `L866`. The literal `0x804000000` is byte-exact in the YAML
 > and is reproduced verbatim by `TPB_1` (`L980`, identical size), so this is the
-> true per-TPB stride, not a typo. (`HIGH/OBSERVED`)
-
+> true per-TPB stride, not a typo.
 > **GOTCHA — the cluster pseudo-base is *not* the `TPB_0` base.** The POOL Q7
 > cluster IP is laid out relative to **`0x2800000000`**, which is the child
 > `TPB_0_TPB_RESERVED_SBUF` (`L873`, a 32 MiB SBUF decode aperture *inside*
@@ -62,10 +60,9 @@ end = base + size = 0x2000000000 + 0x804000000 = 0x2804000000
 > exactly (§6). All absolute addresses here are anchored on the true
 > `0x2000000000` `TPB_0` base; the `+0x3xxxxxx` offsets are quoted against the
 > `0x2800000000` **cluster pseudo-base** where that aids the PREPROC comparison.
-> (`HIGH/OBSERVED`)
 
-`TPB_0`'s direct children (all `TPB_0_*`) number **112** (`rg -c '^- { name:
-TPB_0_'` = 112). Of these, **40** are the POOL rows (`L938–L977`), all contiguous
+`TPB_0`'s direct children (all `TPB_0_*`) number **112**. Of these, **40** are the
+POOL rows (`L938–L977`), all contiguous
 leaves with no nesting. The top-level engine census inside the window, in
 address order:
 
@@ -91,17 +88,15 @@ address order:
 Exactly **five** engines carry an Xtensa `LOCAL_REG` bound to
 `tpb_xt_local_reg.json`: **ACT, PE, SP, DVE, POOL**. Of these, **only POOL** has
 a Q7 multi-core sub-array; ACT/PE/SP/DVE are single Xtensa-NX + small sequencer
-blocks (no `Q7_CORE*` rows). (`HIGH/OBSERVED`)
-
+blocks (no `Q7_CORE*` rows).
 > **NOTE — SDMA is not under `TPB_0`.** There is no `TPB_0_SDMA*` row. The
 > SDMA/UDMA units live under the `APB_SE_n` windows (e.g. `APB_SE_0_SDMA_0_*`),
-> not under `TPB_0`. (`HIGH/OBSERVED`, negative result.)
+> not under `TPB_0`. (Negative result.)
 
 The 110 leaf children (112 minus the two nested-container nodes `EVT_SEM` and
 `SP`) tile `[0x2000000000, 0x2804000000)` with **zero gaps and zero overlaps**:
 first-leaf base == container base, last-leaf end == container end, and Σ(leaf
-sizes) == `0x804000000` == container size. (`HIGH/OBSERVED`)
-
+sizes) == `0x804000000` == container size.
 See [`soc-master-map.md`](soc-master-map.md) and
 [`pkl-tpb-subtree.md`](pkl-tpb-subtree.md) for the SoC- and TPB-level context.
 
@@ -113,8 +108,7 @@ Byte-exact from `address_map_flat.yaml:938–977` (the YAML zero-pads bases/size
 to 15 hex digits; leading zeros are cosmetic). `off` = offset from the
 `0x2800000000` cluster pseudo-base. Only `POOL_LOCAL_REG` carries a `json:`
 binding; every Q7/NX IRAM·DRAM and every `RESERVED*` row is a pure memory/pad
-leaf. (`HIGH/OBSERVED`)
-
+leaf.
 | YAML | name | off | absolute base | size | meaning |
 |---|---|---|---|---|---|
 | L938 | `TPB_0_POOL_IRAM` | `+0x3000000` | `0x2803000000` | `0x8000` (32 KiB) | POOL-engine sequencer IRAM |
@@ -162,9 +156,8 @@ The 40 POOL rows are fully contiguous: each base equals the previous row's
 `base + size`, with no gap and no overlap from `0x2803000000` to `0x28038C0000`
 (`span 0x8C0000` = **8.75 MiB**). The next sibling, `TPB_0_TPB_RESERVED0`
 (`L978`, `0x740000` = 7.25 MiB), is the `TPB_0` tail pad to the window end — it
-is *not* a `POOL_` row. (`HIGH/OBSERVED`)
-
-**RESERVED census (18 POOL pads, `HIGH/OBSERVED`):**
+is *not* a `POOL_` row.
+**RESERVED census (18 POOL pads):**
 
 * **3 front-matter pads** — `RESERVED0` (96 KiB, after `POOL_IRAM`),
   `RESERVED2` (64 KiB, after `NX_DRAM`), `RESERVED3` (564 KiB, the long pad from
@@ -186,7 +179,7 @@ profile-table tail up to `+0x3100000` so `CORE0` starts on a 1 MiB boundary.
 
 ## 3. Per-core geometry — `q7_base_offset`, 1 MiB stride, intra-slot layout
 
-**`q7_base_offset` (`HIGH/OBSERVED`).** Relative to the `0x2800000000` cluster
+**`q7_base_offset`.** Relative to the `0x2800000000` cluster
 pseudo-base:
 
 ```
@@ -197,7 +190,7 @@ This is **identical to PREPROC** (§6). Relative to the true `TPB_0` container
 base `0x2000000000` the offset is `0x803100000`
 (`= 0x800000000` SBUF-aperture window `+ 0x3100000`).
 
-**Per-core stride / slot pitch (`HIGH/OBSERVED`).** Across all 7 IRAM→IRAM and
+**Per-core stride / slot pitch.** Across all 7 IRAM→IRAM and
 all 7 DRAM→DRAM transitions the delta is constant:
 
 ```
@@ -220,7 +213,7 @@ core_i DRAM = 0x2803180000 + i*0x100000   (= core_i IRAM + 0x80000)
 | `CORE6` | `0x2803700000` | `0x2803780000` | `0x80000` |
 | `CORE7` | `0x2803800000` | `0x2803880000` | `0x80000` |
 
-**Intra-slot layout (constant for all 8 cores, `HIGH/OBSERVED`):**
+**Intra-slot layout (constant for all 8 cores):**
 
 ```
 slot+0x00000   IRAM     0x20000 (128 KiB)
@@ -230,8 +223,7 @@ slot+0xC0000   RESERVED 0x40000 (256 KiB)   → slot ends at slot+0x100000 (next
 ```
 
 Q7 IRAM = `0x20000` (128 KiB); Q7 DRAM = `0x40000` (256 KiB); `DRAM = IRAM +
-0x80000` in every slot. (`HIGH/OBSERVED`)
-
+0x80000` in every slot.
 > **NOTE.** Live RAM per Q7 core is `128 KiB IRAM + 256 KiB DRAM = 384 KiB`,
 > but the *decode footprint* per core is a full 1 MiB (the remaining 640 KiB is
 > the two intra-slot RESERVED pads). Reimplementations must keep the 1 MiB pitch
@@ -245,7 +237,7 @@ Q7 IRAM = `0x20000` (128 KiB); Q7 DRAM = `0x40000` (256 KiB); `DRAM = IRAM +
 The host kicks a Q7 core out of its power-on run-stall by writing the
 **`release_run_stall`** register in the **`q7` bundle** of the POOL `LOCAL_REG`.
 
-**Doorbell absolute address (`HIGH/OBSERVED`):**
+**Doorbell absolute address:**
 
 ```
 POOL_LOCAL_REG(0x2803060000) + q7_bundle(0x3000) + release_run_stall(0x0)
@@ -283,8 +275,7 @@ offsets from `LOCAL_REG + 0x3000`, extracted directly from the JSON):
 
 The presence of **`run_state_0..7`** and **`intr_info_0..7`** — eight per-core
 slots each — is an **independent CSR-level proof of an 8-core Q7 cluster**, fully
-consistent with the eight `Q7_CORE*` rows in the address map. (`HIGH/OBSERVED`)
-
+consistent with the eight `Q7_CORE*` rows in the address map.
 > **QUIRK — one doorbell, eight cores.** `release_run_stall` is a *single*
 > register at `+0x3000`, not one per core. The host releases the cluster as a
 > group (the per-core bit assignment lives inside that register's bitfields; the
@@ -292,8 +283,7 @@ consistent with the eight `Q7_CORE*` rows in the address map. (`HIGH/OBSERVED`)
 > Contrast the `nx` bundle (`AddressOffset 0x0`): it has its **own** single
 > `release_run_stall` and a single scalar `run_state` (no `_N` suffix) — that is
 > the lone Xtensa-NX core behind `POOL_NX_IRAM/DRAM`, distinct from the 8-core
-> Q7 array. (`HIGH/OBSERVED`)
-
+> Q7 array.
 **Boot/reset flow** — see [`../../uarch/boot-reset.md`](../../uarch/boot-reset.md)
 for the full sequence; in brief, host firmware (1) loads each core's program into
 its `Q7_COREi_IRAM` window (§3), (2) seeds `Q7_COREi_DRAM`, then (3) writes
@@ -310,14 +300,13 @@ semantics are detailed in
 `json:` field, binding to `csrs/tpb/tpb_xt_local_reg.json` (on disk, 55,641 B).
 The node→schema map confirms it at
 `address_map_json_xref.yaml:504` →
-`tpb_0_pool_local_reg: csrs/tpb/tpb_xt_local_reg.json`. (`HIGH/OBSERVED`)
-
+`tpb_0_pool_local_reg: csrs/tpb/tpb_xt_local_reg.json`.
 The **same schema** is bound by `TPB_0_ACT/PE/SP/DVE_LOCAL_REG`
 (`json_xref:500–503`) and by `PREPROC_0_LOCAL_REG` (`json_xref:499`): all six
 engines share **one** Xtensa control-block schema. The schema declares
 `run_state_0..7` (room for 8 cores) regardless of how many a given instance
 actually populates — which is why the 4-core PREPROC and the 8-core POOL can
-reuse it unchanged. (`HIGH/OBSERVED`) The register layout itself is documented in
+reuse it unchanged. The register layout itself is documented in
 [`../csr/tpb-xt-local-reg.md`](../csr/tpb-xt-local-reg.md).
 
 ---
@@ -325,19 +314,18 @@ reuse it unchanged. (`HIGH/OBSERVED`) The register layout itself is documented i
 ## 6. The 8-vs-4 diff: TPB POOL = 8 cores, PREPROC/CC = 4 cores
 
 **This page is the `NUM_POOL_CORES = 8` source of truth.** Q7 cores exist in
-exactly two cluster families in the whole SoC map (`HIGH/OBSERVED`):
+exactly two cluster families in the whole SoC map:
 
 | family | cores | instances | LOCAL_REG | CORE0_IRAM |
 |---|---|---|---|---|
 | **`TPB_n` POOL** | `Q7_CORE0..7` (**8**) | 8 (`n=0..7`) | cluster_base `+0x3060000` | cluster_base `+0x3100000` |
 | **`PREPROC_n`** | `Q7_CORE0..3` (**4**) | 4 (`n=0..3`) | cluster_base `+0x3060000` | cluster_base `+0x3100000` |
 
-Per-instance verification: **every** `TPB_n` POOL carries `Q7_CORE7_IRAM`
-(`rg -c 'TPB_\d_POOL_Q7_CORE7_IRAM'` = **8/8** — all eight TPBs have eight Q7
+Per-instance: **every** `TPB_n` POOL carries `Q7_CORE7_IRAM`
+(**8/8** — all eight TPBs have eight Q7
 cores), and PREPROC's max core index is **3** (`PREPROC_0_Q7_CORE0..3` present,
 `CORE4` absent). So the POOL cluster is unambiguously **8 cores**, PREPROC is
-**4**. (`HIGH/OBSERVED`)
-
+**4**.
 > **CORRECTION — `NUM_POOL_CORES = 8`.** Any prelink or ABI logic that assumes 4
 > POOL cores (a PREPROC-shaped count) is wrong for the TPB POOL engine. The
 > address map, the CSR `run_state_0..7`, and all eight TPB instances agree on
@@ -345,7 +333,7 @@ cores), and PREPROC's max core index is **3** (`PREPROC_0_Q7_CORE0..3` present,
 > [`../../firmware/pool/prelink-validation.md`](../../firmware/pool/prelink-validation.md);
 > the multicore SPMD ABI is [`../../abi/multicore-spmd.md`](../../abi/multicore-spmd.md).
 
-**Same Q7-cluster IP, instantiated with 8 cores instead of 4** (`HIGH/OBSERVED`).
+**Same Q7-cluster IP, instantiated with 8 cores instead of 4.**
 Both families place `LOCAL_REG` at `cluster_base + 0x3060000` (`0x10000`),
 `Q7_CORE0_IRAM` at `cluster_base + 0x3100000`, use the identical 1 MiB slot
 pitch and identical intra-slot layout (IRAM `0x20000` / RES `0x60000` / DRAM
@@ -353,7 +341,7 @@ pitch and identical intra-slot layout (IRAM `0x20000` / RES `0x60000` / DRAM
 Cluster bases: PREPROC `0x1200000000` (so `PREPROC_0_LOCAL_REG = 0x1203060000`,
 `PREPROC_0_Q7_CORE0_IRAM = 0x1203100000`); POOL pseudo-base `0x2800000000`.
 
-**What POOL has that PREPROC lacks** — the pre-core front-matter (`HIGH/OBSERVED`):
+**What POOL has that PREPROC lacks** — the pre-core front-matter:
 
 | POOL-only block | size | absent in PREPROC |
 |---|---|---|

@@ -34,7 +34,8 @@ census of every `sprot` leaf is
 > from the shipped Cayman (NC-v3) register schemas
 > `csrs/sprot/{nsm,amzn_remapper,user_remapper,qos_prot}.json` — RTL-generated,
 > binary-derived vendor data, `jq`-counted from those exact files (never a
-> decompile grep). Confidence is tagged `[conf · prov]`, `prov ∈ {OBSERVED,
+> decompile grep). The page default is `[HIGH · OBSERVED]`; claims that depart from
+> it carry an explicit `[conf · prov]` tag, `prov ∈ {OBSERVED,
 > INFERRED, CARRIED}`. The comparator/responder *algebra* (the C pseudocode) is
 > `[MED · INFERRED]` from field names + semantics — the schema describes the
 > storage, not the gate RTL. v5/Maverick is **header-OBSERVED only** → any v5
@@ -53,7 +54,7 @@ census of every `sprot` leaf is
 
 ---
 
-## 1. The trust split — why this is an isolation boundary `[HIGH · OBSERVED]`
+## 1. The trust split — why this is an isolation boundary
 
 The perimeter is the **same IP, asymmetrically populated** for two privilege
 domains, and the asymmetry *is* the isolation primitive. One reset value, read
@@ -99,8 +100,8 @@ read `rd_buf_0..5`; fill `wr_buf_0..4` then commit via `wr_buf_5.wr_index`). The
 full per-word bit layout, the indirect protocol, and the read/write lane shuffle
 are tabled byte-exact in [`../csr/remapper.md`](../csr/remapper.md) §3 — this page
 gives the **decode + match + remap** as one C routine a rebuild can compile
-against. The field bit-positions below are verified against `amzn_remapper.json`
-this session: `rd_buf_1` = `valid[31] wr_pass[30] rd_pass[29] id_cmp_dis[28]
+against. The field bit-positions below are read from `amzn_remapper.json`:
+`rd_buf_1` = `valid[31] wr_pass[30] rd_pass[29] id_cmp_dis[28]
 intlv_en[27] remap_en[26] cmp_addr[25:0]`; `rd_buf_5` = `id[25:16] remap_addr[13:0]`.
 
 ```c
@@ -210,14 +211,14 @@ static verdict_t remapper_decide(const remapper_t *rm, bool is_write,
 
 ---
 
-## 3. The NTS terminator family — the RESPOND algorithm `[HIGH · OBSERVED]`
+## 3. The NTS terminator family — the RESPOND algorithm
 
 A denied transaction (from §2) and a transaction whose slave is **absent**
 (powered off / unmapped / flushed) share one fate: the **NTS (No-Target-Slave)**
 responder terminates them locally so the fabric never hangs against a missing or
 forbidden target. NTS lives in the QoS half of the FIS
 ([`../csr/qos-prot.md`](../csr/qos-prot.md) §4a). Its reset posture is **fail-safe
-by construction**, verified byte-exact from `qos_prot.json` this session:
+by construction**, byte-exact from `qos_prot.json`:
 
 | register (`nts_amzn`) | abs off | field | reset | meaning |
 |-----------------------|---------|-------|-------|---------|
@@ -295,7 +296,7 @@ static void nts_respond(const nts_t *nts, bool is_write,
 
 ---
 
-## 4. The NSM watchdog — the WATCH lane and its isolation feed `[HIGH · OBSERVED]`
+## 4. The NSM watchdog — the WATCH lane and its isolation feed
 
 `nsm` is the third leg: an **AXI transaction-integrity watchdog** inline on a
 single PCIe master's AXI path, between PCIe ingress and the IO fabric. It does
@@ -416,9 +417,9 @@ rebuild must honour all three:
 
 ---
 
-## 6. Adversarial self-verification `[HIGH · OBSERVED]`
+## 6. Adversarial self-verification
 
-The five perimeter-critical claims, re-checked this session against the exact JSON
+The five perimeter-critical claims, checked against the exact JSON
 files (`jq`, single-file, never a folder grep):
 
 | # | claim | check against | result |
@@ -441,7 +442,7 @@ is count-grep inflation.
 
 ---
 
-## 7. Cross-generation `[HIGH · OBSERVED]`
+## 7. Cross-generation
 
 The perimeter core is **frozen from Sunda → Cayman → Mariana**: the remapper
 `pass_on_miss` fail-closed/open split (`0x0`/`0x1`), the `master_prot` AxPROT

@@ -4,7 +4,7 @@
 
 ## Abstract
 
-A software-pipelined loop in the Neuron backend reuses a small ring of physical buffers — `N` PSUM banks, `N` SBUF tiles, an `N`-slot DRAM window — and cycles successive loop iterations through them so that iteration *i* writes the buffer that iteration *i−2* just released. The symbolic object that names *which* buffer a given iteration uses is one expression node: **`pelican::ModuloExpr`**, the `(numer mod denom)` arm of the [pelican::Expr](pelican-hierarchy.md) algebra (kind **26** = `0x1a`, a `DivLikeExpr` subclass: `numer@+0x20`, `denom@+0x28`>0, node size `0x30`). This page recovers the *math* — the byte-exact evaluator, the static value range, and the algebraic simplification lemmas — and corrects the producer question: it proves from the binary's xref table that **`ModuloExpr` is not constructed by the AddressRotation pass at all**; its sole non-pelican producer is `neuronxcc::backend::Unroll::LowerDynamicExprs`.
+A software-pipelined loop in the Neuron backend reuses a small ring of physical buffers — `N` PSUM banks, `N` SBUF tiles, an `N`-slot DRAM window — and cycles successive loop iterations through them so that iteration *i* writes the buffer that iteration *i−2* just released. The symbolic object that names *which* buffer a given iteration uses is one expression node: **`pelican::ModuloExpr`**, the `(numer mod denom)` arm of the [pelican::Expr](pelican-hierarchy.md) algebra (kind **26** = `0x1a`, a `DivLikeExpr` subclass: `numer@+0x20`, `denom@+0x28`>0, node size `0x30`). This page recovers the *math* — the byte-exact evaluator, the static value range, and the algebraic simplification lemmas — and settles the producer question from the binary's xref table: **`ModuloExpr` is not constructed by the AddressRotation pass at all**; its sole non-pelican producer is `neuronxcc::backend::Unroll::LowerDynamicExprs`.
 
 Three facts carry the page, each read firsthand off `libwalrus.so`:
 
@@ -12,7 +12,7 @@ Three facts carry the page, each read firsthand off `libwalrus.so`:
 2. **The static value range is exactly `[0, denom−1]`.** `getInfimumFast → 0` and `getSupremumFast → denom−1` are two-instruction constant functions; together they are the binary's own proof that a rotated address is confined to a window of *exactly* `denom` distinct slots — the ring of `denom` physical buffers. **`denom` = ring size = pipeline stage count `N`.**
 3. **The sole backend producer is `Unroll::LowerDynamicExprs`.** Of the seven functions in the binary that call `createModuloExpr`, six are pelican-internal (simplify / clone / `Expr::modulo` / `moduloIdentity`); exactly one is outside pelican. The whole `AddressRotation` pass calls `createModuloExpr` / `Expr::modulo` / `Expr::floordiv` **zero** times — it rebinds *physical* addresses only.
 
-For reimplementation the contract is: the Euclidean evaluator and its sign-correction branch; the `[0, denom)` range pair and what it guarantees; the smart constructor `Expr::modulo` that normalizes the numerator to an `AffineExpr`; the four simplify lemmas that keep stacked rotations canonical; and the producer/consumer ownership split — `Unroll` writes the symbolic mod index (preserving `denom`), `AddressRotation` chooses the physical slot the ring maps onto. The two are complementary, and prior recovery notes conflated them.
+For reimplementation the contract is: the Euclidean evaluator and its sign-correction branch; the `[0, denom)` range pair and what it guarantees; the smart constructor `Expr::modulo` that normalizes the numerator to an `AffineExpr`; the four simplify lemmas that keep stacked rotations canonical; and the producer/consumer ownership split — `Unroll` writes the symbolic mod index (preserving `denom`), `AddressRotation` chooses the physical slot the ring maps onto. The two are complementary.
 
 | | |
 |---|---|
@@ -74,9 +74,9 @@ EvalResult ModuloExpr::eval(this, const DenseMap<AffineIdx*,long>& env) {
 }
 ```
 
-> **QUIRK — this is *not* C `%`.** C's `%` (and the bare `idiv` remainder this body starts from) follows the sign of the dividend: `(-1) % 3 == -1`. `ModuloExpr::eval` adds the `(r<0) ? r+denom` correction, so it computes the **floored / Euclidean modulo**: `eval(-1, denom=3) == 2`. The distinction is decisive for a *ring* index — only the Euclidean form maps the whole integer line onto `[0, denom)` with no gap or sign flip at zero, which is exactly what "buffer index" must do. CONFIRMED — the `cqo; idiv; neg; cmovs; add rdx; test rdx; cmovns` sequence read firsthand @ `0x18d7e04`–`0x18d7e19`.
+> **QUIRK — this is *not* C `%`.** C's `%` (and the bare `idiv` remainder this body starts from) follows the sign of the dividend: `(-1) % 3 == -1`. `ModuloExpr::eval` adds the `(r<0) ? r+denom` correction, so it computes the **floored / Euclidean modulo**: `eval(-1, denom=3) == 2`. The distinction is decisive for a *ring* index — only the Euclidean form maps the whole integer line onto `[0, denom)` with no gap or sign flip at zero, which is exactly what "buffer index" must do. *Anchors: the `cqo; idiv; neg; cmovs; add rdx; test rdx; cmovns` sequence @ `0x18d7e04`–`0x18d7e19`.*
 
-> **NOTE — why the correction is dormant in practice.** In the rotation use-case the `numer` is a loop induction term (`base + step·iv`, non-negative for a forward-counting loop), so `r >= 0` always and the correction branch is a no-op. But the node is *defined* Euclidean, so the index stays correct for negative affine offsets — e.g. the `−stage` index shift the annotated software pipeliner applies ([5.14](../penguin/software-pipelining.md), `band_shift` / per-stage index offset). The compiler does not have to prove the numerator non-negative to trust the range. STRONG — the non-negativity of the rotation numer is inferred from the `AffineExpr(base+step·iv)` shape (§3); the Euclidean *guarantee* is CONFIRMED.
+> **NOTE — why the correction is dormant in practice.** In the rotation use-case the `numer` is a loop induction term (`base + step·iv`, non-negative for a forward-counting loop), so `r >= 0` always and the correction branch is a no-op. But the node is *defined* Euclidean, so the index stays correct for negative affine offsets — e.g. the `−stage` index shift the annotated software pipeliner applies ([5.14](../penguin/software-pipelining.md), `band_shift` / per-stage index offset). The compiler does not have to prove the numerator non-negative to trust the range. The Euclidean guarantee is read from the body; the non-negativity of the rotation numerator in practice is [INFERRED] from the `AffineExpr(base + step·iv)` shape (§3).
 
 The recursion terminates at the leaf. `numer->eval` dispatches through vtable slot `+0xd0` (= `Expr::eval(env)`, [7.16](pelican-hierarchy.md) slot 26). The leaf is `AffineIdx::eval` @ `0x18d5b90`: a `DenseMap` probe keyed on the `AffineIdx*` pointer that, on a hit, returns the bound `long` (after asserting `lo <= val < ub` against the leaf's own `[+0x20]=lo` / `[+0x28]=ub` range), and on a miss returns `{0, valid=0}` — which propagates straight back up through every `ModuloExpr`/`AffineExpr` as `valid=0`. The end-to-end chain is:
 
@@ -88,7 +88,7 @@ AffineIdx  (iv leaf; env lookup, bounds-checked lo<=v<ub)     @0x18d5b90
   phys_index(iter) = (base + step·iter)  mod  denom           (Euclidean, ∈ [0,denom))
 ```
 
-CONFIRMED — eval body, leaf body, and the kind chain read firsthand; the same node is independently cross-corroborated as "slot-26 override → Euclidean modulo" in the recovered vtable map for `ModuloExpr` ([7.16](pelican-hierarchy.md)).
+The eval body, the leaf body, and the kind chain are all read firsthand, and the recovered vtable map for `ModuloExpr` independently shows the same slot-26 override landing on the Euclidean modulo ([7.16](pelican-hierarchy.md)).
 
 ---
 
@@ -109,7 +109,7 @@ CONFIRMED — eval body, leaf body, and the kind chain read firsthand; the same 
 
 So a `ModuloExpr`'s static value range is exactly **`[0, denom−1]` = `[0, denom)`**, regardless of what its numerator's range is. This is the binary's own formal statement that the rotated index visits *precisely `denom` distinct slots and never escapes them*. The compiler consumes this pair downstream — in delinearization and bound-checking, the floor/ceil interface feeds the `isLegalDelinearizedAddress` virtual ([7.17](pelican-expr-core.md)) — to guarantee the rotated access stays inside its bank/tile window.
 
-> **The ring proof.** A "ring of `N` buffers" is, mathematically, the residues `{0, 1, …, N−1}` under addition mod `N`. `getInfimumFast → 0` and `getSupremumFast → denom−1` pin the *image* of `ModuloExpr` to exactly that residue set with `N = denom`. Combined with the Euclidean evaluator (§1), which is a total surjection `ℤ → [0, denom)`, the node *is* the ring `ℤ/denom·ℤ`. CONFIRMED — both accessor bodies read firsthand; independently corroborated in the recovered hierarchy notes ("getInf=0, getSup=denom−1 give the `[0,denom)` ring-window proof").
+> **The ring proof.** A "ring of `N` buffers" is, mathematically, the residues `{0, 1, …, N−1}` under addition mod `N`. `getInfimumFast → 0` and `getSupremumFast → denom−1` pin the *image* of `ModuloExpr` to exactly that residue set with `N = denom`. Combined with the Euclidean evaluator (§1), which is a total surjection `ℤ → [0, denom)`, the node *is* the ring `ℤ/denom·ℤ`. Both accessor bodies are read firsthand, and the recovered class hierarchy gives the same `[0, denom)` window.
 
 ---
 
@@ -135,7 +135,7 @@ RefPtr<Expr> Expr::modulo(this /*numer*/, long denom) {
 }
 ```
 
-> **INVARIANT — a `ModuloExpr`'s numer is always an `AffineExpr`.** The `(k-6) <= 7` test catches a raw index leaf and wraps it in an `AffineExpr(idx, coeff=1, c=0)` before the modulo node is built, so the numerator is *never* a bare index — it is always the per-iteration affine address `base + step·iv`. This is the concrete realization of "the numer is the per-iteration buffer-base index". CONFIRMED — the `(k-6)<=7` family test and the `createAffineExpr` fall-through are the documented numer-normalization path ([7.18](pelican-index-runtime.md) gives the `AffIV=6 … ShardId=13` family range). `ModuloExpr::clone` @ `0x18d80b0` and `cloneBinaryExpr` @ `0x18d8180` re-run this same path, so the invariant survives cloning.
+> **INVARIANT — a `ModuloExpr`'s numer is always an `AffineExpr`.** The `(k-6) <= 7` test catches a raw index leaf and wraps it in an `AffineExpr(idx, coeff=1, c=0)` before the modulo node is built, so the numerator is *never* a bare index — it is always the per-iteration affine address `base + step·iv`. This is the concrete realization of "the numer is the per-iteration buffer-base index". The `(k-6)<=7` family test and the `createAffineExpr` fall-through are read from the smart constructor; [7.18](pelican-index-runtime.md) gives the `AffIV=6 … ShardId=13` family range that test spans. `ModuloExpr::clone` @ `0x18d80b0` and `cloneBinaryExpr` @ `0x18d8180` re-run this same path, so the invariant survives cloning.
 
 The factory it lands on enforces the field invariants:
 
@@ -150,7 +150,7 @@ The factory it lands on enforces the field invariants:
 ;          vptr ← ZTV(ModuloExpr)+0x10
 ```
 
-CONFIRMED — `new(0x30)`, `kind=0x1a`, and the `test rbx,rbx; jle →throw` (the `denom>0` invariant) read firsthand. This re-confirms the [7.16](pelican-hierarchy.md)/[7.17](pelican-expr-core.md) struct facts: kind 26, `numer@+0x20`, `denom@+0x28` (`>0`), size `0x30`, vptr = `ZTV(ModuloExpr)+0x10`.
+The `new(0x30)`, the `kind=0x1a`, and the `test rbx,rbx; jle →throw` enforcing `denom > 0` are all read firsthand, matching the struct facts on [7.16](pelican-hierarchy.md)/[7.17](pelican-expr-core.md): kind 26, `numer@+0x20`, `denom@+0x28` (`>0`), size `0x30`, vptr = `ZTV(ModuloExpr)+0x10`.
 
 ---
 
@@ -168,7 +168,7 @@ else if (m >= 0 && n > m) return this;           // inc_ref  ;  n > m  ⇒  (x m
 else                   return nullptr;           // no simplification
 ```
 
-CONFIRMED — the `idiv r8; test rdx,rdx; jz` (divisibility) and `cmp r8,rcx` (`n>m`) branches read firsthand; the `Expr::modulo` and `inc_ref` calls are present at `0x18d81df` / `0x18d81fd`. The decisive consequence: two stacked rotations fold to **one** `ModuloExpr`, so the final access pattern carries a single ring modulus.
+*Anchors: the `idiv r8; test rdx,rdx; jz` divisibility branch and the `cmp r8,rcx` (`n>m`) branch; the `Expr::modulo` and `inc_ref` calls at `0x18d81df` / `0x18d81fd`.* The decisive consequence: two stacked rotations fold to **one** `ModuloExpr`, so the final access pattern carries a single ring modulus.
 
 **4b. Range-bound floordiv → 0 — `ModuloExpr::simplifyFloordivSubclass(d)` @ `0x18d8040`.** Simplifies `(x mod m) floordiv d`:
 
@@ -177,17 +177,17 @@ if (m >= 0 && m < d) return createAffineInt(0);  // cmp rcx,rdx; jl  @0x18d804c 
 else                 return nullptr;
 ```
 
-Because `x mod m ∈ [0, m) ⊂ [0, d)` when `m < d`, the floor-divide is identically `0`. CONFIRMED — `cmp rcx,rdx; jl → createAffineInt(0)` read firsthand. This is the *algebraic twin* of the §2 range: when a rotated ring index is the low part of a delinearized address, the high part `floordiv`s to zero — the static guarantee that the ring stays inside its window dimension.
+Because `x mod m ∈ [0, m) ⊂ [0, d)` when `m < d`, the floor-divide is identically `0`. *Anchor: `cmp rcx,rdx; jl → createAffineInt(0)`.* This is the *algebraic twin* of the §2 range: when a rotated ring index is the low part of a delinearized address, the high part `floordiv`s to zero — the static guarantee that the ring stays inside its window dimension.
 
-**4c. Distributive modulo over an affine form — `AffineExpr::simplifyModSubclass(n)` @ `0x18cf6e0`.** Pushes `mod n` through `(c + Σ coeff_i·idx_i)`: reduces `c mod n` and each `coeff_i mod n`, **drops** terms whose `coeff_i ≡ 0 (mod n)` (they contribute a multiple of the modulus), and rebuilds the reduced affine form. This is `(c + Σ coeff·idx) mod n = (c mod n + Σ (coeff mod n)·idx) mod n`, the canonicalization that lets `base + (iv·stride) mod (N·bufSize)` reduce when the stride and buffer size are commensurate with the ring. CONFIRMED — body present; the `createModuloExpr` call site is among the 7 callers (§5).
+**4c. Distributive modulo over an affine form — `AffineExpr::simplifyModSubclass(n)` @ `0x18cf6e0`.** Pushes `mod n` through `(c + Σ coeff_i·idx_i)`: reduces `c mod n` and each `coeff_i mod n`, **drops** terms whose `coeff_i ≡ 0 (mod n)` (they contribute a multiple of the modulus), and rebuilds the reduced affine form. This is `(c + Σ coeff·idx) mod n = (c mod n + Σ (coeff mod n)·idx) mod n`, the canonicalization that lets `base + (iv·stride) mod (N·bufSize)` reduce when the stride and buffer size are commensurate with the ring. Its `createModuloExpr` call site is among the seven callers of §5.
 
-**4d. n-ary push-mod-through-sum — `SumExpr::moduloIdentity` @ `0x18dbe80`.** The un-normalized sibling of 4c: distributes a modulo across a `SumExpr`'s operand list, emitting one `ModuloExpr` per operand (four `createModuloExpr` call sites inside it). CONFIRMED — present; four of the §5 caller hits originate here.
+**4d. n-ary push-mod-through-sum — `SumExpr::moduloIdentity` @ `0x18dbe80`.** The un-normalized sibling of 4c: distributes a modulo across a `SumExpr`'s operand list, emitting one `ModuloExpr` per operand — four `createModuloExpr` call sites inside this one body, which account for four of the §5 caller hits.
 
 ---
 
 ## 5. Who materializes the node — `Unroll::LowerDynamicExprs` is the sole backend producer
 
-This is the page's correction. The `createModuloExpr` factory has a PLT thunk at `0x5f5a70` (→ `0x18f5d00`); sweeping the binary's xref table for every function that calls it yields **seven** unique callers:
+The `createModuloExpr` factory has a PLT thunk at `0x5f5a70` (→ `0x18f5d00`); sweeping the binary's xref table for every function that calls it yields **seven** unique callers:
 
 | Caller | Namespace | Role |
 |---|---|---|
@@ -201,7 +201,7 @@ This is the page's correction. The `createModuloExpr` factory has a PLT thunk at
 
 Six are pelican-internal plumbing; **exactly one** is a backend pass. And the whole `AddressRotation` pass — `psum_rotation` @ `0x938050`, `sb_rotation_batch` @ `0x92a1a0`, `dram_rotation` @ `0x93cae0`, the lot — appears in the caller list of `createModuloExpr` / `Expr::modulo` / `Expr::floordiv` **zero** times.
 
-> **CORRECTION — `AddressRotation` does *not* emit the `ModuloExpr`.** Earlier recovery notes attributed "materialises / commits / inserts the pelican::ModuloExpr" to `address_rotation_psum_post_schedule`. Reading the xref table directly: `AddressRotation` makes **zero** `createModuloExpr` / `Expr::modulo` / `Expr::floordiv` calls. It performs **physical** rebinding only — `MemoryLocation::allocate()` onto a new bank/tile/region. The **symbolic** modulo index is produced by `Unroll::LowerDynamicExprs`. The two are complementary: `Unroll` writes the access pattern's mod expression; `AddressRotation` chooses the physical slot the ring maps onto. "Physical rotation" ≠ "ModuloExpr emission." CONFIRMED — the 7-caller set and the empty `AddressRotation` intersection both read firsthand from the binary's xref table; this falsifies the prior STRONG claim.
+> **GOTCHA — the pass named "AddressRotation" does not emit the rotation expression.** The name invites the wrong ownership. `AddressRotation` makes **zero** `createModuloExpr` / `Expr::modulo` / `Expr::floordiv` calls; it performs **physical** rebinding only — `MemoryLocation::allocate()` onto a new bank/tile/region. The **symbolic** modulo index comes from `Unroll::LowerDynamicExprs`. `Unroll` writes the access pattern's mod expression; `AddressRotation` chooses the physical slot the ring maps onto.
 
 `Unroll::LowerDynamicExprs` @ `0xb38a50` is a 5039-byte recursive expression-tree lowerer. Its head reads the kind and dispatches a 25-case jump table; the `ModuloExpr` arm preserves `denom` verbatim:
 
@@ -234,7 +234,7 @@ case ExprKind::Modulo: {                       // [+0x10] == 0x1a
 }
 ```
 
-> **NOTE — `Unroll` carries the ring size, it does not choose it.** The arm recursively lowers the *numerator* (resolving runtime/dynamic sub-expressions inside `base + step·iv`) while reading `denom` from `[+0x28]` and passing it straight to the factory. `Unroll` never computes or re-derives the modulus. The `denom` (= ring size = stage count `N`) is chosen *upstream* — the `ModuloExpr` enters walrus already present in the BIR access pattern, deserialized by `fromJsonv2` ([7.19](pelican-wire.md), `ModuloKind` → `createModuloExpr`, reading `"numer"` then `"denom"`), where it was emitted by the penguin software-pipeline code-gen ([5.14](../penguin/software-pipelining.md), which sizes the buffer factor from `num_stages`). STRONG — the JSON read path and the `Unroll` denom-preserving lowering are CONFIRMED; the upstream chooser that *picks* `N` lives in penguin (outside `libwalrus`) and is not byte-walked here.
+> **NOTE — `Unroll` carries the ring size, it does not choose it.** The arm recursively lowers the *numerator* (resolving runtime/dynamic sub-expressions inside `base + step·iv`) while reading `denom` from `[+0x28]` and passing it straight to the factory. `Unroll` never computes or re-derives the modulus. The `denom` (= ring size = stage count `N`) is chosen *upstream* — the `ModuloExpr` enters walrus already present in the BIR access pattern, deserialized by `fromJsonv2` ([7.19](pelican-wire.md), `ModuloKind` → `createModuloExpr`, reading `"numer"` then `"denom"`), where it was emitted by the penguin software-pipeline code-gen ([5.14](../penguin/software-pipelining.md), which sizes the buffer factor from `num_stages`). The JSON read path and the `Unroll` denom-preserving lowering are both read firsthand; the upstream chooser that *picks* `N` lives in penguin, outside `libwalrus`, and is not byte-walked here.
 
 ---
 
@@ -259,7 +259,7 @@ Tying the math (§§1–2) to the physical ring. `Unroll` replicates a recurring
 | **SBUF** | per-engine `period ∈ {1, 5, 10, 20, 60}` | `sb_rotation` keys `#SB tiles` in the ring; numer = `base + (iv mod period)·roundup8(slice)` |
 | **DRAM** | window size ≤ `options.dram_rotation_size` GiB (CLI-capped, ≤ 8) | `dram_rotation`; the only ring whose period is a direct CLI knob (`"Allreduce rotation distance"` / `allreduce-rotation-dis`) |
 
-> **The relationship.** `denom` (the `ModuloExpr` modulus) == ring size == number of physical buffers in that space's ring == the software-pipeline stage count `N`. The Euclidean reduction (§1) maps the unbounded loop induction term `iv` into the bounded ring index `[0, denom)` (§2); successive iterations therefore cycle deterministically through the `N` buffers: `buffer(iter) = (iv·stride) mod denom`. STRONG — the physical ring sizes per space are cross-corroborated with the AddressRotation pass facts ([Part 8](../walrus/address-rotation.md)); the precise `denom = N·bankSize` (PSUM) / `period` (SBUF) / `window` (DRAM) mapping is the synthesis of the §2 range with those physical periods, not a single byte-walked line.
+> **The relationship.** `denom` (the `ModuloExpr` modulus) == ring size == number of physical buffers in that space's ring == the software-pipeline stage count `N`. The Euclidean reduction (§1) maps the unbounded loop induction term `iv` into the bounded ring index `[0, denom)` (§2); successive iterations therefore cycle deterministically through the `N` buffers: `buffer(iter) = (iv·stride) mod denom`. The physical ring sizes per space are corroborated against the AddressRotation pass ([Part 8](../walrus/address-rotation.md)); the precise `denom = N·bankSize` (PSUM) / `period` (SBUF) / `window` (DRAM) identity is a synthesis of the §2 range with those physical periods rather than a single byte-walked store.
 
 ---
 
@@ -283,23 +283,23 @@ The realized pipeline, with corrected ownership:
 5. `separate_load_and_compute` cuts load↔compute edges and fences them; the post-schedule list scheduler overlaps `load(i+1)` with `compute(i)`.
 6. The post-schedule rotation re-run re-rotates the split-stage buffers and rebuilds dependency edges against the rotated *physical* addresses — the `ModuloExpr` index was already in place from step 2.
 
-The `ModuloExpr` is the symbolic glue: its `denom = N` pins the ring, its `[0, denom)` range (§2) guarantees the rotation stays in-window, and its Euclidean eval (§1) defines the per-iteration buffer index. The physical passes give the `N` ring positions `N` distinct real addresses; together they are the multi-buffered software pipeline. STRONG — the end-to-end ordering is the synthesis of the CONFIRMED per-stage facts (eval, range, producer, AddressRotation's zero emissions) with the pass roster.
+The `ModuloExpr` is the symbolic glue: its `denom = N` pins the ring, its `[0, denom)` range (§2) guarantees the rotation stays in-window, and its Euclidean eval (§1) defines the per-iteration buffer index. The physical passes give the `N` ring positions `N` distinct real addresses; together they are the multi-buffered software pipeline. The end-to-end ordering is assembled from the per-stage facts above (eval, range, producer, AddressRotation's zero emissions) plus the pass roster, rather than read from any single driver.
 
 ---
 
-## 8. Adversarial self-check
+## 8. Evidence summary
 
-The five headline claims, re-tested against the binary, with the strongest falsifier each survived:
-
-| Claim | Verdict | Decisive evidence | Ceiling |
+| Claim | Evidence | Confidence | Notes |
 |---|---|---|---|
-| Eval is **Euclidean**, not C `%` | CONFIRMED | `cqo; idiv; neg; cmovs; add rdx; test rdx; cmovns` @ `0x18d7e04`–`19` read firsthand — the `cmovns` *is* the `(r<0)?r+denom` correction | Full body read; no ambiguity |
-| Range = **`[0, denom)`** ring | CONFIRMED | `getInfimumFast` = `xor eax,eax; ret` → 0; `getSupremumFast` = `[rdi+0x28]-1; ret` → denom−1 | Both bodies are 2–3 instructions; exhaustive |
-| `denom` = **stage count `N`** | STRONG | `Unroll` preserves `denom` (`mov rcx,[rbx+0x28]` @ `0xb39132`); `createIndices` emits `[0..N−1]` @ `0xb34d10`; per-space periods cross-ref Part 8 | The `denom = N·bankSize/period/window` *equation* is synthesized, not one line; the chooser is in penguin, not byte-walked |
-| Sole producer = **`Unroll::LowerDynamicExprs`** | CONFIRMED | 7 unique `createModuloExpr` callers; only one (`Unroll::LowerDynamicExprs`) is non-pelican; `AddressRotation` ∩ callers = ∅ | xref sweep over `0x5f5a70`/`0x5fe4d0`/`0x62af50`; complete for those three PLT targets |
-| Kind tag = **26 (`0x1a`)** | CONFIRMED | `mov esi,0x1a` in `createModuloExpr` @ `0x18f5d27`; `cmp [rax+0x10],0x1a` in the `Unroll` arm @ `0xb39104` | Two independent sites agree |
+| Eval is **Euclidean**, not C `%` | `cqo; idiv; neg; cmovs; add rdx; test rdx; cmovns` @ `0x18d7e04`–`19` — the `cmovns` *is* the `(r<0)?r+denom` correction | CERTAIN | full body read; no ambiguity |
+| Range = **`[0, denom)`** ring | `getInfimumFast` = `xor eax,eax; ret` → 0; `getSupremumFast` = `[rdi+0x28]-1; ret` → denom−1 | CERTAIN | both bodies are 2–3 instructions; exhaustive |
+| `denom` = **stage count `N`** | `Unroll` preserves `denom` (`mov rcx,[rbx+0x28]` @ `0xb39132`); `createIndices` emits `[0..N−1]` @ `0xb34d10`; per-space periods cross-referenced against Part 8 | HIGH | the `denom = N·bankSize/period/window` equation is synthesized, not one line; the chooser is in penguin, not byte-walked |
+| Sole producer = **`Unroll::LowerDynamicExprs`** | 7 unique `createModuloExpr` callers; only one is non-pelican; `AddressRotation` ∩ callers = ∅ | CERTAIN | xref sweep over `0x5f5a70`/`0x5fe4d0`/`0x62af50`; complete for those three PLT targets |
+| Kind tag = **26 (`0x1a`)** | `mov esi,0x1a` in `createModuloExpr` @ `0x18f5d27`; `cmp [rax+0x10],0x1a` in the `Unroll` arm @ `0xb39104` | CERTAIN | two independent sites agree |
 
-**Honest re-verify ceiling.** Everything in §§1–5 is CONFIRMED by firsthand reads of `libwalrus.so` (cp310) bodies and the xref table. The two STRONG items are: (a) `denom = N` *as an equation across the three memory spaces* — the per-space periods (`N·bankSize` / `{1,5,10,20,60}` / GiB window) are corroborated against the AddressRotation pass but the `denom`↔period identity is a synthesis, not a single byte-walked store; and (b) the **upstream chooser** that picks `N` lives in penguin's `SoftwarePipelineCodeGen` (outside `libwalrus`) and is reached only through the CONFIRMED JSON read path, not walked at the chooser. cp311/cp312 parity for the eval/range/producer bodies is asserted from the cross-build note (eval `cqo/idiv/neg/cmovs` sequence and `[+0x28]-1` supremum byte-identical) and is STRONG, not re-disassembled here per-build on this page.
+### Limits of this reading
+
+Everything in §§1–5 rests on firsthand reads of `libwalrus.so` (cp310) bodies and the xref table. Two claims are weaker than that. First, `denom = N` *as an equation across the three memory spaces*: the per-space periods (`N·bankSize` / `{1,5,10,20,60}` / GiB window) are corroborated against the AddressRotation pass, but the `denom`↔period identity is a synthesis rather than a single byte-walked store. Second, the upstream chooser that picks `N` lives in penguin's `SoftwarePipelineCodeGen`, outside `libwalrus`, and is reached only through the JSON read path — the chooser itself was not walked. cp311/cp312 parity for the eval/range/producer bodies comes from the cross-build note (the `cqo/idiv/neg/cmovs` sequence and the `[+0x28]-1` supremum are byte-identical) and was not re-disassembled per build here.
 
 ---
 

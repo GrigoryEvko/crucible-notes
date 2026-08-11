@@ -24,7 +24,8 @@ a self-contained `gcc` probe that printed `sizeof`/`offsetof` for every field on
 all four arch variants. The headers, the device microcode binary
 `libnrtucode_internal.so`, the host loader `libnrtucode.so`, and
 `instruction_mapping.json` are all binary-derived artifacts of the package and are
-cited directly.
+cited directly. The page default is `[HIGH / OBSERVED]`; claims that depart from
+it carry an explicit tag.
 
 > **NOTE — pseudo-op, never executed as-is.** `0xDB` and `0xDC` both live in the
 > pseudo range `0xC1..0xDF`. The OPCODE enum states the rule verbatim at
@@ -36,7 +37,7 @@ cited directly.
 > `decode_*` routines and `SB2SB_Collective` / `POLL_SEM` strings for the *lowered*
 > legs, but has **no** `cur_processing_rank` or `gid_load` decoder string at all —
 > these pseudo words are consumed and erased by the host before any NeuronCore
-> sees them. *(HIGH / OBSERVED.)*
+> sees them.
 
 ---
 
@@ -60,11 +61,10 @@ cited directly.
 | 22 | 42 | `reserved1[42]` | `uint8_t[42]` | Tail padding filling out the 64-byte word. Treat as 0. |
 | **64** | | | | one 64B TPB instruction word. |
 
-*(HIGH / OBSERVED — `gcc` probe over the real shipped header printed `sizeof==64`
-and each `offsetof` above verbatim; reproduced for all four arches in §2.)*
+The same layout is reproduced for all four arches in §2.
 
 ```c
-// gcc probe output, /tmp/gpsimd-p10/probe_real (real header, -I .../neuron_cayman_arch_isa/tpb)
+// gcc probe output (real header, -I .../neuron_cayman_arch_isa/tpb)
 // === rank_id (0xDB) ===
 //   sizeof = 64
 //   header 0  events 4  group_id 12  channel_id 14  iteration_id 16
@@ -81,7 +81,7 @@ and each `offsetof` above verbatim; reproduced for all four arches in §2.)*
 > [TriggerCollective2 + Ext](trigger-collective2-ext.md), which surfaces
 > `channel_id` @ `ext+4` and `stream_id` @ `ext+6` as *"NEW"* knobs — they are new
 > to the v2 *trigger* path, but the fine-grained rank-id op has always carried
-> them). *(HIGH / OBSERVED.)*
+> them).
 
 **Union binding.** `aws_neuron_isa_tpb_util.h:64` carries the member into the
 instruction union:
@@ -89,7 +89,6 @@ instruction union:
 `instruction_mapping.json:105-107` binds the struct to its single opcode:
 `"NEURON_ISA_TPB_PSEUDO_CUR_PROCESSING_RANK_ID_STRUCT" → ["NEURON_ISA_TPB_OPCODE_PSEUDO_CUR_PROCESSING_RANK_ID"]`.
 The master ISA aggregate pulls the header in at `aws_neuron_isa_tpb.h:41`.
-*(HIGH / OBSERVED.)*
 
 > **QUIRK — `0xDB` has NO static validator.** `aws_neuron_isa_tpb_assert.h:12651`
 > and `aws_neuron_isa_tpb_assert_declaration.h:1119-1120` contain only the section
@@ -105,7 +104,6 @@ The master ISA aggregate pulls the header in at `aws_neuron_isa_tpb.h:41`.
 > (`group_id` range, `dst_reg` within the register count, `iteration_id` <
 > num_ranks) is the runtime's responsibility**, consistent with RT/NCCL filling
 > the values. Contrast `0xDC`, which *does* ship a real validator (§7).
-> *(HIGH / OBSERVED.)*
 
 ---
 
@@ -138,7 +136,7 @@ typedef bytes match — see the §2 register-range caveat for the one v5 knob th
 > `NEURON_ISA_TPB_NUM_REGISTERS = 64U` on sunda/cayman/mariana (`common.h:31`,
 > NC-v2/3/4) versus **`192U` on maverick** (NC-v5). A reimplementation that
 > bounds-checks `dst_reg` must key the limit off the target arch, not off the
-> struct. *(HIGH / OBSERVED.)*
+> struct.
 
 ---
 
@@ -195,7 +193,7 @@ typedef uint8_t  NEURON_ISA_TPB_REG_NUM;   // sizeof == 1 (probe) — names one 
 > `NEURON_ISA_TPB_ENGINE_REGISTERS` (`common.h:…-1133`) as `R0..R63` plus the
 > special engine registers `PC_LO=128`, `PC_HI=129`, `DGE_TABLE_LO=130`,
 > `DGE_TABLE_HI=131`; the valid-write count is `NUM_REGISTERS` (64 / 192, §2).
-> `dst_reg` names one of those GP registers. *(HIGH / OBSERVED.)*
+> `dst_reg` names one of those GP registers.
 
 ---
 
@@ -277,8 +275,7 @@ data. The device pseudo-op carries only the index `G`; the membership table is
 **host/NEFF data**, injected by RT. The compiler-emitted NEFF subgraph `def.json`
 enumerates `replica_groups` alongside `dma_queues` and
 `runtime_statebuffer_reservation`, so the runtime dereferences `group_id` to a
-concrete rank list at load time. *(HIGH — `group_id` gloss is verbatim header;
-`replica_groups` as host/NEFF metadata is OBSERVED in NEFF `def.json`.)*
+concrete rank list at load time.
 
 **`channel_id` (uint16, off 14) — the ring index.** Header verbatim: *"if there
 are two CC topology rings, this value can only be 0 or 1."* Dual-ring topologies
@@ -314,7 +311,7 @@ The collective-participant fields map cleanly onto the [TriggerCollective
 > rank-id op is the **per-iteration** primitive of the *unrolled* form, so it is
 > the one op that carries `iteration_id`. The v2 path
 > ([`0xD9`/`0xDA`](trigger-collective2-ext.md)) is where the `channel_id`/
-> `stream_id` knobs become explicit on the *trigger* side too. *(HIGH / OBSERVED.)*
+> `stream_id` knobs become explicit on the *trigger* side too.
 
 ---
 
@@ -394,7 +391,7 @@ register"* idiom, generalised to also allow an **address** destination.
 | **64** | | | | one 64B TPB instruction word. |
 
 ```c
-// gcc probe output, /tmp/gpsimd-p10/probe_real
+// gcc probe output (real header)
 // === gid_load (0xDC) ===
 //   sizeof = 64
 //   header 0  events 4  dst_target 12  reserved0 13  dst 16  reserved1 24
@@ -406,7 +403,7 @@ Layout is **byte-identical on all four arches** and carries its own
 `ISA_STATIC_ASSERT(sizeof == 64)` at `gid_load.h:41` (the rank-id struct has no
 such inline assert — a minor structural asymmetry). Bindings:
 `util.h:65 pseudo_gid_load;`, `instruction_mapping.json:144`, master include at
-`aws_neuron_isa_tpb.h:54`. *(HIGH / OBSERVED.)*
+`aws_neuron_isa_tpb.h:54`.
 
 ### 7.1 · The `dst` union
 
@@ -459,7 +456,6 @@ bool is_valid_register_write(REG_NUM regnum) {
 
 So `0xDC`'s `regnum` is validated to be a real GP register (`< NUM_REGISTERS`) or
 one of the two DGE-table engine registers, and the 7 reserved bytes must be zero.
-*(HIGH / OBSERVED — full validator bodies present and compiled in `assert.h`.)*
 
 > **CORRECTION — `0xDC`'s validator is real, not merely commented.** It is easy to
 > conclude from the `//`-prefixed spec in `gid_load.h:46-76` that the gid-load
@@ -469,7 +465,7 @@ one of the two DGE-table engine registers, and the 7 reserved bytes must be zero
 > sharpest contrast with `0xDB`: the **peer-rank** op (`0xDB`) trusts the runtime
 > entirely (no validator), whereas the **own-GID** op (`0xDC`) statically checks
 > its destination. A reimplementation's verifier must apply the gid-load dst check
-> but must *not* expect a cur-processing-rank-id check. *(HIGH / OBSERVED.)*
+> but must *not* expect a cur-processing-rank-id check.
 
 ---
 

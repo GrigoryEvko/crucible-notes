@@ -36,8 +36,8 @@ across four codebases that share no source is a real cross-check, not a tautolog
 
 | Leg | Reference | What it is | Role | Tag |
 |-----|-----------|-----------|------|-----|
-| **(a)** | **GX-SEM** | the bit-precise TIE-XML RTL semantics, lifted to python | value (RTL model) | OBSERVED / from formal-isa-model |
-| **(b)** | **GX-FLIX** | the firmware FLIX bundle, assembled + decoded by the device toolchain | identity / decode | OBSERVED |
+| **(a)** | **SEM** | the bit-precise TIE-XML RTL semantics, lifted to python | value (RTL model) | OBSERVED / from formal-isa-model |
+| **(b)** | **FLIX** | the firmware FLIX bundle, assembled + decoded by the device toolchain | identity / decode | OBSERVED |
 | **(c)** | **nki-0.3.0** | the numpy reference simulator (`tensor_tensor_arith`, gpsimd native-int path) | value (framework, subset) | OBSERVED |
 | **(d)** | **libfiss-base** | the shipped ISS value leaves, **driven LIVE via ctypes** | value (the vendor binary itself) | OBSERVED — the keystone |
 
@@ -53,7 +53,7 @@ native `int16` wrap. Three distinct implementations, one output ⇒ independent 
 > also self-checks the lift — a LIVE-vs-lift mismatch means *the lift mis-read the bytes*,
 > and the binary wins.
 
-### Provenance of the value oracle  `[HIGH/OBSERVED]`
+### Provenance of the value oracle
 
 ```
 libfiss-base.so   ELF64 x86-64, NOT stripped, 12,330,016 bytes
@@ -61,8 +61,8 @@ libfiss-base.so   ELF64 x86-64, NOT stripped, 12,330,016 bytes
   nm -D | rg -c 'opcode__ivp_.*__stage_5'       = 948   (device-context staging handlers)
 ```
 
-Counts re-grounded with `nm -D <abs> | rg -c` against the binary **this pass** — never the
-decompile. Absolute path:
+Counts grounded with `nm -D <abs> | rg -c` against the binary, never the decompile. Absolute
+path:
 
 ```
 .../extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/libfiss-base.so
@@ -78,7 +78,7 @@ axis — `libfiss-base` — so the bare-leaf ctypes drive never instantiates the
 
 ## 2. The xdref leaf — name, ABI, and the per-lane contract
 
-### 2.1 Naming  `[HIGH/OBSERVED]`
+### 2.1 Naming
 
 Each value leaf is named
 
@@ -93,11 +93,10 @@ width** followed by each **input width** in bits. Width tokens:
 is the `i16` unary `|x|` (→ `ivp_absnx16`), and `module__xdref_muluu_48_16_16` is the
 `u16*u16 -> 48b` pack.
 
-### 2.2 The ABI — verified per leaf, NOT assumed  `[HIGH/OBSERVED]`
+### 2.2 The ABI — verified per leaf, NOT assumed
 
 The leaf reads its scalar operand(s) from GP integer registers, computes, and **stores the
-result through an out-pointer** (it returns `void`). Disassembled this pass at the recovered
-addresses:
+result through an out-pointer** (it returns `void`). Disassembled at the recovered addresses:
 
 ```asm
 ; module__xdref_add_16_16_16  @0x858480   (BINARY, 4-arg)
@@ -135,7 +134,7 @@ UNARY  value leaf : f(%rdi = xstate,  %esi = A,             %rdx = *out)  -> voi
 > universally dead: a leaf that delegates to the ISS soft-float dispatch *reads* `xstate`,
 > and `NULL` there is the §7 wall. Treat arg0 as "dead unless the body dereferences it."
 
-### 2.3 The per-lane contract  `[HIGH/OBSERVED]`
+### 2.3 The per-lane contract
 
 Each reference computes `result[k] = op(A[k], B[k])` for one lane and returns the
 lane-width bit pattern as an int. A vector intrinsic is literally *N* invocations of the
@@ -151,14 +150,14 @@ follows by construction.
 A "0 mismatch" verdict only means something if the corpus exercises the cases where a wrong
 model *would* break. The harness uses **edge-cartesian + seeded fuzz**, lane-width aware.
 
-### 3.1 The edge set (16-bit lane)  `[HIGH/OBSERVED]`
+### 3.1 The edge set (16-bit lane)
 
 ```python
 EDGE = [0x0000, 0x0001, 0xFFFF, 0x7FFF, 0x8000, 0x8001, 0x7FFE,
         0x0002, 0xFFFE, 0x4000, 0xC000, 0x00FF, 0xFF00, 0x5555, 0xAAAA]  # 15 values
 ```
 
-Each value covers a required class — and the task's `{zero, denormal, saturation, sign, NaN}`
+Each value covers a required class — and the `{zero, denormal, saturation, sign, NaN}`
 classes map onto the integer datapath as follows:
 
 | Class | Integer-datapath analogue | Edge values |
@@ -175,7 +174,7 @@ The **full cartesian** `EDGE × EDGE` (15×15 = 225 pairs) hits every (sign, mag
 boundary) cross-product — exactly where saturate/avg/abssub bit-tricks break if a model is
 wrong.
 
-### 3.2 Seeded fuzz  `[HIGH/OBSERVED]`
+### 3.2 Seeded fuzz
 
 ```python
 rng = np.random.default_rng(SEED)           # FIXED seed -> byte-reproducible corpus
@@ -208,7 +207,7 @@ Two python files, reused verbatim across every family:
 - **the live file** — imports the models file, adds the ctypes binding to the real
   `libfiss-base.so`, and runs the LIVE N-way comparator.
 
-### 4.1 The op registry — one source of truth per family  `[HIGH/OBSERVED]`
+### 4.1 The op registry — one source of truth per family
 
 ```python
 # (name, sem_fn, fiss_lift_fn, nki_fn_or_None, nargs, mnemonic)
@@ -233,7 +232,7 @@ OPS = [
 - `mnemonic` — the device mnemonic the decode leg (b) must reproduce, and the key that maps
   `name -> module__xdref_<...>` leaf.
 
-### 4.2 The compare loop  `[HIGH/OBSERVED]`
+### 4.2 The compare loop
 
 ```python
 for name, semf, fissf, nkif, nargs, mn in OPS:
@@ -250,7 +249,7 @@ unbounded ints — it normalises to the lane width before comparing, exactly as 
 final `and`/`movzwl` does. A single mismatch prints `(op, a, b, expected, got)` and flips the
 verdict to **DIVERGENCE**, which is the root-cause trigger handled in §6.
 
-### 4.3 The ctypes live driver — leg (d), the reusable core  `[HIGH/OBSERVED]`
+### 4.3 The ctypes live driver — leg (d), the reusable core
 
 ```python
 import ctypes
@@ -284,9 +283,9 @@ def live_unary(fn, a):
 > `mode=ctypes.RTLD_GLOBAL` makes the whole `libfiss-base` symbol table resolvable at
 > `dlopen` time.
 
-### 4.4 The method end-to-end — a real leaf driven LIVE  `[HIGH/OBSERVED]`
+### 4.4 The method end-to-end — a real leaf driven LIVE
 
-The harness above, run against the shipped binary this pass, calling the actual
+The harness above, run against the shipped binary, calling the actual
 `module__xdref_*` leaves on the hardest edge inputs — **the vendor binary itself computes
 every value**:
 
@@ -506,15 +505,15 @@ intended mnemonic.
 
 | Claim | Tag | Ground |
 |-------|-----|--------|
-| 864 `module__xdref_*` value leaves; 948 `opcode__ivp_*__stage_5` handlers | HIGH / OBSERVED | `nm -D \| rg -c` against the 12,330,016-byte `libfiss-base.so` this pass |
-| BINARY ABI `f(rdi,esi,edx,rcx*out)`; UNARY ABI `f(rdi,esi,rdx*out)`; out-pointer register differs | HIGH / OBSERVED | disassembled `add_16_16_16`@0x858480 (store via `%rcx`) and `abs_16_16`@0x82d060 (store via `%rdx`) this pass |
+| 864 `module__xdref_*` value leaves; 948 `opcode__ivp_*__stage_5` handlers | HIGH / OBSERVED | `nm -D \| rg -c` against the 12,330,016-byte `libfiss-base.so` |
+| BINARY ABI `f(rdi,esi,edx,rcx*out)`; UNARY ABI `f(rdi,esi,rdx*out)`; out-pointer register differs | HIGH / OBSERVED | disassembled `add_16_16_16`@0x858480 (store via `%rcx`) and `abs_16_16`@0x82d060 (store via `%rdx`) |
 | arg0 `%rdi` (xstate) dead for callback-free int/word leaves | HIGH / OBSERVED | live ctypes drive passed `None` and the leaves computed correctly |
-| live ctypes drive reproduces every §4.4 edge value (add/adds/sub/min/minu/abs/neg/abssub) | HIGH / OBSERVED | real `libfiss-base.so` `dlopen`'d and 8 leaves called this pass |
-| the `adds` 17-bit-overflow bit-trick (`bit15!=bit16`, `(s<<16)sar31 & 0x7fff \| (s>>1)&0x8000`) | HIGH / OBSERVED | disassembled `adds_16_16_16`@0x85aa10 this pass — matches the lift byte-for-byte |
-| `min`/`max` sign-bias (`!sign<<15 \| (v&0x7fff)`, `cmovae`/`cmovbe`); `minu`/`maxu` bare `cmp;cmova/cmovb` | HIGH / OBSERVED | disassembled `min`@0x8584b0, `minu`@0x8584f0 this pass |
+| live ctypes drive reproduces every §4.4 edge value (add/adds/sub/min/minu/abs/neg/abssub) | HIGH / OBSERVED | real `libfiss-base.so` `dlopen`'d and 8 leaves called |
+| the `adds` 17-bit-overflow bit-trick (`bit15!=bit16`, `(s<<16)sar31 & 0x7fff \| (s>>1)&0x8000`) | HIGH / OBSERVED | disassembled `adds_16_16_16`@0x85aa10 — matches the lift byte-for-byte |
+| `min`/`max` sign-bias (`!sign<<15 \| (v&0x7fff)`, `cmovae`/`cmovbe`); `minu`/`maxu` bare `cmp;cmova/cmovb` | HIGH / OBSERVED | disassembled `min`@0x8584b0, `minu`@0x8584f0 |
 | four legs are structurally distinct algorithms (clamp vs bit-trick vs numpy-wrap) | HIGH / OBSERVED | the disassembled bodies vs the lifted RTL vs nki `_NUMPY_FUNC_MAP` |
 | device FLIX decode: 14 bundles, op0=0xf, N0 format, slot3 op | HIGH / OBSERVED-elsewhere | the device `xtensa-elf-as`/`objdump` (XTENSA_CORE=ncore2gp), cached decode |
-| the `recipqli` soft-float-dispatch wall (`call *0x38(%rax)` from xstate; SIGSEGV on NULL) | HIGH / CARRIED | the three `recipqli` leaf addresses confirmed by `nm -D` this pass; the SIGSEGV is fork-isolation-proven in the residual-closure pass, not re-run here |
+| the `recipqli` soft-float-dispatch wall (`call *0x38(%rax)` from xstate; SIGSEGV on NULL) | HIGH / CARRIED | the three `recipqli` leaf addresses confirmed by `nm -D`; the SIGSEGV is fork-isolation-proven in the residual-closure pass |
 | `libcas-core` per-instance state = 4,852,208 B (0x4a09f0); decode+timing half of the oracle | HIGH / CARRIED | `0x4a09f0 = 4852208` arithmetic confirmed; the size is the Part-14 oracle datum |
 | `LIBFISS_VERSION` value | MED / CARRIED | the version lives inside `libfiss_config_metadata`@0x951940, not a standalone exported symbol; the numeric value is carried from the provenance ledger, not re-decoded here |
 | the >1M aggregate comparison figure across the VAL lane | MED / INFERRED | summed from the per-family runs, not re-counted leaf-by-leaf |

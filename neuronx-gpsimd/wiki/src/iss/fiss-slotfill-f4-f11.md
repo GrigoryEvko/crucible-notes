@@ -27,8 +27,7 @@ external source was consulted; every offset is a byte in one of these two files.
 `readelf -SW libfiss-base.so` confirms `.text` (VMA `0x190430` == file off `0x190430`)
 and `.rodata` (VMA `0x88ff00` == file off `0x88ff00`) are **VMA==fileoffset**; only
 `.data` carries a delta (VMA `0xc8eb68` − file off `0xa8eb68` = **`0x200000`**). Every
-`objdump --start-address` below uses a `.text` VMA directly. `[HIGH/OBSERVED]`
-
+`objdump --start-address` below uses a `.text` VMA directly.
 ---
 
 ## 1. Where these four formats sit
@@ -37,8 +36,7 @@ The keystone for the whole `libfiss-base.so` survey: **`nm -D --defined-only` li
 20 379 defined exports**, of which **12 569 are `slotfill__*` operand decoders** and
 **864 are `module__xdref_*` value leaves**. The slotfill functions are the
 operand-**decode** layer — the functional-ISS inverse of the libisa encode thunks.
-This page carves out the four wide formats from that 12 569. `[HIGH/OBSERVED]`
-
+This page carves out the four wide formats from that 12 569.
 ```
 $ nm -D --defined-only libfiss-base.so | rg -c 'slotfill__'                 # 12569
 $ nm -D --defined-only libfiss-base.so | rg -c 'slotfill__(F4|F6|F7|F11)__' #  4158
@@ -71,8 +69,7 @@ grand total **4 158** (verified by `rg -o 'S[0-9]_[A-Za-z]+_slot[0-9]' | sort | 
 > (`LdSt·Ld·Mul·ALU·ALU`). F11's roster begins `Ld` (not `LdSt`) and ends with a
 > *third* ALU slot, making it the **no-store triple-ALU wide format**. The F11
 > count 686 splits 93/66/203/233/91; the table above is the ground truth a
-> reimplementer must reproduce. `[HIGH/OBSERVED]`
-
+> reimplementer must reproduce.
 ### 1.1 Load/store capability is not gated by the slot name
 
 A genuine finding worth flagging because the slot *label* misleads:
@@ -87,8 +84,7 @@ A genuine finding worth flagging because the slot *label* misleads:
 
 > **GOTCHA — do not infer store-capability from the TIE unit label.** F4's `Ld`
 > slot stores; F11's `Ld` slot does not. The discriminator is the *mnemonic set*
-> behind the cell, not the `Ld`/`LdSt` suffix. `[HIGH/OBSERVED]`
-
+> behind the cell, not the `Ld`/`LdSt` suffix.
 ---
 
 ## 2. The slotfill ABI (re-stated for the wide formats)
@@ -117,8 +113,7 @@ The two **vector latch sets are not redundant**: the `0x94/0x50/0xd8` ALU-canoni
 set carries the two-lane `ADD_S`/`_H` "scalar-of-vector" thunks (operands in the low
 64 bits, word2/word3 untouched); the `0x28/0x6c/0xb0` Mul/alt set carries the full
 16-lane `IVP_*NX16` forms (operands scatter all the way into word3). Which set a given
-mnemonic uses is fixed by its form, not chosen at run time. `[HIGH/OBSERVED]`
-
+mnemonic uses is fixed by its form, not chosen at run time.
 > **NOTE — the slotfill writes *indices only*.** No arithmetic on operand values
 > ever happens here. The index latch `L` later pairs with a 16-dword (512-bit NX16)
 > value block at `L+4`, written by `regload__*` (§6), not by the slotfill.
@@ -161,8 +156,7 @@ The five `get_fn` bit-offsets in `libisa-core.so` are
 `Slot_f11_Format_f11_s0_ld_4_get`, `…_s1_alu_16_get`, `…_s2_mul_41_get`,
 `…_s3_alu_31_get`, `…_s4_alu_24_get` — bit-offsets **4, 16, 41, 31, 24**, matching
 [the FLIX slot roster](../isa/core/flix-encoding.md#5-the-46-slot-roster--bit-offsets-widths-units-formats)
-exactly. `[HIGH/OBSERVED]`
-
+exactly.
 ```
    128-bit FLIX F11 bundle (op0 = 0xE, byte3 lo = 8):
    bit 0   4         16        24      31        41             79  81   97
@@ -203,8 +197,7 @@ Decoded fields (bundle-absolute bits; `+N` = the high bank bit):
 
 Each AR field: `(word0 >> shift) & 7` for the 3 index bits; the bank bit is
 `((word0 >> bankshift) ^ 1) & 1`, weighted `<< 3`, then `+ window_base`, then `& 0x3f`.
-**S0 begins at bundle bit 4** — exactly the slot's `_4_` `get_fn` token. `[HIGH/OBSERVED]`
-
+**S0 begins at bundle bit 4** — exactly the slot's `_4_` `get_fn` token.
 ### 4.2 `F11_S1_ALU` — scalar AR with dst spilling into word1 (`@0x743ed0`, `ADD`)
 
 S1 begins at bundle bit 16. Its dst lands in the **high bits of word1** (`@0x743ed0`):
@@ -229,8 +222,7 @@ S1 begins at bundle bit 16. Its dst lands in the **high bits of word1** (`@0x743
 > **QUIRK — the dst of S1 lives 44 bits away from its src operands.** `s`/`t` sit
 > contiguously at bits 16–23, but `r`/dst is packed into the *top* of word1
 > (bits 60–63), with the bank bit borrowed from word0[31]. This is the FLIX
-> non-contiguity: a "slot" is a *set* of scattered bit-runs, not a span. `[HIGH/OBSERVED]`
-
+> non-contiguity: a "slot" is a *set* of scattered bit-runs, not a span.
 ### 4.3 `F11_S2_Mul` — vector, 2-bit sub-op + two vregs (`@0x749140`, `IVP_MUL2NX8`)
 
 The Mul slot decodes a **2-bit sub-opcode selector** plus two 5-bit vreg fields
@@ -257,8 +249,7 @@ The Mul slot decodes a **2-bit sub-opcode selector** plus two 5-bit vreg fields
 
 The sub-op selector `{58,91}` = `word1[26] \| word2[27]` picks the Mul-slot
 sub-operation (the `MUL2NX8`-class family). The multiplicand vfield lands at the slot
-offset (bit 41 = `mul@41`); the product reg sits in word2. `[HIGH/OBSERVED]`
-
+offset (bit 41 = `mul@41`); the product reg sits in word2.
 > **NOTE — `vt`==`vs` for `MUL2NX8`.** The libisa `_get` accessors return the *same*
 > bits `{41-45}` for both `vt` and `vs`; the slotfill collapses them into the single
 > `0xec` latch. The 2-input multiply **aliases its multiplicand input** — one
@@ -300,8 +291,7 @@ full-width vector body (`@0x74bb60`):
 > Mul/alt latch set `0x28/0x6c/0xb0` with `vt` and `vr` **swapped** relative to F7.
 > A reimplementer that assumes "same `get_fn` bit-offset ⇒ same operand latch
 > assignment" will mis-route F11's S3 operands. The bit sets are shared; the latch
-> destinations are not. `[HIGH/OBSERVED]`
-
+> destinations are not.
 ### 4.5 `F11_S4_ALU` — the extra ALU slot, the only one reaching word3 (`@0x751070`, `IVP_ADDNX16`)
 
 S4 is F11's third ALU slot, anchored at bit 24, and the **only F11 slot whose vreg
@@ -333,8 +323,7 @@ fields reach word3** (`@0x751070`):
 > `vt` field draws bits 97–98 from **word3** (`shl $2 ; and $0x18` on `0xc(%rdi)`),
 > bits the other F11 slots never touch. This is the "5th issue slot pushes operands
 > off the top of the bundle" effect — exactly what the `S4 @24` low offset plus a
-> word3 spill produces. `[HIGH/OBSERVED]`
-
+> word3 spill produces.
 ---
 
 ## 5. F4 / F6 / F7 — the four-slot wide formats
@@ -347,8 +336,7 @@ The four-slot formats reuse F11's idioms; the differences are the slot bit-offse
 `F4_S0_Ld`, `F6_S0_LdSt`, `F7_S0_LdSt`, `F11_S0_Ld` all decode `ADD` with the same
 bit layout — `t→0x50 {4,5,6,+7}`, `s→0x48 {8,9,10,+11}`, `r→0x24 {12,13,14,+15}` —
 because **every s0 in the ISA begins at bundle bit 4**. The four bodies are
-byte-for-byte the same gather; only their addresses differ. `[HIGH/OBSERVED]`
-
+byte-for-byte the same gather; only their addresses differ.
 ### 5.2 The signed-immediate form — `F4_S0_Ld` `ADDI` (`@0x1a2ce0`)
 
 The task-requested sign-extension case. `objdump -d --start-address=0x1a2ce0`:
@@ -367,8 +355,7 @@ The decisive instruction is the **arithmetic `sar`** at `1a2d42`: register field
 operand **kind** — register vs immediate — is the *only* thing that selects between
 zero-extend and sign-extend. The decoded `0x50` immediate is fed by the field
 union with `word2[24]` (= bundle bit 88, the high imm chunk) as the eventual sign
-source. `[HIGH/OBSERVED]`
-
+source.
 ### 5.3 The narrow S1 dst-split — `F4_S1_Ld` `ADD` (`@0x2a5cf0`)
 
 `F4_S1_Ld` is the **narrow** (24-bit) Ld slot, so its dst is split into discontiguous
@@ -393,16 +380,14 @@ runs (`@0x2a5cf0`):
 > `shr $0x1f` that isolates bit 31. The two idioms are functionally identical (both
 > flip the bank bit), but a literal-instruction reimplementation must reproduce the
 > `not`+`shr` sequence for the narrow dst, not an `xor`. The dst packing mirrors the
-> `F3_S1` `{26,29,30}` split. `[HIGH/OBSERVED]`
-
+> `F3_S1` `{26,29,30}` split.
 ### 5.4 Immediate-table forms — `F11_S1_ALU` `IVP_EXT0IB` (`@0x745ba0`)
 
 A handful of slotfills are **not** pure `shr`/`and`/`or` chains: they map a small bit
 field through a `.rodata` table. `F11_S1_ALU IVP_EXT0IB` uses
 `lea table__imm1_2N_tab ; mov (tbl,idx*4)` to translate a 3-bit field into a TIE
 immediate value, writing the lane latches `0x28`/`0x34`/`0x40`. This is the only
-table-driven decode shape in the wide slice; everything else is open-coded gather. `[HIGH/OBSERVED]`
-
+table-driven decode shape in the wide slice; everything else is open-coded gather.
 ### 5.5 The two-lane ALU thunk (`ADD_S`) lives only in F7 (`@0x292320`)
 
 `F7_S3_ALU ADD_S` (`@0x292320`) is the "scalar-of-vector" two-lane form: it reads
@@ -410,8 +395,7 @@ table-driven decode shape in the wide slice; everything else is open-coded gathe
 so its operands live in bits [0:63]. It uses the **ALU-canonical** latch set
 `vt→0x94, vs→0x50, vr→0xd8`. F4/F6/F11 carry no `ADD_S` in their ALU slots — only
 F7's ALU hosts the two-lane scalar-of-vector form; F4/F6/F11 ALU vectors are the full
-`IVP_*NX16` family (Mul/alt latch set). `[HIGH/OBSERVED]`
-
+`IVP_*NX16` family (Mul/alt latch set).
 > **GOTCHA — "reads two words" vs "reads four words" is the latch-set tell.** A
 > body that touches only `(%rdi)`/`0x4(%rdi)` is a two-lane ADD_S/_H form
 > (`0x94/0x50/0xd8`); a body that touches all four words is a full 16-lane
@@ -427,7 +411,7 @@ which writes the **largest operand struct in the slice**: a sub-op at `0x28`{57,
 and a second selector at `0xec`{28,58}. It is still pure bitfield decode — just a
 wider handoff. The extra-latch *roles* (which is dst/src/guard) are `[MED/INFERRED]`
 from latch ordering + the `L+4` value-block pairing convention, not separately traced
-per-latch. `[HIGH/OBSERVED]` (bits) / `[MED/INFERRED]` (roles)
+per-latch. `[HIGH/OBSERVED bits; MED/INFERRED roles]`
 
 ---
 
@@ -457,8 +441,7 @@ writeback__ivp_addnx16 @0x39cd10 dstidx = ctx[0x28] (vt latch doubles as dst);(S
 `objdump -d --start-address=0x39cb80` confirms `regload__ivp_addnx16` opens with
 `mov 0x6c(%rdi),%edx ; shl $0x4,%edx` — it reads the **exact `0x6c` latch the S3
 slotfill wrote** and applies the ×16 (`shl $4`) gather stride. The decode → gather
-contract is byte-verified. `[HIGH/OBSERVED]`
-
+contract is byte-verified.
 > **NOTE — dst overlaps a source for the NX16 ALU forms.** The IVP vector ALU
 > encodes dst on top of the `vt` operand group: `writeback` re-reads `0x28` (= `vt`)
 > as the write target. This mirrors the F0–F3 `add_h` case (dst = `0x50`). F4's
@@ -469,8 +452,7 @@ So: **the slotfill is the only producer of operand indices**; `regload` converts
 indices → 512-bit values; `opcode` computes per-lane over the 864-leaf `module__xdref_*`
 primitives; `writeback` commits to `regfile[idx]`. The wide-format slotfill is the
 decode root of the per-instruction pipeline, with the same downstream machinery as
-F0–F3. `[HIGH/OBSERVED]`
-
+F0–F3.
 ---
 
 ## 7. Encode ⇄ decode inverse — cross-validated against `libisa-core.so`
@@ -494,20 +476,17 @@ Slot_f11_Format_f11_s0_ld_4_get   s1_alu_16             s2_mul_41    s3_alu_31  
 Every `<bitoff>` token equals
 [the FLIX slot bit-offset](../isa/core/flix-encoding.md#5-the-46-slot-roster--bit-offsets-widths-units-formats).
 The five F11 `get_fn` thunks sit at `0x3b0ee0 / 0x3b10c0 / 0x3b1220 / 0x3b13e0 /
-0x3b15e0`. `[HIGH/OBSERVED]`
-
+0x3b15e0`.
 **(b) field accessors compose to the slotfill latch bits, field-for-field.** The
 `Field_fld_ivp_sem_vec_alu_{vr,vs,vt}_Slot_f11_s3_alu_get` accessors exist (and their
 `_set` siblings) and reproduce the `F11_S3` bit sets `{46-49,56}` / `{31,33,34,50,51}`
 / `{36-39,79}` from §4.4. Every wide cell tested — scalar AR (S0/S1) + vector ALU
-(S3/S4) + Mul (S2) — composed to the slotfill latch bits with **no mismatch**. `[HIGH/OBSERVED]`
-
+(S3/S4) + Mul (S2) — composed to the slotfill latch bits with **no mismatch**.
 **(c) `set == get⁻¹` over the field width.** `libisa-core.so` ships **3 237 `Field_*_get`
 and 3 230 `Field_*_set`** accessors. For every field tested,
 `field_get(field_set(0, v)) == v` over the full field range (vector 5-bit `v∈0..31`,
 scalar 4-bit `v∈0..15`) — the field `_set` is the exact bit-inverse of its `_get`.
-**Encode and decode are mutual inverses.** `[HIGH/OBSERVED]`
-
+**Encode and decode are mutual inverses.**
 > **NOTE — the 7-element `_get`/`_set` shortfall (3237 vs 3230) is fields with no
 > writer**, not a broken inverse: every field that *has* a `_set` inverts its `_get`.
 > A handful of derived/read-only fields expose only a getter.
@@ -528,8 +507,7 @@ These match
 [the FLIX format-decoder triggers](../isa/core/flix-encoding.md#3-format-selection--format_decoder-0x3b5970)
 exactly. The encode side fixes `bits[3:0]=op0` + the `byte3` selector; the slotfill
 operand decode reads only bits ≥ 4 within each slot — **selector and operand fields
-are disjoint**, so encode and decode are mutually consistent by construction. `[HIGH/OBSERVED]`
-
+are disjoint**, so encode and decode are mutually consistent by construction.
 **No mismatch was found in any cross-check across all 17 wide cells.**
 
 ---
@@ -540,23 +518,22 @@ are disjoint**, so encode and decode are mutually consistent by construction. `[
   mnemonic × slot × format. Within a `(form, slot)` cell the field math is *identical*
   across mnemonics (verified across `ADD`/`ADDI`/`ADD_S`/`IVP_ADDNX16`/`MUL2NX8`
   samples); cells differ only in *how many* mnemonics they host. You can codegen the
-  decoder from the slot roster + a per-form template. `[HIGH/OBSERVED]`
+  decoder from the slot roster + a per-form template.
 - **Two vector latch sets are semantic, not redundant.** ALU-canonical
   (`0x94/0x50/0xd8`) = two-lane scalar-of-vector thunks (low 64 bits); Mul/alt
   (`0x28/0x6c/0xb0`) = full 16-lane `IVP_*NX16` (scatters into word3). The slot
   `get_fn` + field family disambiguate which set a mnemonic uses; the bundle-word
-  read pattern is a reliable secondary tell (§5.5). `[HIGH/OBSERVED]`
+  read pattern is a reliable secondary tell (§5.5).
 - **FLIX slots are scattered, not contiguous.** Every vector operand is a scattered
   5-bit field; the slotfill open-codes the gather as a fixed `shr`/`and`/`or` chain
-  (no loop, no table) — except the immediate-table forms (§5.4). `[HIGH/OBSERVED]`
+  (no loop, no table) — except the immediate-table forms (§5.4).
 - **F11 is the no-store wide format** (s0 load-only, triple-ALU s1/s3/s4); F4 is the
   dual-Ld format whose s0 still permits store encodings; F6/F7 are full 4-issue
   `LdSt·Ld·Mul·ALU` differing only in their `byte3` hi-selector and a couple of slot
-  bit-offsets (F6 `alu@36` vs F7 `alu@31`; both `mul@41`). `[HIGH/OBSERVED]`
+  bit-offsets (F6 `alu@36` vs F7 `alu@31`; both `mul@41`).
 - **Operand kind = extension mode.** Register index → zero-extend (`shr`/`and`);
   signed immediate → sign-extend (`shl`/`sar`). The format-selector nibble is never
-  touched by operand decode. `[HIGH/OBSERVED]`
-
+  touched by operand decode.
 ---
 
 ## 9. Confidence ledger

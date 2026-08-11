@@ -14,7 +14,7 @@ value, or `.rodata` string recovered from the static analysis corpus, with a
 confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. **OBSERVED** = read
 directly out of the binary in this page; **CARRIED** = established by a cited
 Part-7 page and reused here unchanged; **INFERRED** = deduced from observed
-facts. Source report **DX-RT-11**.
+facts. Source report **RT-11**.
 
 > **Binary of record.** All addresses, offsets and disassembly on this page are
 > from `libneuroncustomop.a` (Neuron GPSIMD custom-op library **v0.21.2.0**,
@@ -575,8 +575,10 @@ A kernel `.o` is dispatchable iff **all** of the following hold:
 * [scalartype-dtype-rosetta.md](scalartype-dtype-rosetta.md) — the complete bidirectional dtype map.
 * [lsp-elf.md](lsp-elf.md) — the per-core LSP base `0x84000000 + i·0x200000` and image layout.
 * [q7-elf-vaddr.md](q7-elf-vaddr.md) — how section-relative offsets become Q7 virtual addresses.
-* `../orientation/customop-end-to-end.md` — the narrative walk-through this page
-  formalizes.
+* [A Custom Op, End to End](../orientation/customop-end-to-end.md) — the narrative
+  walk-through this page formalizes.
 
-Forward links: the host-runtime side of registration and dispatch (Part 8) and
-the collectives ABI (Part 9) are covered on their own pages once authored.
+Forward links: the host-runtime side of registration and dispatch is covered by
+[The Host Prelinker](../runtime/prelinker-ucpl.md) and
+[Execute-Time Dispatch](../runtime/execute-time-dispatch.md); the collectives ABI by
+[Collective Architecture Synthesis](../collectives/ops/architecture-synthesis.md).

@@ -17,8 +17,8 @@ This page carves the **DMA-engine block subtree** out of the Maverick address-ma
 DB: the three engine families **DDMA / CDMA / UDMA**, their SoC bases and sizes,
 the channel arrays, the UDMA M2S/S2M/GEN/GEN_EX engine geometry, the CSR-schema
 bindings, the array/instance expansion model, the Maverick-vs-Cayman DMA delta,
-and the full record-count reconciliation. Every figure here was re-derived by
-**streaming** the `.json` mirror with `ijson` (never `pickle.load`); see
+and the full record-count reconciliation. Every figure here comes from **streaming**
+the `.json` mirror with `ijson` (never `pickle.load`); see
 [§Carve pseudocode](#carving-the-dma-subtree-safely).
 
 > **WALL — arch identity (HIGH/CARRIED).** The pkl describes **MAVERICK (NC-v5)**.
@@ -33,12 +33,12 @@ and the full record-count reconciliation. Every figure here was re-derived by
 
 ## 1. Naming GOTCHA — Maverick calls them DDMA / CDMA / UDMA, not "SDMA"
 
-> **GOTCHA (HIGH/OBSERVED).** On Maverick the SoC DMA engines are named
+> **GOTCHA.** On Maverick the SoC DMA engines are named
 > **DDMA**, **CDMA**, and **UDMA**. The Cayman-era keyword **`SDMA` matches ZERO
 > records** in the entire 323,198-record DB. If you carry the Cayman "SDMA"
 > mental model into this pkl you will find nothing — grep for `DDMA`/`CDMA`/`UDMA`.
 > The engine *contents* are the same UDMA descriptor-DMA IP family; only the SoC
-> instance names changed. Verified by streaming: `SDMA` substring → **0**.
+> instance names changed. `SDMA` substring → **0** records.
 
 The link between the two namings is the on-disk schema path. The channel schemas
 reference `address_map/apb/**sdma**/udma_apb_chain.json` — the **RTL IP directory
@@ -64,12 +64,12 @@ This is the taxonomy reconciliation expanded in
 | **CDMA** | **Compute** DMA channel | 8 unicast | `cdma_user.json` (NODE 0x100000) | DDMA **+ CCE** (inline FMA / dtype-convert / stochastic-round) |
 | **UDMA** | **Unified DMA engine core** | not standalone | `udma_apb_chain.json` (NODE 0x80000) | M2S + S2M + GEN + GEN_EX, instantiated inside *every* DDMA/CDMA channel |
 
-> **GOTCHA (HIGH/OBSERVED).** **UDMA is NOT a standalone engine node.** There is
+> **GOTCHA.** **UDMA is NOT a standalone engine node.** There is
 > ZERO record with `short_name=="UDMA"` that is its own top-level engine, and ZERO
 > UDMA record outside a DDMA or CDMA channel. "UDMA" is the shared engine core
-> (`UDMA_APP` container) embedded in each data/compute channel. Streamed proof:
-> of the 146,064 records whose name contains `UDMA`, **0** lack a `DDMA`/`CDMA`
-> token (`UDMA_OUTSIDE_DDMA_CDMA == 0`).
+> (`UDMA_APP` container) embedded in each data/compute channel: of the 146,064
+> records whose name contains `UDMA`, **0** lack a `DDMA`/`CDMA` token
+> (`UDMA_OUTSIDE_DDMA_CDMA == 0`).
 
 ---
 
@@ -88,11 +88,11 @@ At `parent_names == ['ADDRESS_MAP','user_int','seng_0']` the SENG carries only
 | `DDMA_DESC_0..15` | 16 | NODE / 0x100000 | `reserved.json` | `"16"` | none |
 | `CDMA_DESC_0..7` | 8 | NODE / 0x100000 | `reserved.json` | `"8"` | none |
 
-OBSERVED example: `USER_INT_SENG_0_DDMA_DESC_0` → `type=NODE, size=0x100000,
+Example: `USER_INT_SENG_0_DDMA_DESC_0` → `type=NODE, size=0x100000,
 count=4, self_array_size="16", json=reserved.json`, **0 descendants**. The real
 DMA CSRs are *not* in the engine view; they are reached through the APB_IO plane
 (§2b). Stub totals (db-wide): **DDMA_DESC 64** (16 × 4 SENG), **CDMA_DESC 32**
-(8 × 4 SENG). `secure_int` has none of these stubs. (HIGH/OBSERVED.)
+(8 × 4 SENG). `secure_int` has none of these stubs.
 
 ### 2b. APB_IO control plane (`user_int`) — the real DMA channels
 
@@ -108,10 +108,10 @@ Channel roots are `NODE size 0x100000` binding `ddma_user.json` / `cdma_user.jso
 | `H2D_DDMA` | `0xc002900000` (size 0x100000) | — | host→device | `ddma_user.json` |
 | `D2H_DDMA` | `0xc002a00000` (size 0x100000) | — | device→host | `ddma_user.json` |
 
-OBSERVED bases (streamed): `DDMA_0..3` = `0xc001000000, 0xc001100000,
+Bases (streamed): `DDMA_0..3` = `0xc001000000, 0xc001100000,
 0xc001200000, 0xc001300000` → **stride = 0x100000 (1 MiB)**; `CDMA_0..3` =
 `0xc002000000, 0xc002100000, …` → same 1 MiB stride. The SENG-to-SENG stride is
-`0x100000000000` (so `SENG_1 DDMA_0` = base + `0x100000000000`). (HIGH/OBSERVED.)
+`0x100000000000` (so `SENG_1 DDMA_0` = base + `0x100000000000`).
 
 ### 2c. PEB_APB_IO plane (`secure_int`) — privileged, dual aperture
 
@@ -120,15 +120,15 @@ Same channel set, byte-identical internal structure, but reached through the
 privileged PEB aperture **and in two sub-apertures per SENG**: `PEB_APB_IO`
 (plain priv) and `PEB_APB_IO_BCAST` (priv APB-broadcast path). This doubling is
 why **secure_int DMA records are exactly 2× user_int**. Streamed split:
-`PEB_APB_IO 58,808 / PEB_APB_IO_BCAST 58,808` — **50/50 exact**. (HIGH/OBSERVED.)
+`PEB_APB_IO 58,808 / PEB_APB_IO_BCAST 58,808` — **50/50 exact**.
 
-OBSERVED base: `SECURE_INT_SENG_0_C_DIE_PEB_APB_IO_USER_DDMA_0` = `0x2000008001000000`,
+Base: `SECURE_INT_SENG_0_C_DIE_PEB_APB_IO_USER_DDMA_0` = `0x2000008001000000`,
 whose low part `0x8001000000` is the APB_IO window and whose high bit is the
 privileged-aperture selector.
 
-> **CORRECTION (vs SX-ADDR-12 §2c — HIGH/OBSERVED).** SX-ADDR-12 labels the
-> privileged-aperture bit *"bit53 = 0x20000000000000"*. That literal is `1<<53`,
-> but it is **NOT** the bit set in the OBSERVED Maverick base: with the local
+> **CORRECTION — the v5 privileged-aperture bit is 61, not 53.** Labelling the
+> privileged-aperture bit *"bit53 = 0x20000000000000"* is wrong here: that literal
+> is `1<<53`, but it is **NOT** the bit set in the OBSERVED Maverick base: with the local
 > window subtracted, `0x2000008001000000 − 0x8001000000 = 0x2000000000000000 =
 > 1<<61`. So on **this Maverick pkl** the privileged aperture is encoded at
 > **bit 61** (`0x2000000000000000`), not bit 53. The index "53" is carried over
@@ -155,11 +155,11 @@ size `0x100000`, NODE → `ddma_user.json`). Direct children (offsets are
 | `+0x0FF000` | `CCE` | REGFILE | `0x001000` | `cce.json` — **CDMA ONLY** (§4) |
 
 A `CDMA_0` channel is the **identical six blocks plus** the `CCE` block at
-`+0xFF000`. Both layouts verified by streaming the channel-root children.
+`+0xFF000`. Both layouts come from the channel-root children.
 
 ### 3a. The UDMA_APP engine core (`udma_apb_chain.json`, NODE 0x80000)
 
-`UDMA_APP` is the unified DMA engine. Its HDL path tag is OBSERVED as
+`UDMA_APP` is the unified DMA engine. Its HDL path tag is
 `u_udma.u_mla_udma_top.ap_udma_top.gdma_regfile_wrapper`. Direct children:
 
 | off in UDMA_APP | engine | type | size | `json` | Cayman off (size) |
@@ -180,14 +180,14 @@ A `CDMA_0` channel is the **identical six blocks plus** the `CCE` block at
 > [`../csr/udma-s2m.md`](../csr/udma-s2m.md),
 > [`../csr/udma-gen-tdma.md`](../csr/udma-gen-tdma.md).
 
-> **CROSS-GEN DELTA (HIGH/OBSERVED — §7).** The Maverick **UDMA window doubled
+> **CROSS-GEN DELTA (§7).** The Maverick **UDMA window doubled
 > 0x40000 → 0x80000**. M2S grew `0x20000 → 0x40000`; S2M grew `0x18000 → 0x38000`;
 > GEN/GEN_EX unchanged at `0x4000`. Because M2S/S2M grew, **all within-UDMA
 > offsets moved**: S2M `+0x20000 → +0x40000`, GEN `+0x38000 → +0x78000`, GEN_EX
-> `+0x3C000 → +0x7C000`. Verified against the on-disk `udma_apb_chain.json`
-> Includes (`m2s@0x0, s2m@0x40000, gen@0x78000, gen_ex@0x7C000`).
+> `+0x3C000 → +0x7C000`. The on-disk `udma_apb_chain.json`
+> Includes agree (`m2s@0x0, s2m@0x40000, gen@0x78000, gen_ex@0x7C000`).
 
-### 3b. Engine internals (selected, OBSERVED from the on-disk schemas)
+### 3b. Engine internals (selected, from the on-disk schemas)
 
 - **M2S** (`al_udma_m2s_regs.json`, AddrWidth 18): per-queue `M2S_Q` doorbell +
   `M2S_comp` completion, `M2S_rate_limiter`/`M2S_dwrr` shapers, `AXI_M2S`,
@@ -212,10 +212,10 @@ A `CDMA_0` channel is the **identical six blocks plus** the `CCE` block at
 
 ---
 
-## 4. DDMA vs CDMA — the compute-DMA identity (HIGH/OBSERVED)
+## 4. DDMA vs CDMA — the compute-DMA identity
 
-DDMA and CDMA channels are **byte-identical except for one block**. Verified by
-streaming the channel-root children: both carry the six common blocks (§3); the
+DDMA and CDMA channels are **byte-identical except for one block**. The
+channel-root children show both carry the six common blocks (§3); the
 CDMA channel adds **`CCE @ +0xFF000`** and *nothing else*.
 
 ```
@@ -234,9 +234,9 @@ path. Therefore:
 - **CDMA** = Compute DMA channel = DDMA **+** the inline CCE FMA/convert engine.
 
 CCE appears **only** under CDMA — **96 nodes** = 8 CDMA × 12 cluster-instances —
-and **never** under DDMA. OBSERVED base of `CDMA_0`'s CCE = `0xc0020ff000`
-(= CDMA_0 base `0xc002000000` + `0xFF000`). (HIGH/OBSERVED — this resolves the
-"what is CDMA?" question.)
+and **never** under DDMA. The base of `CDMA_0`'s CCE = `0xc0020ff000`
+(= CDMA_0 base `0xc002000000` + `0xFF000`) — this resolves the "what is CDMA?"
+question.
 
 > **CROSS-GEN NOTE (MED).** Cayman's SDMA app engines were CME / DRE / CCE
 > (merge / strided-transpose / compute). In this Maverick pkl `cme.json` = 0
@@ -253,7 +253,7 @@ Maverick promotes broadcast to a **dedicated per-family container** that sits
 holds a **full UDMA engine** (same `M2S@+0/S2M@+0x40000/GEN@+0x78000/GEN_EX@+0x7C000`
 geometry). One broadcast writer per family per cluster fans a single descriptor
 program out to a whole group via the `PEB_APB_IO_BCAST` aperture + `papb_bcast`
-mask. OBSERVED bases: `DDMA_BCAST_UDMA@0xc002800000`, `CDMA_BCAST_UDMA@0xc002880000`.
+mask. Bases: `DDMA_BCAST_UDMA@0xc002800000`, `CDMA_BCAST_UDMA@0xc002880000`.
 **BCAST_UDMA total = 24** = user_int (DDMA 4 + CDMA 4) + secure_int (DDMA 8 + CDMA 8).
 
 ---
@@ -378,7 +378,7 @@ Plus **24 `BCAST_UDMA`** containers (§4). Therefore the UDMA engine count
 one M2S + one S2M + one GEN + one GEN_EX. **Streamed counts confirm: UDMA_APP =
 312, BCAST_UDMA = 24, m2s/s2m/gen/gen_ex = 336 each.**
 
-**FCI sub-channel expansion (OBSERVED):** `fci_top_64_ch` = **672** (336 M2S-FCI
+**FCI sub-channel expansion:** `fci_top_64_ch` = **672** (336 M2S-FCI
 + 336 S2M-FCI), each a 64-channel block → `fci_channel` = **43,008** = 672 × 64.
 (This is the largest raw-RTL schema in the DB, now fully placed.)
 
@@ -387,7 +387,7 @@ one M2S + one S2M + one GEN + one GEN_EX. **Streamed counts confirm: UDMA_APP =
 ## 9. Block → CSR-schema bindings
 
 The `json` field on each node binds it to a register schema whose `Type` matches
-the node `type` and whose `SizeInBytes` matches the node `size` (all verified on
+the node `type` and whose `SizeInBytes` matches the node `size` (all present on
 disk in the Maverick `vpc-mirror` tree). The load-defining DMA schemas (count =
 streamed node count):
 
@@ -466,8 +466,8 @@ Per-channel record counts: **DDMA unicast = 507** (incl root); **CDMA unicast =
 > memory-bounded SAX-style parser; do **not** slurp 514 MB), or scan opcodes with
 > `pickletools.genops()` (no `find_class`, no object construction). The DB is a
 > flat top-level array of dict records; filter to the DMA subtree by the engine
-> token in the `name` field. The streaming carve below ran in ~1.9 s and is what
-> produced every count on this page.
+> token in the `name` field. The streaming carve below produces every count on
+> this page.
 
 ```python
 import ijson, collections, re

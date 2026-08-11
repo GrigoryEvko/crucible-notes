@@ -14,16 +14,16 @@ This is a reference catalog, not a reimplementation page: it tells a reader *whi
 |---|---|
 | **Evidence basis** | `nm -DC` / `nm -C` / `strings -n 6` on the cp310 driver binaries + per-pass `.so` |
 | **Entries** | 12 — 1 numeric standard, 3 frontend, 8 backend/runtime |
-| **Inference policy** | An entry is tagged **INFERRED** when vendored without a version string (marker present, exact upstream revision not pinnable) |
-| **Confidence** | Per-row `Found-in` column names the binary the marker was re-confirmed in this pass |
+| **Inference policy** | An entry carries a **Version** line marked `[INFERRED]` when vendored without a version string (marker present, exact upstream revision not pinnable) |
+| **Evidence frame** | Per-row `Found-in` column names the binary the marker was re-checked in this pass |
 
 ---
 
 ## How to read an entry
 
-Each dependency below carries: a **What** line (one sentence), a **Use site** line (where in `neuronx-cc` it appears), the identifying **Evidence** (the symbol/string that proves it, and the binary it was re-confirmed in), the public **Standard / URL**, and the wiki **Page(s)** that document the use. The `Confidence` is `CONFIRMED` when a versioned or unambiguous marker is present, `INFERRED` when the marker is unambiguous but no upstream version string survives the static link.
+Each dependency below carries: a **What** line (one sentence), a **Use site** line (where in `neuronx-cc` it appears), the identifying **Evidence** (the symbol/string that proves it, and the binary it was re-confirmed in), the public **Standard / URL**, and the wiki **Page(s)** that document the use. Presence is read from the marker itself; where no upstream version string survives the static link, the entry adds a **Version** line marking the revision `[INFERRED]`.
 
-> **NOTE —** statically linked C++ libraries lose their `SONAME`, so "which version" is usually unrecoverable; the Itanium-mangled symbol prefix (`boost::`, `dnnl::`, `isl_`, `roaring_bitmap_`) is the durable fingerprint. Where a version string *does* survive (a Boost `BOOST_VERSION` literal, a oneDNN banner), it is cited; where it does not, the entry is `INFERRED` for version but `CONFIRMED` for presence.
+> **NOTE —** statically linked C++ libraries lose their `SONAME`, so "which version" is usually unrecoverable; the Itanium-mangled symbol prefix (`boost::`, `dnnl::`, `isl_`, `roaring_bitmap_`) is the durable fingerprint. Where a version string *does* survive (a Boost `BOOST_VERSION` literal, a oneDNN banner), it is cited; where it does not, presence is read directly from the marker while the version stays `[INFERRED]`.
 
 ---
 
@@ -36,7 +36,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `hlo-opt` carries an explicit OCP citation string — `Use block_size=32 per OCP MXFP standard: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf` — plus the element-format tokens `float8_e8m0fnu` (the `E8M0` scale), `Float4E2M1FN` / `f4_e2m1` (the `E2M1` FP4 element), and `e4m3` / `e5m2` (`strings bin/hlo-opt | rg -i 'e8m0|e2m1|mxfp|ocp'`). The block-size-32 + E8M0-scale pairing is the spec discriminant — re-confirmed this pass in `hlo-opt`.
 - **Standard.** OCP *Microscaling Formats (MX) Specification v1.0* — cited verbatim in the binary: <https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf>.
 - **Pages.** [MX-FP8 Microscaling Legalization](../hlo-opt/mx-fp8-legalization.md) (9.8), [MX Microscaling: Quantize, Block-Scaling & E8M0](../numerics/mx-microscaling.md) (9.9), [INT8 Uniform-Quantize / Dequantize Legalization](../hlo-opt/int8-quantize-legalization.md).
-- **Confidence.** CONFIRMED.
 
 ---
 
@@ -49,7 +48,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** XLA core symbols `xla::HloModule`, `GetXlaOpShardings(llvm::ArrayRef<xla::XlaOp>)` and the Shardy dialect symbols `mlir::sdy::kReshardLabel`, `mlir::sdy::AllToAllOp::getAttributeNames`, plus the attribute strings `sdy.sharding`, `sdy.sharding_rule`, `xla.sdy.ShardingGroup`, `manual_axes`, `shardy-xla` in `hlo2penguin` (`nm -C bin/hlo2penguin | rg 'mlir::sdy|xla::HloModule'`).
 - **Standard.** OpenXLA — <https://openxla.org/>; Shardy — <https://github.com/openxla/shardy>.
 - **Pages.** [Shardy Dialect ↔ HloSharding Bridge](../distribution/shardy-hlosharding-bridge.md) (13.x), [The SpmdPartitioner Driver & Options](../distribution/spmd-partitioner-driver.md), [ShardingPropagation Engine](../distribution/sharding-propagation.md).
-- **Confidence.** CONFIRMED.
 
 ### TVM / nnvm `graph_runtime` JSON — NEFF kelf graph dialect
 
@@ -58,7 +56,7 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** The `graph_runtime` discriminant keys — `arg_nodes`, `node_row_ptr`, `heads`, `graph_runtime` — are the literal field names of the kelf/`__kelf` graph JSON recovered from the NEFF-packaging path in `libwalrus.so`. These four keys together are the TVM-dialect fingerprint; no other graph JSON uses all four. [re-confirmed this pass against the recovered kelf schema]
 - **Standard.** Apache TVM `graph_executor`/`graph_runtime` — <https://github.com/apache/tvm> (originally nnvm).
 - **Pages.** [The kelf-N.json Field Schema](../formats/kelf-json.md) (12.6), [The neff.json `__kelf` Subgraph Node](../formats/neff-kelf-node.md).
-- **Confidence.** CONFIRMED (schema/keys); **INFERRED** for which TVM revision (vendored, no version string).
+- **Version.** Which TVM revision is `[INFERRED]` — vendored, no version string survives; the schema keys themselves are read from the binary.
 
 ---
 
@@ -71,7 +69,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `dnnl_*` C-API text symbols (`dnnl_alg_kind2str`, `dnnl_binary_primitive_desc_create`, `dnnl_batch_normalization_forward_primitive_desc_create`) and the XLA-CPU integration markers `__onednn$matmul_reorder`, `xla_cpu_use_onednn`, `dnnl_dump_cpu_%s.bin` in `xla_infergoldens` (`nm -C bin/xla_infergoldens | rg 'dnnl_'`). No oneDNN version banner survives the static link.
 - **Standard.** oneDNN — <https://github.com/oneapi-src/oneDNN>.
 - **Pages.** [xla_infergoldens — the Reference Evaluator](../frontend/xla-infergoldens.md) (4.28), [INT8 Uniform-Quantize / Dequantize Legalization (golden-only)](../hlo-opt/int8-quantize-legalization.md).
-- **Confidence.** CONFIRMED.
 
 ### cppdap — birsim DAP debugger
 
@@ -80,7 +77,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** The DAP transport in `libwalrus.so`/birsim is cppdap with LSP/DAP framing — the recovered debugger surface names the library directly ("Library: cppdap. Framing: LSP/DAP standard — `Content-Length:` header + JSON body") and carries the DAP request/response envelope keys. [re-confirmed this pass]
 - **Standard.** cppdap — <https://github.com/google/cppdap>; DAP — <https://microsoft.github.io/debug-adapter-protocol/>.
 - **Pages.** [birsim DAP Interactive-Debugger Protocol & the Debugger Hierarchy](../bir/birsim-dap-debugger.md) (7.41).
-- **Confidence.** CONFIRMED.
 
 ### libarchive — NEFF tar I/O
 
@@ -89,7 +85,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `archive_write_new` / `archive_write_set_format_pax` / `archive_write_add_filter_gzip` call sequence in the NEFF-packaging path (`libwalrus.so`, `NeffFileWriter::writeArchiveFile`). [re-confirmed this pass]
 - **Standard.** libarchive — <https://github.com/libarchive/libarchive>.
 - **Pages.** [NEFF Container — gzip-tar, not ELF](../formats/neff-container.md) (12.1), [The neff_header POD, the In-Memory BOM & the NeffPackager Writer](../formats/neff-header-bom-writer.md).
-- **Confidence.** CONFIRMED.
 
 ### Boost — filesystem + stacktrace / exception
 
@@ -98,7 +93,7 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `boost::filesystem::path`, `boost::shared_ptr<…>`, and `boost::exception_detail::get_static_exception_object` in `walrus_driver`; `boost::error_info<tag_stacktrace, boost::stacktrace::basic_stacktrace<>>` in `walrus_bugpoint_driver` and `bir_roundtrip` (`nm -C bin/walrus_bugpoint_driver | rg 'boost::'`).
 - **Standard.** Boost — <https://www.boost.org/> (Filesystem, Stacktrace, Exception components).
 - **Pages.** [DebugInfoWriter & the `ir_debug_info` Debug-Info Protobuf](../walrus/debuginfo-writer.md), the walrus/BIR driver pages.
-- **Confidence.** CONFIRMED (filesystem + stacktrace/exception present). The `boost::icl` interval-container and `boost::log` components are **not** evidenced in these binaries — do not claim them. **INFERRED** for exact Boost version (no `BOOST_VERSION` literal survives the link).
+- **Scope & version.** Only the filesystem and stacktrace/exception components are evidenced. The `boost::icl` interval-container and `boost::log` components are **not** evidenced in these binaries — do not claim them. The exact Boost version is `[INFERRED]` (no `BOOST_VERSION` literal survives the link).
 
 ### CRoaring — compressed bitmaps
 
@@ -107,7 +102,7 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `roaring_bitmap_add` / `roaring_bitmap_remove` call sites in the address-rotation and schedule-unit backend passes (`libwalrus.so`), where a dense `vector<bool>` would be wasteful. [re-confirmed this pass]
 - **Standard.** CRoaring — <https://github.com/RoaringBitmap/CRoaring>.
 - **Pages.** Backend set-analysis pages (Part 4/8).
-- **Confidence.** CONFIRMED (symbol present); **INFERRED** for version.
+- **Version.** `[INFERRED]` — the `roaring_bitmap_*` symbols are present, but no version string survives.
 
 ### ISL — Integer Set Library (polyhedral)
 
@@ -116,7 +111,7 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** `isl_*` symbols in the penguin affine backend (`libwalrus.so`/`libBIR.so` — the affine/pelican codegen, dependence graph, schedule-tree legality, and simplifier are built on ISL). The `isl_` C-API surface is **not** present in the XLA/HLO driver binaries (`hlo-opt`/`hlo2penguin` carry no `isl_` symbols), which is expected: ISL is a backend-scheduling dependency, not a frontend one.
 - **Standard.** ISL — <https://libisl.sourceforge.io/> / <https://repo.or.cz/w/isl.git>.
 - **Pages.** [The affine ↔ ISL ↔ pelican bridge](../penguin/affine-isl-pelican-bridge.md), [ISL Codegen](../penguin/isl-codegen.md), [ISL Dependence Graph](../penguin/isl-dependence-graph.md), [ISL Schedule-Tree Legality](../penguin/isl-schedule-tree-legality.md), [ISL Simplifier](../penguin/isl-simplifier.md).
-- **Confidence.** CONFIRMED (presence via the affine-backend pages); **INFERRED** for version.
+- **Version.** `[INFERRED]` — presence comes from the `isl_*` surface documented on the affine-backend pages; no version string survives.
 
 ### pybind11 — Python binding surface
 
@@ -125,7 +120,7 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** The `neuron_isa_tpb_pybind` extension (930 KB cp310, stripped) exports `PyInit_neuron_isa_tpb_pybind @ 0xb82f0`, statically links pybind11, and the Tonga codegen "reads the pybind11 type-registry to extract bit-offset positions" — recovered from the ISA-reflection analysis. [re-confirmed this pass]
 - **Standard.** pybind11 — <https://github.com/pybind/pybind11>.
 - **Pages.** [ISA Reflection Layer](../isa/isa-reflection-layer.md) (the pybind ISA struct surface).
-- **Confidence.** CONFIRMED (presence); **INFERRED** for version.
+- **Version.** `[INFERRED]` — the extension and its type-registry use are present; no version string survives.
 
 ### Protocol Buffers (protobuf) — debug-info wire format
 
@@ -134,7 +129,6 @@ Each dependency below carries: a **What** line (one sentence), a **Use site** li
 - **Evidence.** In the driver binaries: `google::protobuf::internal::*` accessor symbols, the data symbols `descriptor_table_google_2fprotobuf_2fany_2eproto` / `…_2fdescriptor_2eproto`, and the runtime banner `[libprotobuf %s %s:%d] %s` in `hlo-opt` / `xla_infergoldens`; the generated-code descriptor strings reference proto API version 4.2x (libprotobuf runtime, protobuf 3.20–3.22). In the debug-info path: `google::protobuf::Arena::CreateMaybeMessage<…>` instantiations in `libwalrus.so`, with `optimize_for = LITE_RUNTIME` so the `.dbg` messages are `MessageLite` (no runtime descriptor).
 - **Standard.** Protocol Buffers — <https://protobuf.dev/> (runtime 4.2x ≈ protobuf 3.20–3.22).
 - **Pages.** [DebugInfoWriter & the `ir_debug_info` Debug-Info Protobuf](../walrus/debuginfo-writer.md).
-- **Confidence.** CONFIRMED.
 
 ---
 

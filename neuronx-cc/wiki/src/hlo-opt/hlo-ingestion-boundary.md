@@ -54,7 +54,7 @@ The stock corpus occupies the bare `xla::`, `mlir::mhlo::`, `mlir::stablehlo::`,
 2. **Stock source path** — the `Run`/`name` bodies are tagged `xla/hlo/transforms/<area>/<pass>.cc` or `xla/service/<pass>.cc`, e.g. `xla/hlo/transforms/expanders/stochastic_convert_decomposer.cc`, `xla/hlo/transforms/expanders/qr_expander.cc`. Contrast the Neuron marker `hilo/hlo_passes/*.cc` ([§3](#3-the-neuron-edge-authored-passes)).
 3. **Abseil `lts_20230802` type tag** — every stock `Run(HloModule*, const flat_hash_set<…>&)` signature carries `absl::lts_20230802::flat_hash_set<…>` in its mangling (confirmed on `xla::StochasticConvertDecomposer::Run` @ `0x27629b0`). That LTS tag is the upstream snapshot the whole tree was vendored from; it is the single most reliable "this is imported XLA" fingerprint because it brands the *type system*, not the symbol name.
 
-### Representative stock families (CONFIRMED present)
+### Representative stock families
 
 | Stock pass / family | Namespace | Symbol-line count (`nm -C`) | Notes |
 |---|---|---|---|
@@ -70,11 +70,11 @@ The stock corpus occupies the bare `xla::`, `mlir::mhlo::`, `mlir::stablehlo::`,
 | `ShardingPropagation` | `xla::` | 75 | SPMD sharding inference |
 | `SpmdPartitioner` | `xla::spmd::` | (family) | stock SPMD partitioner; `StatefulRngSpmdPartitioner` also present |
 
-> **GOTCHA —** SPMD is **stock**, and this trips people because the *driver* exposes a `--spmd` flag ("Run additional optimizations only applied to SPMD models", [4.1 / D-A01 §4](pass-registry.md)). The flag is Neuron's; the *partitioner it gates* is `xla::spmd::SpmdPartitioner` / `xla::spmd::StatefulRngSpmdPartitioner`, pure upstream XLA (Part 13). A Neuron flag toggling a stock pass is the common shape — do not let a Neuron-named knob promote the pass it controls to "Neuron-authored." Classify the **pass body's namespace**, not the flag that schedules it.
+> **GOTCHA —** SPMD is **stock**, and this trips people because the *driver* exposes a `--spmd` flag ("Run additional optimizations only applied to SPMD models", [4.1](pass-registry.md)). The flag is Neuron's; the *partitioner it gates* is `xla::spmd::SpmdPartitioner` / `xla::spmd::StatefulRngSpmdPartitioner`, pure upstream XLA (Part 13). A Neuron flag toggling a stock pass is the common shape — do not let a Neuron-named knob promote the pass it controls to "Neuron-authored." Classify the **pass body's namespace**, not the flag that schedules it.
 
 ### The MHLO / StableHLO dialects and the bridge
 
-`hlo2penguin` ingests both raw XLA `HloModule` protos *and* MLIR text in the MHLO or StableHLO dialects ([D-A01 §3](pass-registry.md): `parseHloProtoInput` vs `parseSourceFile` + `runStableHLOFrontendPipeline` + `ConvertStablehloToHlo`). The dialects themselves are stock: `mlir::mhlo::` (11,194 lines) and `mlir::stablehlo::` (12,736 lines) are the open MHLO/StableHLO models, and the StableHLO→HLO bridge `xla::ConvertStablehloToHlo` plus the surrounding `*StablehloToHlo*`/`*HloToMhlo*` converters total 1,151 demangled symbol-lines — all bare-namespace upstream. The Neuron delta on the MLIR side is *not* the dialects but a small set of `hilo::`-namespaced MLIR passes that run after import (next section).
+`hlo2penguin` ingests both raw XLA `HloModule` protos *and* MLIR text in the MHLO or StableHLO dialects ([4.1](pass-registry.md): `parseHloProtoInput` vs `parseSourceFile` + `runStableHLOFrontendPipeline` + `ConvertStablehloToHlo`). The dialects themselves are stock: `mlir::mhlo::` (11,194 lines) and `mlir::stablehlo::` (12,736 lines) are the open MHLO/StableHLO models, and the StableHLO→HLO bridge `xla::ConvertStablehloToHlo` plus the surrounding `*StablehloToHlo*`/`*HloToMhlo*` converters total 1,151 demangled symbol-lines — all bare-namespace upstream. The Neuron delta on the MLIR side is *not* the dialects but a small set of `hilo::`-namespaced MLIR passes that run after import (next section).
 
 ---
 
@@ -85,11 +85,11 @@ The stock corpus occupies the bare `xla::`, `mlir::mhlo::`, `mlir::stablehlo::`,
 Neuron's own code shows up in four mangling/string shapes. Internalize these — they are the whole classification basis:
 
 1. **`xla::hilo::Neuron<Name>`** — the explicit Neuron-prefixed HLO passes. 637 symbol-lines; ≥28 distinct classes. Enumerated below.
-2. **`xla::hilo::<Name>` without the `Neuron` prefix** — *also Neuron-authored*. The `xla::hilo::` namespace is the owner; the `Neuron` prefix is a naming convention applied to *some but not all* of its passes. `PreserveControlDeps` ([D-B29](control-dep-reification.md)) and `ConvertFSPatternsToCC` are `xla::hilo::` with no `Neuron` prefix yet are unmistakably Neuron code (they emit `AwsNeuron*` custom-calls / match Neuron-customer patterns). **This is the single most important subtlety on the page** — the prefix is a hint, the namespace is the rule.
+2. **`xla::hilo::<Name>` without the `Neuron` prefix** — *also Neuron-authored*. The `xla::hilo::` namespace is the owner; the `Neuron` prefix is a naming convention applied to *some but not all* of its passes. `PreserveControlDeps` ([4.15](control-dep-reification.md)) and `ConvertFSPatternsToCC` are `xla::hilo::` with no `Neuron` prefix yet are unmistakably Neuron code (they emit `AwsNeuron*` custom-calls / match Neuron-customer patterns). **This is the single most important subtlety on the page** — the prefix is a hint, the namespace is the rule.
 3. **`hilo::<Name>` (lowercase `hilo`, MLIR side, in `hlo2penguin`)** — the MHLO/StableHLO-level Neuron passes: `hilo::NeuronControlDepTupleSimplifier`, `hilo::isControlDep`, `hilo::runStableHLOFrontendPipeline`. These do not appear in `hlo-opt` at all (the HLO/MLIR split, [§7](#7-worked-classification-table)).
 4. **`AwsNeuron*` custom-call targets** — the *ops* Neuron emits and recognizes. Not passes, but a corroborating signal: a pass that creates or matches `AwsNeuronControlDep`, `AwsNeuronGelu`, `AwsNeuronSoftmax`, etc. is Neuron's by construction (stock XLA has no concept of these).
 
-### The `xla::hilo::Neuron*` class roster (CONFIRMED, 28 of 637 lines)
+### The `xla::hilo::Neuron*` class roster (28 of 637 lines)
 
 `nm -C hlo-opt | rg -o 'xla::hilo::Neuron[A-Za-z0-9_]+' | sort -u`:
 
@@ -112,7 +112,7 @@ NeuronHloInstCombine               NeuronIntMatmulDowncast
 
 The roster is dominated by **collective** rewriting (combiners, all-gather/reduce-scatter motion, channel-id enforcement, stream-id injection) — exactly the work a custom interconnect (NeuronLink) demands and that stock XLA's generic collective passes do not cover. The non-`Neuron`-prefixed `xla::hilo::` cohort (sampled: `AddMustAliases`, `ConvertFSPatternsToCC`, `DecomposeIntAllReduce`, `FlipAllGatherConvert`, `GroupedDusToConcat`, `IOLayoutNormalization`, `PreserveControlDeps`) brings the total to 2,042 lines and is *equally* Neuron-owned.
 
-### The `hilo/` source-path roster (CONFIRMED, 76 files)
+### The `hilo/` source-path roster (76 files)
 
 `strings -a hlo-opt | rg -o 'hilo/hlo_passes/[A-Za-z0-9_]+\.cc' | sort -u` yields **76 distinct** translation units (`hilo/tools/` is the other `hilo/` subtree). Sample:
 
@@ -128,9 +128,9 @@ hilo/hlo_passes/DecomposeCCOps.cc           hilo/hlo_passes/PreserveControlDeps.
 hilo/hlo_passes/EmitOffloadedDropout.cc     …  (76 total)
 ```
 
-The `hilo/hlo_passes/PreserveControlDeps.cc` tag is the clinching cross-check on the "namespace, not prefix" rule from §3: `PreserveControlDeps` has no `Neuron` prefix, yet its source file lives in `hilo/hlo_passes/`, and `D-B29` reads its `setSourceLine 0x31`(=49) directly off the rodata string `hilo/hlo_passes/PreserveControlDeps.cc` @ VMA `0x2b8088`. Two independent markers — namespace and source path — agree.
+The `hilo/hlo_passes/PreserveControlDeps.cc` tag is the clinching cross-check on the "namespace, not prefix" rule from §3: `PreserveControlDeps` has no `Neuron` prefix, yet its source file lives in `hilo/hlo_passes/`, and its `setSourceLine 0x31` (=49) is readable directly off the rodata string `hilo/hlo_passes/PreserveControlDeps.cc` @ VMA `0x2b8088`. Two independent markers — namespace and source path — agree.
 
-### The `AwsNeuron*` emitted-op roster (CONFIRMED)
+### The `AwsNeuron*` emitted-op roster
 
 `strings -a hlo-opt | rg -o '\bAwsNeuron[A-Za-z]+' | sort -u` (selection):
 
@@ -142,7 +142,7 @@ AwsNeuronCustomNativeKernel AwsNeuronErf        AwsNeuronSilu
 AwsNeuronModuleMarkerStart/End  AwsNeuronSoftmax/Backward  AwsNeuronTopK
 ```
 
-These are the `custom_call_target` strings Neuron passes plant into the HLO graph; `AwsNeuronControlDep` (target len `0x13`=19) is the control-dep reification op ([D-B29 §2.1](control-dep-reification.md)). A pass that constructs one of these is Neuron's. (One string, `AwsNeuronAllReduAwsNeuronReduceSfficient`, is a rodata-adjacency artifact of two overlapping literals, not a real target — a reminder that raw `strings` can splice neighbors; trust the demangled symbol over the spliced string when they conflict.)
+These are the `custom_call_target` strings Neuron passes plant into the HLO graph; `AwsNeuronControlDep` (target len `0x13`=19) is the control-dep reification op ([4.15](control-dep-reification.md)). A pass that constructs one of these is Neuron's. (One string, `AwsNeuronAllReduAwsNeuronReduceSfficient`, is a rodata-adjacency artifact of two overlapping literals, not a real target — a reminder that raw `strings` can splice neighbors; trust the demangled symbol over the spliced string when they conflict.)
 
 ---
 
@@ -209,19 +209,19 @@ file_offset(.rodata VA) =  VA − 0x200000      # e.g. "AwsNeuronControlDep" VA 
 file_offset(.data   VA) =  VA − 0x203000
 ```
 
-> **CORRECTION —** an earlier convenience generalization that "for `.text`/`.rodata` the VMA equals the file offset" (true for some smaller Neuron libraries, e.g. `libwalrus.so` in [2.x](../arch/sbuf-psum-geometry.md)) is **false for `hlo-opt`**. The two deltas differ from each other (`0x201000` for `.text`, `0x200000` for `.rodata`) and neither is zero. D-B29 records the same caveat in the form `raw fileoff = VA − 0x200000(.rodata)/−0x201000(.text)`. Applying the wrong (or zero) delta lands a correct symbol in the wrong function — the most common single error reading this binary. Always resolve through the IDA JSON (which is VA-keyed) and convert only when you must touch raw bytes.
+> **GOTCHA — VMA does not equal file offset in `hlo-opt`.** The convenient rule "for `.text`/`.rodata` the VMA equals the file offset" holds for some smaller Neuron libraries (`libwalrus.so`, [2.x](../arch/sbuf-psum-geometry.md)) and is **false here**. The two deltas differ from each other and neither is zero: `raw fileoff = VA − 0x201000` for `.text`, `VA − 0x200000` for `.rodata`. Applying the wrong delta — or zero — lands a correct symbol in the wrong function, which is the single most common error reading this binary. Resolve through the IDA JSON (VA-keyed) and convert only when you must touch raw bytes.
 
 ---
 
 ## 6. Ingestion artifact: recognized ≠ lowerable
 
-A subtlety the ingestion boundary forces: because the **whole** stock XLA opcode vocabulary is statically linked, the HLO/StableHLO *parser* will **accept** ops that the Neuron device has **no lowering for**. Recognition at the input boundary is not the same as device support. The canonical example, fully worked in [D-X11 §A](../numerics/numeric-negative-results.md):
+A subtlety the ingestion boundary forces: because the **whole** stock XLA opcode vocabulary is statically linked, the HLO/StableHLO *parser* will **accept** ops that the Neuron device has **no lowering for**. Recognition at the input boundary is not the same as device support. The canonical example, fully worked in [the numeric negative-results page](../numerics/numeric-negative-results.md):
 
 - `stochastic-convert` is an exact-match line in `hlo-opt`'s `HloOpcodeString`/`StringToHloOpcode` table (`strings | rg -x 'stochastic-convert'` → 1 hit). The text parser accepts it.
 - The full stock machinery is present and bare-`xla::`: `xla::HloEvaluator::HandleStochasticConvert`, `xla::ShapeInference::InferStochasticConvertShape`, `xla::HloInstruction::CreateStochasticConvert`, and the expander `xla::StochasticConvertDecomposer::Run` @ `0x27629b0` (source `xla/hlo/transforms/expanders/stochastic_convert_decomposer.cc`).
 - There is **no** Neuron handler: `nm -C hlo2penguin | rg penguin | rg -ci stochastic` → 0; no `xla::hilo::` / `penguin::` StochasticConvert visitor exists. The stock decomposer rewrites the op into deterministic arithmetic before device lowering, or the op errors as un-lowerable.
 
-The classification lesson: **a pass or handler being present in the binary does not make it part of the Neuron device path.** `HandleStochasticConvert` classifies STOCK (bare `xla::`, `HloEvaluator` is the reference interpreter) and is *dead with respect to the device* — a textbook case where the namespace marker correctly separates "linked-in upstream scaffolding" from "Neuron-authored device behavior." The same reasoning applies to the LLVM `denormal-fp-math` attributes and the NVPTX/AMDGPU `ftz` intrinsics that ride in with the linked LLVM ([D-X11 §B](../numerics/numeric-negative-results.md)): present in `hlo-opt`/`hlo2penguin`, bare-namespace, and irrelevant to NeuronCore numerics.
+The classification lesson: **a pass or handler being present in the binary does not make it part of the Neuron device path.** `HandleStochasticConvert` classifies STOCK (bare `xla::`, `HloEvaluator` is the reference interpreter) and is *dead with respect to the device* — a textbook case where the namespace marker correctly separates "linked-in upstream scaffolding" from "Neuron-authored device behavior." The same reasoning applies to the LLVM `denormal-fp-math` attributes and the NVPTX/AMDGPU `ftz` intrinsics that ride in with the linked LLVM ([numeric negative results](../numerics/numeric-negative-results.md)): present in `hlo-opt`/`hlo2penguin`, bare-namespace, and irrelevant to NeuronCore numerics.
 
 > **NOTE —** when a Part-4 page documents a pass that *touches* a stock op (e.g. a Neuron combiner that consumes an `all-reduce`), classify the **pass**, not the op. The op may be stock `HloOpcode::kAllReduce`; the combiner that rewrites it is `xla::hilo::NeuronAllReduceCombiner` → NEURON. Provenance attaches to the transformation, not the data it transforms.
 
@@ -251,21 +251,21 @@ Applying [§4](#4-the-classification-algorithm) to representative passes/handler
 
 ---
 
-## 8. Adversarial self-verification
+## 8. Evidence summary
 
 The five strongest claims, re-checked against the binary; unprovable parts tagged.
 
-1. **"Neuron HLO passes are `xla::hilo::`; stock are bare `xla::`."** `nm -C hlo-opt | rg -c 'xla::hilo::'` = 2,042; `rg -c '\bxla::'` = 51,551; sampled stock passes (`AlgebraicSimplifier`, `HloDCE`, `SpmdPartitioner`, …) all return **0** under `xla::hilo::<Pass>` and non-zero under `xla::<Pass>` / `xla::spmd::<Pass>`. **CONFIRMED** — the split is exact across every sample, no stock pass found inside `xla::hilo::` and no Neuron pass found in bare `xla::`.
+- **Neuron HLO passes are `xla::hilo::`; stock are bare `xla::`.** `nm -C hlo-opt | rg -c 'xla::hilo::'` = 2,042; `rg -c '\bxla::'` = 51,551. Sampled stock passes (`AlgebraicSimplifier`, `HloDCE`, `SpmdPartitioner`, …) all return 0 under `xla::hilo::<Pass>` and non-zero under `xla::<Pass>` / `xla::spmd::<Pass>`. The split is exact across every sample: no stock pass inside `xla::hilo::`, no Neuron pass in bare `xla::`.
 
-2. **"The `Neuron` prefix is a hint; the `xla::hilo::` namespace is the rule."** `PreserveControlDeps` and `ConvertFSPatternsToCC` are demangled as `xla::hilo::PreserveControlDeps` / `xla::hilo::ConvertFSPatternsToCC` — `xla::hilo::` with **no** `Neuron` prefix — and both carry `hilo/hlo_passes/*.cc` source strings. **CONFIRMED** — two independent markers (namespace + source path) agree, so gating on the prefix alone would mis-classify these as non-Neuron.
+- **The `Neuron` prefix is a hint; the `xla::hilo::` namespace is the rule.** `PreserveControlDeps` and `ConvertFSPatternsToCC` demangle as `xla::hilo::PreserveControlDeps` / `xla::hilo::ConvertFSPatternsToCC` — `xla::hilo::` with no `Neuron` prefix — and both carry `hilo/hlo_passes/*.cc` source strings. Two independent markers agree, so gating on the prefix alone would mis-classify these as non-Neuron.
 
-3. **"SPMD is stock, despite the Neuron `--spmd` flag."** `nm -C hlo-opt | rg SpmdPartitioner` resolves to `xla::spmd::SpmdPartitioner` / `xla::spmd::StatefulRngSpmdPartitioner`; `xla::spmd::` symbol-lines = 1,218; zero `xla::hilo::*Spmd*`. The `--spmd` flag is a driver `cl::opt` ([D-A01 §4](pass-registry.md)). **CONFIRMED** — flag is Neuron, pass body is upstream `xla::spmd::`.
+- **SPMD is stock, despite the Neuron `--spmd` flag.** `nm -C hlo-opt | rg SpmdPartitioner` resolves to `xla::spmd::SpmdPartitioner` / `xla::spmd::StatefulRngSpmdPartitioner`; `xla::spmd::` symbol-lines total 1,218; there are zero `xla::hilo::*Spmd*`. The `--spmd` flag is a driver `cl::opt` ([4.1](pass-registry.md)): the flag is Neuron, the pass body is upstream.
 
-4. **"`.text` VMA−fileoff = 0x201000, `.rodata` = 0x200000."** `readelf -SW hlo-opt`: `.text` VMA `0x1e6e960` / off `0x1c6d960` → `0x201000`; `.rodata` VMA `0x20c940` / off `0xc940` → `0x200000`. Independently matches the D-B14/D-B29 caveat. **CONFIRMED** — arithmetic re-derived from the live section table.
+- **`.text` VMA−fileoff = `0x201000`, `.rodata` = `0x200000`.** From `readelf -SW hlo-opt`: `.text` VMA `0x1e6e960` / off `0x1c6d960`; `.rodata` VMA `0x20c940` / off `0xc940`.
 
-5. **"A `stochastic-convert` is recognized at ingest but has no Neuron device lowering."** `strings hlo-opt | rg -x 'stochastic-convert'` = 1 hit (opcode-table line); `xla::StochasticConvertDecomposer::Run` present @ `0x27629b0` (bare `xla::`); `nm -C hlo2penguin | rg penguin | rg -ci stochastic` = 0. **CONFIRMED for HLO recognition + absence of a penguin handler.** The *routing* (decomposed-away vs errored-as-unlowerable at the visitor) is **STRONG/INFERRED** per [D-X11 §A.3](../numerics/numeric-negative-results.md) — the default-action string `"<op> cannot be lowered."` is confirmed present, but the exact opcode→default path was inferred from the *absence* of a case, not traced.
+- **`stochastic-convert` is recognized at ingest but has no Neuron device lowering.** `strings hlo-opt | rg -x 'stochastic-convert'` returns one hit (the opcode-table line); `xla::StochasticConvertDecomposer::Run` is present @ `0x27629b0` under bare `xla::`; `nm -C hlo2penguin | rg penguin | rg -ci stochastic` returns 0. What happens to such an op — decomposed away, or errored as unlowerable at the visitor — is **[INFERRED]** ([numeric negative results](../numerics/numeric-negative-results.md)): the default-action string `"<op> cannot be lowered."` is present, but the opcode→default path is deduced from the absence of a case rather than traced.
 
-> **CORRECTION (scope honesty) —** the 2,042 / 51,551 / 637 figures are **`nm -C` demangled symbol-line counts**, not distinct-class or distinct-pass counts (one class yields many lines: ctor/dtor/`Run`/`name`/vtable/typeinfo/template instantiations). They are correct as *namespace-surface* proportions and as the basis for the marker test, but do **not** read "637" as "637 Neuron passes" — the distinct `xla::hilo::Neuron*` class count is ≥28 ([§3](#3-the-neuron-edge-authored-passes)), and the distinct `hilo/hlo_passes/*.cc` file count is 76. For a per-pass census see [4.1 the pass registry](pass-registry.md).
+> **GOTCHA — these counts are symbol *lines*, not passes.** The 2,042 / 51,551 / 637 figures are `nm -C` demangled symbol-line counts, and one class yields many lines: ctor, dtor, `Run`, `name`, vtable, typeinfo, template instantiations. They are sound as namespace-surface proportions and as the basis for the marker test, but "637" is not "637 Neuron passes" — the distinct `xla::hilo::Neuron*` class count is ≥28 ([§3](#3-the-neuron-edge-authored-passes)) and the distinct `hilo/hlo_passes/*.cc` file count is 76. For a per-pass census see [4.1 the pass registry](pass-registry.md).
 
 ---
 
@@ -273,6 +273,6 @@ The five strongest claims, re-checked against the binary; unprovable parts tagge
 
 - [4.1 — hlo-opt pass registry](pass-registry.md): the per-pass census and registration order; `xla::hilo::RegisterHloPass` @ `0x1ebc3f0`, `GetHloPassRegistry` @ `0x1ebc570`, `hloPassRegistry` (BSS) @ `0x9a38ee0`. Every row there is classifiable by this page's algorithm.
 - [4.32 — hlo2penguin MLIR Pipeline Order & Entry Flow](hlo2penguin-mlir-pipeline.md): the MLIR import path (`parseSourceFile` / `runStableHLOFrontendPipeline` / `ConvertStablehloToHlo`) and the Penguin emitter that consume the post-classification graph.
-- [front/control-deps — PreserveControlDeps & the control-dep custom-call](control-dep-reification.md) (D-B29): the worked example of an `xla::hilo::`-namespace, no-`Neuron`-prefix, `AwsNeuron*`-emitting Neuron pass, and the `hilo::` MLIR-side simplifier in `hlo2penguin`.
-- [numeric/negative-results — recognized-but-unlowerable](../numerics/numeric-negative-results.md) (D-X11): the full stochastic-convert / `denormal-fp-math` / `ftz` worked cases for "linked-in upstream scaffolding ≠ Neuron device path."
+- [front/control-deps — PreserveControlDeps & the control-dep custom-call](control-dep-reification.md): the worked example of an `xla::hilo::`-namespace, no-`Neuron`-prefix, `AwsNeuron*`-emitting Neuron pass, and the `hilo::` MLIR-side simplifier in `hlo2penguin`.
+- [numeric/negative-results — recognized-but-unlowerable](../numerics/numeric-negative-results.md): the full stochastic-convert / `denormal-fp-math` / `ftz` worked cases for "linked-in upstream scaffolding ≠ Neuron device path."
 - **Part 13 — SPMD**: the stock `xla::spmd::SpmdPartitioner` documented as upstream.

@@ -24,8 +24,9 @@ region is established at init.
 > symbols, `readelf --debug-dump=info` for struct members, and the native
 > `xtensa-elf-objdump` (core `ncore2gp`) for the wrapper disassembly. The xmem
 > algorithm is transcribed from the toolchain-shipped `xmem_heap.c`, whose
-> object is what the wrappers call. Confidence tags follow each claim:
-> `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+> object is what the wrappers call. The page default is **HIGH × OBSERVED**; claims
+> that depart from it carry an explicit
+> `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` tag.
 
 ---
 
@@ -97,14 +98,14 @@ The mechanism is: `xmem_heap_alloc` returns a *host-side* pointer into the
 wrapper converts that host pointer into the **64-bit HBM device address** by
 subtracting the heap's host base (`_hbm_heap_mgr_base`, `.bss+0x10`) and adding
 the device base (`_hbm_scratch_base`, a 64-bit value at `.bss+0x8`), with proper
-carry propagation (`saltu`/`add` on the high word). Confidence: **HIGH × OBSERVED**.
+carry propagation (`saltu`/`add` on the high word).
 
 > **QUIRK — default 64-byte alignment.** `movi a12, 64` followed by
 > `movnez a12, align, align` means: if the caller passes `align == 0`, the
 > wrapper substitutes **64**; any non-zero caller alignment is used verbatim.
 > This is why the stack-switch path can request the switched HBM stack with no
 > explicit alignment and still get the 64-byte alignment it documents. (See
-> [stack-switch.md](stack-switch.md).) Confidence: **HIGH × OBSERVED**.
+> [stack-switch.md](stack-switch.md).)
 
 ### `neuron_dataram_allocate` — disassembly walkthrough
 
@@ -124,15 +125,14 @@ carry propagation (`saltu`/`add` on the high word). Confidence: **HIGH × OBSERV
 
 Because dataram is the core's own 32-bit address space, there is **no** HBM
 address translation: the host pointer `xmem_heap_alloc` returns *is* the dataram
-address, stored straight through `out_ptr` (`s32i.n a10, a3, 0`). Confidence:
-**HIGH × OBSERVED**.
+address, stored straight through `out_ptr` (`s32i.n a10, a3, 0`).
 
 > **GOTCHA — `out_ptr` is written even on failure.** Note `s32i.n a10, a3, 0`
 > executes *before* the status check. On `XMEM_ERR_ALLOC_FAILED`,
 > `xmem_heap_alloc` returns `NULL`, so `*out_ptr` is set to `NULL` and the
 > function returns `-1`. Callers must test the `-1` return, not the pointer value
 > alone (it will be `NULL`, but relying on that is fragile if the heap ever yields
-> a legitimately-zero host address). Confidence: **HIGH × OBSERVED**.
+> a legitimately-zero host address).
 
 ### Failure semantics — no fallback
 
@@ -180,7 +180,7 @@ xmem exploits: `XMEM_HEAP_BLOCK_STRUCT_SIZE_LOG2 = 4` lets it convert a block
 > true region start, and the gap `_aligned_buffer − _buffer` is alignment slack
 > tracked in the manager's `_unused_bytes`. There is **no magic sentinel word at
 > the head of each allocation** — the only sentinels are the list head/tail nodes
-> described next. Confidence: **HIGH × OBSERVED**.
+> described next.
 
 ### `xmem_heap_mgr_struct` — the manager (88 bytes)
 
@@ -327,7 +327,7 @@ Key helpers (from `xmem_misc.h`):
   *upward* (`((p + align-1) >> log2(align)) << log2(align)` via
   `xmem_find_msbit(align)`) and returns `size + slack`. The slack is therefore
   computed **per candidate block**, which is why the first-fit walk recomputes
-  `new_size` each iteration. Confidence: **HIGH × OBSERVED**.
+  `new_size` each iteration.
 * `xmem_find_leading_zero_one_count(bitvec, n, start, 0)` scans the
   free-descriptor bit-vector for the first available slot (bit = 1).
 * `xmem_toggle_bitvec(bitvec, n, idx, 1)` claims/releases a descriptor slot.
@@ -337,14 +337,12 @@ Key helpers (from `xmem_misc.h`):
 > (`new_size − size`)-byte alignment gap sits at the *front* of the chosen block
 > and is accounted as `_unused_bytes`, not returned to the free list. On free,
 > that same gap is reclaimed (`_unused_bytes -= _buffer − _aligned_buffer`).
-> Confidence: **HIGH × OBSERVED**.
 
 > **GOTCHA — descriptor exhaustion silently disables splitting.** When
 > `xmem_find_leading_zero_one_count` returns `idx >= _num_blocks`, all 32
 > descriptors are in use and xmem **cannot split**: it allocates the *entire*
 > chosen block to the request, wasting the remainder until that block is freed.
 > With only 32 descriptors this is a real ceiling. xmem logs but does not fail.
-> Confidence: **HIGH × OBSERVED**.
 
 ### `xmem_heap_free` → `xmem_heap_add_block_to_free_list` (coalesce)
 
@@ -422,13 +420,12 @@ So coalescing is **immediate and bidirectional**: a freed block merges with its
 physical predecessor and/or successor in the same operation, reclaiming the
 descriptor slots of any blocks it absorbs (via `xmem_toggle_bitvec(..., 1)`).
 Address-sorted ordering is the invariant that makes neighbour coalescing cheap.
-The walk itself is O(blocks) — fine for ≤32 descriptors. Confidence:
-**HIGH × OBSERVED**.
+The walk itself is O(blocks) — fine for ≤32 descriptors.
 
 > **NOTE — free matches on the *aligned* pointer.** Because alloc returns
 > `_aligned_buffer`, free must compare against `_aligned_buffer`, not `_buffer`.
 > Passing the raw region start to `neuron_*_deallocate` would miss the alloc-list
-> entry and return `XMEM_ERR_PTR_OUT_OF_BOUNDS`. Confidence: **HIGH × OBSERVED**.
+> entry and return `XMEM_ERR_PTR_OUT_OF_BOUNDS`.
 
 ---
 
@@ -447,8 +444,6 @@ Both heaps are statically reserved as anonymous-namespace globals in
 | `0x70` | 0x58 | `(anon)::_dataram_heap_mgr` | the 88-byte dataram `xmem_heap_mgr` |
 | `0xc8` | 4 | `(anon)::_dataram_libc_heap_header` | header for the libc backing heap |
 | `0xcc` | 0x58 | `(anon)::_dataram_libc_heap_mgr` | the 88-byte libc `xmem_heap_mgr` |
-
-Confidence: **HIGH × OBSERVED**.
 
 ### HBM heap ← the switched-out Q7 stack
 

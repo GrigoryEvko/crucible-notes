@@ -37,7 +37,7 @@ NX1.1.4 (= 281040 = RI-2020.4 = LX7.1.4), ISA family `Xtensa24` (XEA3)** — emb
 times as the per-NeuronCore POOL cluster, reused across every generation in the line. There
 is exactly **one** core configuration in the entire corpus: one `core-isa.h`, one real
 `-params`, one `ConfigName`, one `uarchName`. No second Xtensa core config ships anywhere.
-`[HIGH/OBSERVED — `fd --no-ignore` finds exactly one of each across the corpus]`
+`[HIGH/OBSERVED]`
 
 The differences between generations partition cleanly into three buckets:
 
@@ -57,8 +57,7 @@ embedded Vision-Q7 device images for the four shipped generations all carry the 
 toolchain `.comment` and the **same** ABI flag word. Twelve embedded Q7 ELF `.comment`
 strings across the SUNDA/CAYMAN/MARIANA/MARIANA_PLUS offset region read exactly
 `XtensaTools-14.09 clang version 10.0.1`, with ELF type `EXEC` and `e_flags 0x300`. One core,
-one toolchain, one ABI, four generations. `[HIGH/OBSERVED — `strings -t` + `readelf` this
-session: 12× the 14.09/clang-10 comment]` The MAVERICK blobs are the exception that proves
+one toolchain, one ABI, four generations. `[HIGH/OBSERVED]` The MAVERICK blobs are the exception that proves
 the rule — a *rebuild*, not a *redesign* (§4).
 
 > **NOTE.** "Cairo" is the Tensilica *microarchitecture* codename; SUNDA / CAYMAN / MARIANA /
@@ -200,13 +199,13 @@ for MAVERICK is the *identity surface*; what is INFERRED or absent is everything
 - **coretype 37** — anchored two independent ways: the `NRTUCODE_CORE_*` header enum ordinal
   (`29 + 8 = 37`), and the twin resolver immediates (`cmp $0x25` (= 37) with the bit-37
   bitmasks `0x2020202000`/`0x2020202040`). The `cmp $0x25` site is present in
-  `libnrtucode_internal.so` (re-disassembled this session).
+  `libnrtucode_internal.so`.
 - **the identity census** — the five per-gen `*_libs` symbols including `maverick_libs` @
   `0x9b9050`; the toolchain comment `XtensaTools-15.05 clang version 15.0.7` (4 blobs);
   ET_DYN type; the same `e_flags 0x300` Xtensa core/ABI flag word as the shipped four.
 - **the header surface** — the `neuron_maverick_arch_isa` set, self-labeled "ISA header for
-  NC-v5", with `struct2opcode 114`, DTYPE 30, ALU_OP 65, OPCODE 165 (all re-counted).
-- **the internal-twin-exclusivity** — re-counted this session: **187 `MAVERICK`** + **2
+  NC-v5", with `struct2opcode 114`, DTYPE 30, ALU_OP 65, OPCODE 165.
+- **the internal-twin-exclusivity** — **187 `MAVERICK`** + **2
   `maverick`** literal occurrences (= **189** case-insensitive lines) in
   `libnrtucode_internal.so`, and **0** in the shipped front `libnrtucode.so`.
 
@@ -215,7 +214,7 @@ for MAVERICK is the *identity surface*; what is INFERRED or absent is everything
 > **187 uppercase `MAVERICK`** (`rg -o MAVERICK \| wc -l`) **+ 2 lowercase `maverick`**. The
 > spot-check figure "187/0" some pages cite is the uppercase-only `rg -o` count. Ground any
 > MAVERICK count claim to one of these exact forms; do not cite "189" as if it were a literal
-> string count. `[HIGH/OBSERVED — re-counted three ways this session]`
+> string count. `[HIGH/OBSERVED]`
 
 **The named v5 walls** (per the [Confidence & Walls Model](../reference/confidence-model.md)):
 

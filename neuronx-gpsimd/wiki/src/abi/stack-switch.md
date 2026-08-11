@@ -28,7 +28,8 @@ scratch heap the large stack comes from); [`build_custom_op.py`
 codegen](./build-custom-op-codegen.md) (emits the per-customer launcher that calls
 this entry and wires the kernel's return to `switchBack`). The Xtensa
 stack-limit (KSL/ISL) exception model that the hardware uses to police the HBM
-stack floor is a separate Part-13 page (not yet authored).
+stack floor is
+[The XEA3 Interrupt / Exception Architecture](../control/interrupt/xea3-interrupt-architecture.md).
 
 ---
 
@@ -133,7 +134,7 @@ the design intent verbatim: the default `STACK_SIZE` is deliberately tiny "so no
 switch will be attempted", and a customer who knows the kernel needs a deep stack
 passes a large `STACK_SIZE` to **force** the switch.
 
-> **CORRECTION — to SX-ABI-09 §2 wording (documentation lag confirmed at the byte
+> **CORRECTION — to ABI-09 §2 wording (documentation lag confirmed at the byte
 > level).** The compiled object's DWARF disagrees with the header on the private
 > helper's arity. The mangled name is `_Z18allocate_hbm_stackjjj` =
 > `allocate_hbm_stack(unsigned, unsigned, unsigned)` — **three** `uint32` args — and
@@ -523,9 +524,10 @@ call chain fits and the fault only fires on genuine exhaustion of the 4 MB budge
 
 `saveContext`/`switchBack` save and restore the old `ISL` (ctx`+88`) around the
 switch, so the on-core limit is intact again on resume. The KSL/ISL exception model
-itself — the special registers and the handler that delivers the fault — is the
-Xtensa exception-model page (Part 13, not yet authored); here we only observe that
-the library *installs* the limit and the hardware *enforces* it. *[HIGH / OBSERVED
+itself — the special registers and the handler that delivers the fault — is
+[The XEA3 Interrupt / Exception Architecture](../control/interrupt/xea3-interrupt-architecture.md);
+here we only observe that the library *installs* the limit and the hardware
+*enforces* it. *[HIGH / OBSERVED
 that `switchStack` writes `ISL = new_stack_base` and that the old `ISL` is
 saved/restored; MED that the resulting fault is the specific KSL/ISL exception,
 grounded in the SR being the same `isl` register.]*

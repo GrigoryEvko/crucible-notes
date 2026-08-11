@@ -45,9 +45,9 @@ Three command classes are present in `driver/commands/`, each a Cython `.so`:
 | `list-operators` | `ListOperatorsCommand` | `commands__ListOperatorsCommand.cpython-310-…so` | yes |
 | `neff-info` | `NeffInfoCommand` | `commands__NeffInfoCommand.cpython-310-…so` | **no** |
 
-> **QUIRK — `neff-info` is a banner-omitted command class.** The two-line help block at `0x37ac0` lists only `compile` and `list-operators`, yet `NeffInfoCommand.cpython-310-…so` ships in the same `driver/commands/` directory as the other two and exports the same `CommandInterface` surface. It is reachable by name (the `known_commands` dict is built from the available command classes, not from the help banner), but it is intentionally absent from the public usage text — treat it as a semi-private inspection command (NEFF-container dump) rather than a compile entry point. The banner is documentation, not the dispatch table. *(STRONG: all three binaries confirmed present; banner text CONFIRMED; the omission is structural, not a build artifact.)*
+> **QUIRK — `neff-info` is a banner-omitted command class.** The two-line help block at `0x37ac0` lists only `compile` and `list-operators`, yet `NeffInfoCommand.cpython-310-…so` ships in the same `driver/commands/` directory as the other two and exports the same `CommandInterface` surface. It is reachable by name (the `known_commands` dict is built from the available command classes, not from the help banner), but it is intentionally absent from the public usage text — treat it as a semi-private inspection command (NEFF-container dump) rather than a compile entry point. The banner is documentation, not the dispatch table. All three command binaries ship; the omission from the banner is structural rather than a build artifact.
 
-`--version` / `-V` short-circuits dispatch entirely: it is wired to `VersionAction` (`0x2c830`), a custom `argparse.Action` whose `__call__` prints `getVersionString()` and exits before any subcommand is selected. `getVersionString` (`0x2d690`) assembles the three-line block `"NeuronX Compiler version " … "Python version " … "NumPy version "` from `KccVersion`. *(CONFIRMED: `--version` @ str `0x38d80`, `VersionAction` @ str `0x38af8`, version literals in `getVersionString`'s string refs.)*
+`--version` / `-V` short-circuits dispatch entirely: it is wired to `VersionAction` (`0x2c830`), a custom `argparse.Action` whose `__call__` prints `getVersionString()` and exits before any subcommand is selected. `getVersionString` (`0x2d690`) assembles the three-line block `"NeuronX Compiler version " … "Python version " … "NumPy version "` from `KccVersion`. *Anchors: `--version` @ str `0x38d80`, `VersionAction` @ str `0x38af8`, and the version literals in `getVersionString`'s string refs.*
 
 ## 2. Entry: `main` → logging → `run`
 
@@ -70,7 +70,7 @@ def main():
     sys.exit(driver.run(sys.argv))                       # interns: run, sys, argv, exit
 ```
 
-*(CONFIRMED interns in `main`: `signal`/`SIGINT`/`SIG_DFL`, `Formatter`/`converter`/`gmtime`, `captureWarnings`, `root`/`removeHandler`/`absl_handler`, `CommandDriver`, `run`, `sys`/`argv`/`exit`. The `gmtime` converter forces UTC log timestamps; the `absl_handler` removal de-duplicates absl's auto-installed root handler.)*
+*Interns in `main`: `signal`/`SIGINT`/`SIG_DFL`, `Formatter`/`converter`/`gmtime`, `captureWarnings`, `root`/`removeHandler`/`absl_handler`, `CommandDriver`, `run`, `sys`/`argv`/`exit`.* The `gmtime` converter forces UTC log timestamps; the `absl_handler` removal de-duplicates absl's auto-installed root handler.
 
 `CommandDriver.__init__` (`0x28160`, 18,113 bytes, 271 callees) constructs the top-level `InterceptingArgumentParser` (the recording argparse subclass detailed in [3.2](two-parser-architecture.md)), registers the global `[args]` flags and the subcommand positional, builds the `known_commands` name→class dict, and seeds the per-level logging helpers (`to_numeric_level` @ `0x26c40` maps a log-level *name* — `DEBUG`/`INFO`/`WARNING` — to a numeric level). It is the largest non-dispatch function in the module.
 
@@ -110,7 +110,7 @@ def run(self, argv):
 
 The key structural fact: **`parse_known_args` (not `parse_args`)** is what makes the `[args] <subcommand> [<subcommand args>]` grammar work. The top parser is *deliberately permissive* — it knows only the driver-global flags, so any token it does not recognise (every subcommand flag) falls into `delegated_args` instead of triggering an "unrecognized arguments" error. That leftover list becomes the subcommand's argv unchanged. The two-parser design ([3.2](two-parser-architecture.md)) is precisely so the driver parser and the subcommand parser can each `parse_known_args` their own slice of the same flat argv without fighting over flags they do not own.
 
-> **NOTE — `getCommandName` is the registry's source of truth.** `CommandInterface` (base class @ `0x8830` in `commands__CommandInterface.cpython-310-…so`) declares `getCommandName` @ `0x9150`; each subclass overrides it to return its subcommand string (`'compile'`, `'list-operators'`, `'neff-info'`). The `known_commands` dict in `CommandDriver.__init__` is keyed by exactly these return values, so adding a command is a matter of registering one more class whose `getCommandName` yields a fresh name — there is no separate name table to keep in sync. *(CONFIRMED: `getCommandName` symbol in both `CommandDriver` (str `0x389a0`) and `CommandInterface` (`0x9150`); `known_commands` intern `0x38970`.)*
+> **NOTE — `getCommandName` is the registry's source of truth.** `CommandInterface` (base class @ `0x8830` in `commands__CommandInterface.cpython-310-…so`) declares `getCommandName` @ `0x9150`; each subclass overrides it to return its subcommand string (`'compile'`, `'list-operators'`, `'neff-info'`). The `known_commands` dict in `CommandDriver.__init__` is keyed by exactly these return values, so adding a command is a matter of registering one more class whose `getCommandName` yields a fresh name — there is no separate name table to keep in sync. *Anchors: `getCommandName` in both `CommandDriver` (str `0x389a0`) and `CommandInterface` (`0x9150`); the `known_commands` intern at `0x38970`.*
 
 `run_subcommand` (`0x1a7c0`) is the in-process path: it calls `subcommand.run(delegated_args, …)` (intern `run`, `self`, `subcommand`, `delegated_args`, `logfile`), wrapping failures through `handleError` and falling back to `os.EX_SOFTWARE` on error (interns `os`, `EX_SOFTWARE`, `handleError`). For `compile`, `subcommand.run` is `CompileCommand.run` → `buildPipeline` → `runPipeline` — see [3.3](compilecommand-pipeline.md).
 
@@ -147,7 +147,7 @@ def run_subcommand_in_process(self, subcommand, delegated_args, logfile):
     sys.exit(rc)                # py 367 — child's exitcode == subcommand status
 ```
 
-*(CONFIRMED: `run_subcommand_in_process` arg names `subcommand`/`delegated_args`/`logfile` from `__pyx_pyargnames` + interns; calls `run_subcommand`, then `logging.shutdown()` and `sys.exit` via interns `logging`/`shutdown`/`sys`/`exit`; `_Pyx_AddTraceback(..., 366, 366, ...)` and `..., 367, 367, ...` markers pin the py-lines.)*
+*Anchors: the arg names `subcommand`/`delegated_args`/`logfile` come from `__pyx_pyargnames`; the body's calls from the `run_subcommand` / `logging` / `shutdown` / `sys` / `exit` interns; the py-lines from the `_Pyx_AddTraceback(..., 366, 366, ...)` and `..., 367, 367, ...` markers.*
 
 The rationale is the ICE/OOM banner. `run_subcommand_in_process` and `handleError` carry the operator text (interned in this module):
 
@@ -159,9 +159,9 @@ The rationale is the ICE/OOM banner. `run_subcommand_in_process` and `handleErro
  usage for neuronxcc is …
 ```
 
-`handleError` (`0x30470`, py-line 113) is where a child failure is *classified*: it inspects the broken-process condition (interns `BrokenProcessPool`, `RemoteTraceback`, `TracebackException`, `from_exception`, `origin_job`), reads resident-set sizes for the memory report (interns `resource`, `getrusage`, `ru_maxrss`, `RUSAGE_CHILDREN`, `RUSAGE_SELF`), tears down global compiler state (intern `FinalizeGlobalState`), and emits one of the `[F134]/[F137]/[F139]` banners. *(CONFIRMED interns in `handleError`; `BrokenProcessPool` also interned at str `0x38770`, `RUSAGE_CHILDREN` @ `0x388e0`, `RUSAGE_SELF` @ `0x38c50`.)*
+`handleError` (`0x30470`, py-line 113) is where a child failure is *classified*: it inspects the broken-process condition (interns `BrokenProcessPool`, `RemoteTraceback`, `TracebackException`, `from_exception`, `origin_job`), reads resident-set sizes for the memory report (interns `resource`, `getrusage`, `ru_maxrss`, `RUSAGE_CHILDREN`, `RUSAGE_SELF`), tears down global compiler state (intern `FinalizeGlobalState`), and emits one of the `[F134]/[F137]/[F139]` banners. *Anchors: `BrokenProcessPool` @ str `0x38770`, `RUSAGE_CHILDREN` @ `0x388e0`, `RUSAGE_SELF` @ `0x38c50`.*
 
-> **GOTCHA — `--fork-subcommand` is the only thing that makes `exitcode` meaningful.** Without the flag, `run_subcommand` runs the subcommand in the *driver's own* interpreter; a hard crash (SIGSEGV in a native pass) or an OOM-kill takes the whole `neuronx-cc` process down and there is no surviving `exitcode` to inspect. With the flag, the crash is confined to the `multiprocessing.Process` child; the parent reads `child.exitcode`, recognises the negative (signal) or non-zero status, and converts it into a support-ticket banner. Framework integrations that compile many graphs in one host process rely on this isolation so one bad graph does not abort the batch. *(STRONG.)*
+> **GOTCHA — `--fork-subcommand` is the only thing that makes `exitcode` meaningful.** Without the flag, `run_subcommand` runs the subcommand in the *driver's own* interpreter; a hard crash (SIGSEGV in a native pass) or an OOM-kill takes the whole `neuronx-cc` process down and there is no surviving `exitcode` to inspect. With the flag, the crash is confined to the `multiprocessing.Process` child; the parent reads `child.exitcode`, recognises the negative (signal) or non-zero status, and converts it into a support-ticket banner. Framework integrations that compile many graphs in one host process rely on this isolation so one bad graph does not abort the batch.
 
 ## 5. The crash-exit codes — `[F134]`, `[F137]`, `[F139]`
 
@@ -179,9 +179,9 @@ The codes are not arbitrary — they decode the child's exit status under the PO
 - **`F137` = 128 + 9 = SIGKILL** — the child was *forcibly* killed, almost always the OOM-killer reclaiming memory. The message is the only one of the three that suggests a remedy (smaller dtype / batch / bigger instance), because OOM is the dominant cause.
 - **`F139` = 128 + 11 = SIGSEGV** — the child segfaulted. Second "terminated abnormally" variant, distinguished from `F134` only by the originating signal.
 
-> **CORRECTION — `F137` is SIGKILL (128+9), not "SIGSEGV", and `F139` is SIGSEGV (128+11).** An earlier strand note paired `F137` with SIGSEGV. The numeric suffixes are self-describing under `128 + signo`: 134→SIGABRT(6), 137→SIGKILL(9), 139→SIGSEGV(11). The `F137` message text ("was forcibly killed … insufficient system memory") is the SIGKILL/OOM banner, confirming the 128+9 reading over any SIGSEGV pairing. *(STRONG: the message text disambiguates; the suffix arithmetic is the standard shell convention for signal-terminated processes.)*
+> **GOTCHA — don't pair `F137` with SIGSEGV.** The two "terminated abnormally" banners (`F134`, `F139`) look interchangeable, which makes it easy to slot `F137` into the segfault role. The suffix arithmetic settles it: 134→SIGABRT(6), 137→SIGKILL(9), 139→SIGSEGV(11), and `F137`'s own text ("was forcibly killed … insufficient system memory") is the OOM-kill banner.
 
-> **NOTE — the exact `exitcode → [F13x]` branch is derived, not a clean switch.** The three banner constants are interned by `__Pyx_CreateStringTabAndInitStrings` (`0x4bbf`) and selected on the child's `exitcode` (read at `run` decompile L5708) inside the failure path that calls `handleError` (L6174). The decompiler renders the per-code selection as opaque interned-const loads from `_pyx_mstate_global_static` rather than a readable `switch`, so the precise comparison thresholds are **INFERRED** from the `128 + signo` arithmetic and the message semantics; the *ownership* (this is `CommandDriver`'s `run`/`run_subcommand_in_process`/`handleError` triad) and the banner identities are **CONFIRMED**. The final driver-level exit on a failed fork is `os.EX_SOFTWARE` (str `0x38c80`, decompile L6367).*
+> **NOTE — the exact `exitcode → [F13x]` branch is derived, not a clean switch.** The three banner constants are interned by `__Pyx_CreateStringTabAndInitStrings` (`0x4bbf`) and selected on the child's `exitcode` (read at `run` decompile L5708) inside the failure path that calls `handleError` (L6174). The decompiler renders the per-code selection as opaque interned-const loads from `_pyx_mstate_global_static` rather than a readable `switch`, so the precise comparison thresholds are **[INFERRED]** from the `128 + signo` arithmetic and the message semantics. The ownership — `CommandDriver`'s `run` / `run_subcommand_in_process` / `handleError` triad — and the banner identities are read directly. The final driver-level exit on a failed fork is `os.EX_SOFTWARE` (str `0x38c80`, decompile L6367).*
 
 ## 6. End-to-end flow
 
@@ -218,14 +218,16 @@ The codes are not arbitrary — they decode the child's exit status under the PO
  CompileCommand.run → buildPipeline → runPipeline  ── see 3.3 ───────────────┘
 ```
 
-## 7. Adversarial self-verification
+## 7. Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+- **Two public subcommands plus `neff-info`.** The usage banner at `0x37ac0` lists only `compile` / `list-operators`, verbatim; `NeffInfoCommand.cpython-310-…so` ships alongside the other two command binaries.
+- **`parse_known_args` is the argv split.** The `parse_known_args` intern (`0x387d0`) is referenced at `run` decompile **L631**, producing `known_args` (`0x38d20`) and `delegated_args` (`0x389d0`).
+- **`known_commands[name]` selects the class.** The `known_commands` intern (`0x38970`) is indexed at `run` decompile **L1075**, keyed on `getCommandName` (`0x389a0`).
+- **The fork path** — `fork_subcommand` checked at **L5150**, `Process` at **L5505**, `run_subcommand_in_process` as target at **L5538**, `exitcode` read at **L5708**, `handleError` at **L6174**, `EX_SOFTWARE` at **L6367** — is a chain of call-site anchors in the `0x1c510` decompile.
+- **The three banners** are interned at `0x37fa0` / `0x37ee0` / `0x37e40` with the message text quoted above.
 
-1. **Two public subcommands + a hidden `neff-info`.** The usage banner (`0x37ac0`) lists only `compile` / `list-operators` — CONFIRMED verbatim. `NeffInfoCommand.cpython-310-…so` exists alongside the other two command binaries — CONFIRMED by directory listing. That it is *dispatchable but un-bannered* is STRONG (the dict is built from command classes via `getCommandName`, not from the help text), not CONFIRMED at the byte level for the precise registry-population call.
-2. **`parse_known_args` is the argv split.** The `parse_known_args` intern (`0x387d0`) is referenced at `run` decompile **L631**, producing `known_args` (`0x38d20`) and `delegated_args` (`0x389d0`) — CONFIRMED.
-3. **`known_commands[name]` selects the class.** The `known_commands` intern (`0x38970`) is indexed at `run` decompile **L1075** with `getCommandName` (`0x389a0`) as the key source — CONFIRMED.
-4. **Fork path = `multiprocessing.Process(target=run_subcommand_in_process)` → read `exitcode`.** `fork_subcommand` checked at **L5150**, `Process` at **L5505**, `run_subcommand_in_process` target at **L5538**, `exitcode` read at **L5708**, `handleError` at **L6174**, `EX_SOFTWARE` at **L6367** — all CONFIRMED call-site anchors in the `0x1c510` decompile.
-5. **`[F134]=SIGABRT, [F137]=SIGKILL/OOM, [F139]=SIGSEGV` via `128+signo`.** Banner symbols/text CONFIRMED (`0x37fa0`/`0x37ee0`/`0x37e40`). The signal mapping is INFERRED from the suffix arithmetic + the `F137` "forcibly killed / insufficient memory" text; the exact `exitcode→banner` comparison is not a readable switch in the decompile (interned-const loads), so the threshold logic is tagged INFERRED while ownership and identities are CONFIRMED.
+## Limits of this reading
 
-Nothing on this page references a source tree; every symbol, offset, string, and py-line is read from the shipped Cython `.so` and its IDA sidecars.
+- That `neff-info` is *dispatchable* but un-bannered is **[INFERRED]**: the registry is built from command classes via `getCommandName` rather than from the help text, but the precise registry-population call was not isolated at the byte level.
+- The `[F134]` / `[F137]` / `[F139]` → signal mapping is **[INFERRED]** from the `128 + signo` suffix arithmetic and the `F137` "forcibly killed / insufficient memory" text. The `exitcode → banner` comparison renders as interned-const loads rather than a readable switch, so the threshold logic is not directly read.
+- Every symbol, offset, string, and py-line here comes from the shipped Cython `.so` and its IDA sidecars.

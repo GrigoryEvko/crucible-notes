@@ -45,13 +45,13 @@ walrus shared-DRAM cluster (pass orders 79-84)
   84  anti_dependency_analyzer_post_shared_dram   ── re-run after addresses settle
 ```
 
-The dependency on order 80 is direct: `lower_local_collectives` is what *creates* the cross-core sharing. For each shared DRAM location a remote core must reach, it sets a `RemoteLocalTarget` = `optional<pair<remote_mloc_name, remote_ncId>>` (`bir::MemoryLocation::setRemoteLocalTarget(optional<pair<string,uint>>)`). Extend (81) consumes that to find what is genuinely shared; sync (83) consumes it to find where the real address lives. **[CONFIRMED — pass orders from the walrus pass list; `getRemoteLocalTarget` is the call at `0x16b330b`, see §Sync.]**
+The dependency on order 80 is direct: `lower_local_collectives` is what *creates* the cross-core sharing. For each shared DRAM location a remote core must reach, it sets a `RemoteLocalTarget` = `optional<pair<remote_mloc_name, remote_ncId>>` (`bir::MemoryLocation::setRemoteLocalTarget(optional<pair<string,uint>>)`). Extend (81) consumes that to find what is genuinely shared; sync (83) consumes it to find where the real address lives; `getRemoteLocalTarget` is the call at `0x16b330b` (see §Sync).
 
 > **NOTE —** before this cluster, a separate pass (`localize_shared_memory`) has already converted Shared→Local for buffers that *only* one core touches. So everything reaching extend/sync with the shared flag still set is a *genuine* multi-core buffer. This is why both passes can treat `lnc == 1` as "nothing shared" and skip wholesale.
 
 ### Considerations
 
-The two passes are physically separate `BackendPass` registrations (object sizes `0x80` for extend, `0x68` for sync) with their own pass-name strings (`"extend_shared_lifetimes"`, `"sync_shared_allocations"`, both length 23). They are not phases of one pass — order-82 allocation runs *between* them, which is exactly why two passes exist rather than one. **[CONFIRMED — distinct registration lambdas, distinct strings.]**
+The two passes are physically separate `BackendPass` registrations (object sizes `0x80` for extend, `0x68` for sync) with their own pass-name strings (`"extend_shared_lifetimes"`, `"sync_shared_allocations"`, both length 23). They are not phases of one pass — order-82 allocation runs *between* them, which is exactly why two passes exist rather than one.
 
 ---
 
@@ -73,16 +73,16 @@ function run_single_module_stub(this, module):
     return this                      // NO module mutation
 ```
 
-The pass manager owns the `vector<Module>` for a post-split program and routes the lnc>1 work to the vector overload; the single-Module entry is the skip path. **[STRONG — both stub bodies are trivial and set the same `[this+0]=2` constant; the dispatch routing is inferred from the worker living in the vector overload.]**
+The pass manager owns the `vector<Module>` for a post-split program and routes the lnc>1 work to the vector overload; the single-Module entry is the skip path. Both stub bodies are trivial and set the same `[this+0]=2` constant; the routing itself is **INFERRED** from the worker living in the vector overload.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `ExtendSharedLifetimes::run(Module&)` | `0x162dbe0` | single-module stub | CONFIRMED |
-| `ExtendSharedLifetimes::run(vector<Module>&)` | `0x163f910` | real cross-core worker | CONFIRMED |
-| `SyncSharedAllocations::run(Module&)` | `0x16b19b0` | single-module stub | CONFIRMED |
-| `SyncSharedAllocations::run(vector<Module>&)` | `0x16b2da0` | real cross-core worker | CONFIRMED |
+| `ExtendSharedLifetimes::run(Module&)` | `0x162dbe0` | single-module stub | CERTAIN |
+| `ExtendSharedLifetimes::run(vector<Module>&)` | `0x163f910` | real cross-core worker | CERTAIN |
+| `SyncSharedAllocations::run(Module&)` | `0x16b19b0` | single-module stub | CERTAIN |
+| `SyncSharedAllocations::run(vector<Module>&)` | `0x16b2da0` | real cross-core worker | CERTAIN |
 
 ---
 
@@ -165,7 +165,7 @@ The cross-core union is the conceptual core. Per shared mloc, the pass takes the
 "All accesses for mlocs (per core)"      // 0x1d82d60 — per-core access set
 ```
 
-The `(all cores)` vs `(per core)` pairing is the tell: per-core sets are merged into one `(all cores)` span. This is what prevents the order-82 DRAM coloring allocator from reusing the storage between, say, core-0's write and core-1's read. **[STRONG — union semantics established from the `(all cores)`/`(per core)` string trio plus the `getAllCores`-driven loop; the exact set-merge code inside the ~25 KB `extendSharedLifetimesInBlock` body was not byte-traced.]**
+The `(all cores)` vs `(per core)` pairing is the tell: per-core sets are merged into one `(all cores)` span. This is what prevents the order-82 DRAM coloring allocator from reusing the storage between, say, core-0's write and core-1's read. The union semantics rest on that string trio plus the `getAllCores`-driven loop; the set-merge code inside the ~25 KB `extendSharedLifetimesInBlock` body is not traced instruction-by-instruction.
 
 ### The CoreBarrier Bracket — Phase E
 
@@ -184,9 +184,9 @@ function insertCoreBarrierAtStart(this, cbVec, ncId, blocks):   // sub_0x1631a80
 // insertCoreBarrierAtEnd  (sub_0x1632880) is symmetric: suffix "_end", block END.
 ```
 
-A `CoreBarrier` is IT87 — an all-cores rendezvous: no core may pass `cb_sg<n>_end` until every core has reached it. Bracketing the cross-core live range with `_start … _end` therefore imposes a happens-before fence that both the simulator and the static checker honor, and guarantees the shared buffer is provably live (and untouchable by allocator reuse) for the whole span. After insertion the pass renumbers CoreBarrier indices so each engine's CoreBarriers own a dense sequential index space (string `"Renumbering core barriers."` `@0x1c8895c`), which the downstream race checker consumes. **[CONFIRMED — `getAllCores@plt` call inside the inserter at `0x1631b72`; `cb_sg`/`Inserted new CB`/`Renumbering core barriers` strings; the insertElement path through `NamedObjectContainer`.]**
+A `CoreBarrier` is IT87 — an all-cores rendezvous: no core may pass `cb_sg<n>_end` until every core has reached it. Bracketing the cross-core live range with `_start … _end` therefore imposes a happens-before fence that both the simulator and the static checker honor, and guarantees the shared buffer is provably live (and untouchable by allocator reuse) for the whole span. After insertion the pass renumbers CoreBarrier indices so each engine's CoreBarriers own a dense sequential index space (string `"Renumbering core barriers."` `@0x1c8895c`), which the downstream race checker consumes.
 
-> **QUIRK —** the barrier is named `cb_sg<id>` where `id` is the **subgraph id**, not a core id or a buffer name. `bir::getSubgraphId(Module const&)` is read at the run-prologue (`0x163f94a`) and the name keys on it to keep `cb_sg` names unique per shared group. The `_start`/`_end` suffix distinguishes the two ends of one bracket. A reimplementation that keys the barrier name on the buffer or core will collide names across subgraphs. **[SPECULATIVE on the precise key — `getSubgraphId` is imported and read at the prologue; the exact concatenation into the name was not byte-traced past the `cb_sg`/`_start` string fetches.]**
+> **QUIRK —** the barrier is named `cb_sg<id>` where `id` is the **subgraph id**, not a core id or a buffer name. `bir::getSubgraphId(Module const&)` is read at the run-prologue (`0x163f94a`) and the name keys on it to keep `cb_sg` names unique per shared group. The `_start`/`_end` suffix distinguishes the two ends of one bracket. A reimplementation that keys the barrier name on the buffer or core will collide names across subgraphs. *(The exact concatenation is **SPECULATIVE** — `getSubgraphId` is read at the prologue, but the name assembly is not traced past the `cb_sg`/`_start` string fetches.)*
 
 ### getAllCores — `{0..lnc-1}`
 
@@ -199,26 +199,26 @@ function getAllCores(this, opts):              // sub_0x162f910
     return result                              // {0, 1, ..., lnc-1}
 ```
 
-This is the *full* core set, as opposed to `LowerLocalCollectives::getRemoteCores` (= `{0..lnc-1}\{self}`). The barrier and the union both span all cores, so `extend` uses the full set. Both readers take `lnc` from `PassOptions+0x1A4`, the same offset as the lnc gate. **[CONFIRMED — disasm-verified `{0..lnc-1}` producer at `0x162f910`.]**
+This is the *full* core set, as opposed to `LowerLocalCollectives::getRemoteCores` (= `{0..lnc-1}\{self}`). The barrier and the union both span all cores, so `extend` uses the full set. Both readers take `lnc` from `PassOptions+0x1A4`, the same offset as the lnc gate.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `run(vector<Module>&)` | `0x163f910` | the real extend worker | CONFIRMED |
-| `getAllCores()` | `0x162f910` | `{0..lnc-1}` core set | CONFIRMED |
-| `getSharedLiveInLiveOut(...)` | `0x16367e0` | per-core fixpoint liveness over shared mlocs | CONFIRMED (symbol+strings) |
-| `getSharedMultiBBAllocs(BB,fns,i)` | `0x1634ce0` | collect allocs spanning >1 BB on a core | CONFIRMED (symbol) |
-| `scanBasicBlocks(...)` | `0x162fc70` | per-block access map (`map<name,vector<MlocInfo>>`) | CONFIRMED (symbol) |
-| `extendSharedLifetimesInBlock(i,names,blocks)` | `0x16396c0` | orchestrate barrier insertion | CONFIRMED (symbol) |
-| `insertCoreBarrierAtStart(cbVec,i,blocks)` | `0x1631a80` | emit `cb_sg<n>_start` (IT87) | CONFIRMED |
-| `insertCoreBarrierAtEnd(insts,i,blocks)` | `0x1632880` | emit `cb_sg<n>_end` (IT87) | CONFIRMED |
-| `populateAPFromMemLoc(PAP&,Mloc*,bool)` | `0x16394b0` | build PhysicalAccessPattern for an mloc | CONFIRMED (symbol) |
-| `bir::getSubgraphId(Module const&)` | imported | subgraph id for `cb_sg` naming | CONFIRMED (import) |
+| `run(vector<Module>&)` | `0x163f910` | the real extend worker | CERTAIN |
+| `getAllCores()` | `0x162f910` | `{0..lnc-1}` core set | CERTAIN |
+| `getSharedLiveInLiveOut(...)` | `0x16367e0` | per-core fixpoint liveness over shared mlocs | CERTAIN (symbol + strings) |
+| `getSharedMultiBBAllocs(BB,fns,i)` | `0x1634ce0` | collect allocs spanning >1 BB on a core | CERTAIN (symbol) |
+| `scanBasicBlocks(...)` | `0x162fc70` | per-block access map (`map<name,vector<MlocInfo>>`) | CERTAIN (symbol) |
+| `extendSharedLifetimesInBlock(i,names,blocks)` | `0x16396c0` | orchestrate barrier insertion | CERTAIN (symbol) |
+| `insertCoreBarrierAtStart(cbVec,i,blocks)` | `0x1631a80` | emit `cb_sg<n>_start` (IT87) | CERTAIN |
+| `insertCoreBarrierAtEnd(insts,i,blocks)` | `0x1632880` | emit `cb_sg<n>_end` (IT87) | CERTAIN |
+| `populateAPFromMemLoc(PAP&,Mloc*,bool)` | `0x16394b0` | build PhysicalAccessPattern for an mloc | CERTAIN (symbol) |
+| `bir::getSubgraphId(Module const&)` | imported | subgraph id for `cb_sg` naming | CERTAIN (import) |
 
 ### Considerations
 
-The fixpoint liveness (`getSharedLiveInLiveOut`) is a classic iterative dataflow restricted to *shared* mlocs; its log strings enumerate the steps (`"Build Shared live-in/live-out with <N> iterations"`, `"Propagating <m> to newLiveIn for <bb>"`, `"Removing <m> from newLiveOut, because it is not defined here"`). The `cpp:115` assert — entry block has no shared live-in — is the dominance precondition: a cross-core buffer cannot already be live at function entry, because some block must produce it. A reimplementation that allows shared live-in will mis-bracket (the `_start` barrier would land after a value that is already live). **[CONFIRMED — strings present; `cpp:115` assert string at `0x1d82cd0`.]**
+The fixpoint liveness (`getSharedLiveInLiveOut`) is a classic iterative dataflow restricted to *shared* mlocs; its log strings enumerate the steps (`"Build Shared live-in/live-out with <N> iterations"`, `"Propagating <m> to newLiveIn for <bb>"`, `"Removing <m> from newLiveOut, because it is not defined here"`). The `cpp:115` assert — entry block has no shared live-in — is the dominance precondition: a cross-core buffer cannot already be live at function entry, because some block must produce it. A reimplementation that allows shared live-in will mis-bracket — the `_start` barrier would land after a value that is already live. (The `cpp:115` assert string sits at `0x1d82cd0`.)
 
 ---
 
@@ -278,27 +278,27 @@ function SyncSharedAllocations_run(this, opts, modules):   // sub_0x16b2da0
 
 ### The Copy Chain
 
-The copy chain is the byte-confirmed core of the pass (disassembled `0x16b32f8..0x16b340c`). The argument sourcing in the final `allocate` call is exact: `getAddress`'s return is moved into `rcx`, `m+0xF0` (the local view's own MemoryAddressSpace) into `edx`, `m+0xD8` (its own MemoryType) into `esi`, `rbx` (bank) into `r8`, `r14d` (base partition) into `r9d`. So `m` **keeps its own type and address-space** and **copies only the placement triple** — address, bank, partition — from the remote. The `getRemoteLocalTarget @plt 0x5fab60` is the type `optional<pair<string remote_name, uint remote_ncId>>` minted by `lower_local_collectives`; the remote core id is read from `rlt+0x28` and indexes `modules[]` to reach the producing module. **[CONFIRMED — full copy chain disassembled; `allocate` signature is `bir::MemoryLocation::allocate(MemoryType, MemoryAddressSpace, unsigned long, long, unsigned int, bool, vector<AccessPattern const*>*)` from the imported symbol.]**
+The copy chain is the byte-confirmed core of the pass (disassembled `0x16b32f8..0x16b340c`). The argument sourcing in the final `allocate` call is exact: `getAddress`'s return is moved into `rcx`, `m+0xF0` (the local view's own MemoryAddressSpace) into `edx`, `m+0xD8` (its own MemoryType) into `esi`, `rbx` (bank) into `r8`, `r14d` (base partition) into `r9d`. So `m` **keeps its own type and address-space** and **copies only the placement triple** — address, bank, partition — from the remote. The `getRemoteLocalTarget @plt 0x5fab60` is the type `optional<pair<string remote_name, uint remote_ncId>>` minted by `lower_local_collectives`; the remote core id is read from `rlt+0x28` and indexes `modules[]` to reach the producing module. The `allocate` signature is `bir::MemoryLocation::allocate(MemoryType, MemoryAddressSpace, unsigned long, long, unsigned int, bool, vector<AccessPattern const*>*)`, from the imported symbol.
 
-> **NOTE —** the local view is resolved in the *remote* module **by name**, not by index: `getFunctionByName(fn.name)` then `getMemoryLocationByName(remote_name)`. This is sound only because Phase A of `extend` (the SPMD-identity asserts at `cpp:88`/`cpp:92`) guaranteed all cores share one function keyspace and `lower_local_collectives` recorded the exact remote location name. A reimplementation that resolves by allocation index will break the moment two cores order their allocations differently. **[CONFIRMED — the `getFunctionByName`/`getMemoryLocationByName` call pair at `0x16b337e`/`0x16b3389`.]**
+> **NOTE —** the local view is resolved in the *remote* module **by name**, not by index: `getFunctionByName(fn.name)` then `getMemoryLocationByName(remote_name)`. This is sound only because Phase A of `extend` (the SPMD-identity asserts at `cpp:88`/`cpp:92`) guaranteed all cores share one function keyspace and `lower_local_collectives` recorded the exact remote location name. A reimplementation that resolves by allocation index will break the moment two cores order their allocations differently. The call pair sits at `0x16b337e`/`0x16b3389`.
 
-> **CORRECTION (D-H24) —** an earlier reading placed a `sync`-private postdominator helper inside the copy loop. The call at `0x16b3357` is in fact `bir::backend::CFG::getFirstCommonPostdominator<...>` (a shared CFG utility reused here), not a sync-specific routine; it sits between the `getRemoteLocalTarget` deref and the `getFunctionByName` resolution. The address-copy semantics are unaffected. **[CONFIRMED — symbol at the call target.]**
+One call in this loop is not sync-private: `0x16b3357` reaches `bir::backend::CFG::getFirstCommonPostdominator<...>`, a shared CFG utility, sitting between the `getRemoteLocalTarget` deref and the `getFunctionByName` resolution. It does not participate in the address copy.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `run(vector<Module>&)` | `0x16b2da0` | the real sync worker | CONFIRMED |
-| `bir::MemoryLocation::isSharedPostDRAMAlloc()` | imported `@plt 0x6138e0` | shared predicate | CONFIRMED |
-| `bir::MemoryLocation::getRemoteLocalTarget()` | imported `@plt 0x5fab60` | `optional<pair<name,ncId>>` link | CONFIRMED |
-| `bir::Module::getFunctionByName(...)` | imported `@plt 0x61ed40` | resolve remote function by name | CONFIRMED |
-| `bir::Function::getMemoryLocationByName(...)` | imported `@plt 0x5f9a90` | resolve remote mloc by name | CONFIRMED |
-| `bir::MemoryLocation::getAddress/getBankId/getBasePartition` | `0x600830/0x629620/0x6046b0` | read remote placement | CONFIRMED |
-| `bir::MemoryLocation::allocate(...)` | imported `@plt 0x5f92f0` | write placement onto local view | CONFIRMED |
+| `run(vector<Module>&)` | `0x16b2da0` | the real sync worker | CERTAIN |
+| `bir::MemoryLocation::isSharedPostDRAMAlloc()` | imported `@plt 0x6138e0` | shared predicate | CERTAIN |
+| `bir::MemoryLocation::getRemoteLocalTarget()` | imported `@plt 0x5fab60` | `optional<pair<name,ncId>>` link | CERTAIN |
+| `bir::Module::getFunctionByName(...)` | imported `@plt 0x61ed40` | resolve remote function by name | CERTAIN |
+| `bir::Function::getMemoryLocationByName(...)` | imported `@plt 0x5f9a90` | resolve remote mloc by name | CERTAIN |
+| `bir::MemoryLocation::getAddress/getBankId/getBasePartition` | `0x600830/0x629620/0x6046b0` | read remote placement | CERTAIN |
+| `bir::MemoryLocation::allocate(...)` | imported `@plt 0x5f92f0` | write placement onto local view | CERTAIN |
 
 ### Considerations
 
-`isAllocated()` is the byte at `remote+0xA8` (`cmpb $0,0xa8(%rax)` at `0x16b339e`); the `cpp:34` assert that it is set is the explicit precondition that order-82 *did* place the producer side. This is the formal coupling between passes 82 and 83: sync cannot run before the producing allocation exists. The `MemoryType`/`MemoryAddressSpace` retention (`DRAM=8`, `Shared=1`) means the *kind* of memory is intrinsic to each view; only the *placement* is shared. **[STRONG on the type constants — cross-checked against the `MemoryLocation::toString` placement encoding; CONFIRMED on the `0xA8` `isAllocated` byte and the assert string at `0x1d87fa8`.]**
+`isAllocated()` is the byte at `remote+0xA8` (`cmpb $0,0xa8(%rax)` at `0x16b339e`); the `cpp:34` assert that it is set is the explicit precondition that order-82 *did* place the producer side. This is the formal coupling between passes 82 and 83: sync cannot run before the producing allocation exists. The `MemoryType`/`MemoryAddressSpace` retention (`DRAM=8`, `Shared=1`) means the *kind* of memory is intrinsic to each view; only the *placement* is shared. The `0xA8` `isAllocated` byte and the assert string at `0x1d87fa8` are read directly; the `DRAM=8`/`Shared=1` constants are cross-checked against the `MemoryLocation::toString` placement encoding.
 
 ---
 
@@ -310,23 +310,23 @@ The two passes split work with the dependency machinery: **extend inserts the fe
 - The dependency passes — `build_fdeps` (RAW) and `anti_dependency_analyzer_post_shared_dram` (WAR/WAW), documented on [the dependence-graph page](dependence-graph.md) — build the cross-core conflict edges over shared DRAM.
 - The race checker assigns every instruction an `[earliest, latest]` CoreBarrier-index band per engine and reports a race for a cross-core conflicting pair iff their bands *intersect on every engine* (i.e. no CoreBarrier index separates them). The `barrierIdx → InstCoreBarrier*` map it consumes is exactly the `cb_sg` ops `extend` inserted.
 
-So `extend_shared_lifetimes` is precisely the pass that makes those bands *disjoint*: bracketing producer..consumer with `cb_sg*_start`/`_end` guarantees a CoreBarrier index separates the cross-core producer from the cross-core consumer, and the checker then proves it sufficient. If `extend` under-inserted, the checker would flag a residual cross-core RAW/WAR/WAW; in a correct compile it does not, because the barriers cover exactly the live-range union of Phase D. **[STRONG — division of labour from the pass-order list plus the IT87 semantics plus the `cb_sg`/`InstCoreBarrier` insertion in §Phase E; the checker's band-intersection logic lives in a separate barriercheck component.]**
+So `extend_shared_lifetimes` is precisely the pass that makes those bands *disjoint*: bracketing producer..consumer with `cb_sg*_start`/`_end` guarantees a CoreBarrier index separates the cross-core producer from the cross-core consumer, and the checker then proves it sufficient. If `extend` under-inserted, the checker would flag a residual cross-core RAW/WAR/WAW; in a correct compile it does not, because the barriers cover exactly the live-range union of Phase D. The checker's band-intersection logic itself lives in a separate barriercheck component.
 
-A `CoreBarrier` is an all-engine/all-core fence, so one bracket conservatively orders *every* cross-core RAW/WAR/WAW that crosses its boundary at once — which is why the checker's test is "some CoreBarrier index lies between" rather than a per-edge semaphore. Fine-grained per-edge ordering inside a single engine is handled separately downstream (`synchronizer`/`lower_sync` event semaphores), orthogonal to this cross-core CoreBarrier path. **[STRONG.]**
+A `CoreBarrier` is an all-engine/all-core fence, so one bracket conservatively orders *every* cross-core RAW/WAR/WAW that crosses its boundary at once — which is why the checker's test is "some CoreBarrier index lies between" rather than a per-edge semaphore. Fine-grained per-edge ordering inside a single engine is handled separately downstream (`synchronizer`/`lower_sync` event semaphores), orthogonal to this cross-core CoreBarrier path.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Summary
 
-Five strongest claims re-checked directly against `libwalrus.so`:
+The five strongest claims and their anchors in `libwalrus.so`:
 
-1. **lnc gate (both passes).** `objdump` at `0x163f92a` and `0x16b2dd9` both show `cmpl $0x1,0x1a4(%rax)` followed by `je` — byte-exact match to D-H24. **CONFIRMED.**
-2. **Worker symbol identities.** `.dynsym` resolves `0x163f910` to `ExtendSharedLifetimes::run(vector<unique_ptr<bir::Module>>&)` and `0x16b2da0` to `SyncSharedAllocations::run(vector<unique_ptr<bir::Module>>&)`, with the single-module stubs at `0x162dbe0`/`0x16b19b0`. **CONFIRMED.**
-3. **sync copy chain.** The disassembly at `0x16b32fb..0x16b3407` walks exactly `isSharedPostDRAMAlloc → getRemoteLocalTarget → getFunctionByName → getMemoryLocationByName → isAllocated(0xA8) → setAllocated → getBasePartition → getBankId → getAddress → allocate`, with `m+0xD8`/`m+0xF0` sourcing the local type/space and `getAddress` in `rcx`. **CONFIRMED byte-for-byte.**
-4. **CoreBarrier insertion.** `insertCoreBarrierAtStart @0x1631a80` calls `getAllCores@plt` (at `0x1631b72`) and the binary carries the `cb_sg`, `Inserted new CB`, and `Renumbering core barriers` strings. **CONFIRMED.**
-5. **BuildID.** `readelf -n` returns `92b4d331a42d7e80bb839e03218d2b9b0c23c346`, matching the version pin. **CONFIRMED.**
+1. **lnc gate (both passes).** `objdump` at `0x163f92a` and `0x16b2dd9` both hold `cmpl $0x1,0x1a4(%rax)` followed by `je`.
+2. **Worker symbol identities.** `.dynsym` resolves `0x163f910` to `ExtendSharedLifetimes::run(vector<unique_ptr<bir::Module>>&)` and `0x16b2da0` to `SyncSharedAllocations::run(vector<unique_ptr<bir::Module>>&)`, with the single-module stubs at `0x162dbe0`/`0x16b19b0`.
+3. **sync copy chain.** The disassembly at `0x16b32fb..0x16b3407` walks exactly `isSharedPostDRAMAlloc → getRemoteLocalTarget → getFunctionByName → getMemoryLocationByName → isAllocated(0xA8) → setAllocated → getBasePartition → getBankId → getAddress → allocate`, with `m+0xD8`/`m+0xF0` sourcing the local type/space and `getAddress` in `rcx`.
+4. **CoreBarrier insertion.** `insertCoreBarrierAtStart @0x1631a80` calls `getAllCores@plt` (at `0x1631b72`) and the binary carries the `cb_sg`, `Inserted new CB`, and `Renumbering core barriers` strings.
+5. **BuildID.** The ELF note carries `92b4d331a42d7e80bb839e03218d2b9b0c23c346`, matching the version pin.
 
-**Re-verification ceiling.** The cross-core set-merge that forms the Phase-D union (the exact code that intersects per-core spans into one `(all cores)` span) was *not* byte-traced through the ~25 KB `extendSharedLifetimesInBlock` body — it is established from the `(all cores)`/`(per core)` string trio plus the `getAllCores`-driven loop (STRONG, not CONFIRMED). The `cb_sg<id>` name's exact subgraph-id concatenation is SPECULATIVE past the string fetches. The `allocate` 4th (`long`) and 7th (`bool`) arguments are passed as `0`/`false` and were not semantically decoded; they do not affect the address-identity result.
+**Ceiling.** The cross-core set-merge that forms the Phase-D union — the code that folds per-core spans into one `(all cores)` span — is not traced through the ~25 KB `extendSharedLifetimesInBlock` body; it rests on the `(all cores)`/`(per core)` string trio plus the `getAllCores`-driven loop. The `cb_sg<id>` name's exact subgraph-id concatenation is **SPECULATIVE** past the string fetches. The `allocate` 4th (`long`) and 7th (`bool`) arguments are passed as `0`/`false` and were not semantically decoded; they do not affect the address-identity result.
 
 ## Related Components
 

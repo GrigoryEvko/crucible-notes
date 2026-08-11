@@ -26,8 +26,8 @@
 
 > **GOTCHA — the accessor structs carry NO DWARF and NO symbol, ANYWHERE in the archive.**
 > `TensorAccessorBase` / `TensorAccessor` / `TensorElementReference` are **pure header templates**,
-> instantiated only at a *customer op's* compile site — never inside the vendor lib. Verified this
-> pass over the unstripped archive: `llvm-dwarfdump --debug-info` = **0** hits, `readelf -p
+> instantiated only at a *customer op's* compile site — never inside the vendor lib. Verified
+> over the unstripped archive: `llvm-dwarfdump --debug-info` = **0** hits, `readelf -p
 > .debug_str` = **0** hits, `llvm-nm` (defined+undef) = **0** hits for all three names across all 10
 > members (`for o in *.o; do readelf -p .debug_str $o | rg -c TensorAccessor; done` → all 0). So the
 > aggregate byte-exact layout below is **COMPOSED** from DWARF-pinned *component* sizes (Q7PtrType,
@@ -66,7 +66,7 @@ read directly from the shipped header:
 ## 1. Component grounding `[HIGH × OBSERVED]`
 
 Everything the accessor is *built from* is DWARF-pinned in `wrapper_api.o` (and the runtime leaf in
-`translation.o`). Read this pass:
+`translation.o`). Read from the objects:
 
 ```
 $ readelf -h wrapper_api.o | rg -i 'class|machine'
@@ -458,8 +458,8 @@ exercised in the shipped binary).
 dead code (still names the old `PtrTraits` arg; never instantiated); no per-instruction disasm of the
 inlined operator chain (no defined symbol; does not affect the ABI).
 
-> **CORRECTION (to SX-ABI-03).** None required — every claim re-verified against DWARF/ELF/disasm
-> this pass holds. One **sharpening**: SX-ABI-03 §8 lists "no native Xtensa per-instruction disasm" as
+> **CORRECTION (to ABI-03).** None required — every claim holds against DWARF/ELF/disasm.
+> One **sharpening**: ABI-03 §8 lists "no native Xtensa per-instruction disasm" as
 > the sole gap; this page narrows that — the *operator chain* has no per-insn disasm **because it has
 > no defined symbol** (inlined header templates), but the **leaf callee `neuron_translate` IS defined
 > and disassembled** here under `XTENSA_CORE=ncore2gp` (§4a), so the terminal translate step is now

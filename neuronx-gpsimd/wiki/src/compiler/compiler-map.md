@@ -72,7 +72,7 @@ from the unstripped Cython symbol tables.
   **`can_lower_generic_load_to_gather`** (string present in the `.so`). This is where a
   generic penguin load that *can* be a gather becomes one, where MX quant lowers, and
   where the **DGE** (descriptor-generation-engine) attribute is decided.
-  [HIGH/OBSERVED — symbols read this pass.]
+  [HIGH/OBSERVED — symbols read.]
 - **`InferIntrinsicOnCC`** (`targets/sunda/passes/InferIntrinsicOnCC.so`) — the
   compute-cluster intrinsic-fusion pass. OBSERVED: `InferIntrinsicOnCC.inferIntrinsicOnDAG`,
   `checkAndExtractRoot`, `infer_fma`, `infer_cast`, `infer_broadcast_dag`. It walks the
@@ -112,7 +112,7 @@ abstract bases plus ctor/template symbols — those are not concrete IR nodes.
 > [bir-inst-roster §2/§8](bir-inst-roster.md) and reaffirmed by the capstone
 > [dtype-engine-fanin-synthesis §C.1](dtype-engine-fanin-synthesis.md): `_ZTV` − 2 abstract
 > bases = 110, `createFromJson` = 110 after filtering `bir::Instruction`, the two sets
-> diff-identical. The **"73"** figure (DX-CC-01 / GX-REF-02 §3.1) was the GPSIMD-relevant
+> diff-identical. The **"73"** figure was the GPSIMD-relevant
 > *subset* (compute/gather/PE/ACT/BN/MX/RNG/collective/DMA, before the control spine,
 > load/store, and kernel containers), not the total. Ground the count on `createFromJson`
 > or `_ZTV`, never on the `C2ERKNSt` ctor recipe (which drops `InstDynamicForLoop`,
@@ -196,8 +196,8 @@ gpsimd=3, dma=4, vector=5, sync=6, unknown=0`. The `engine=` **default** in each
 [HIGH/OBSERVED — each line cited above is an `engine=_nisa_dialect.Engine.<E>` in
 `isa_emit.py`.]
 
-> **CORRECTION (vs DX-CC-01 §2.2's DGEType list).** The `DGEType` enum
-> (`NKI/isa/enums.py`) is `unknown=0, swdge=1, hwdge=2, none=3` — DX-CC-01 listed only
+> **CORRECTION — the DGEType list omitted `unknown=0`.** The `DGEType` enum
+> (`NKI/isa/enums.py`) is `unknown=0, swdge=1, hwdge=2, none=3` — an earlier reading listed only
 > `{swdge=1, hwdge=2, none=3}` and omitted **`unknown=0`** ("let the compiler decide the
 > DGE mode", the default). `SundaISel`'s `can_use_dge` is what resolves an `unknown` DGE
 > to `swdge`/`hwdge`/`none`. [HIGH/OBSERVED — `class DGEType` in `enums.py`.]
@@ -218,7 +218,7 @@ Each row binds one of the 62 `emit_*` entry points to: its irbuilder mnemonic
 against the device ledger §2** — see [../firmware/kernels/opcode-catalog-ledger.md](../firmware/kernels/opcode-catalog-ledger.md)),
 the **engine as the irbuilder `.so` docstring states it**, the device kernel page, and
 a confidence tag. Where the engine differs between the irbuilder docstring and
-DX-CC-01's earlier table, a CORRECTION is flagged inline.
+an earlier table, a CORRECTION is flagged inline.
 
 The **engine column is authoritative from the binary**: the `_nki_irbuilder.so` embeds,
 for every mnemonic, a docstring `"NKI IR builder for <m>. … using <Engine> Engine."`
@@ -226,7 +226,7 @@ That string is the engine the IR builder declares; the parenthetical `(route)` n
 where SundaISel may switch.
 
 Legend: opcode numerics CONFIRMED against device ledger §2 [C]; engine from the
-`_nki_irbuilder.so` docstring [O]. `*** NEW` = added since GX-REF-03's read of the
+`_nki_irbuilder.so` docstring [O]. `*** NEW` = added since an earlier read of the
 surface. `† MAVERICK/MED` = ledger flags the opcode as MAVERICK-only and not byte-pinned.
 
 ### 3.1 GPSIMD / POOL-resident (the core deliverable)
@@ -348,30 +348,30 @@ device-decoded). Key targets from the ledger: `0xC8 PSEUDO_TRIGGER_COLLECTIVE`,
 ## 4. The differential check — `emit_*` vs firmware decode vs the value model
 
 Direction: for each `emit_*`, does the opcode it eventually produces AGREE with (a) the
-device ledger §2 + the SX-FW kernel decode, and (b), for arithmetic ops, the libfiss
+device ledger §2 + the FW kernel decode, and (b), for arithmetic ops, the libfiss
 per-lane value primitive (see neuronx-cc/wiki/src/.../iss-value-model.md)?
 
 ### 4.1 Numeric verdict — ZERO opcode mismatches
 
 All **50** distinct opcode bindings tabulated in §3 are CONFIRMED against the device
-ledger §2 (a full field-for-field cross-check this pass). No `emit_*` names, routes to,
+ledger §2 (a full field-for-field cross-check). No `emit_*` names, routes to,
 or produces a TPB opcode the firmware roster lacks or decodes differently.
 [HIGH — opcode CONFIRMED vs ledger; engine OBSERVED from irbuilder `.so`.]
 
 ### 4.2 The engine CORRECTIONS (◆ rows)
 
-The irbuilder `.so` docstrings disagree with DX-CC-01 §3 on three engine assignments.
+The irbuilder `.so` docstrings disagree with an earlier table on three engine assignments.
 The binary docstring is authoritative for the engine the IR builder *declares*:
 
 > **CORRECTION ◆ — `tensor_scalar_cache_reduce` / `tensor_scalar_cache_cumulative` are
-> Vector, not GpSimd.** DX-CC-01 §3 tabulated both as `gpsimd`. The `_nki_irbuilder.so`
+> Vector, not GpSimd.** An earlier table tabulated both as `gpsimd`. The `_nki_irbuilder.so`
 > docstrings read: *"…reduce along free dimensions using **Vector Engine**"* and
 > *"…perform cumulative reduction using **Vector Engine**."* The opcodes
 > (`0x9a`/`0xe6`) are unchanged and ledger-confirmed; only the declared engine differs.
 > [HIGH/OBSERVED — irbuilder `.so` docstring strings.]
 
 > **CORRECTION ◆ — `quantize_mx` declares Vector, not GpSimd, and its forward device
-> opcode is `0xE3`, not `0x7b`.** DX-CC-01 §3 tabulated it `gpsimd`. The `.so` docstring
+> opcode is `0xE3`, not `0x7b`.** An earlier table tabulated it `gpsimd`. The `.so` docstring
 > reads: *"Apply on-the-fly quantization … in OCP Microscaling (MX) formats using **Vector
 > Engine**."* The **forward** pack lowers to **`QUANTIZE_MX 0xe3` on the DVE (Vector)**; the
 > inverse standalone dequant is the separate **`TENSOR_DEQUANTIZE 0x7b` on POOL** with no
@@ -382,7 +382,7 @@ The binary docstring is authoritative for the engine the IR builder *declares*:
 > [HIGH/OBSERVED — irbuilder `.so` docstring; ledger §2.3 `0xe3 QUANTIZE_MX | DVE`.]
 
 (For contrast, `tensor_scalar_addr` *does* declare `Gpsimd` in the `.so` docstring —
-*"…64-bit address calculations using Gpsimd Engine"* — confirming DX-CC-01's gpsimd
+*"…64-bit address calculations using Gpsimd Engine"* — confirming the earlier gpsimd
 route for that op.)
 
 ### 4.3 The four sharpenings (genuine new data)

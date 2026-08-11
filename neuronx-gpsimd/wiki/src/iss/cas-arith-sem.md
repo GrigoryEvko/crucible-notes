@@ -26,7 +26,7 @@ OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence. All offsets 
 > are **VMA == file offset**; the writable sections are **not**: `.data.rel.ro` (VMA `0x2070900` →
 > file `0x1e70900`) and `.data` (VMA `0x2280ed8` → file `0x2080ed8`) both carry a **`0x200000`
 > delta** (`readelf -SW`). Every `xxd` on a decode record below subtracts `0x200000`; the `.text`
-> disassembly addresses are raw VMA. `[HIGH/OBSERVED]`
+> disassembly addresses are raw VMA.
 
 ---
 
@@ -59,7 +59,7 @@ The `call *0xe7098(%rbx)` slot is real and used **9 times** across the image (on
 ALU executor); data movement to/from that callback uses **named PLT ports** — e.g.
 `nx_VectorMemDataOut512_0_interface` (105 call sites) and `nx_ScatterData_0_interface` (85). The
 import table is exactly **120 undefined symbols = 1× `memset` + 119× `nx_*_interface`** — the
-simulator's only runtime coupling. `[HIGH/OBSERVED]`
+simulator's only runtime coupling.
 
 > **The consequence for reimplementation.** The ground-truth element semantics — saturating vs
 > wrapping, signed vs unsigned, rounding, NaN handling — are **not executed inside this DLL**. They
@@ -77,7 +77,7 @@ simulator's only runtime coupling. `[HIGH/OBSERVED]`
 > (`& 0x1f`), records the operand, ORs a hazard bit, and returns — **no arithmetic**. `vec_alu` is
 > the operand-*class* ("an ALU-shaped op with `vr`/`vs`/`vt` operands"); the `add`-vs-`sub`-vs-`min`
 > distinction is **invisible** at that layer. The mnemonic-level identity lives in the per-mnemonic
-> local stage functions and the decode bitmap, decoded in §3. `[HIGH/OBSERVED]`
+> local stage functions and the decode bitmap, decoded in §3.
 
 ---
 
@@ -87,7 +87,7 @@ simulator's only runtime coupling. `[HIGH/OBSERVED]`
 mnemonic pool: first the scalar Xtensa core opcodes (`ADDI`/`ADDX2`/`ADDX4`/`SUBX2…`/`MOVI`/
 `CLAMPS`/`MAXU`/…), then the **1 073 `IVP_*` vector intrinsic strings**. Each arithmetic mnemonic
 appears **exactly once** as a string (`strings -td`), because the strings are *keyed into* the
-decode tables, not duplicated per use. `[HIGH/OBSERVED]`
+decode tables, not duplicated per use.
 
 The IVP name *is* the ISA-lane key — it encodes element type, lane count, and saturation. The
 native lane parameter `N = 32` (for 16-bit) follows from the **512-bit** vector datapath: the host
@@ -111,7 +111,7 @@ data ports are `nx_VectorMemDataIn512/Out512` and the width enum spans
 > one op with a "signed?" bit — they are two distinct mnemonics with two distinct decode bits (§3),
 > exactly as the ISA opcode tables (B01–B03) model them: signed vs unsigned differ *only* in the
 > opcode-selector field, each an independent `opcodedefs` row. A reimplementation must surface every
-> `(op, width, signedness, saturation, predication)` tuple as its **own** encoding. `[HIGH/OBSERVED]`
+> `(op, width, signedness, saturation, predication)` tuple as its **own** encoding.
 
 The pool is consumed by a **24-byte-stride decode-record array** in `.data.rel.ro` (VMA `0x2070900`
 → file `0x1e70900`). Each record is `{ mnemonic_ptr, 0x10 tag, descriptor_ptr }`. Record 60 =
@@ -124,14 +124,14 @@ The pool is consumed by a **24-byte-stride decode-record array** in `.data.rel.r
 
 `0x17ba9ed` is the string `"IVP_ADDNX16"` (`.rodata`, VMA==file). The descriptor `0x02082000`
 (→ file `0x1e82000`) is an array of `.text` function pointers — the semantic stage-callbacks
-`{0x5b0970, 0x5ad4f0, 0x5d91d0, 0x60ad60, …}`. `[HIGH/OBSERVED]`
+`{0x5b0970, 0x5ad4f0, 0x5d91d0, 0x60ad60, …}`.
 
 > **The template-sibling tell.** The SUB sibling descriptor sits one record below at file
 > `0x1e81f80` and is **element-wise parallel**: `{0x5b0930, 0x5ad4b0, 0x5d91b0, 0x60bc60}` — each
 > entry is ADD's minus a small fixed delta (`Δ=0x40, 0x40, 0x20`). That regular per-entry offset is
 > the signature of **template-generated sibling functions**: `add` and `sub` are the *same* code
 > shape parameterized by the op, which is precisely why neither computes a value — they both end at
-> the *same* host hand-off. `[HIGH/OBSERVED]`
+> the *same* host hand-off.
 
 ---
 
@@ -146,7 +146,7 @@ F<fmt>_F<fmt>_S<slot>_<class>_<id>_IVP_<MNEMONIC>_inst_stage<0..15>
 
 157 775 such `_inst_stage` functions exist. Slots observed: `S0` LdSt/LdStALU, `S1` Ld, `S2` Mul,
 `S3`/`S4` ALU. Arithmetic `add/sub/min/max/abs/neg` live in the **ALU slots `S3`/`S4`**; multiply
-lives in the Mul slot `S2` ([cas MAC / FMAC](./cas-mac-fmac.md)). `[HIGH/OBSERVED]`
+lives in the Mul slot `S2` ([cas MAC / FMAC](./cas-mac-fmac.md)).
 
 ### 3.1 The per-mnemonic stage-0 wrapper — the decode marker
 
@@ -168,13 +168,13 @@ stage-0 callback, then clears its bit on return. `F0_F0_S3_ALU_36_IVP_ADDNX16_in
 ```
 
 The trace pair `state+0x4a09dc` (slot) and `state+0x4a09e0` (stage) is the ISS's **current-op
-cursor**, rewritten by every stage wrapper (`stage5` writes `(3,5)`, etc.). `[HIGH/OBSERVED]`
+cursor**, rewritten by every stage wrapper (`stage5` writes `(3,5)`, etc.).
 
 > **The same mnemonic lights a *different* bit per format.** The decode bitmap is keyed by
 > `(format, slot, mnemonic)`, not by mnemonic alone — the VLIW format selects the byte:
 > `IVP_ADDNX16` is `0x08 @ 0x712` in `F0/S3`, `0x20 @ 0x713` in `F4/S3`, `0x01 @ 0x713` in `F1/S3`,
 > `0x20 @ 0x712` in `F11/S4`. A flat "opcode → bit" table is therefore *wrong*; the bit is a
-> function of the bundle format. `[HIGH/OBSERVED]`
+> function of the bundle format.
 
 ### 3.2 The shared executor — testing the bitmap, funnelling to one hand-off
 
@@ -198,7 +198,7 @@ read directly from each `stage0` and from the executor chain):
 
 `MAXNX16` (`0x71c.4`) vs `MAXUNX16` (`0x71e.2`), and `MINNX16` (`0x718.10`) vs `MINUNX16`
 (`0x71a.8`), are **distinct bits** — confirming §2's QUIRK that signed/unsigned are distinct
-opcodes, never a shared mode toggle. `[HIGH/OBSERVED]`
+opcodes, never a shared mode toggle.
 
 ### 3.3 The datapath, as annotated C (naming the real cas symbols)
 
@@ -242,25 +242,25 @@ compute:                                                /* the one common path @
 ```
 
 `ivp_sem_vec_alu_opcode_stage0`/`stage1` are literally `repz ret` (no-op latch stages); operand-field
-extraction (nibble register-index decode) is seen in `opcode_stage9` @ `0x12a5d60`. `[HIGH/OBSERVED]`
+extraction (nibble register-index decode) is seen in `opcode_stage9` @ `0x12a5d60`.
 
 ### 3.4 The cycle model (the genuine "cycle-accurate" content)
 
 * The ALU slot is modeled with **16 pipeline stages** (`stage0..stage15` present for every ALU
-  mnemonic). `[HIGH/OBSERVED]`
+  mnemonic).
 * The **result-compute host callback fires at stage 10** (`esi=$0xa`). This dovetails with the ISA
   reference's ALU latency (source `use_stage = 10` → dest `def_stage = 11`, a 1-cycle ALU; see
-  [B01](../isa/ref/b01-vec-alu-int.md)). `[HIGH/OBSERVED]`
+  [B01](../isa/ref/b01-vec-alu-int.md)).
 * Writeback / scoreboard commit is handled by `dll_cycle_advance` against the def-reservation
   records at `slot+0x9554` (reg#), `slot+0x94d4` (valid), `slot+0x93d4` (value)
-  ([core surface §1](./cas-core-surface.md)). `[HIGH/OBSERVED]`
+  ([core surface §1](./cas-core-surface.md)).
 * **Modeled retire latency** ≈ execute at stage 10 of a 16-deep slot pipeline + writeback drain.
   `[MED/INFERRED]`
 
 > **GOTCHA — `IVP_ADDMOD16U` is *not* an ALU op.** Despite the `ADD`, the unsigned-modular add is
 > dispatched in the **Load slot `S1`** (`F0_F0_S1_Ld_16_IVP_ADDMOD16U_inst_stage0` @ `0x73b1e0`,
 > and across `F1/F2/F3/F4/F6/F7`) — it is an **address-generation / circular-buffer** helper, not a
-> general-purpose lane add. Do not fold it into the ALU datapath. `[HIGH/OBSERVED]`
+> general-purpose lane add. Do not fold it into the ALU datapath.
 
 ---
 
@@ -315,7 +315,7 @@ The firmware `NEURON_ISA_TPB_ALU_OP` enum is the Pool / Activation / Tensor-engi
 each value is implemented on the IVP vector core by one of §4's mnemonics. The enum is a
 **`NEURON_ISA_PACKED` 1-byte** field with **60 entries**: a contiguous base band `0x00..0x1D`, then
 a 30-op integer-engine band `0xC4..0xE1` (bit `[7:6] == 0b11` selects the integer engine). The
-codes below are **re-grounded** from the firmware arch-ISA header `aws_neuron_isa_tpb_common.h:939`
+codes below are **grounded** on the firmware arch-ISA header `aws_neuron_isa_tpb_common.h:939`
 and cross-referenced by the `.xt.prop` signatures of the firmware consumers
 (`setup_64bit_rw(uint, NEURON_ISA_TPB_ALU_OP)`, `tensor_tensor_64bit_dispatch<…>(…, ALU_OP)`).
 
@@ -369,17 +369,17 @@ op definitions in [group-semantics-i](../isa/semantics/group-semantics-i.md):
 * **Names & spelling.** Every ALU-slot `IVP_*` arithmetic mnemonic found here appears in the ISA
   opcode/iclass tables (e.g. `ivp_minn_2x32` opc#1028, iclass#941 = `IVP_MINN_2X32`, package
   `xt_ivp32`, slots `F0_S3_ALU` / `F11_S3_ALU` / `F11_S4_ALU`). The ISA's lowercase intrinsic names
-  = this DLL's UPPER-case iclass strings. `[HIGH/OBSERVED]`
+  = this DLL's UPPER-case iclass strings.
 * **Signedness as opcode.** The ISA finds signed vs unsigned (`minnx16` vs `minunx16`) differ *only*
   in the opcode-selector field — independent `opcodedefs` rows, not a global bit. This DLL
   corroborates exactly: `MAXNX16` (`0x71c.4`) vs `MAXUNX16` (`0x71e.2`), `MINNX16` (`0x718.10`) vs
-  `MINUNX16` (`0x71a.8`) are distinct decode bits. `[HIGH/OBSERVED]`
+  `MINUNX16` (`0x71a.8`) are distinct decode bits.
 * **Predication (`T`).** The `…T` variants are independent rows here too (`ADDNX16` lights a
   *different* bit from `ADDNX16T`), matching the ISA's per-`(mnemonic, slot)` row model and the
-  operand-role `vp`/`vbool` guard. `[HIGH/OBSERVED]`
+  operand-role `vp`/`vbool` guard.
 * **Slot assignment.** The ISA places these in the vector (`ivp_*`) iclasses, package `xt_ivp32`;
   this DLL realises them in issue slots `S3`/`S4` (ALU) — distinct from the Mul slot `S2` and Load
-  slots `S0`/`S1`, consistent with a VLIW that dual-issues ALU ops. `[HIGH/OBSERVED]`
+  slots `S0`/`S1`, consistent with a VLIW that dual-issues ALU ops.
 
 These mnemonics are independently *executable* in `libfiss-base.so`; the live round-trip — drive the
 `module__xdref_*` leaf and check the bytes — is documented as VAL-01 / VAL-02 (Part 15) and threaded
@@ -419,4 +419,4 @@ through [fiss Datapath](./fiss-datapath-oracle.md).
 > at stage 10 + the hazard scoreboard*, and forwards the op identity (one decode bit) to a value
 > oracle; the `fiss` library owns *the bit-exact `a OP b`* (one `module__xdref_*` leaf per lane).
 > Do not try to recover saturation/rounding/NaN bounds from `libcas-core` — they are physically not
-> there. Get them from [fiss Datapath](./fiss-datapath-oracle.md). `[HIGH/OBSERVED]`
+> there. Get them from [fiss Datapath](./fiss-datapath-oracle.md).

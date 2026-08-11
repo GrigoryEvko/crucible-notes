@@ -94,7 +94,7 @@ The per-field types are pinned by DWARF type DIEs, not guessed:
 `window` → typedef `uint32_t` (DIE 0xd9 → `unsigned int`, 4B);
 `next_alloc` → typedef `uint8_t` (DIE 0xfe → `unsigned char`, 1B). (HIGH/OBSERVED.)
 
-> **CORRECTION (vs the task's verified-anchor framing).** The anchor brief
+> **CORRECTION (vs the verified-anchor framing).** The anchor brief
 > described the per-entry sub-layout as *base/limit/mask/soc-offset* and a walk
 > reading "ctx slots at +16/+48/+80/+112/+144". The binary's DWARF disagrees on
 > two points and agrees on a third:
@@ -409,12 +409,11 @@ Part-7 pack; cross-checked against the callers in §1):
 > the SoC↔Q7 translation windows. The control-side **producer** view
 > (`soc_window_manager`, aperture allocation policy, the SoC register map behind
 > `reg_location`) belongs to
-> `control/address/soc-q7-translation-windows.md`. *(That page is referenced in
-> the book outline but not yet authored at the time of writing — forward
-> reference.)* No divergence with the shared Part-7 pack was found; the only
+> [The SoC ↔ Q7 Translation Windows](../control/address/soc-q7-translation-windows.md).
+> No divergence with the shared Part-7 pack was found; the only
 > reconciliation needed is the §2 **CORRECTION** of the per-window field layout
 > (`{ptr, window, mask, reg_location}`, no `limit`), which supersedes the
-> base/limit/mask/soc-offset description in the task anchor.
+> base/limit/mask/soc-offset description in the anchor brief.
 
 ### See also
 
@@ -424,24 +423,26 @@ Part-7 pack; cross-checked against the callers in §1):
   per-element dereference funnels here.
 - [TensorStream / TCM staging](tensorstream-tcm.md) — the HBM↔TCM `[0x80000,
   0x90000)` staging window, one of the static apertures in this table.
-- `control/address/soc-q7-translation-windows.md` — the host/SoC producer of
-  these windows *(planned companion page)*.
+- [The SoC ↔ Q7 Translation Windows](../control/address/soc-q7-translation-windows.md) —
+  the host/SoC producer of these windows.
 
 ---
 
 ### Anchor table (quick re-derivation)
 
-| Claim | Anchor | Conf/Prov |
-|---|---|---|
-| `neuron_translate` @0x120, `_Z16neuron_translatePvy` | `nm translation.o`; objdump | HIGH/OBSERVED |
-| `neuron_translate_ctx` @0x110 → `return _ctx;` | objdump + `.rela.text` `_ctx` | HIGH/OBSERVED |
-| `_init_translate_ctx` @0x000 | objdump; `translation.cpp:31` | HIGH/OBSERVED |
-| `neuron_translate_mapping_lookup` @0x264 | `nm`; objdump | HIGH/OBSERVED |
-| ctx = 168B, `records[5]` + `next_alloc@160` | DWARF DIE 0x47, `translation.hpp:24` | HIGH/OBSERVED |
-| record = 32B `{ptr@0,window@8,mask@16,reg_location@24}` | DWARF DIE 0x81, `translation.hpp:17` | HIGH/OBSERVED |
-| `window` is `uint32_t` (4B); `ptr/mask/reg_location` `uint64_t` | DWARF type DIEs 0xd9/0xbb | HIGH/OBSERVED |
-| match: `(addr & mask) == ptr` | objdump 0x13b–0x150 | HIGH/OBSERVED |
-| return: `window + (addr & ~mask)` (32-bit) | objdump 0x204–0x213 | HIGH/OBSERVED |
-| miss path programs MMIO via `reg_location`, `next_alloc % 3` | objdump 0x215–0x261 | HIGH/OBSERVED |
-| host producer = `soc_window_manager.hpp`/`get_window_addr` | `strings libnrtucode_internal.so` | HIGH/OBSERVED |
-| callers: `data_transfer.o`, `wrapper_api.o` | `nm` (undef refs) | HIGH/OBSERVED |
+Every row is `HIGH/OBSERVED`.
+
+| Claim | Anchor |
+|---|---|
+| `neuron_translate` @0x120, `_Z16neuron_translatePvy` | `nm translation.o`; objdump |
+| `neuron_translate_ctx` @0x110 → `return _ctx;` | objdump + `.rela.text` `_ctx` |
+| `_init_translate_ctx` @0x000 | objdump; `translation.cpp:31` |
+| `neuron_translate_mapping_lookup` @0x264 | `nm`; objdump |
+| ctx = 168B, `records[5]` + `next_alloc@160` | DWARF DIE 0x47, `translation.hpp:24` |
+| record = 32B `{ptr@0,window@8,mask@16,reg_location@24}` | DWARF DIE 0x81, `translation.hpp:17` |
+| `window` is `uint32_t` (4B); `ptr/mask/reg_location` `uint64_t` | DWARF type DIEs 0xd9/0xbb |
+| match: `(addr & mask) == ptr` | objdump 0x13b–0x150 |
+| return: `window + (addr & ~mask)` (32-bit) | objdump 0x204–0x213 |
+| miss path programs MMIO via `reg_location`, `next_alloc % 3` | objdump 0x215–0x261 |
+| host producer = `soc_window_manager.hpp`/`get_window_addr` | `strings libnrtucode_internal.so` |
+| callers: `data_transfer.o`, `wrapper_api.o` | `nm` (undef refs) |

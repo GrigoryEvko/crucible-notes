@@ -23,10 +23,11 @@
 > and the deep technical backing for the orientation narrative
 > [A Custom Op, End to End](../orientation/customop-end-to-end.md).
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this task
-> from `objdump`/`nm`/`readelf`/`c++filt`/DWARF on the shipped binary), `INFERRED`
+> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read from
+> `objdump`/`nm`/`readelf`/`c++filt`/DWARF on the shipped binary), `INFERRED`
 > (a rule applied to an observed fact), `CARRIED` (consolidated from a cited
-> committed page and re-confirmed here only where spot-checked).
+> committed page and re-confirmed here only where spot-checked). The page default
+> is `[HIGH × OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — provenance & artifacts.** Every host fact is derived **solely from
 > static analysis** of `libnrt.so.2.31.24.0`
@@ -68,9 +69,7 @@ per request*. Three functions are the named hinges:
 | `dma_is_custom_op_dma_v2` | `0x22e120` | *"is `(eng_id, queue_id)` the custom-op DMA queue?"* — a 16-byte tuple match in `v2_queue_bundle_alloc_table` |
 | `add_load_pool_arguments` | `0x276780` | emits the 64-byte `LOAD_POOL_ARGUMENT` (header `0x107A`) marshalling `{emb-table base, SBUF base, one-value read addr, completion-write addr}` |
 
-`[HIGH × OBSERVED]` — all three addresses and their disassembly re-read this task.
-
-### 0.1 The execute-time spine (all `OBSERVED` this pass)
+### 0.1 The execute-time spine
 
 ```
 nrt_execute @0x91de0
@@ -91,8 +90,8 @@ nrt_execute @0x91de0
          └─ {async} kmgr_async_exec_add_work @0xe6d20 + kmgr_async_exec_poll @0xe6ab0
 ```
 
-`[HIGH × OBSERVED]` — addresses confirmed against `libnrt`'s `functions.json`
-(IDA sidecar) and bounded `objdump`.
+Addresses confirmed against `libnrt`'s `functions.json` (IDA sidecar) and
+bounded `objdump`.
 
 ---
 
@@ -110,8 +109,6 @@ is four instructions:
 31115e: c3                     ret
 ```
 
-`[HIGH × OBSERVED]` — byte-exact this pass.
-
 ### 1.1 The two structs you must not conflate
 
 The compared field is at `model + 0x1950 → ucode_lib_set_info` then `+0x18`.
@@ -128,7 +125,7 @@ struct ucode_lib_set_info_t {        // DW_AT_byte_size 48
 };
 ```
 
-`[HIGH × OBSERVED]` — full member list read from the structure sidecar.
+Full member list read from the structure sidecar.
 
 > **CORRECTION — `num_libs` is at `+0x18` (24), not `+8`.** A *separate* 16-byte
 > struct `kbin_ucode_lib_set` exists as `{nrtucode_loadable_library* libs@0;
@@ -136,7 +133,6 @@ struct ucode_lib_set_info_t {        // DW_AT_byte_size 48
 > the 16-byte `kbin_ucode_lib_set` with the 48-byte `ucode_lib_set_info_t`. The
 > instruction `cmpl $0x1,0x18(%rax)` dereferences the **48-byte** struct's field
 > at offset 24, confirmed by `DW_AT_data_member_location = 24`.
-> `[HIGH × OBSERVED]`
 
 ### 1.2 The lifetime bracket proves the role
 
@@ -154,7 +150,7 @@ present:
 ```
 
 So the model's `ucode_lib_set_info` lifetime is bracketed by
-`has_custom_ops`. `[HIGH × OBSERVED]`
+`has_custom_ops`.
 
 ---
 
@@ -184,8 +180,6 @@ core's custom-op kernel image and arguments. This classifier answers *"is
 22e158: 31 c0                 xor    %eax,%eax ; ret        ; else 0
 ```
 
-`[HIGH × OBSERVED]` — byte-exact this pass.
-
 ### 2.1 The tuple and the table
 
 ```c
@@ -199,16 +193,16 @@ struct queue_bundle_alloc_entry {   // 16 bytes
 
 - The literal `0x10 == 16 == KBIN_DMA_RING_TYPE_CUSTOM_OP`. The enum sidecar
   confirms the surrounding values: `…EMBEDDING_UPDATE = 15`, **`CUSTOM_OP = 16`**,
-  `GENERIC = 17`. `[HIGH × OBSERVED]`
+  `GENERIC = 17`.
 - The walk bound `0x1e0` is not a magic constant — it is independently published
   as `v2_queue_bundle_alloc_table_len @0x9ba590`, whose `.rodata` bytes read
   `1e 00 00 00 00 00 00 00`. So **`0x1e0 / 0x10 = 30` tuples maximum**, and the
-  loop stops at the first tuple that crosses the end pointer. `[HIGH × OBSERVED]`
+  loop stops at the first tuple that crosses the end pointer.
 
 > **CORRECTION — the stride is 16 bytes, not 8.** Any reading of this table as an
 > "8-byte pair walk" mis-strides it. The `+0/+4/+8/+0xC` offset loads above prove
 > a packed `{marker, rel_queue_idx, eng_lo, eng_hi}` tuple at **stride `0x10`**;
-> the `add $0x10,%rax` advance confirms it. `[HIGH × OBSERVED]`
+> the `add $0x10,%rax` advance confirms it.
 
 ### 2.2 The one caller: model-load-time queue selection
 
@@ -233,7 +227,7 @@ for (uint32_t eng = 0; eng < 16; ++eng)
 ```
 
 The `8` is the **8 GPSIMD pool cores** (cf. device `get_cpu_count() == 8`); the
-`9` bound (`base lib + ≤8 op libs`) sanity-caps `num_libs`. `[HIGH × OBSERVED]`
+`9` bound (`base lib + ≤8 op libs`) sanity-caps `num_libs`.
 
 > **NOTE — staging is a load-time activity.** The call chain is
 > `dlr_kelf_stage_model_add → kbl_model_add @0x3058e0 → ucode_stage_libs @0x310ea0
@@ -242,7 +236,7 @@ The `8` is the **8 GPSIMD pool cores** (cf. device `get_cpu_count() == 8`); the
 > (`ucode_alloc_new_staged_libs @0x310660`), keyed by
 > `db_physical_core_get_mla_and_tpb`. Custom-op DMA-queue selection therefore
 > happens at **model load/stage**; execute time only fires the prebuilt rings
-> (§5). `[HIGH × OBSERVED]`
+> (§5).
 
 ---
 
@@ -268,7 +262,7 @@ uint32_t add_load_pool_arguments(
 // returns offset + 0x40 (next free slot)
 ```
 
-`[HIGH × OBSERVED]` — DWARF + register usage confirmed.
+DWARF + register usage confirmed.
 
 ### 3.2 The 64-byte instruction it builds (byte-exact)
 
@@ -294,8 +288,6 @@ uint32_t add_load_pool_arguments(
 2767d1: call   322480 <add_ins>             ; copy 64 bytes into chunk[offset]
 2767d6: add    $0x48,%rsp ; ret
 ```
-
-`[HIGH × OBSERVED]` — byte-exact this pass.
 
 The five address fields are an inner 32-byte union, DWARF-typed as:
 
@@ -339,7 +331,7 @@ struct NEURON_ISA_TPB_CTRL_MV_STRUCT {       // 64 bytes
 > `load_pool_arguments` union is overlaid on `MOVE_IMMEDIATE` at **instruction
 > offset `0x20`**. The earlier "union at slot+12" narrative is corrected here; the
 > *stack-store offsets* (`0x20/0x24/0x28/0x30/0x38`) were always right — only the
-> field labels and the union base were off. `[HIGH × OBSERVED]`
+> field labels and the union base were off.
 
 ### 3.4 `add_ins` @0x322480 — the universal 64-byte slot writer
 
@@ -353,7 +345,7 @@ stride** slot:
 322494: lea   0x40(%rbx),%rax ; ret ; return offset + 0x40
 ```
 
-`[HIGH × OBSERVED]` — confirms the 64-byte slot from the host emit side.
+This confirms the 64-byte slot from the host emit side.
 
 ### 3.5 What each field means to the device
 
@@ -400,7 +392,7 @@ add_drain(...);                                   // @0x273e40  emit 0x10A2 DRAI
 // events.update_mode = 0x13 (inc-on-done) → an EVENT_SEMAPHORE completion gate
 ```
 
-`[HIGH × OBSERVED]` — emit order matches the callee list of the translator
+Emit order matches the callee list of the translator
 (`add_dma_config_base ×2`, `add_dma_config_size`, `tdrv_arch_get_evt_accel_addr`,
 `tdrv_arch_get_sem_inc_addr`, `add_load_pool_arguments`, `add_drain`; the
 translator also drives `add_dma_rearm @0x2735d0` and `add_dma_tail_inc @0x273f30`
@@ -411,8 +403,6 @@ So the per-op micro-program the host lays into the POOL stream is:
 ```
 [ dma_config_base × 2 ][ dma_config_size ][ LOAD_POOL_ARGUMENT 0x107A ][ DRAIN 0x10A2 ][ EVENT_SEMAPHORE ]
 ```
-
-`[HIGH × OBSERVED]` ordering.
 
 ### 4.1 `add_drain` @0x273e40 — the barrier (opcode `0x10A2`)
 
@@ -426,8 +416,6 @@ Same shape as `add_load_pool_arguments`: build a 64-byte CTRL slot, header word
 273e7e: call  322480 <add_ins>
 ```
 
-`[HIGH × OBSERVED]`
-
 ### 4.2 The arch-dispatch addresses
 
 - `completion_write_addr` comes from **`tdrv_arch_get_sem_inc_addr`** — an
@@ -440,8 +428,8 @@ Same shape as `add_load_pool_arguments`: build a 64-byte CTRL slot, header word
 
 Both have per-generation back-ends — `…_sunda`, `…_cayman`, `…_mariana` — i.e.
 **NC-v2 / NC-v3 / NC-v4** specializations selected through the `tdrv_arch_ops`
-vtable. `[HIGH × OBSERVED]` for the dispatch slots and the `{sunda, cayman,
-mariana}` variant set.
+vtable. The dispatch slots and the `{sunda, cayman, mariana}` variant set are
+read directly from the binary.
 
 > **WALL — generation naming.** `sunda` = NC-v2, `cayman` = NC-v3, `mariana` =
 > NC-v4 are taken as committed. The dispatch tables ship those three back-ends;
@@ -458,14 +446,14 @@ a jump table `@0x9da260`; the `0xCA` case lands at `0x2755a5 →
 translate_one_pseudo_embedding_update_instr_v2`. The same dispatcher both
 relocates DMA-trigger pseudos to real queue writes **and** lowers GPSIMD
 pool-custom pseudos into `LOAD_POOL_ARGUMENT + DMA + completion`. It runs at NEFF
-load/stage (`translate_pseudo_instrs_partial_v2 @0x2763d0`). `[HIGH × OBSERVED]`
+load/stage (`translate_pseudo_instrs_partial_v2 @0x2763d0`).
 
 > **NOTE — opcode bytes, signed-enum encoding.** The IDA enum stores TPB opcodes
 > as signed ints; the byte in the stream is the low 8 bits.
 > `LOAD_POOL_ARGUMENT = 122 = 0x7A`; `EMBEDDING_UPDATE = 121 = 0x79`;
 > `DRAIN = -94 → 0xA2`; `PSEUDO_EMBEDDING_UPDATE = -54 → 0xCA`;
 > `EXTENDED_INST = -16 → 0xF0`. The header word is `word_len << 8 | opcode`, so
-> `0x107A = 0x10·256 + 0x7A`. `[HIGH × OBSERVED]`
+> `0x107A = 0x10·256 + 0x7A`.
 
 ---
 
@@ -485,7 +473,6 @@ it.
 builds `kmgr_exec_resources` and clones the tensor set to physical memory
 (`kbl_tensor_set_clone_to_physical_mem`); then SYNC → `kmgr_sync_exec @0xdca70`
 or ASYNC → `kmgr_async_exec_add_work @0xe6d20` + `kmgr_async_exec_poll @0xe6ab0`.
-`[HIGH × OBSERVED]`
 
 ### 5.2 The doorbell — one semaphore increment
 
@@ -507,7 +494,7 @@ template DMA rings) `→ kbl_infer_kickoff @0x307320 → exec_kickoff_infer
 That single increment is the kickoff. The SP/SEQ sequencer, gated on this
 semaphore, unblocks and begins fetching the per-engine 64-byte instruction
 streams — including the POOL stream carrying `LOAD_POOL_ARGUMENT`, the custom-op
-DMA triggers, and `EXTENDED_INST 0xF0`. `[HIGH × OBSERVED]`
+DMA triggers, and `EXTENDED_INST 0xF0`.
 
 > **CORRECTION — the semaphore handle comes from `tdrv_sync_get_inference_start`,
 > with `0x4cd28` a field into its result.** The handle loaded at
@@ -515,7 +502,7 @@ DMA triggers, and `EXTENDED_INST 0xF0`. `[HIGH × OBSERVED]`
 > from the stack slot set up around the `tdrv_sync_get_inference_start @0x30a5c0`
 > call, and `0x4cd28` is the byte offset of the inference-start semaphore handle
 > within that returned per-core sync structure. The increment value (`1`) and
-> index (`%al` → `%dl`) likewise derive from that call. `[HIGH × OBSERVED]`
+> index (`%al` → `%dl`) likewise derive from that call.
 
 ### 5.3 Completion poll — NQ read + Q7 stdio drain
 
@@ -540,7 +527,7 @@ pool_stdio_queue_consume_all_entries(...);         // @0x3011d0  Q7 stderr ring 
 
 The request then reaps via `tpb_xu_get_last_completed @0xe8410 →
 kmgr_exec_resources_free`, and `nrt_tensor_check_output_completion` observes the
-posted output semaphore. `[HIGH × OBSERVED]`
+posted output semaphore.
 
 ---
 
@@ -612,8 +599,8 @@ The device half (`kernel_info_table` scan, `customop_*` pull stream, the 8-core
 SPMD join via DRAIN + completion semaphore) is the committed device ABI — see
 [The 8-Core SPMD Execution Model + Teardown](spmd-teardown.md),
 [The Device-Side Custom-Op ABI Reference](../abi/device-abi-reference.md), and the
-plain-text Part-11 sequencer note `neff/seq-microcode.md` for the POOL `.bin`
-stream layout. The host descriptor staging is detailed in
+Part-11 sequencer note [`neff/seq-microcode.md`](../neff/seq-microcode.md) for the
+POOL `.bin` stream layout. The host descriptor staging is detailed in
 [Host↔Device Descriptor Handoff (runtime side)](host-device-descriptor-handoff.md).
 
 ---
@@ -627,13 +614,13 @@ stream layout. The host descriptor staging is detailed in
 | [The Device-Side Custom-Op ABI Reference](../abi/device-abi-reference.md) | the device consumer: `customop_setup`/`customop_next_{tensor,int,float}`/`get_dst_tensor`/`customop_return_tensor`/`customop_cleanup` read exactly the `{sbuf_base, one_value_read, ARG_TENSOR storage}` this page marshals |
 | [The 8-Core SPMD Execution Model + Teardown](spmd-teardown.md) | the 8 pool cores `ucode_stage_libs_table` collects are the 8 SPMD cores; `completion_write_addr` is the host side of the kernel's semaphore post |
 | [Host↔Device Descriptor Handoff (runtime side)](host-device-descriptor-handoff.md) | the custom-op DMA rings the doorbell releases; the m2s/s2m tail offsets `ucode_stage_libs_table` records |
-| `neff/seq-microcode.md` *(Part 11, not yet authored — plain text)* | the POOL `.bin` stream where the 1-byte opcodes `0x7A`/`0xA2`/`0xF0` live; the Q7 `kernel_info_table` looks up the same byte this page emits |
+| [`neff/seq-microcode.md`](../neff/seq-microcode.md) *(Part 11)* | the POOL `.bin` stream where the 1-byte opcodes `0x7A`/`0xA2`/`0xF0` live; the Q7 `kernel_info_table` looks up the same byte this page emits |
 
 ---
 
 ## 8. Confidence ledger & open items
 
-**`HIGH × OBSERVED`** (re-verified this task): every host address; the three named
+**`HIGH × OBSERVED`**: every host address; the three named
 functions' byte-exact disassembly; `add_ins` 64-byte `memmove`; the
 `add_load_pool_arguments` stack→slot field map vs DWARF (`ucode_lib_set_info_t`,
 `NEURON_ISA_TPB_CTRL_MV_STRUCT`, `load_pool_arguments` union); `num_libs @+0x18`;
@@ -654,8 +641,8 @@ funcVA disassembly for `LOAD_POOL_ARGUMENT` consumption (native `ncore2gp`
 `xtensa-elf-objdump` on the POOL members — see the ABI lane); the async-exec
 worker (`kmgr_async_exec_*`) completion-poll detail.
 
-> **NOTE — corrections summary.** Three in-place corrections vs earlier passes,
-> all `[HIGH × OBSERVED]`: (1) `num_libs` is at `+0x18` in the 48-byte
+> **NOTE — corrections summary.** Three in-place corrections vs earlier
+> readings: (1) `num_libs` is at `+0x18` in the 48-byte
 > `ucode_lib_set_info_t`, **not** `+8` in the 16-byte `kbin_ucode_lib_set`; (2)
 > `dma_is_custom_op_dma_v2` walks **16-byte** tuples, not 8-byte pairs; (3) the
 > `0x03` at instruction offset `+0x0E` is `CTRL_MV.move_source`, and the

@@ -33,9 +33,9 @@ The whole family shares the 64-byte bundle skeleton — header `0x00..0x03`, the
 
 The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian — `0x1043` (plain TS), `0x10E6` (cumulative), `0x1030` (Exp). The CoreV4 Exponential path inlines the word store (`mov $0x1030,%r8d @0x1439eb0`) instead of calling the virtual `setupHeader`; the wire result is identical.
 
-> **OPEN — `0x92` TensorScalarAffineSelect: wire byte-map not recovered.** This row previously pointed at a `[2.x]` placeholder with no body coverage and a `visitInstTensorScalarAffineSelect` byte-emitter that is **not present** in the analysed binary set. The op is real — it carries a BIR class (`bir::InstTensorScalarAffineSelect`, with `Gen3Hwm`/`CoreV4Hwm`/`TrainiumHwm::getLatency*` cost-model overloads) and is produced by the generated codegen `BirCodeGenLoopGen::codegenAffSelTensorScalarOp` / `AffSelTensorScalarOpGen`. From those codegen symbols its **logical** operand set is recoverable: `idx_partition_ap`, `idx_free_ap`, `index_expr` (an `AffineExpr`), `fill_value`, `cmp_mode` (the predicate/compare op), and `dtype` — i.e. it selects between a tensor-scalar result and a `fill_value` per an affine index predicate. But the codegen resolves the opcode **symbolically** (`Opcode.TensorScalarAffineSelect`) and appends a BIR instruction; the layer that packs the 64-byte wire bundle (the per-byte offsets, the opcode seed, the `NEURON_ISA_TPB_*_STRUCT` shape) is not in any decompiled artifact this pass. The byte-level field map is therefore left as an open gap rather than fabricated. It very likely reuses the `S3D3_TS`/`S2D2`-family layout the rest of this page maps, but that is not byte-confirmed here.
+> **OPEN — `0x92` TensorScalarAffineSelect: wire byte-map not recovered.** No `visitInstTensorScalarAffineSelect` byte-emitter is present in the analysed binary set. The op is real — it carries a BIR class (`bir::InstTensorScalarAffineSelect`, with `Gen3Hwm`/`CoreV4Hwm`/`TrainiumHwm::getLatency*` cost-model overloads) and is produced by the generated codegen `BirCodeGenLoopGen::codegenAffSelTensorScalarOp` / `AffSelTensorScalarOpGen`. From those codegen symbols its **logical** operand set is recoverable: `idx_partition_ap`, `idx_free_ap`, `index_expr` (an `AffineExpr`), `fill_value`, `cmp_mode` (the predicate/compare op), and `dtype` — i.e. it selects between a tensor-scalar result and a `fill_value` per an affine index predicate. But the codegen resolves the opcode **symbolically** (`Opcode.TensorScalarAffineSelect`) and appends a BIR instruction; the layer that packs the 64-byte wire bundle (the per-byte offsets, the opcode seed, the `NEURON_ISA_TPB_*_STRUCT` shape) appears in no decompiled artifact. The byte-level field map is therefore left open rather than guessed. [INFERRED] It most likely reuses the `S3D3_TS`/`S2D2`-family layout the rest of this page maps.
 
-> **NOTE — one struct, N ops.** `S3D3_TS_STRUCT` is the shared 64-byte layout for **three** distinct KLR operations: plain TensorScalar, TensorScalarCacheCumulative/Reduce, and Exponential. This is not an inference — it is confirmed three independent ways in the binary: (a) the Exponential CoreV4 emitter instantiates `setupSyncWait<…core_v4::NEURON_ISA_TPB_S3D3_TS_STRUCT>` (symbol present); (b) the `exponential_info` pybind module string is `ISAInstructionInfo for s3d3_ts_struct - Exponential`; (c) the `tensor_scalar_cumulative_info` string is `…s3d3_ts_struct - TensorScalarCacheCumulative`. The opcode and which control bytes are live discriminate the three datapaths on one layout. A reimplementer who builds three separate wire formats here is wrong: build one, switch on opcode + mode fields.
+> **NOTE — one struct, N ops.** `S3D3_TS_STRUCT` is the shared 64-byte layout for **three** distinct KLR operations: plain TensorScalar, TensorScalarCacheCumulative/Reduce, and Exponential. Three independent artifacts say so: (a) the Exponential CoreV4 emitter instantiates `setupSyncWait<…core_v4::NEURON_ISA_TPB_S3D3_TS_STRUCT>` (symbol present); (b) the `exponential_info` pybind module string is `ISAInstructionInfo for s3d3_ts_struct - Exponential`; (c) the `tensor_scalar_cumulative_info` string is `…s3d3_ts_struct - TensorScalarCacheCumulative`. The opcode and which control bytes are live discriminate the three datapaths on one layout. A reimplementer who builds three separate wire formats here is wrong: build one, switch on opcode + mode fields.
 
 ---
 
@@ -111,18 +111,18 @@ if (NumOutputs == 2 || I.acc /*@+0x1F0*/ != 0) opcode = 0x9A;  // fused-reduce  
 
 | Off | W | Field (`s3d3_ts` / role) | Value source | Store-site | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode | `setupHeader` | hdr | CONFIRMED |
-| `+0x01` | 1 | `inst_word_len = 0x10` | constant | hdr | CONFIRMED |
-| `+0x0C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x1F0)` | `0x1265dba` | CONFIRMED |
-| `+0x20` | 1 | `in_dtype` | `sub_120E650(arg0 AP dtype @+0x30)` | `0x126592b` | CONFIRMED |
-| `+0x21` | 1 | `out_dtype` | `sub_120E650(out0 AP dtype @+0x30)` | `0x126593e` | CONFIRMED |
-| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` (**input** AP) | `0x1265c95` | CONFIRMED |
-| `+0x23` | 1 | `imm0` mem-pattern AP byte (scalar0) | `sub_12051E0(scalar0)` | `0x1265b16` | STRONG |
-| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | `0x1265962` | CONFIRMED |
-| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | `0x126597c` | CONFIRMED |
-| `+0x26` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | `0x1265c6a` | CONFIRMED |
-| `+0x27` | 1 | `imm1` mem-pattern AP byte (scalar1) | `sub_12051E0(scalar1)`, `NumArgs==3` only | — | STRONG |
-| `+0x28..+0x3F` | 24 | src/dst `TENSOR3D` AP descriptors | `assignAccess<…TENSOR3D>` ×2 | — | STRONG |
+| `+0x00` | 1 | opcode | `setupHeader` | hdr | CERTAIN |
+| `+0x01` | 1 | `inst_word_len = 0x10` | constant | hdr | CERTAIN |
+| `+0x0C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x1F0)` | `0x1265dba` | CERTAIN |
+| `+0x20` | 1 | `in_dtype` | `sub_120E650(arg0 AP dtype @+0x30)` | `0x126592b` | CERTAIN |
+| `+0x21` | 1 | `out_dtype` | `sub_120E650(out0 AP dtype @+0x30)` | `0x126593e` | CERTAIN |
+| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` (**input** AP) | `0x1265c95` | CERTAIN |
+| `+0x23` | 1 | `imm0` mem-pattern AP byte (scalar0) | `sub_12051E0(scalar0)` | `0x1265b16` | HIGH |
+| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | `0x1265962` | CERTAIN |
+| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | `0x126597c` | CERTAIN |
+| `+0x26` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | `0x1265c6a` | CERTAIN |
+| `+0x27` | 1 | `imm1` mem-pattern AP byte (scalar1) | `sub_12051E0(scalar1)`, `NumArgs==3` only | — | HIGH |
+| `+0x28..+0x3F` | 24 | src/dst `TENSOR3D` AP descriptors | `assignAccess<…TENSOR3D>` ×2 | — | HIGH |
 
 The `imm0`/`imm1` datum: `sub_12051E0` materialises the scalar operand into the `+0x23`/`+0x27` AP slot either as an `ImmediateValue` (fp32 only — else `reportError("TensorScalarPtr arith immediate dtype must be fp32")`; bitvec rule "bitvec immediate dtype size must be >= input dtype") **or** as a pointer/runtime AP. That immediate-versus-pointer choice is the "Ptr" in the op name.
 
@@ -162,23 +162,23 @@ else  opcode = (u8)(bir::isBitVecInstruction(I) - 0x63);    // sub $0x63 @0x125c
 
 The non-bitvec arith byte is **`0x9D`** (157), not `0x9C` (156 — that is `TensorReduceRangeCheck`, a different op). The three bytes are `{0x9D ScalarTensorTensorArith, 0x9E ScalarTensorTensorBitvec, 0xE5 TensorTensorScanArith}`.
 
-> **CORRECTION (D-J04) — STT arith opcode is `0x9D`, and the scalar/tensor1 dtype nibbles are swapped.** An earlier reading gave the non-bitvec opcode as `0x9C` and placed the *scalar* dtype in the `+0x28` hi-nibble. Disassembly shows the `isBitVecInstruction - 0x63` signed-byte computation yields `0x9D`/`0x9E`, and that `sub_1240360` (`tensor1`) — not the scalar — is the operand that gets the AP-rank check and the third `assignAccess<TENSOR2D>`. Therefore the `+0x28` hi-nibble is **tensor1** dtype and `+0x2B` is the **scalar** dtype. The `+0x28` lo-nibble (tensor0/arg0 dtype) is unchanged.
+The dtype nibbles at `+0x28` follow the operand that is a *tensor*, not the one that is named "scalar": `sub_1240360` (`tensor1`) is the operand that receives the AP-rank check and the third `assignAccess<TENSOR2D>`, so the `+0x28` hi-nibble carries **tensor1**'s dtype and the scalar's dtype lands separately at `+0x2B`. The `+0x28` lo-nibble is tensor0 (`arg0`).
 
 ### Bundle field map (`S2S2D2_STT`)
 
 | Off | W | Field (`s2s2d2_stt` / role) | Value source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode (`0x9D`/`0x9E`/`0xE5`) | `setupHeader` | CONFIRMED |
-| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | CONFIRMED |
-| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | CONFIRMED |
-| `+0x26` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | CONFIRMED |
-| `+0x27` | 1 | scalar `imm0` AP byte | `sub_12051E0(scalar)` | STRONG |
-| `+0x28` | 1 | `in_dtype[3:0] \| tensor1_dtype[7:4]` | lo = `sub_120E650(arg0 dt)`; hi = `16*sub_120E650(tensor1 dt)` | CONFIRMED |
-| `+0x29` | 1 | `out_dtype` | `sub_120E650(out0 dt)` | CONFIRMED |
-| `+0x2A` | 1 | `num_active_channels` | `*(*(tensor0=arg0 AP+0x50)+8)` | CONFIRMED |
-| `+0x2B` | 1 | scalar dtype | `sub_120E650(scalar dt @+48)` | CONFIRMED |
-| `+0x2C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x1F0)` | CONFIRMED |
-| `+0x28..+0x3F` | overlap | `TENSOR2D` AP descriptors (t0/t1/out) | `assignAccess<…TENSOR2D>` | STRONG |
+| `+0x00` | 1 | opcode (`0x9D`/`0x9E`/`0xE5`) | `setupHeader` | CERTAIN |
+| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | CERTAIN |
+| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | CERTAIN |
+| `+0x26` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | CERTAIN |
+| `+0x27` | 1 | scalar `imm0` AP byte | `sub_12051E0(scalar)` | HIGH |
+| `+0x28` | 1 | `in_dtype[3:0] \| tensor1_dtype[7:4]` | lo = `sub_120E650(arg0 dt)`; hi = `16*sub_120E650(tensor1 dt)` | CERTAIN |
+| `+0x29` | 1 | `out_dtype` | `sub_120E650(out0 dt)` | CERTAIN |
+| `+0x2A` | 1 | `num_active_channels` | `*(*(tensor0=arg0 AP+0x50)+8)` | CERTAIN |
+| `+0x2B` | 1 | scalar dtype | `sub_120E650(scalar dt @+48)` | CERTAIN |
+| `+0x2C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x1F0)` | CERTAIN |
+| `+0x28..+0x3F` | overlap | `TENSOR2D` AP descriptors (t0/t1/out) | `assignAccess<…TENSOR2D>` | HIGH |
 
 > **NOTE — STT uses the CoreV2 dtype LUT, not the CoreV4 one.** The CoreV2 STT body calls `sub_120E650` (LUT `byte_1DF5760`), not the CoreV4 `sub_14347C0` (LUT `byte_1DFBAD0`). The two LUTs differ only at index 2 (`float4_e2m1fn_x4`: CoreV2 = `0x05`, CoreV4 = `0x10`). STT is CoreV2-only — there is no `CoreV4GenImpl::generateScalarTensorTensor` in the binary; CoreV4 dispatches STT through the CoreV2 path.
 
@@ -196,16 +196,16 @@ Two scalar operands `s0 = sub_123DF20`, `s1 = sub_1240360` (`s1` iff `NumArgs==3
 
 | Off | W | Field (`s2d2_ts_as` / role) | Value source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x74` | `setupHeader` | CONFIRMED |
-| `+0x28` | 1 | `scalar0_dtype[3:0] \| scalar1_dtype[7:4]` | lo = `sub_120E650(s0 dt)`; hi = `16*sub_120E650(s1 dt)` (s1 hi iff `NumArgs==3`) | CONFIRMED |
-| `+0x29` | 1 | `in_dtype[3:0] \| out_dtype[7:4]` | lo = `sub_120E650(in dt)`; hi = `16*sub_120E650(out dt)` | CONFIRMED |
-| `+0x2A` | 1 | scalar0 addr/imm AP byte | `sub_12051E0(s0)` | STRONG |
-| `+0x2B` | 1 | scalar1 addr/imm AP byte (`NumArgs==3`) | `sub_12051E0(s1)` | STRONG |
-| `+0x2C` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | CONFIRMED |
-| `+0x2D` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | CONFIRMED |
-| `+0x2E` | 1 | `num_active_channels` | `*(*(in AP+0x50)+8)` | CONFIRMED |
-| `+0x2F` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | CONFIRMED |
-| `+0x28..+0x3F` | overlap | `TENSOR2D` AP descriptors (in & out) | `assignAccess<…TENSOR2D>` ×2 | STRONG |
+| `+0x00` | 1 | opcode = `0x74` | `setupHeader` | CERTAIN |
+| `+0x28` | 1 | `scalar0_dtype[3:0] \| scalar1_dtype[7:4]` | lo = `sub_120E650(s0 dt)`; hi = `16*sub_120E650(s1 dt)` (s1 hi iff `NumArgs==3`) | CERTAIN |
+| `+0x29` | 1 | `in_dtype[3:0] \| out_dtype[7:4]` | lo = `sub_120E650(in dt)`; hi = `16*sub_120E650(out dt)` | CERTAIN |
+| `+0x2A` | 1 | scalar0 addr/imm AP byte | `sub_12051E0(s0)` | HIGH |
+| `+0x2B` | 1 | scalar1 addr/imm AP byte (`NumArgs==3`) | `sub_12051E0(s1)` | HIGH |
+| `+0x2C` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | CERTAIN |
+| `+0x2D` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | CERTAIN |
+| `+0x2E` | 1 | `num_active_channels` | `*(*(in AP+0x50)+8)` | CERTAIN |
+| `+0x2F` | 1 | `reverse_operands` (2-bit pack) | `reverse0 \| reverse1<<1` | CERTAIN |
+| `+0x28..+0x3F` | overlap | `TENSOR2D` AP descriptors (in & out) | `assignAccess<…TENSOR2D>` ×2 | HIGH |
 
 The `0x74` op is gated by the `_addr_*` validator family (`d2_ts_as_valid_elem_count`, `*_addr_reserved_z*`, `*_addr_immediate*`, `*_addr_same_start_partition_in_sr*`, `*_addr_valid_ops*`, `*_addr_reverse_ch*` — the `s2d2_ts_as` substring recovered from the validator string pool).
 
@@ -233,17 +233,17 @@ else                           reportError("Unhandled TSCMode");
 
 | Off | W | Field (cumulative role) | Value source | Store-site | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode (`0x9A` or `0xE6`) | `setupHeader` | hdr | CONFIRMED |
-| `+0x0C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x154)` | `v16[12]` | CONFIRMED |
-| `+0x20` | 1 | `in_dtype` | `sub_120E650(arg0 dt @+0x30)` | `0x125deed` | CONFIRMED |
-| `+0x21` | 1 | `out_dtype` | `sub_120E650(out0 dt @+0x30)` | `v16[33]` | CONFIRMED |
-| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` | `v16[34]` | CONFIRMED |
-| `+0x23` | 1 | `imm0` / scalar0 AP byte | `sub_12051E0(scalar0)` | `v16[35]` | STRONG |
-| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | `v16[36]` | CONFIRMED |
-| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | `v16[37]` | CONFIRMED |
-| `+0x26` | 1 | `reverse_operands` (2-bit; `reverse0` = scan direction) | `reverse0 \| reverse1<<1` | `v16[38]` | CONFIRMED |
-| `+0x27` | 1 | `imm1` AP byte (`NumArgs==3` only) | `sub_12051E0(scalar1)` | `v16[39]` | STRONG |
-| `+0x28..+0x3F` | 24 | src/dst `TENSOR3D` AP descriptors | `assignAccess<…TENSOR3D>` ×2 | — | STRONG |
+| `+0x00` | 1 | opcode (`0x9A` or `0xE6`) | `setupHeader` | hdr | CERTAIN |
+| `+0x0C` | 1 | `accumulator_cmd` | `sub_12038D0(acc @+0x154)` | `v16[12]` | CERTAIN |
+| `+0x20` | 1 | `in_dtype` | `sub_120E650(arg0 dt @+0x30)` | `0x125deed` | CERTAIN |
+| `+0x21` | 1 | `out_dtype` | `sub_120E650(out0 dt @+0x30)` | `v16[33]` | CERTAIN |
+| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` | `v16[34]` | CERTAIN |
+| `+0x23` | 1 | `imm0` / scalar0 AP byte | `sub_12051E0(scalar0)` | `v16[35]` | HIGH |
+| `+0x24` | 1 | `op0` ALU wire byte | `sub_12039C0(op0 @+0xF0)` | `v16[36]` | CERTAIN |
+| `+0x25` | 1 | `op1` ALU wire byte | `sub_12039C0(op1 @+0x120)` | `v16[37]` | CERTAIN |
+| `+0x26` | 1 | `reverse_operands` (2-bit; `reverse0` = scan direction) | `reverse0 \| reverse1<<1` | `v16[38]` | CERTAIN |
+| `+0x27` | 1 | `imm1` AP byte (`NumArgs==3` only) | `sub_12051E0(scalar1)` | `v16[39]` | HIGH |
+| `+0x28..+0x3F` | 24 | src/dst `TENSOR3D` AP descriptors | `assignAccess<…TENSOR3D>` ×2 | — | HIGH |
 
 **Immediate rules (RUN arm):** the immediate must be fp32 ("TensorScalarCache immediate value must be fp32"); a second immediate (`imm1`) is allowed **only** when the accumulation mode is `LoadAccumulate` ("TensorScalarCache can only have imm1 if accumulation mode is LoadAccumulate" — `acc @+0x154 == 5`).
 
@@ -267,16 +267,16 @@ Exponential is the **only** member of the family with a dedicated CoreV4 emitter
 
 | Off | W | Field (exp role) | Value source | Store-site | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 2 | opcode word `0x1030` (op `0x30` + hdr) | `mov $0x1030` | `0x1439eb0` | CONFIRMED |
-| `+0x0C` | 1 | `reduce_cmd` / `accumulator_cmd` | `sub_142DF40(reduce_cmd @+0xF0)` | `0x143a158` | CONFIRMED |
-| `+0x20` | 1 | `in_dtype` | `sub_14347C0(arg0 dt @+0x30)` | `0x1439f2c` | CONFIRMED |
-| `+0x21` | 1 | `out_dtype` | `sub_14347C0(out0 dt @+0x30)` | `0x143a140` | CONFIRMED |
-| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` | `0x1439f11` | CONFIRMED |
-| `+0x23` | 1 | `imm0` mem-pattern AP byte | `sub_142E370(getArgument(1))` | — | STRONG |
-| `+0x24` | 2 | `op0 \| op1` = `0x0000` (forced Bypass) | `*(u16*)(b+0x24) = 0` | `0x143a163` | CONFIRMED |
-| `+0x26` | 1 | `reverse_operands` = `0` (forced None) | `*(b+0x26) = 0` | `0x143a153` | CONFIRMED |
-| `+0x27` | 1 | `imm1` mem-pattern AP byte | `sub_142E370(getArgument(2))` | — | STRONG |
-| `+0x28..+0x3F` | 24 | `MEM_PATTERN3D` AP descriptors (in & out) | `assignAccess<…MEM_PATTERN3D>` ×2 | — | STRONG |
+| `+0x00` | 2 | opcode word `0x1030` (op `0x30` + hdr) | `mov $0x1030` | `0x1439eb0` | CERTAIN |
+| `+0x0C` | 1 | `reduce_cmd` / `accumulator_cmd` | `sub_142DF40(reduce_cmd @+0xF0)` | `0x143a158` | CERTAIN |
+| `+0x20` | 1 | `in_dtype` | `sub_14347C0(arg0 dt @+0x30)` | `0x1439f2c` | CERTAIN |
+| `+0x21` | 1 | `out_dtype` | `sub_14347C0(out0 dt @+0x30)` | `0x143a140` | CERTAIN |
+| `+0x22` | 1 | `num_active_channels` | `*(*(arg0 AP+0x50)+8)` | `0x1439f11` | CERTAIN |
+| `+0x23` | 1 | `imm0` mem-pattern AP byte | `sub_142E370(getArgument(1))` | — | HIGH |
+| `+0x24` | 2 | `op0 \| op1` = `0x0000` (forced Bypass) | `*(u16*)(b+0x24) = 0` | `0x143a163` | CERTAIN |
+| `+0x26` | 1 | `reverse_operands` = `0` (forced None) | `*(b+0x26) = 0` | `0x143a153` | CERTAIN |
+| `+0x27` | 1 | `imm1` mem-pattern AP byte | `sub_142E370(getArgument(2))` | — | HIGH |
+| `+0x28..+0x3F` | 24 | `MEM_PATTERN3D` AP descriptors (in & out) | `assignAccess<…MEM_PATTERN3D>` ×2 | — | HIGH |
 
 ```c
 // CoreV4GenImpl::visitInstExponential @0x1439d30  (bundle base = r13)
@@ -318,7 +318,7 @@ CoreV4 byte_1DFBAD0: 03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c
 
 A 30-case jump table (`jpt_12039EF`, ordinals `0..29`): identity for `0..18`; then `19→0x18, 20→0x13, 21→0x14, 22→0x16, 23→0x15, 26→0x1A, 27→0x1B, 28→0x1D, 29→0x19` (the `0x13/0x14/0x15/0x16/0x18/0x19/0x1D` targets verified as literal `mov $imm,%eax` arms in the table). Cases `24`/`25` fall to the `"Invalid enum variant for enum AluOpType"` default. This band is **byte-identical** to the CoreV4 mapper `sub_142E030` for ordinals `0..29`; CoreV4 merely extends it with `30→0x20, 31→0x21, 32→0xC8`. The `AluOpType` ordinal→name table (`0 bypass … 29 abs`) is owned by [2.23 ISA Enum Ordinals](isa-enum-ordinals.md) and [Part 7.7](../bir/) — not re-tabulated here.
 
-> **CORRECTION (D-J04) — CoreV2 and CoreV4 share one ALU-op band.** An earlier brief claimed the CoreV2 converter mapped the comparison family differently from CoreV4 (a separate "compressed" scheme). Disassembly shows `sub_12039C0` emits the *same* bytes as the CoreV4 band for ordinals `0..29` (`not_equal=19→0x18`, `is_gt=20→0x13`, `is_ge=21→0x14`, `is_lt=22→0x16`, `is_le=23→0x15`, `rsqrt=28→0x1D`, `abs=29→0x19`). They are one band; CoreV4 only adds `30/31/32`. CoreV2 lacks only ordinals `24/25` and the gen4 extensions.
+> **NOTE — there is one ALU-op band, not a CoreV2 and a CoreV4 variant.** The comparison family in particular maps identically on both (`not_equal=19→0x18`, `is_gt=20→0x13`, `is_ge=21→0x14`, `is_lt=22→0x16`, `is_le=23→0x15`, `rsqrt=28→0x1D`, `abs=29→0x19`). CoreV2 differs only by lacking ordinals `24`/`25` and the gen4 extensions `30`/`31`/`32`.
 
 ### accum — `sub_12038D0` (CoreV2) = `sub_142DF40` (CoreV4)
 
@@ -344,13 +344,15 @@ All three carry `op0 @+0xF0` / `op1 @+0x120` and the reverse 2-bit pack; they di
 
 BIR member offsets (`bir::InstTensorScalarPtr` / `…Cache` / `…Exponential`, pinned in the encoder disasm): Ptr/Cache — `op0 +0xF0`, `reverse0 +0xF8` (tag `+0x118`), `op1 +0x120`, `reverse1 +0x128` (tag `+0x148`), `apply_transpose +0x150` (tag `+0x170`), `is_tensor_scalar_addr +0x178`, `is_scalar_tensor_tensor +0x1A0` (tag `+0x1C0`); Ptr `acc +0x1F0`; Cache `TSCMode +0x150` + `acc +0x154`; Exponential `reduce_cmd +0xF0`, `engine +0x90`.
 
-> **NOTE — the AP-descriptor sub-byte packing is shared, not pinned here.** The internal layout of the `0x28..0x3F` (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) access-pattern descriptors is produced by the generic `assignAccess<…>` templates shared across every DVE op; it is byte-pinned by [2.3–2.5 tensor descriptors](tensor-descriptors.md), not re-derived here (STRONG at the silicon level). The control-band bytes (`0x0C`, `0x20..0x2F`) are all CONFIRMED from clean `*(bundle+N)=` disassembly stores.
+> **NOTE — the AP-descriptor sub-byte packing is shared, not pinned here.** The internal layout of the `0x28..0x3F` (`TENSOR3D`/`TENSOR2D`/`MEM_PATTERN3D`) access-pattern descriptors is produced by the generic `assignAccess<…>` templates shared across every DVE op; it is byte-pinned by [2.3–2.5 tensor descriptors](tensor-descriptors.md) rather than re-derived here. The control-band bytes (`0x0C`, `0x20..0x2F`) all come from clean `*(bundle+N)=` stores in the encoder disassembly.
 
 ---
 
-## Confidence summary
+## Limits of this reading
 
-Every control-band byte — opcode, `accumulator_cmd`/`reduce_cmd`, the `op0`/`op1` selectors, the reverse pack, the dtype nibbles, and `num_active_channels` — is **CONFIRMED** from a traced store site plus the source-field BIR offset and (where applicable) the `.rodata` LUT byte. The `imm0`/`imm1` mem-pattern AP slots are **STRONG** (the value path is the generic `sub_12051E0`/`sub_142E370` immediate packer; the slot offsets are pinned). The `0x28..0x3F` AP descriptors are **STRONG** (generic `assignAccess<…>`, owned elsewhere). No field name on this page is fabricated: every one joins to a recovered validator/pybind string (`s3d3_ts`, `s2s2d2_stt`, `s2d2_ts_as`, `exponential_*`, `tensor_scalar_cache_*`) or a const-purpose. There is no NEFF-fixture hexdiff against a real emitted bundle — absolute positions are from the GENERATE-arm stores plus the BIR offset pins.
+Every control-band byte — opcode, `accumulator_cmd`/`reduce_cmd`, the `op0`/`op1` selectors, the reverse pack, the dtype nibbles, and `num_active_channels` — comes from a traced store site plus the source-field BIR offset and, where applicable, the `.rodata` LUT byte. Two bands are softer: the `imm0`/`imm1` mem-pattern AP slots have pinned offsets but a value path through the generic `sub_12051E0`/`sub_142E370` immediate packer, and the `0x28..0x3F` AP descriptors come from the generic `assignAccess<…>` templates documented elsewhere.
+
+Every field *name* on this page joins to a recovered validator or pybind string (`s3d3_ts`, `s2s2d2_stt`, `s2d2_ts_as`, `exponential_*`, `tensor_scalar_cache_*`) or a const-purpose; none is invented. Absolute byte positions come from the GENERATE-arm stores plus the BIR offset pins — there is no hexdiff against a real emitted bundle from a NEFF fixture.
 
 ---
 

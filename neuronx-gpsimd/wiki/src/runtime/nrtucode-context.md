@@ -67,7 +67,7 @@ public ABI the wheel exposes, the internal column carries the names.
 
 `[OBSERVED]` via `nm -D libnrtucode.so` and `nm libnrtucode_internal.so`.
 
-> **CORRECTION** — A prior pass listed `nrtucode_context_create` at `0x308740`.
+> **CORRECTION** — An earlier reading listed `nrtucode_context_create` at `0x308740`.
 > That address is **`nrtucode_get_api_level`** (confirmed in the stripped
 > `.dynsym`: `0000000000308740 T nrtucode_get_api_level`). `create` is at
 > `0x308770`. The two are adjacent which is how they were transposed.
@@ -190,7 +190,7 @@ entries and **nothing at `+0x20`** (`0x9b8d10`):
 > OBSERVED. See [Q7PtrType + Lazy Translation](../abi/q7ptrtype.md) for the
 > device pointer model this slot resolves into.
 
-> **CORRECTION** — An earlier pass guessed `[+0x08]`=alloc/free combined,
+> **CORRECTION** — An earlier reading guessed `[+0x08]`=alloc/free combined,
 > `[+0x18]`=write, `[+0x20]`=device-addr (4 slots). The binary shows a clean
 > **5-slot** table: `+0x00` malloc / `+0x08` free / `+0x10` read / `+0x18` write
 > / `+0x20` device-addr. `[OBSERVED][HIGH]`
@@ -441,9 +441,9 @@ runtime uses to detect a context that was created but never destroyed.
 
 ## 7. Adversarial self-verification
 
-The five strongest claims, each re-challenged against the binary:
+The five strongest claims, each checked against the binary:
 
-| Claim | Re-challenge | Result |
+| Claim | Check | Result |
 | --- | --- | --- |
 | Struct size = `0x28` | `mov $0x28,%edi; call malloc` is the sole struct alloc at `0x9b02c1` | **HELD** |
 | Members `+0x00/+0x08/+0x10/+0x18/+0x20` | every store present in `create` (`(%rax)`, `0x8/0x10/0x18/0x20(%r15)`) | **HELD** |
@@ -451,7 +451,7 @@ The five strongest claims, each re-challenged against the binary:
 | `destroy` frees `+0x20` then `ctx` | `mov 0x20(%rdi),%rax; free; free(ctx)` at `0x9b03d6` | **HELD** |
 | `get/set_userdata` touch only `+0x10` | `mov 0x10(%rdi),%rax` / `mov %rsi,0x10(%rdi)` | **HELD** |
 
-No claim failed re-challenge; no correction beyond the two embedded above
+All five hold; no correction beyond the two embedded above
 (`create` address; 4-slot to 5-slot memhandle table).
 
 ---

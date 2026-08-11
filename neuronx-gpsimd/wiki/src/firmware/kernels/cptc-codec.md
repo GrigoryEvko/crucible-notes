@@ -23,9 +23,8 @@ the committed [datatype model](dtype-model.md); and (6) the **env-gate** and
 **per-generation presence** (CAYMAN+; MAVERICK interiors observed only at the
 header level).
 
-Everything below is re-grounded **this pass** against the shipped binaries. The
-codec body is carved out of `libnrtucode_internal.so` (host sha256
-`b7c67e89…`, re-hashed MATCH this pass) by `dd` identity-map and disassembled
+The codec body is carved out of `libnrtucode_internal.so` (host sha256
+`b7c67e89…`) by `dd` identity-map and disassembled
 with the shipped device-native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
 FLIX/VLIW); the operand struct and dtype enum are read byte-for-byte (and
 compile-verified with `gcc`) from the in-package `arch-isa` headers; the
@@ -35,7 +34,7 @@ and DEBUG self-naming strings are read from the host lib's string sections.
 Confidence tags per [the Confidence & Walls model](../../reference/confidence-model.md):
 `[HIGH/OBSERVED]` = read-from-byte / disasm / header / hash; `[MED/INFERRED]` =
 reasoned over OBSERVED (often across a FLIX/literal-pool desync); `[…/CARRIED]` =
-re-used at a sibling report's confidence without re-reading this pass. The FLIX
+re-used at a sibling report's confidence without re-reading. The FLIX
 methodology backing the bundle reads is [FLIX decoding](../../reference/flix-decoding.md).
 
 > **NOTE — the EXTISA codec body is hand-scheduled FLIX VLIW and desyncs a
@@ -56,20 +55,20 @@ methodology backing the bundle reads is [FLIX decoding](../../reference/flix-dec
 The CPTC codec is **not** a standalone `.so`. It is a raw, uncompressed
 `EM_XTENSA` ELF32 blob embedded in the `.rodata` of the host shim
 `libnrtucode_internal.so`, surfaced at runtime by an `*_EXTISA_3_SO_get` getter
-stub. Two arch copies were carved this pass by `dd` identity-map and sha256-verified: [HIGH/OBSERVED]
+stub. Two arch copies are carved by `dd` identity-map and sha256-verified: [HIGH/OBSERVED]
 
 | blob | host file off | size | sha256 (16) | ELF |
 |------|--------------|------|-------------|-----|
 | `CAYMAN_EXTISA_3` | `0x2fbf00` | `0x6974` | `052ac31c4e096212` | `EXEC`, entry `0x01003c74` |
 | `MARIANA_EXTISA_3` | `0x595ae0` | `0x6974` | `8477ff2690f30cc3` | `EXEC` |
 
-`readelf -SW` on the carved CAYMAN blob (re-read this pass): `.text` **VMA
+`readelf -SW` on the carved CAYMAN blob: `.text` **VMA
 `0x01000000` == file off `0x100`**, size `0x3d4a`; `.rodata` **VMA `0x02000000`
 == file off `0x3e80`**, size `0x740`. The `.xt.prop` per-function sections name
 the codec surface in clear — six `cptc_decode_impl<ILh1..6EE>` symbols plus the
 dispatcher `pool_conv_lut_load`. MARIANA's `.text` is `0x14` bytes longer
 (`0x3d5e`) and every codec body relocates uniformly **+0xC**; the `.rodata`
-tables are byte-identical across the two gens. [HIGH/OBSERVED]
+tables are byte-identical across the two gens.
 
 > **NOTE — VMA == file offset only for `.text`/`.rodata`.** In the carved blob
 > `.text` VMA `0x01000000` maps to file `0x100`, and `.rodata` VMA `0x02000000`
@@ -95,7 +94,7 @@ opcode 0xf0 / spec 7   ──▶  kernel_info_table[idx8]  ──▶  ExtendedIn
 ### 2.1 The EXTISA_3 `kernel_info_table`
 
 The 9-entry table at **VMA `0x020008c8` (file `0x4748`)**, 9 × 8-byte records of
-`{b0=0, b1=0, spec, opcode, funcVA(LE,4)}`, re-decoded byte-exact this pass: [HIGH/OBSERVED]
+`{b0=0, b1=0, spec, opcode, funcVA(LE,4)}`, decoded byte-exact: [HIGH/OBSERVED]
 
 | idx | opcode | spec | funcVA | role |
 |----:|:------:|:----:|--------|------|
@@ -116,7 +115,7 @@ MARIANA's table is structurally identical with funcVAs relocated `+0x8`/`+0x10`.
 The six decode kernels plus the dispatcher are standalone `.xt.prop` symbols, so
 their boundaries are pinned by the next symbol's start (unlike the inline
 `proc_6bit` of the MX sibling — see [mx-dequant](mx-dequant.md)). The funcVA is
-the first LE word of each `.xt.prop` first record; re-read this pass: [HIGH/OBSERVED]
+the first LE word of each `.xt.prop` first record:
 
 ```
 void pool_conv_lut_load()                          @0x01002258   (= kernel_info idx7)
@@ -158,8 +157,7 @@ void cptc_decode_impl_N(
 
 ### 2.3 `pool_conv_lut_load` — the `0xe4` dispatcher
 
-The dispatcher prologue + convergence are scalar and byte-exact (objdump,
-`XTENSA_CORE=ncore2gp`): [HIGH/OBSERVED]
+The dispatcher prologue + convergence are scalar and byte-exact:
 
 ```
 01002258: 36 41 00   entry  a1, 32         ; minimal frame — the dispatcher is a thin router
@@ -176,7 +174,7 @@ The dispatcher prologue + convergence are scalar and byte-exact (objdump,
 ```
 
 `callx8 a3` is the **one** indirect call; `a3` is built per-arm by a `const16`
-pair (the impl VA). The `bnei a3,6` bound check confirms a 6-way ceiling. [HIGH/OBSERVED]
+pair (the impl VA). The `bnei a3,6` bound check confirms a 6-way ceiling.
 
 > **GOTCHA — `0xe4 ConvLutLoad` is dual-purpose.** The same opcode legacy-loads
 > the PE-array 4-bit conversion LUT *and* runs the CPTC decode. Which path
@@ -190,7 +188,7 @@ pair (the impl VA). The `bnei a3,6` bound check confirms a 6-way ceiling. [HIGH/
 
 The dispatcher builds each impl's VA via an `L32R`/`const16` pair pinned by the
 `.xt.prop` literal-reloc records at **file `0x4ed4`** (12-byte records
-`{call_site_PC, reloc_type, target_VA}`, all LE). Decoded byte-exact this pass: [HIGH/OBSERVED]
+`{call_site_PC, reloc_type, target_VA}`, all LE). Decoded byte-exact: [HIGH/OBSERVED]
 
 | reloc @file | call-site PC | type | target VA | impl |
 |-------------|-------------|:----:|-----------|------|
@@ -209,7 +207,7 @@ The dispatcher builds each impl's VA via an `L32R`/`const16` pair pinned by the
 | `0x4f6c` | `0x010024a4` | `0x14` | `0x010032c8` | impl<5> (lo half) |
 
 **The ladder PC-order is `impl3, impl6, impl1, impl2, impl4, impl5`** — *not*
-index order, and the index→arm map is the codegen's, not a linear jump table. [HIGH/OBSERVED]
+index order, and the index→arm map is the codegen's, not a linear jump table.
 
 ```c
 /* The 6-arm dispatch ladder, reconstructed from the reloc table + the resynced
@@ -236,7 +234,7 @@ Only **two** ladder arms resync as clean scalar `const16` builders — impl<3>
 (`34 00 01 / 34 f8 2b` → `a3=0x01002bf8`) and impl<6> (`34 00 01 / 34 94 37` →
 `a3=0x01003794`). The other four sit inside FLIX bundles. But their **arm-head
 predicates** (the first scalar `x24` op after the `0x3f` wide-bundle marker)
-resync cleanly and are **cross-gen byte-identical** CAYMAN↔MARIANA(+0xC): [HIGH/OBSERVED]
+resync cleanly and are **cross-gen byte-identical** CAYMAN↔MARIANA(+0xC):
 
 | arm | head bytes | op | form |
 |-----|-----------|----|------|
@@ -255,7 +253,7 @@ not (§9). [HIGH/OBSERVED the predicate forms; the field-value map LOW]
 ## 4. The operand struct — `NEURON_ISA_TPB_S2_CONVLUT` (64 B)
 
 Source: `aws_neuron_isa_tpb_s2_convlut.h` (cayman), bound to
-`OPCODE_CONV_LUT_LOAD = 0xe4`. **Compile-verified this pass** (`gcc -std=c11`):
+`OPCODE_CONV_LUT_LOAD = 0xe4`. **Compile-verified** (`gcc -std=c11`):
 `sizeof == 64`, and `offsetof` gives `in_dtype=32, num_active_rows=38,
 multiplicative_const=40, block_size=46, lut_dtype=47`. [HIGH/OBSERVED]
 
@@ -280,12 +278,12 @@ multiplicative_const=40, block_size=46, lut_dtype=47`. [HIGH/OBSERVED]
 > **CORRECTION — the header comments `reserved4[16]` as "`18 (48 - 63)`".** That
 > width annotation is a header typo: `48..63` is **16** bytes, and 16 is exactly
 > what brings the struct to the asserted 64 B. The `ISA_STATIC_ASSERT(sizeof==64)`
-> and the compile-verified `offsetof` are the witnesses; the field is 16 B. [HIGH/OBSERVED]
+> and the compile-verified `offsetof` are the witnesses; the field is 16 B.
 
 ### 4.1 The `is_cptc` discriminator (verbatim from the header)
 
 ```c
-/* aws_neuron_isa_tpb_s2_convlut.h — read byte-for-byte this pass. */
+/* aws_neuron_isa_tpb_s2_convlut.h — read byte-for-byte. */
 bool s2_convlut_is_cptc(Inst i) {
     return i.s2_convlut.lut_dtype != Dtype::Invalid    /* Invalid == 0  */
         && i.s2_convlut.lut_dtype != Dtype::FP32;      /* FP32    == 0xA */
@@ -304,7 +302,7 @@ So `is_cptc` is `true` **iff** `lut_dtype` is neither `Invalid(0)` nor `FP32(0xA
 carries the designer's remark: *"Have to add FP32 here because the default value
 of `Dtype` when unspecified is FP32"* — i.e. `FP32`/`Invalid` are the
 "this-is-a-legacy-LUT-load" sentinels. The CPTC path additionally requires
-`in_dtype == UINT32`, `src num_elem == 4`, and `NeuronCoreVersion >= V3`. [HIGH/OBSERVED]
+`in_dtype == UINT32`, `src num_elem == 4`, and `NeuronCoreVersion >= V3`.
 
 ---
 
@@ -312,7 +310,7 @@ of `Dtype` when unspecified is FP32"* — i.e. `FP32`/`Invalid` are the
 
 The compressed tensor rides **`UINT32` transport** (`in_dtype@32 == UINT32`); the
 **logical** format is the `lut_dtype@47` CPTC code. From the **mariana**
-`aws_neuron_isa_tpb_common.h` (read byte-for-byte this pass; CAYMAN's header has
+`aws_neuron_isa_tpb_common.h` (read byte-for-byte; CAYMAN's header has
 **no** CPTC enum — §8): [HIGH/OBSERVED]
 
 ```c
@@ -347,19 +345,19 @@ this:
 
 1. The mangled `ILhNE` gives `N` as an `unsigned char` literal, `N ∈ {1..6}`.
    `N=7` is **not** instantiated despite `CPTC7` existing — so `<N>` is not the
-   CPTC level. [HIGH/OBSERVED]
+   CPTC level.
 2. The three **odd** impls carry a **self-guard** that re-asserts the dtype they
-   serve; the value the guard checks is **not** equal to `N`. [HIGH/OBSERVED]
+   serve; the value the guard checks is **not** equal to `N`.
 3. The six impls have genuinely different bodies (distinct frame sizes, distinct
    IVP vocabularies), so they are hand-tuned kernels, not dtype-parameterized
-   copies of one body. [HIGH/OBSERVED]
+   copies of one body.
 
 ### 6.1 The odd-impl self-guard map
 
 The guard is `extui a9, a4, 22, 3` (extract the 3-bit field `[bits 22..24]` of
 the format word `a4`) followed by `bnei a9, N`. The extract signature **`40 96 25`
 occurs at exactly three `.text` offsets** — `{0x24d9, 0x2c1d, 0x32ed}` = impls
-1/3/5 — proven by an exhaustive byte scan this pass. The three `bnei` constants
+1/3/5 — proven by an exhaustive byte scan. The three `bnei` constants
 are each the **sole** occurrence in the binary: [HIGH/OBSERVED]
 
 | impl | guard `extui` @ | `bnei` @ | bytes | serves field | ⇒ CPTC level |
@@ -383,7 +381,7 @@ void cptc_decode_impl_odd_prologue(uint32_t a4_fmt /* the format word */) {
 > handles do **not** coincide (except impl<1> by accident). A reimplementation
 > dispatching on `(lut_dtype & 0x7)` must route to the impl whose *served value*
 > matches the field, not to "impl number == bit-count". The mapping is
-> codegen-internal. [HIGH/OBSERVED]
+> codegen-internal.
 
 ### 6.2 The even impls carry NO self-guard
 
@@ -391,10 +389,10 @@ Impls **2/4/6** are the alternate ("even") codegen class: minimal `entry a1,32`
 frame, **no** `extui a9,a4,22,3` self-guard. The guard signature is **absent**
 from each of their body spans (exhaustive scan, both gens). They are routed
 **purely by the dispatcher ladder** — they trust the routing and never re-assert
-the dtype. The odd impls additionally self-guard; the even impls do not. [HIGH/OBSERVED]
+the dtype. The odd impls additionally self-guard; the even impls do not.
 
 ```
-guard-sig 40 96 25 (extui a9,a4,22,3) — whole-text byte scan, this pass:
+guard-sig 40 96 25 (extui a9,a4,22,3) — whole-text byte scan:
   hits @ {0x24d9, 0x2c1d, 0x32ed}  =  ONLY impls 1/3/5 (the odd impls)
   ABSENT from impl<2> [0x2934..0x2bf8), impl<4> [0x30cc..0x32c8), impl<6> [0x3794..0x3d4a)
 ```
@@ -403,7 +401,7 @@ guard-sig 40 96 25 (extui a9,a4,22,3) — whole-text byte scan, this pass:
 
 The entry-frame immediate decodes by `imm = ((b2<<4)|(b1>>4))<<3`. The three
 **odd** impls have three **distinct** large 64-byte-aligned frames; the three
-**even** impls share the minimal frame: [HIGH/OBSERVED]
+**even** impls share the minimal frame:
 
 | impl | entry bytes | frame | class |
 |------|------------|------:|-------|
@@ -413,7 +411,7 @@ The entry-frame immediate decodes by `imm = ((b2<<4)|(b1>>4))<<3`. The three
 | impl<2>/<4>/<6> | `36 41 00` | `0x20` (32 B) | EVEN: no align, no self-guard |
 
 Three distinct frame sizes for the odd impls (and a heavy vector working-set for
-impl<1>) confirm hand-tuned, genuinely different decode routines. [HIGH/OBSERVED]
+impl<1>) confirm hand-tuned, genuinely different decode routines.
 
 ---
 
@@ -476,13 +474,13 @@ reconstruction (the GPSIMD has no hardware FP). [HIGH stages + named ops; MED lo
 
 The `.rodata` carries **six** 0x100-byte blocks at VMA `0x020001c0`, `0x2c0`,
 `0x3c0`, `0x4c0`, `0x5c0`, `0x6c0` — one adjacent to each impl's literal window.
-Hashing the regions this pass **proves byte-identity**: the de-interleave
+Hashing the regions **proves byte-identity**: the de-interleave
 permutation proper is the **first 0x80** of each block, and all six are
 identical; blocks #1–#5 are also identical over the full 0x100 (block #6's tail
 past 0x90 collides with the `kernel_info_table` that follows it in memory): [HIGH/OBSERVED]
 
 ```
-de-interleave table first-0x80 sha256 (all six blocks, this pass):
+de-interleave table first-0x80 sha256 (all six blocks):
   #1 @0x020001c0 = 9593eb7f81aa099d      #4 @0x020004c0 = 9593eb7f81aa099d
   #2 @0x020002c0 = 9593eb7f81aa099d      #5 @0x020005c0 = 9593eb7f81aa099d
   #3 @0x020003c0 = 9593eb7f81aa099d      #6 @0x020006c0 = 9593eb7f81aa099d
@@ -493,7 +491,7 @@ blocks #1..#5 full-0x100 sha256 = b36d8a175f2ea021  (IDENTICAL) ✓
 So there is **one** de-interleave permutation, replicated 6× for per-impl
 base-register locality — **not** six distinct per-impl permutations. The first 16
 bytes are `01 21 41 61 03 23 43 63 05 25 45 65 07 27 47 67`, and the 64-lane rule
-is byte-exact (verified over all of `j=0..63` this pass):
+is byte-exact (verified over all of `j=0..63`):
 
 ```c
 /* The single, byte-identical step-32 4-deal de-interleave (verified j=0..63). */
@@ -511,7 +509,7 @@ for (int j = 0; j < 64; ++j)
 > "six distinct permutations". The listed *bytes* were always right; the formula
 > was off by the `<<1 | 1` (the odd-lane selection), and the blocks are in fact
 > byte-identical. Both are corrected here and confirmed by hash + per-lane
-> verification. [HIGH/OBSERVED]
+> verification.
 
 ### 7.3 The per-impl sign / dtype / fp-width legs
 
@@ -552,15 +550,14 @@ signed×unsigned). The full family table: [HIGH where guard/MAC byte-pinned; MED
 
 These pin impl<1>'s signed/fp32 leg: per-block scale-MAC (`mulpan16xr16` ×
 `pr<N>`), de-interleave SELECT by the `.rodata` index, and the fp32 narrow
-(`utruncn_2xf32t` with a 24-bit shift = the exponent/mantissa reassembly). [HIGH/OBSERVED]
+(`utruncn_2xf32t` with a 24-bit shift = the exponent/mantissa reassembly).
 
 ### 7.4 The `0xf0`/spec-7 extended-instruction bridge
 
 The `kernel_info` idx8 (`opcode 0xf0`, `spec 7`) → `ExtendedInstCptcDecode`
 @`0x01003b64` (`entry a1,32`, byte-exact). It forwards the SEQ-side `0xf0`/spec-7
 escape to the **same** CPTC decode body, reading the operand and routing on the
-dtype byte. The DEBUG build validates **both** dtypes (host-lib strings,
-read this pass): [HIGH/OBSERVED]
+dtype byte. The DEBUG build validates **both** dtypes (host-lib strings):
 
 ```
 0x269562  "P%i: Decode : ExtendedInstCptcDecode : num_active_chans = %d"   (the decode trace)
@@ -578,7 +575,7 @@ The codec (`EXTISA_3`: `0xe4` dispatcher + `0xf0`/spec7 bridge +
 | gen (NC) | codec kernel | notes |
 |----------|:------------:|-------|
 | SUNDA (v2) | **ABSENT** | no `EXTISA_3`, no `0xe4`/`0xf0` in its 18-entry flat Q7 table (SUNDA EXTISA container is out-of-corpus) `[CARRIED]` |
-| CAYMAN (v3) | **PRESENT** | `CAYMAN_EXTISA_3` sha `052ac31c`; all six impls + tables + guards re-read this pass |
+| CAYMAN (v3) | **PRESENT** | `CAYMAN_EXTISA_3` sha `052ac31c`; all six impls + tables + guards |
 | MARIANA (v4) | **PRESENT** | `MARIANA_EXTISA_3` sha `8477ff26`; bodies relocated **+0xC**, tables byte-identical |
 | MARIANA_PLUS (v4+) | **PRESENT** | `EXTISA_3` byte-identical to MARIANA `[CARRIED]` |
 | MAVERICK (v5) | **PRESENT (header-OBSERVED)** | `kernel_info` `0xe4`/`0xf0`-spec7 rows + the 3 CPTC DEBUG strings present in the host lib's 2nd arch block (`@0x502c83`/`0x502cc1`/`0x502cfa`); but the EXTISA images are **stripped `ET_DYN`** so the impl **names/bodies are not symbol-recoverable** → interiors **INFERRED** |
@@ -592,7 +589,7 @@ The codec (`EXTISA_3`: `0xe4` dispatcher + `0xf0`/spec7 bridge +
 
 > **GOTCHA — the codec ships on CAYMAN (v3) but the CPTC dtype enum is MARIANA+.**
 > `gcc` against the **cayman** header has **no** `NEURON_ISA_TPB_DTYPE_CPTC1`
-> (verified: zero CPTC hits in the cayman `common.h` this pass), while the
+> (zero CPTC hits in the cayman `common.h`), while the
 > **mariana** header has `CPTC1..7`. So CAYMAN silicon ships the decoder
 > machinery but the v3 ISA cannot legally name a CPTC `lut_dtype` to it; CPTC
 > becomes a usable surface at **MARIANA**. This mirrors the per-gen split the
@@ -645,12 +642,12 @@ highest levels. The **best-estimate** routing map: [LOW/INFERRED for the even ro
 The whole CPTC leg is **off by default**. The host resolver stages lib UID 3
 (`EXTISA_3` = the CPTC lib) **only** when
 `getenv("NRT_UCODE_UNSTABLE_LIBRARY_FLAG_CPTC_DECODE")` is set, on a PERF
-coretype. The env string is read at host-lib **`0x4d15`** this pass; without it,
+coretype. The env string is at host-lib **`0x4d15`**; without it,
 lib 0 is staged (no CPTC), and SUNDA can never reach lib 3. CPTC is therefore an
-**experimental / unstable, opt-in** feature. [HIGH/OBSERVED string; CARRIED RT-10 for the staging logic]
+**experimental / unstable, opt-in** feature. [HIGH/OBSERVED string; CARRIED the staging logic]
 
 ```c
-/* host resolver gate (RT-10 byte-exact CARRIED; string OBSERVED this pass) */
+/* host resolver gate (CARRIED byte-exact; string OBSERVED) */
 if (coretype_is_perf && getenv("NRT_UCODE_UNSTABLE_LIBRARY_FLAG_CPTC_DECODE"))
     stage_library(/* UID */ 3);   /* EXTISA_3 = the CPTC codec; opcode 0xe4 + 0xf0/spec7 */
 else

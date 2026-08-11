@@ -36,9 +36,10 @@ For the register-file model (`vbool` idx3 64b×16, BR idx1 1b×16, `valign` idx4
 > by driving the `libfiss-base.so` `xdref` leaves **live** via `ctypes`
 > (`dlopen` + the 864 exported `module__xdref_*` symbols), with the exact output bits
 > shown. The FP-rounding modes and the predicate-merge are demonstrated against live
-> tie cases. Confidence is tagged **HIGH/MED/LOW** × **OBSERVED** (read this pass) /
-> **INFERRED** (reasoned over OBSERVED) / **CARRIED** (from a cited B-page). The
-> oracle binary is `libfiss-base.so`
+> tie cases. Confidence is tagged **HIGH/MED/LOW** × **OBSERVED** (read from the
+> shipped binary) / **INFERRED** (reasoned over OBSERVED) / **CARRIED** (from a cited
+> B-page); the page default is `[HIGH/OBSERVED]` and claims that depart from it carry
+> an explicit tag. The oracle binary is `libfiss-base.so`
 > (sha256 `260b110c…d3cc94`; `.text` VMA == file-offset, base `0x190430`).
 
 ---
@@ -170,7 +171,7 @@ select is `movXz` feeding a select):
   for `NX16` (32 lanes) only the low 32 bits are meaningful, for `N_2X32` only 16.
 * `randbn`/`rorbn` are **reduce-AND/reduce-OR**, *not* RNG.
 
-### 1.4 Live-driven values  `[HIGH/OBSERVED]`
+### 1.4 Live-driven values
 
 Driving the fiss leaves directly — the predicate-merge polarity, the 64-bit boolean
 algebra, the int-compare sign-bias, and the reduce folds:
@@ -220,7 +221,7 @@ multiplexed SEMANTIC blocks (`ivpep_sem_sp_cvt`, 31 ops, fp32-out;
 `sem_fp_hp_cnv_round`. **fp→int trunc lives in the *lookup* block** (`ivpep_sem_sp/hp_lookup`),
 grouped with the transcendental seeds because both extract exponent fields by shift.
 
-### 2.1 The round-mode resolution — the central deliverable  `[HIGH/OBSERVED]`
+### 2.1 The round-mode resolution — the central deliverable
 
 The convert/round core carries a 3-bit `RoundMode` with literal named decodes and a
 full IEEE-754 5-mode round-up decision. The dynamic mode lives in the **FCR**
@@ -270,25 +271,27 @@ enum RoundMode rnd = FITRUNC ? RTZ : FICEIL  ? RPI : FIFLOOR ? RMI :
 
 ### 2.3 Per-op parameterization
 
-| mnemonic | src → dst | round | special / notes | conf |
-| --- | --- | --- | --- | --- |
-| `IVP_FLOATN_2X32(T)` | i32→f32 | FSR | exp rebias 159/143/161; ovf→inf | HIGH/OBS |
-| `IVP_UFLOATN_2X32(T)` | u32→f32 | FSR | no sign prologue | HIGH/OBS |
-| `IVP_FLOAT16NX16(T)` | i16→f16 | FSR | 5-bit exp; 32 lanes | HIGH/OBS |
-| `IVP_TRUNCN_2XF32(T)` | f32→i32 | **RTZ** | always toward-zero, ignores FCR | HIGH/OBS |
-| `IVP_UTRUNCN_2XF32(T)` | f32→u32 | **RTZ** | neg input → 0 (clamp) | HIGH/OBS |
-| `IVP_CVTF32F16` | f16→f32 **widen** | lossless | exp −15+127; `a_lzc` normalises subnormals | HIGH/OBS |
-| `IVP_CVTF16F32` | f32→f16 **narrow** | FSR | exp −127+15; rounds; ovf→inf | HIGH/OBS |
-| `IVP_FITRUNCN_2XF32(T)` | f→intgr-f | RTZ | `trunc()` | HIGH/OBS |
-| `IVP_FICEILN_2XF32(T)` | f→intgr-f | RPI | `ceil()` | HIGH/OBS |
-| `IVP_FIFLOORN_2XF32(T)` | f→intgr-f | RMI | `floor()` | HIGH/OBS |
-| `IVP_FIROUNDN_2XF32(T)` | f→intgr-f | RNA | `round()` half-away | HIGH/OBS |
-| `IVP_FIRINTN_2XF32(T)` | f→intgr-f | FSR | `rint()`/`nearbyint()` | HIGH/OBS |
-| `IVP_PACKL{2NX24,NX48,N_2X96}` | acc→vec **wrap** | — | truncate low, no clamp | HIGH/OBS |
-| `IVP_PACKVR{2NX24,NX48,...}` | acc→vec **round+sat** | half-up | `>>sa` Q-scale, sat-clamp | HIGH/OBS |
-| `IVP_PACKVRNR{...}` | acc→vec | — | no-round (truncating) pack | HIGH/OBS |
-| `IVP_PACKVRU{...}` | acc→vec | half-up | unsigned-saturate pack | HIGH/OBS |
-| `IVP_CVTG48N_2X32{L,H}` | acc→2 vec | — | accumulator extract (dequant) | HIGH/OBS |
+Every row below is `[HIGH/OBSERVED]`.
+
+| mnemonic | src → dst | round | special / notes |
+| --- | --- | --- | --- |
+| `IVP_FLOATN_2X32(T)` | i32→f32 | FSR | exp rebias 159/143/161; ovf→inf |
+| `IVP_UFLOATN_2X32(T)` | u32→f32 | FSR | no sign prologue |
+| `IVP_FLOAT16NX16(T)` | i16→f16 | FSR | 5-bit exp; 32 lanes |
+| `IVP_TRUNCN_2XF32(T)` | f32→i32 | **RTZ** | always toward-zero, ignores FCR |
+| `IVP_UTRUNCN_2XF32(T)` | f32→u32 | **RTZ** | neg input → 0 (clamp) |
+| `IVP_CVTF32F16` | f16→f32 **widen** | lossless | exp −15+127; `a_lzc` normalises subnormals |
+| `IVP_CVTF16F32` | f32→f16 **narrow** | FSR | exp −127+15; rounds; ovf→inf |
+| `IVP_FITRUNCN_2XF32(T)` | f→intgr-f | RTZ | `trunc()` |
+| `IVP_FICEILN_2XF32(T)` | f→intgr-f | RPI | `ceil()` |
+| `IVP_FIFLOORN_2XF32(T)` | f→intgr-f | RMI | `floor()` |
+| `IVP_FIROUNDN_2XF32(T)` | f→intgr-f | RNA | `round()` half-away |
+| `IVP_FIRINTN_2XF32(T)` | f→intgr-f | FSR | `rint()`/`nearbyint()` |
+| `IVP_PACKL{2NX24,NX48,N_2X96}` | acc→vec **wrap** | — | truncate low, no clamp |
+| `IVP_PACKVR{2NX24,NX48,...}` | acc→vec **round+sat** | half-up | `>>sa` Q-scale, sat-clamp |
+| `IVP_PACKVRNR{...}` | acc→vec | — | no-round (truncating) pack |
+| `IVP_PACKVRU{...}` | acc→vec | half-up | unsigned-saturate pack |
+| `IVP_CVTG48N_2X32{L,H}` | acc→2 vec | — | accumulator extract (dequant) |
 
 The `(T)` form adds a `vboolN` predicate: per lane `d ? convert(b) : a` (merge).
 
@@ -317,13 +320,13 @@ u16 pack_lane(wide acc, u7 sh, enum {WRAP, ROUND, SAT_S, SAT_U} flavour) {
   `roundm = RoundMode & {2{use_rm}}` with `use_rm = ~(op_maddn | op_msubn)`, so the
   **negated-multiply forms (`MADDN`/`MSUBN`) force RNE**; `MUL`/`MADD`/`MSUB`/`MULSONE`
   use the dynamic FCR mode. The round-up decision is byte-identical to §2.1 with the
-  4 IEEE base modes (no `away`). `[HIGH/OBSERVED]`
+  4 IEEE base modes (no `away`).
 * **fp8 / fp4 quantisation.** There is **no native fp8 (E3M4/E4M3/E5M2) or fp4 (E2M1)
   convert opcode** — the member lists of both cvt blocks and both lookup blocks are an
   exhaustive negative control. fp8/fp4 quantisation rounding is the **fp32-hub narrow
   round** (the CVTHL round core, FCR mode, RNE default) followed by the MX
   saturating-clamp (`bmin`/`bmax` to the E4M3/E5M2 range) in the firmware kernel.
-  There is no separate fp8 round-mode enum. `[HIGH/OBSERVED]`
+  There is no separate fp8 round-mode enum.
 * **Stochastic rounding is NOT in the IVP convert/FMA datapath.** Exhaustive negative
   control: zero stochastic/random/dither/lfsr tokens in any IVP convert/FMA core. The
   IVP datapath has only the five deterministic modes. The stochastic-round path is the
@@ -349,7 +352,7 @@ u16 pack_lane(wide acc, u7 sh, enum {WRAP, ROUND, SAT_S, SAT_U} flavour) {
 * **FI ops are integral-valued-fp out, each forcing a fixed mode**; only `FIRINT`
   reads the dynamic FCR.
 
-### 2.7 Live-driven values — the FP-rounding tie case (MANDATORY)  `[HIGH/OBSERVED]`
+### 2.7 Live-driven values — the FP-rounding tie case
 
 Driving `module__xdref_cvtf16_1_1_1_1_16f_32f_2` (fp32→fp16 narrow) live, with the
 round mode in the `edx` argument and a tie built by setting the dropped-bit field
@@ -431,7 +434,7 @@ IVP_SALIGN_I : store-side counterpart (xdsem_st_shifter_512 + mask_sav);   /* ST
 ```
 
 * The shift amount is **dynamic from the address** (`op_ld_shift_amt_use_ars`, the AR
-  base low bits), not an immediate, for the load path. `[HIGH/OBSERVED]`
+  base low bits), not an immediate, for the load path.
 * The funnel is **word-granular** (32-bit word boundaries within the 512-bit register).
 * The two-aligned-load memory composition is the standard Tensilica valign idiom
   (`INFERRED`); the funnel + align-register state are `OBSERVED`.
@@ -454,7 +457,7 @@ scalar reduce(vec v, enum op, int widen) {       /* op in {ADD,MAX,MIN, fp-NaN-n
 ```
 
 * **ADD widens the accumulator** (`2NX8`: i8→i16; `NX16`: i16→i32); **MAX/MIN and
-  saturating-add do not widen** (`RADDS*` clamps to int16). `[HIGH/OBSERVED]`
+  saturating-add do not widen** (`RADDS*` clamps to int16).
 * **fp `RMAXNUM`/`RMINNUM` implement IEEE maxNum/minNum** (NaN-quieting — if one
   operand is NaN, return the other); plain `RMAX`/`RMIN` do a raw ordered compare.
 * The `*T` forms fold only `vbool`-true lanes; the `RB*` (bool-bounded) forms emit the
@@ -493,7 +496,7 @@ vec scan(vec src, enum combine_op op1) {
 * The rotate is **element-granular** (lane index), distinct from the valign **byte/word-
   granular** funnel.
 
-### 3.4 Live-driven values  `[HIGH/OBSERVED]`
+### 3.4 Live-driven values
 
 The valign funnel (`module__xdref_wideldshift_128_512_6`) selecting a 128-bit window by
 word offset `amt>>2 & 0xc`, and the rotate kernel (`module__xdref_rotr_s_32_32_5`):
@@ -551,7 +554,7 @@ WSR.PS  : PSENTRYNR=art[22]; PSSS=art[21:20]; PSSTACK=art[7:5]; PSRING=art[4];
 ```
 
 * **`XSR` is an atomic AR↔SR exchange** — the read returns the *pre-write* SR value and
-  the new value is written in the same op. `[HIGH/OBSERVED]`
+  the new value is written in the same op.
 * `WSR.SAR` has a side-effect: writing `0x4b46` ("K F") sets `XTSYNC`.
 * Structured SRs (PS, MS, EXCCAUSE, DBREAKC0, IBREAKC0, …) decompose into bitfields on
   write per their `contents[]` map; flat SRs (LBEG/LEND/LCOUNT/BR/CCOUNT/…) write the
@@ -634,7 +637,7 @@ RETW  : WB_C -= 1;                                          /* decrement window 
 
 ## 5. Adversarial self-verification
 
-The five strongest semantic claims on this page, each re-checked against the live
+The five strongest semantic claims on this page, each checked against the live
 `libfiss-base.so` oracle. All five **PASS**.
 
 | # | claim | live check | verdict |
@@ -645,9 +648,8 @@ The five strongest semantic claims on this page, each re-checked against the liv
 | 4 | **Directed-round sign dependence** (§2.1) | >½: `+inf` rounds `+x` up & `−x` toward-zero; `−inf` mirrors | **PASS** |
 | 5 | **`trunc` is RTZ, ignores FCR** (§2.6) | `trunc(+2.9)=+2`, `trunc(−2.9)=−2`, `trunc(+123.875)=+123` (fraction dropped, both signs) | **PASS** |
 
-Check #1 raised the §2.7 `away`/exact-half **CORRECTION** (the `RNA` arm is the round
-bit `R`, so the clean `away` demonstration is FIROUND, not a narrow exact-half — fixed
-in the prose). Checks #2–#5 confirmed the page text unchanged.
+Check #1 raised the §2.7 `away`/exact-half **CORRECTION**: the `RNA` arm is the round
+bit `R`, so the clean `away` demonstration is FIROUND, not a narrow exact-half.
 
 ---
 

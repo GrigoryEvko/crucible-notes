@@ -17,14 +17,14 @@ first; everything below is the *delta*, and the delta is almost entirely **null*
 > ISA delta** (MARIANA_PLUS shares the mariana ISA). This **CONFIRMS** the v4+ recompile model
 > established for the sibling [MARIANA_PLUS × ACT](mariana-plus-act.md) image, and **refines**
 > one of its inferences (the DGE fast-path is **gen-wide on the NX sequencers**, not ACT-only)
-> from INFERRED to **OBSERVED** on a second engine. `[HIGH/OBSERVED]`
+> from INFERRED to **OBSERVED** on a second engine.
 
 Confidence/evidence tags follow the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
-**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve re-derived this
-session from `libnrtucode_internal.so`, with the MARIANA DVE baseline re-carved + re-hashed
-(8/8 anchor shas re-confirmed) for an apples-to-apples diff. Disassembly uses the native
-`ncore2gp` `xtensa-elf-objdump`.
+**OBSERVED/INFERRED/CARRIED**. The page default is `[HIGH/OBSERVED]`; claims that depart from
+it carry an explicit tag. Every device fact is byte-pinned to a carve from
+`libnrtucode_internal.so`, diffed against the MARIANA DVE baseline (8/8 anchor shas confirmed).
+Disassembly uses the native `ncore2gp` `xtensa-elf-objdump`.
 
 > **NOTE — provenance.** Every fact derives **solely** from static analysis of the shipped
 > binaries with stock binutils (`nm`/`objdump`/`readelf`/`ar`/`objcopy`/`xxd`/`strings`/`cmp`/
@@ -62,8 +62,8 @@ genuinely new.
 | source tree | `cayman/seq/src/…` | `cayman/seq/src/…` | **=** |
 | **DGE reshape fast-path** | absent (`push REGWRITE` present) | **`dge_decode_fast.cpp` + 3 helpers** (`push REGWRITE` retired) | **+** |
 
-`[HIGH/OBSERVED — every Δ row re-confirmed this pass; MARIANA column re-carved (8/8 anchor shas
-MATCH SX-IMG-09), MARIANA_PLUS column carved fresh (8/8 shas); per-row anchors in §2–§7]`
+`[HIGH/OBSERVED — MARIANA column carved (8/8 anchor shas MATCH), MARIANA_PLUS column carved
+(8/8 shas); per-row anchors in §2–§7]`
 
 > **NOTE — what a MARIANA → MARIANA_PLUS DVE swap actually is.** Three things, in order of
 > significance: **(1)** the DGE reshape **fast-path** (the one functional add — §6); **(2)** a
@@ -71,7 +71,7 @@ MATCH SX-IMG-09), MARIANA_PLUS column carved fresh (8/8 shas); per-row anchors i
 > **(3)** a **register-map refresh** (own `arch-headers/mariana_plus/` dir — §8). The dispatch
 > **mechanism**, the handler set, the opcode space, the reset-vector form, the dtype surface,
 > and the PROF tables are **invariant** — PROF and the HW-Decode table are *byte-identical*. It
-> is **not** a model change and **not** an ISA change. `[HIGH/OBSERVED]`
+> is **not** a model change and **not** an ISA change.
 
 > **GOTCHA — `MARIANA == MARIANA_PLUS byte-identical` does NOT hold for the NX sequencers.**
 > The GEN-01 "v4+ is the same silicon" claim holds for the EXTISA Q7 blobs + the NCFW DRAM,
@@ -88,8 +88,8 @@ The 14 `MARIANA_PLUS_NX_DVE_*_get` accessors resolve identically to the MARIANA 
 (`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`; 8 real + 6 zero-size
 SRAM/EXTRAM boundary cursors aliasing the next-engine `NX_PE` IRAM). The container is the same
 identity-mapped `libnrtucode_internal.so`
-(`sha256 b7c67e89…632fc329b`, re-hashed this pass = MATCH), so the carve is a plain slice at
-the `.rodata` VA. The getter-body immediates were re-decoded this pass, e.g. PERF_IRAM at
+(`sha256 b7c67e89…632fc329b` = MATCH), so the carve is a plain slice at
+the `.rodata` VA. The getter-body immediates decode e.g. PERF_IRAM at
 `.text 0x9b49a0`:
 
 ```asm
@@ -103,7 +103,7 @@ immediates decoded; PROF stubs decode to `0x86a700/0x400`, `0x86ab00/0x2000`]`
 > **GOTCHA — these getters are local (`t`) symbols, not exported.** `nm -D` returns **zero**
 > `MARIANA_PLUS_NX_DVE_*` matches; `nm` returns **14**. The accessors are plain-`nm` local-text
 > symbols — a reimplementer enumerating the image catalog must use `nm` (not `nm -D` /
-> `objdump -T`). `[HIGH/OBSERVED — `nm -D` = 0, `nm` = 14, re-checked this pass]`
+> `objdump -T`). `[HIGH/OBSERVED — `nm -D` = 0, `nm` = 14]`
 
 The 6 zero-size SRAM/EXTRAM getters all decode to `movq $0x0,(%rsi)`; each `lea` resolves to
 `MARIANA_PLUS_NX_PE_PERF_IRAM_get.data` (`0x5d6e60`) — the contiguous-layout cursor at the
@@ -129,7 +129,7 @@ cursors all resolve into PE]`
 
 Each MPLUS DVE carve is byte-identical (sha256 + `cmp -s`) to the matching `libnrtucode.a`
 member `.rodata` (8/8 reconciled — 12 `img_*` + 2 `hwdecode_*_PROF_{CAM,TABLE}`). The MARIANA
-column was re-carved + re-hashed this pass (8/8 anchors MATCH SX-IMG-09).
+column carved (8/8 anchors MATCH).
 
 | IMAGE | MARIANA sz / sha[:8] | MARIANA_PLUS sz / sha[:8] | ΔSize | identical? |
 |---|---|---|---:|---|
@@ -142,7 +142,7 @@ column was re-carved + re-hashed this pass (8/8 anchors MATCH SX-IMG-09).
 | PROF_CAM | `0x400` `ca588683` | `0x400` `ca588683` | +0 | **YES** |
 | PROF_TABLE | `0x2000` `d72b339f` | `0x2000` `d72b339f` | +0 | **YES** |
 
-`[HIGH/OBSERVED — all 16 shas re-computed this pass; full MPLUS digests e.g. DEBUG_IRAM
+`[HIGH/OBSERVED — all 16 shas computed; full MPLUS digests e.g. DEBUG_IRAM
 `6efdfaf6f24ec96204388e9efd99ccb04fd50cebc6d8d567563d793a1595ae27`]`
 
 > **QUIRK — IRAM GREW, the *opposite* direction of the prior gen step.** MARIANA shrank DVE
@@ -151,7 +151,7 @@ column was re-carved + re-hashed this pass (8/8 anchors MATCH SX-IMG-09).
 > fast-path code (§6) — the same growth direction the sibling reshape page measures on the
 > NX POOL image (`+0x12C0`, fewer entry-prologues — see [dge-reshape.md §6.6](../firmware/dge/dge-reshape.md)).
 > DRAM grows only slightly (+`0x120..0x180`), consistent with a handful of new `S:`/symbol
-> strings, not new dispatch data. `[HIGH/OBSERVED]`
+> strings, not new dispatch data.
 
 ---
 
@@ -168,7 +168,7 @@ MARIANA DVE:**
 
 This is the **identical** `06 7d 00 00` MARIANA DVE carries — the **`+0x1c` MARIANA NX shift**
 ([mariana-dve.md §3](mariana-dve.md): CAYMAN `j 0x1dc` → MARIANA `j 0x1f8`). MARIANA_PLUS adds
-**no further shift**. The boot path decodes (native `ncore2gp` objdump, exit 0):
+**no further shift**. The boot path decodes (native `ncore2gp` objdump):
 
 ```asm
 1f8:  const16 a0, 0          ┐ a0 = enter_run prologue VA (0x90)
@@ -181,7 +181,7 @@ This is the **identical** `06 7d 00 00` MARIANA DVE carries — the **`+0x1c` MA
 The DRAM head is likewise byte-identical: magic word `0x6099cb34` (the `.globstruct`
 dispatcher-state magic) + the init block `@0x18:0x38` (4× `0x00001000` + 4× `0x00ffffff`)
 read **byte-for-byte the same** as MARIANA DVE. `[HIGH/OBSERVED — reset bytes + boot decode +
-DRAM head `cmp` all re-run this pass]`
+DRAM head `cmp`]`
 
 > **GOTCHA — the recompile is real, but it starts *after* the shared boot spine.** The
 > reset + boot + dispatch-trampoline region is byte-identical; the first MPLUS-vs-MARIANA
@@ -192,14 +192,14 @@ DRAM head `cmp` all re-run this pass]`
 > as a **clean recompile, not a patch**. `[HIGH/OBSERVED — first-divergence offsets read by
 > byte-cmp]`
 
-**Disassembly proof** (native `ncore2gp` objdump, exit 0): the MPLUS DVE PERF IRAM decodes a
+**Disassembly proof** (native `ncore2gp` objdump): the MPLUS DVE PERF IRAM decodes a
 full Q7/NX windowed-ABI + IVP vector body — **127 `entry` / 215 `retw` / 539 `call8`**, 305
 distinct IVP mnemonics (`ivp_sel2nx8i_s4` ×161, `ivp_dextrprn_2x32` ×129, `ivp_mul4t2n8xr8`
 ×104, …). A genuine separately-compiled `cayman/seq` data/vector sequencer, **larger** than
 MARIANA DVE's (143 `entry` / 209 `retw`) — consistent with the bigger PERF_IRAM and the DGE
 fast-path bulk. The vector datapath is partly bundle-interleaved/desynced by the linear sweep
 (the documented FLIX-VLIW ceiling); the windowed-ABI control spine + the two dispatch sites
-decode cleanly. `[HIGH/OBSERVED — exit-0 disasm; entry/retw/IVP counts re-derived]`
+decode cleanly.
 
 ---
 
@@ -283,7 +283,7 @@ The error path is gen-stable: the MPLUS DVE DEBUG DRAM carries the identical Err
 (`S: ErrorHandler : Bad Opcode(0x%x)` / `Illegal Instruction(0x%x)` / `FP Error(%d)` /
 `Int Div Zero Error`; source `cayman/seq/src/handlers/exception_handler.hpp`) and the dual
 HW-Decode/Sunda mode strings (`S: NX in HW Decode mode` / `S: NX in Sunda mode: HW decode
-disabled`). `[HIGH/OBSERVED]`
+disabled`).
 
 ---
 
@@ -297,8 +297,8 @@ double set-diff the baseline uses, run on both DEBUG DRAMs:
 - **glue-stripped normalized**: MPLUS **101** == MARIANA **101**; **ADDED=0, REMOVED=0**.
 
 Both methods agree: the DVE dispatch handler set is **byte-for-name IDENTICAL** between MARIANA
-and MARIANA_PLUS. Nothing added, nothing removed. `[HIGH/OBSERVED — both set-diffs re-run this
-pass, empty `comm -13` / `comm -23`]`
+and MARIANA_PLUS. Nothing added, nothing removed. `[HIGH/OBSERVED — both set-diffs,
+empty `comm -13` / `comm -23`]`
 
 ### 5a. All 28 CAYMAN DVE-specific handlers RETAINED
 
@@ -309,7 +309,7 @@ predicated copy/cast ×4 (`CastPredicated`/`CopyPredicated`/`CopyPredicatedReduc
 match/find/select ×5 (`FindIndex8`/`MatchReplace`/`MatchValueLoad`/`RangeSelect`/
 `TensorScalarSelect`), and the scan/cached/imm tensor-scalar cluster (`TensorTensorScan`,
 `TensorScalarCacheCumulative`, `TensorScalarCacheReduce`, `TensorScalarImmLd*`,
-`TensorScalarPtrMulti*`, + the Stream-Transpose / Scalar-Tensor-Tensor forms). `[HIGH/OBSERVED]`
+`TensorScalarPtrMulti*`, + the Stream-Transpose / Scalar-Tensor-Tensor forms).
 
 ### 5b. The 7 MARIANA additions ALL RETAINED on MPLUS DVE
 
@@ -414,7 +414,7 @@ sha256 match) to the MARIANA DVE PROF tables. The DVE HW-decode profiler config 
 was carried forward **unchanged**. Since the tables are byte-identical, the baseline's full DVE
 PROF decode applies verbatim. This continues the gen-wide **per-engine PROF reuse** the ACT
 survey found (ACT reused its own per-engine table; DVE reuses `ca588683`/`d72b339f`).
-`[HIGH/OBSERVED — `cmp -s` clean on both tables, this pass]`
+`[HIGH/OBSERVED — `cmp -s` clean on both tables]`
 
 > **NOTE — PROF reuse is verbatim, not coincidental.** Both PROF tables surviving the recompile
 > byte-for-byte (while 6/8 code/data blobs were rebuilt) is strong evidence the v4+ build links
@@ -426,7 +426,7 @@ survey found (ACT reused its own per-engine table; DVE reuses `ca588683`/`d72b33
 
 ## 8. Engine-model confirmation — same `cayman/seq` SEQ engine, idx 3
 
-The shipped ISA enum (re-read this pass) fixes the engine index:
+The shipped ISA enum fixes the engine index:
 
 ```c
 // aws_neuron_isa_tpb_common.h:140-145 (neuron_cayman_arch_isa/tpb)
@@ -449,7 +449,7 @@ runtime-compute INFERRED-HIGH]`
 own `arch-headers/mariana_plus/` **register-map** dir. So the ISA / struct / dtype surface **is**
 MARIANA's; the mariana_plus delta is the register-map dir only — consistent with the DGE
 fast-path being a *firmware* add, not an ISA add. `[HIGH/OBSERVED — `ls` of the ISA + arch-headers
-dirs, re-confirmed this pass]`
+dirs]`
 
 The full invariant list (single NX core, no Q7; dual-mode tables; ErrorHandler arms;
 `cayman/seq/` source tree; DVE identity strings `DveReadAccumulator`/`DveReadIndices`) is on
@@ -463,7 +463,7 @@ The full invariant list (single NX core, no Q7; dual-mode tables; ErrorHandler a
 deviation, and refines one inference into an observation.** Point-by-point vs the expectation
 the sibling [MARIANA_PLUS × ACT](mariana-plus-act.md) survey set:
 
-| expectation (from the ACT v4+ model) | DVE result (this task) | verdict |
+| expectation (from the ACT v4+ model) | DVE result | verdict |
 |---|---|:---:|
 | recompile (relocated layout, `+0x1c` reset, `BEGIN on mariana_plus`, `cayman/seq` tree) | Sunda tbl `+0x1d`, 1st IRAM diverge @`0x212`, `j 0x1f8` (`+0x1c`, **no further shift**), `BEGIN on mariana_plus`, `cayman/seq` (4 hits) | **CONFIRM** |
 | the DGE fast-path (likely gen-wide on NX) | all 4 fast-path strings present (absent on MARIANA DVE), dual-build (DEBUG+TEST); `push REGWRITE` retired | **CONFIRM + REFINE** (gen-wide now OBSERVED on a 2nd engine) |
@@ -480,19 +480,19 @@ whereas MPLUS ACT had its whole DRAM table uniformly `+0x20` — an even tighter
 
 **No CORRECTION to the v4+ model.** MARIANA_PLUS DVE is a pure **recompile + DGE fast-path**;
 there is **no functional silicon delta** and **no ISA delta**. `engine_idx=3` (DVE) confirmed
-via the ISA enum + the runtime-identity + `DVE perf mode support` strings. `[HIGH/OBSERVED]`
+via the ISA enum + the runtime-identity + `DVE perf mode support` strings.
 
 > **CORRECTION — minor backing-report address typo (not a model deviation).** The Sunda-mode
 > **default arm** is `j 0x39dd` (decoded instruction-exact at MPLUS DVE DEBUG IRAM `0x3701`,
 > and identically on MARIANA), not the `0x39fa` cited in one backing-report prose line. The
 > handler/opcode/table facts are unaffected; the default-arm *target* is `0x39dd`.
-> `[HIGH/OBSERVED — re-decoded at `0x3701` this pass]`
+> `[HIGH/OBSERVED — decoded at `0x3701`]`
 
 ---
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm, byte read, or shipped-header read this pass):
+**HIGH / OBSERVED** (direct disasm, byte read, or shipped-header read):
 
 - 14 `MARIANA_PLUS_NX_DVE` getters (`nm` = 14, `nm -D` = 0; img-ptr/size immediates decoded
   14/14 at `.text 0x9b49a0..0x9b5520`); 8 real + 6 zero-size cursors → `NX_PE` IRAM. Engine
@@ -514,7 +514,7 @@ via the ISA enum + the runtime-identity + `DVE perf mode support` strings. `[HIG
 - `mariana-4062` errata RETAINED (DVE-specific); ISA enum DVE=3; `arch-headers/mariana_plus/`
   exists, no own ISA dir; runtime-identity + `DVE perf mode support` strings present.
 - Size table 6/8 distinct (IRAM **grew** in every variant — DGE fast-path bulk), 2/8 PROF
-  byte-identical. MARIANA baseline re-carved + re-hashed (8/8 anchors MATCH).
+  byte-identical. MARIANA baseline carved (8/8 anchors MATCH).
 
 **MED / INFERRED:**
 

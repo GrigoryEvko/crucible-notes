@@ -6,7 +6,7 @@
 
 Every hardware constant the compiler needs — the SBUF byte budget, the number of PSUM banks, the systolic-array width, the partition count, the engine clock, the per-core HBM window — is read through a single four-hop accessor chain: `getArchModel(codename)` returns a `Board*`, `Board+0x8` is a `Device*`, `Device+0x10` is a `Core*`, and the `Core` holds six engine sub-object pointers plus a flat run of scalar ISA parameters. There is no flat `.rodata` table of constants and no runtime device probe; the geometry is a tree of statically-constructed C++ objects, built once at library load by four per-architecture constructors, and handed out by a string-compare dispatch over the arch codename. This page is the spine of Part 1: every other geometry page reaches its constant by walking this same chain to a different offset.
 
-The class family is not inferred. A real C++ header ships in the wheel — `data/include/hwm/ctm/ctm.hpp` — and declares `Board`, `Device`, `Core`, `CoreParamSet`, and the six engine classes (`Pe`, `Pool`, `Act`, `Dve`, `Psumbuf`, `Statebuf`) with their exact field names and doc comments. The header is the source-of-truth for *what each offset means*; the disassembled constructors are the source-of-truth for *what value each field holds per arch*. Where the two agree, a field is CONFIRMED in both name and value.
+The class family is not inferred. A real C++ header ships in the wheel — `data/include/hwm/ctm/ctm.hpp` — and declares `Board`, `Device`, `Core`, `CoreParamSet`, and the six engine classes (`Pe`, `Pool`, `Act`, `Dve`, `Psumbuf`, `Statebuf`) with their exact field names and doc comments. The header is the source-of-truth for *what each offset means*; the disassembled constructors are the source-of-truth for *what value each field holds per arch*. Where the two agree, a field is pinned in both name and value.
 
 The decisive structural fact is that the same chain is implemented **twice, independently** — once in `libwalrus.so` (the backend) and once in `libBIR.so` (the IR library) — with the same class layout, the same accessor offsets, and byte-identical per-arch immediates, but distinct entry-point addresses and distinct PLT thunks. Two separately-compiled binaries agreeing to the byte is the strongest evidence available short of source, and this page makes that cross-confirmation explicit at every step. The body walks the chain hop by hop, then shows the four real read-sites (SBUF, PSUM, DRAM, engine count) that drive the allocators, and closes with the per-arch constant matrix.
 
@@ -116,13 +116,13 @@ const Board& getArchModel(const string &codename):
 
 | Symbol | Binary | Address | Role | Confidence |
 |---|---|---|---|---|
-| `getArchModel(string)` | libwalrus | `0x17344c0` | Codename→`Board*` dispatch | CONFIRMED |
-| `getArchModel(string)` | libBIR | `0x478f90` | Independent copy of the same dispatch | CONFIRMED |
-| `Pacific()` | libwalrus | `0x17345d0` | Deprecated default → Inferentia singleton | CONFIRMED |
-| `_inferentia_arch_model` | libwalrus | `0x3e05800` (.bss) | gen1 `Board` singleton | CONFIRMED |
-| `_sunda_arch_model` | libwalrus | `0x3e05980` (.bss) | gen2 `Board` singleton | CONFIRMED |
-| `_cayman_arch_model` | libwalrus | `0x3e05b00` (.bss) | gen3 `Board` singleton | CONFIRMED |
-| `_core_v4_arch_model` | libwalrus | `0x3e05c80` (.bss) | gen4 `Board` singleton | CONFIRMED |
+| `getArchModel(string)` | libwalrus | `0x17344c0` | Codename→`Board*` dispatch | CERTAIN |
+| `getArchModel(string)` | libBIR | `0x478f90` | Independent copy of the same dispatch | CERTAIN |
+| `Pacific()` | libwalrus | `0x17345d0` | Deprecated default → Inferentia singleton | CERTAIN |
+| `_inferentia_arch_model` | libwalrus | `0x3e05800` (.bss) | gen1 `Board` singleton | CERTAIN |
+| `_sunda_arch_model` | libwalrus | `0x3e05980` (.bss) | gen2 `Board` singleton | CERTAIN |
+| `_cayman_arch_model` | libwalrus | `0x3e05b00` (.bss) | gen3 `Board` singleton | CERTAIN |
+| `_core_v4_arch_model` | libwalrus | `0x3e05c80` (.bss) | gen4 `Board` singleton | CERTAIN |
 
 > **GOTCHA — the input aliases are not the canonical names.** `getArchModel` accepts `{tonga, inferentia, inf1}`→gen1, `{sunda, trainium, trn1, inf2}`→gen2, `{cayman, gen3}`→gen3, `{core_v4}`→gen4. The *canonical* internal codename (what `bir::ArchLevel2string` emits) is the narrower set `{inferentia, sunda, gen3, core_v4, core_v5}`. A reimplementation that drives `getArchModel` only off the canonical names will reject the legacy `tonga`/`trainium`/`trn1`/`inf2`/`cayman` spellings that real modules carry. Build the parser from the full alias set, the canonical mapper from the narrow one. The codename↔generation↔CoreVN↔device bijection is owned by the [codename matrix](hardware-constant-matrix.md).
 
@@ -132,7 +132,7 @@ const Board& getArchModel(const string &codename):
 
 ### Purpose
 
-This is the field map every consumer indexes into. Names come from `ctm.hpp` (authoritative); offsets come from the `libwalrus` constructors (`Board::Board` @ `0x17344a0`, `Device::Device` @ `0x1734480`, `Core::Core` @ `0x1734220`). The header and the disassembly agree, so each row is CONFIRMED in both name and offset.
+This is the field map every consumer indexes into. Names come from `ctm.hpp` (authoritative); offsets come from the `libwalrus` constructors (`Board::Board` @ `0x17344a0`, `Device::Device` @ `0x1734480`, `Core::Core` @ `0x1734220`). The header and the disassembly agree, so each row is pinned in both name and offset.
 
 ### Board, Device
 
@@ -140,15 +140,15 @@ This is the field map every consumer indexes into. Names come from `ctm.hpp` (au
 
 | Struct | Field | Offset | Type | Meaning | Confidence |
 |---|---|---|---|---|---|
-| `Board` | `numDevices` | `+0x00` | `unsigned` | Devices per board (=2 all arches) | CONFIRMED |
-| `Board` | `numTonga` | `+0x04` | `unsigned` | Alias of `numDevices` | CONFIRMED |
-| `Board` | `device` | `+0x08` | `Device*` | **The Device hop** | CONFIRMED |
-| `Board` | `tonga` | `+0x10` | `Device*` | Alias of `device` | CONFIRMED |
-| `Device` | `numCores` | `+0x00` | `unsigned` | NeuronCores per device | CONFIRMED |
-| `Device` | `numTpb` | `+0x04` | `unsigned` | Alias of `numCores` | CONFIRMED |
-| `Device` | `dramSizeGb` | `+0x08` | `unsigned` | Whole-device HBM, GiB | CONFIRMED |
-| `Device` | `core` | `+0x10` | `Core*` | **The Core hop** | CONFIRMED |
-| `Device` | `tpb` | `+0x18` | `Core*` | Alias of `core` | CONFIRMED |
+| `Board` | `numDevices` | `+0x00` | `unsigned` | Devices per board (=2 all arches) | CERTAIN |
+| `Board` | `numTonga` | `+0x04` | `unsigned` | Alias of `numDevices` | CERTAIN |
+| `Board` | `device` | `+0x08` | `Device*` | **The Device hop** | CERTAIN |
+| `Board` | `tonga` | `+0x10` | `Device*` | Alias of `device` | CERTAIN |
+| `Device` | `numCores` | `+0x00` | `unsigned` | NeuronCores per device | CERTAIN |
+| `Device` | `numTpb` | `+0x04` | `unsigned` | Alias of `numCores` | CERTAIN |
+| `Device` | `dramSizeGb` | `+0x08` | `unsigned` | Whole-device HBM, GiB | CERTAIN |
+| `Device` | `core` | `+0x10` | `Core*` | **The Core hop** | CERTAIN |
+| `Device` | `tpb` | `+0x18` | `Core*` | Alias of `core` | CERTAIN |
 
 The two hops the accessor chain takes — `Board+0x8` and `Device+0x10` — are the real `device` and `core` references; the `+0x10`/`+0x18` aliases sit one slot past them and are never read by the geometry consumers on this page.
 
@@ -158,34 +158,36 @@ The two hops the accessor chain takes — `Board+0x8` and `Device+0x10` — are 
 
 | Field | Offset | Type | Meaning | Confidence |
 |---|---|---|---|---|
-| `pe` | `+0x00` | `Pe*` | Systolic-array geometry | CONFIRMED |
-| `pool` | `+0x08` | `Pool*` | Pool-engine geometry | CONFIRMED |
-| `act` | `+0x10` | `Act*` | Activation-engine geometry | CONFIRMED |
-| `dve` | `+0x18` | `Dve*` | Vector-engine geometry | CONFIRMED |
-| `psumbuf` | `+0x20` | `Psumbuf*` | **PSUM pool geometry** | CONFIRMED |
-| `statebuf` | `+0x28` | `Statebuf*` | **SBUF pool geometry** | CONFIRMED |
-| `dramSizeGb` | `+0x30` | `unsigned` | **Per-core HBM window, GiB** | CONFIRMED |
-| `NumSemaphores` | `+0x34` | `uint32` | `NEURON_ISA_TPB_NUM_SEMAPHORES` (=256) | CONFIRMED |
-| `IsaAddrMarkerMask` | `+0x38` | `uint8` | `NEURON_ISA_TPB_ADDR8_MARKER_MASK` | CONFIRMED (name) |
-| `MaxRegNumPerEngine` | `+0x3c` | `uint32` | `NEURON_ISA_TPB_NUM_REGISTERS − 2` (=62) | CONFIRMED |
-| `DmaMaxDescCountPerPacket` | `+0x40` | `uint32` | DMA descriptors per packet (=64) | CONFIRMED (name) |
-| `SmallDescSize` | `+0x44` | `uint32` | DMA max transfer KiB/desc (=64) | CONFIRMED (name) |
-| `MaxDmaEngineTile` | `+0x48` | `uint32` | DMA engine tile bytes (=4096) | CONFIRMED (name) |
-| `MaxActTableNum` | `+0x4c` | `uint32` | `NEURON_ISA_TPB_ACTIVATION_NUM_TABLES` (=8) | CONFIRMED (name) |
-| `MaxCceDmaSource` | `+0x50` | `uint32` | `NEURON_ISA_TPB_DMA_MAX_CCE_SOURCE` (=16) | CONFIRMED (name) |
-| `RtReservedSemNum` … `MemTensorIndirectEngPartitionGroupSize` | `+0x54`…`+0x68` | `uint32`×6 | Runtime-shared limits | CONFIRMED (name) |
-| `UnassignedEngineCount` | `+0x6c` | `uint32` | Per-engine count (=1) | CONFIRMED |
-| `PeEngineCount` | `+0x70` | `uint32` | (=1) | CONFIRMED |
-| `PoolEngineCount` | `+0x74` | `uint32` | (=1) | CONFIRMED |
-| `ActEngineCount` | `+0x78` | `uint32` | (=1) | CONFIRMED |
-| `DveEngineCount` | `+0x7c` | `uint32` | (=1) | CONFIRMED |
-| `DmaEngineCount` | `+0x80` | `uint32` | (=1) | CONFIRMED |
-| `SpEngineCount` | `+0x84` | `uint32` | (=1) | CONFIRMED |
-| `AllEngineCount` | `+0x88` | `uint32` | (=1) | CONFIRMED |
+| `pe` | `+0x00` | `Pe*` | Systolic-array geometry | CERTAIN |
+| `pool` | `+0x08` | `Pool*` | Pool-engine geometry | CERTAIN |
+| `act` | `+0x10` | `Act*` | Activation-engine geometry | CERTAIN |
+| `dve` | `+0x18` | `Dve*` | Vector-engine geometry | CERTAIN |
+| `psumbuf` | `+0x20` | `Psumbuf*` | **PSUM pool geometry** | CERTAIN |
+| `statebuf` | `+0x28` | `Statebuf*` | **SBUF pool geometry** | CERTAIN |
+| `dramSizeGb` | `+0x30` | `unsigned` | **Per-core HBM window, GiB** | CERTAIN |
+| `NumSemaphores` | `+0x34` | `uint32` | `NEURON_ISA_TPB_NUM_SEMAPHORES` (=256) | CERTAIN |
+| `IsaAddrMarkerMask` | `+0x38` | `uint8` | `NEURON_ISA_TPB_ADDR8_MARKER_MASK` | CERTAIN (name) |
+| `MaxRegNumPerEngine` | `+0x3c` | `uint32` | `NEURON_ISA_TPB_NUM_REGISTERS − 2` (=62) | CERTAIN |
+| `DmaMaxDescCountPerPacket` | `+0x40` | `uint32` | DMA descriptors per packet (=64) | CERTAIN (name) |
+| `SmallDescSize` | `+0x44` | `uint32` | DMA max transfer KiB/desc (=64) | CERTAIN (name) |
+| `MaxDmaEngineTile` | `+0x48` | `uint32` | DMA engine tile bytes (=4096) | CERTAIN (name) |
+| `MaxActTableNum` | `+0x4c` | `uint32` | `NEURON_ISA_TPB_ACTIVATION_NUM_TABLES` (=8) | CERTAIN (name) |
+| `MaxCceDmaSource` | `+0x50` | `uint32` | `NEURON_ISA_TPB_DMA_MAX_CCE_SOURCE` (=16) | CERTAIN (name) |
+| `RtReservedSemNum` … `MemTensorIndirectEngPartitionGroupSize` | `+0x54`…`+0x68` | `uint32`×6 | Runtime-shared limits | CERTAIN (name) |
+| `UnassignedEngineCount` | `+0x6c` | `uint32` | Per-engine count (=1) | CERTAIN |
+| `PeEngineCount` | `+0x70` | `uint32` | (=1) | CERTAIN |
+| `PoolEngineCount` | `+0x74` | `uint32` | (=1) | CERTAIN |
+| `ActEngineCount` | `+0x78` | `uint32` | (=1) | CERTAIN |
+| `DveEngineCount` | `+0x7c` | `uint32` | (=1) | CERTAIN |
+| `DmaEngineCount` | `+0x80` | `uint32` | (=1) | CERTAIN |
+| `SpEngineCount` | `+0x84` | `uint32` | (=1) | CERTAIN |
+| `AllEngineCount` | `+0x88` | `uint32` | (=1) | CERTAIN |
 
-> **CORRECTION — `Core+0x30` is `dramSizeGb`, not a ring/queue count.** An earlier reading of the bare immediates labelled `Core+0x30` (= `CoreParamSet+0x60`) a "per-Core ring/queue count" with values 16/16/24/36. The shipped header settles it: `ctm.hpp:187` declares `const unsigned dramSizeGb; // dram/hbm per core`. The values 16/16/24/36 are **GiB of HBM per NeuronCore**, and the chain `getArchModel → Board+0x8 → Device+0x10 → Core+0x30` is the per-core HBM window the budget check reads (see [§The four read-sites](#the-four-read-sites)). Likewise `Device+0x8` is `Device::dramSizeGb` (whole-device HBM), `ctm.hpp:229`.
+`Core+0x30` (= `CoreParamSet+0x60`) is `dramSizeGb` — `ctm.hpp:187` declares it `const unsigned dramSizeGb; // dram/hbm per core`. Its values 16/16/24/36 are **GiB of HBM per NeuronCore**, and the chain `getArchModel → Board+0x8 → Device+0x10 → Core+0x30` is the per-core HBM window the budget check reads (see [§The four read-sites](#the-four-read-sites)). `Device+0x8` is the whole-device counterpart, `Device::dramSizeGb` at `ctm.hpp:229`.
 
-The scalar names mapped to `NEURON_ISA_TPB_*` constants are CONFIRMED-by-name from `ctm.hpp` comments but their exact per-arch *values* (other than the few cross-checked above) were read as raw immediates; the offset/name binding is firm, the numeric value of each is read straight off the ctor body. The exact semantics behind `IsaAddrMarkerMask`, `MaxDmaEngineTile`, and the `Rt*` runtime-shared block are taken from the header's comments and are not independently traced to a consumer here.
+> **GOTCHA —** the 16/16/24/36 sequence at `Core+0x30` reads like a ring or queue count if you take it off the bare ctor immediates. It is HBM gibibytes per core.
+
+The scalar names mapped to `NEURON_ISA_TPB_*` constants come from `ctm.hpp` comments; their exact per-arch *values* (other than the few cross-checked above) were read as raw ctor immediates. The offset/name binding is firm either way. The exact semantics behind `IsaAddrMarkerMask`, `MaxDmaEngineTile`, and the `Rt*` runtime-shared block are taken from the header's comments and are not independently traced to a consumer here.
 
 ### The six engine sub-objects
 
@@ -193,23 +195,23 @@ Each `Core+0xNN` pointer targets a small object constructed in-place inside the 
 
 | Sub-object | Field | Offset | Meaning | Confidence |
 |---|---|---|---|---|
-| `Statebuf` | `partitionSize` | `+0x00` | **SBUF bytes per partition (SB_SIZE)** | CONFIRMED |
-| `Statebuf` | `PartitionSOCStepSize` | `+0x04` | Addressable partition span (=`0x40000`) | CONFIRMED (name) |
-| `Statebuf` | `numPartitions` | `+0x08` | **SBUF partitions (=128)** | CONFIRMED |
-| `Statebuf` | `midPartition` | `+0x0c` | Sub-band / quadrant granule (=64) | CONFIRMED (name) |
-| `Statebuf` | `align` | `+0x10` | `Align*` alignment descriptor | CONFIRMED |
-| `Statebuf` | `reservedSize` | `+0x18` | Reserved bytes (default 16384=`0x4000`) | CONFIRMED |
-| `Psumbuf` | `numBanks` | `+0x00` | **PSUM banks** | CONFIRMED |
-| `Psumbuf` | `numPartitions` | `+0x04` | **PSUM partitions** | CONFIRMED |
-| `Psumbuf` | `partSize` | `+0x08` | **PSUM bank size (=2048)** | CONFIRMED |
-| `Psumbuf` | `bufLen64` | `+0x0c` | `partSize>>3` (=256), deprecated helper | CONFIRMED |
-| `Psumbuf` | `bufLen32` | `+0x10` | `partSize>>2` (=512), deprecated helper | CONFIRMED |
-| `PeDimensionsForDtype` | `numRows` | `+0x00` | Systolic rows (=128) | CONFIRMED |
-| `PeDimensionsForDtype` | `numCols` | `+0x04` | Systolic cols (=64 gen1, 128 gen2+) | CONFIRMED |
-| `PeDimensionsForDtype` | `maxWeightStep` | `+0x08` | Dtype byte-class factor (=2) | CONFIRMED |
-| `PeDimensionsForDtype` | `minWave` | `+0x0c` | Secondary dim (=128) | CONFIRMED |
-| `Pe` | `m16` | `+0x08` | `PeDimensionsForDtype&` (fp16/bf16 dims) | CONFIRMED |
-| `Pool` / `Act` | `numChannels` | `+0x08` | Engine partition count (64 gen1, 128 gen2+) | CONFIRMED |
+| `Statebuf` | `partitionSize` | `+0x00` | **SBUF bytes per partition (SB_SIZE)** | CERTAIN |
+| `Statebuf` | `PartitionSOCStepSize` | `+0x04` | Addressable partition span (=`0x40000`) | CERTAIN (name) |
+| `Statebuf` | `numPartitions` | `+0x08` | **SBUF partitions (=128)** | CERTAIN |
+| `Statebuf` | `midPartition` | `+0x0c` | Sub-band / quadrant granule (=64) | CERTAIN (name) |
+| `Statebuf` | `align` | `+0x10` | `Align*` alignment descriptor | CERTAIN |
+| `Statebuf` | `reservedSize` | `+0x18` | Reserved bytes (default 16384=`0x4000`) | CERTAIN |
+| `Psumbuf` | `numBanks` | `+0x00` | **PSUM banks** | CERTAIN |
+| `Psumbuf` | `numPartitions` | `+0x04` | **PSUM partitions** | CERTAIN |
+| `Psumbuf` | `partSize` | `+0x08` | **PSUM bank size (=2048)** | CERTAIN |
+| `Psumbuf` | `bufLen64` | `+0x0c` | `partSize>>3` (=256), deprecated helper | CERTAIN |
+| `Psumbuf` | `bufLen32` | `+0x10` | `partSize>>2` (=512), deprecated helper | CERTAIN |
+| `PeDimensionsForDtype` | `numRows` | `+0x00` | Systolic rows (=128) | CERTAIN |
+| `PeDimensionsForDtype` | `numCols` | `+0x04` | Systolic cols (=64 gen1, 128 gen2+) | CERTAIN |
+| `PeDimensionsForDtype` | `maxWeightStep` | `+0x08` | Dtype byte-class factor (=2) | CERTAIN |
+| `PeDimensionsForDtype` | `minWave` | `+0x0c` | Secondary dim (=128) | CERTAIN |
+| `Pe` | `m16` | `+0x08` | `PeDimensionsForDtype&` (fp16/bf16 dims) | CERTAIN |
+| `Pool` / `Act` | `numChannels` | `+0x08` | Engine partition count (64 gen1, 128 gen2+) | CERTAIN |
 
 `Pe`, `Pool`, `Act`, and `Dve` are abstract in the header (`getReorderWindowSize()` is pure-virtual); the per-arch reorder window is an override, not a stored field — `InferentiaPe::getReorderWindowSize` (@ `0x17345e0`) is `mov $0x40; ret` (=64), the shared Inferentia `Pool`/`Act`/`Dve` body (@ `0x17345f0`) is `mov $0x8; ret` (=8), and the gen4 `CoreV4Act`/`CoreV4Dve` body (@ `0x17351d0`) is `mov $0x10; ret` (=16) — the only generation that widens the activation/vector reorder window.
 
@@ -244,7 +246,7 @@ So `CoreParamSet+0x60` → `Core+0x30` is the `dramSizeGb` copy. The per-arch ct
 
 ### How each per-arch ctor writes the divergent fields
 
-The four `<Arch>Core` ctors differ only in a handful of immediates; the bulk of the scalar block (`NumSemaphores`=256, the granules, the per-engine counts=1) is identical across all four. The divergent writes, all CONFIRMED off the ctor bodies:
+The four `<Arch>Core` ctors differ only in a handful of immediates; the bulk of the scalar block (`NumSemaphores`=256, the granules, the per-engine counts=1) is identical across all four. The divergent writes, all read off the ctor bodies:
 
 ```text
 InferentiaCore (0x1734720)  movl $0x10,0x60(%rsp)  ; dramSizeGb = 16 GiB   @0x17347b6
@@ -296,7 +298,7 @@ count = *(core + {Unassigned:0x6c, PE:0x70, Pool:0x74, Act:0x78,
 //     Board+0x8 → Device+0x10 → Core+0x6c.. = per-engine count (jump-table on EngineType)
 ```
 
-> **CORRECTION — the `getEngineCount` offset/engine map (supersedes a prior mis-pairing).** An earlier reading paired the count offsets as `{Pool:0x6c, Act:0x74, PE:0x78, DMA:0x84, ALL:0x88}`. The actual `getEngineCount` jump table (`libBIR 0x47d820`, the per-`EngineType` `mov eax,[rbx+off]` arms) pairs them differently: `Unassigned→0x6c` (`@0x47d8d8`), `PE→0x70` (`@0x47d920`), `Pool→0x74` (`@0x47d8f0`), `Act→0x78` (`@0x47d908`), `DVE→0x7c` (`@0x47d950`), `DMA→0x80` (`@0x47d938`), `SP→0x84` (`@0x47d8a8`), `ALL→0x88` (`@0x47d8c0`). The struct order of the count block is PE, Pool, Act, DVE, DMA, SP, ALL (`0x70`…`0x88`) with `Unassigned` at `0x6c` just below — matching the `Core+0x6c`…`Core+0x88` scalar tail in [§The Core layout](#core). [CONFIRMED — `getEngineCount @0x47d820` jump-table arms]
+The `getEngineCount` jump table (`libBIR 0x47d820`) pairs offset to engine through its per-`EngineType` `mov eax,[rbx+off]` arms: `Unassigned→0x6c` (`@0x47d8d8`), `PE→0x70` (`@0x47d920`), `Pool→0x74` (`@0x47d8f0`), `Act→0x78` (`@0x47d908`), `DVE→0x7c` (`@0x47d950`), `DMA→0x80` (`@0x47d938`), `SP→0x84` (`@0x47d8a8`), `ALL→0x88` (`@0x47d8c0`). So the count block's struct order is PE, Pool, Act, DVE, DMA, SP, ALL across `0x70`…`0x88`, with `Unassigned` sitting at `0x6c` just below — matching the `Core+0x6c`…`Core+0x88` scalar tail in [§The Core layout](#core).
 
 Read-site (3) is the per-core HBM budget. `HBMUsage::run(vector<...>)` (`libwalrus 0x16b94b0`) reads `Core+0x30`, shifts left 30 (`shl $0x1e`) to get bytes, multiplies the limit by a soft `1.1×` margin (the IEEE-754 double `0x3FF199999999999A`=1.1 at `.rodata 0x1dbf5b0`, confirmed `9a999999 9999f13f`), and warns if estimated usage exceeds `1.1×HBMLimit` while a hard assert flags `usage > HBMLimit`. Gated by the `--hbm-usage-check` flag (`DisableHBMUsageCheck` cl::opt). The full DRAM allocator and split-DRAM machinery are owned by the [DRAM/HBM geometry page](dram-hbm-geometry.md).
 
@@ -317,16 +319,16 @@ The `EngineType` ordinal is the key every engine page binds to. It is an 8-value
 | 6 | `SP` | `Sync` | sync / control sequencer | **yes** |
 | 7 | `ALL` | `All` | pseudo / all-engine barrier | no |
 
-*Confidence: **CONFIRMED** — internal and external names byte-read off both `2string` bodies, ordinals cross-confirmed three ways (`EngineType2string`, `getEngineCount`, `getValidEngines`).* The datapath column is the `bir::isDataPathEngine` mask `0x6E` = `{1,2,3,5,6}` — the five engines an all-engine barrier fans out across ([execution & sync model](execution-sync-model.md)); ordinals 0 (Unassigned), 4 (DMA), 7 (ALL) are excluded. The internal→external alias `Pool→GPSIMD` is the source of the "GPSIMD is not a separate engine" finding ([GPSIMD engine](gpsimd-engine.md)). Every engine page (1.08–1.14) keys to this map: PE=3, Pool=1, Activation=2, DVE=5, SP=6, DMA=4.
+*Both the internal and external names are byte-read off the two `2string` bodies, and the ordinals cross-check three ways — `EngineType2string`, `getEngineCount`, and `getValidEngines`.* The datapath column is the `bir::isDataPathEngine` mask `0x6E` = `{1,2,3,5,6}` — the five engines an all-engine barrier fans out across ([execution & sync model](execution-sync-model.md)); ordinals 0 (Unassigned), 4 (DMA), 7 (ALL) are excluded. The internal→external alias `Pool→GPSIMD` is the source of the "GPSIMD is not a separate engine" finding ([GPSIMD engine](gpsimd-engine.md)). Every engine page (1.08–1.14) keys to this map: PE=3, Pool=1, Activation=2, DVE=5, SP=6, DMA=4.
 
 ### Function Map
 
 | Symbol | Binary | Address | Terminal hop | Reads | Confidence |
 |---|---|---|---|---|---|
-| `SB_Allocator::SB_Allocator` | libwalrus | `0xa97750` (read @`0xa97b82`) | `Core+0x28` → `Statebuf+0x00` | SBUF bytes/partition | CONFIRMED |
-| `PSUM_Allocator::PSUM_Allocator` | libwalrus | `0xad9970` (read @`0xada120`) | `Core+0x20` → `Psumbuf+0x00` | PSUM bank count | CONFIRMED |
-| `HBMUsage::run(vector<...>&)` | libwalrus | `0x16b94b0` (read @`0x16ba2f7`) | `Core+0x30` | HBM window (GiB) | CONFIRMED |
-| `bir::getEngineCount(EngineType,ArchLevel)` | libBIR | `0x47d820` | `Core+0x6c..0x88` | Per-engine count | CONFIRMED |
+| `SB_Allocator::SB_Allocator` | libwalrus | `0xa97750` (read @`0xa97b82`) | `Core+0x28` → `Statebuf+0x00` | SBUF bytes/partition | CERTAIN |
+| `PSUM_Allocator::PSUM_Allocator` | libwalrus | `0xad9970` (read @`0xada120`) | `Core+0x20` → `Psumbuf+0x00` | PSUM bank count | CERTAIN |
+| `HBMUsage::run(vector<...>&)` | libwalrus | `0x16b94b0` (read @`0x16ba2f7`) | `Core+0x30` | HBM window (GiB) | CERTAIN |
+| `bir::getEngineCount(EngineType,ArchLevel)` | libBIR | `0x47d820` | `Core+0x6c..0x88` | Per-engine count | CERTAIN |
 
 ---
 
@@ -362,7 +364,7 @@ The per-arch immediates are byte-identical across both binaries for SBUF, PSUM, 
 
 ## The per-arch constant matrix
 
-The terminal values, read off the per-arch ctor immediates in both binaries. Every cell is CONFIRMED unless tagged. Generations: gen1 Inferentia/Tonga, gen2 Sunda/Trn1, gen3 Cayman/Trn2, gen4 CoreV4/Mariana/Trn3.
+The terminal values, read off the per-arch ctor immediates in both binaries. Every cell is CERTAIN unless tagged otherwise. Generations: gen1 Inferentia/Tonga, gen2 Sunda/Trn1, gen3 Cayman/Trn2, gen4 CoreV4/Mariana/Trn3.
 
 | Constant | Field (accessor terminal) | gen1 | gen2 | gen3 | gen4 |
 |---|---|---|---|---|---|
@@ -384,7 +386,7 @@ The terminal values, read off the per-arch ctor immediates in both binaries. Eve
 
 The numeric values, their per-arch immediate addresses, and the cross-binary confirmation are owned in full by the [hardware constant matrix](hardware-constant-matrix.md); this row set is the orientation summary, included so a reader who has walked the chain can immediately see what each terminal offset yields.
 
-> **CORRECTION —** the `Statebuf+0x18` `reservedSize` per-arch value is **16392 (0x4008)** for gen3 (Cayman) and gen4 (CoreV4), not 16384 — read off the `CaymanStatebuf` / `CoreV4Statebuf` ctor immediates. gen1/gen2 stay at 16384 (0x4000). The `0x4000` figure that appears in the header prose above is the struct's **default** reservedSize (the value before the gen3/gen4 ctors override it), which is correct as a default; it is the per-arch terminal value for the two newest generations that is 0x4008.
+> **GOTCHA — `Statebuf+0x18` `reservedSize` is 0x4008 on gen3/gen4.** The `0x4000` (16384) in the header prose is the struct's *default*, correct as such. The `CaymanStatebuf` and `CoreV4Statebuf` ctors override it to **16392 (0x4008)**; gen1/gen2 stay at 16384. Use the per-arch terminal value, not the default.
 
 ---
 

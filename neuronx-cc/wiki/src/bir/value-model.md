@@ -1,6 +1,6 @@
 # BIR Value Model — Argument, AccessPattern, Immediate, Register
 
-> *All symbols, addresses, struct offsets, and vtable VAs on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), library `neuronxcc/starfish/lib/libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`, ELF64, stripped `.symtab`/rich `.dynsym`). `VA == file offset` for `.text` (base `0x1820c0`) and `.rodata` (base `0x708000`); `.data.rel.ro` is `VMA − 0x1000`. The cp311/cp312 wheels share the ABI but drift the VAs. Provenance: reports D-E14, D-E12, D-D12, D-R10.*
+> *All symbols, addresses, struct offsets, and vtable VAs on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), library `neuronxcc/starfish/lib/libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`, ELF64, stripped `.symtab`/rich `.dynsym`). `VA == file offset` for `.text` (base `0x1820c0`) and `.rodata` (base `0x708000`); `.data.rel.ro` is `VMA − 0x1000`. The cp311/cp312 wheels share the ABI but drift the VAs.*
 
 ## Abstract
 
@@ -33,11 +33,11 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`bir::Argument` is the abstract base of the entire operand/value family — one of the four independent polymorphic roots of the non-`Instruction` BIR types (the others being `StorageBase`, `pelican::Expr`, and `sync::SyncRef`; D-R10 §0). It contributes the vtable (its sole RTTI base, `llvm::ilist_node<Argument>`, has no vtable of its own, so `Argument` *introduces* the polymorphism), the intrusive list links that thread an operand onto its instruction, the `ArgumentKind` discriminator, the back-pointer to the parent instruction, and the `StorageBase*` location that carries the use-def binding for the kinds that have one.
+`bir::Argument` is the abstract base of the entire operand/value family — one of the four independent polymorphic roots of the non-`Instruction` BIR types (the others being `StorageBase`, `pelican::Expr`, and `sync::SyncRef`). It contributes the vtable (its sole RTTI base, `llvm::ilist_node<Argument>`, has no vtable of its own, so `Argument` *introduces* the polymorphism), the intrusive list links that thread an operand onto its instruction, the `ArgumentKind` discriminator, the back-pointer to the parent instruction, and the `StorageBase*` location that carries the use-def binding for the kinds that have one.
 
 ### Class Tree
 
-Three intermediate bases sit under `Argument`, each opening a family; eight concrete leaves hang off them. Every edge below is a confirmed `_ZTI` base relocation (D-R10 §1a):
+Three intermediate bases sit under `Argument`, each opening a family; eight concrete leaves hang off them. Every edge below is an `_ZTI` base relocation:
 
 ```text
 bir::Argument                       (ABSTRACT root — introduces vptr; vtable 0x8fbcf0)
@@ -55,7 +55,7 @@ bir::Argument                       (ABSTRACT root — introduces vptr; vtable 0
        └─ RegisterSet                kind 12  (STUB — ctor assert(false); no wire spelling)
 ```
 
-> **QUIRK —** `createFromJson`/`toJson` are **vtable slots** in the `Argument` family (slots 4/5 on the concrete leaves; D-R10 §1b), unlike the `Instruction` family where `createFromJson` is a static factory and not virtual. A reimplementer who models all BIR deserialisers uniformly as static factories will mis-shape the operand layer: an `Argument` round-trips through its *own* vtable, dispatched by the live object's class, which is exactly why the base `Argument::toJson` (`0x2352f0`) is a thin virtual thunk that lands in the leaf.
+> **QUIRK —** `createFromJson`/`toJson` are **vtable slots** in the `Argument` family (slots 4/5 on the concrete leaves), unlike the `Instruction` family where `createFromJson` is a static factory and not virtual. A reimplementer who models all BIR deserialisers uniformly as static factories will mis-shape the operand layer: an `Argument` round-trips through its *own* vtable, dispatched by the live object's class, which is exactly why the base `Argument::toJson` (`0x2352f0`) is a thin virtual thunk that lands in the leaf.
 
 ### The ArgumentKind Discriminator
 
@@ -81,7 +81,7 @@ bir::Argument                       (ABSTRACT root — introduces vptr; vtable 0
 
 ### Base Struct — `bir::Argument` (`0x48` bytes)
 
-Byte-exact from the constructor at `0x2320c0` (every store witnessed in the decompiled body; CONFIRMED). Subclass fields begin at `+0x48`.
+Byte-exact from the constructor at `0x2320c0` — every store is witnessed in the decompiled body. Subclass fields begin at `+0x48`.
 
 | Field | Off | Type | Meaning | Conf |
 |---|---|---|---|---|
@@ -97,7 +97,7 @@ Byte-exact from the constructor at `0x2320c0` (every store witnessed in the deco
 | isActive/registered | `+0x40` | byte | a4 of `setLocation` — 1 ⇒ registered on storage | CERTAIN |
 
 ```c
-// bir::Argument::Argument(this, kind, parent)            // 0x2320c0 — CONFIRMED byte-exact
+// bir::Argument::Argument(this, kind, parent)            // 0x2320c0 — byte-exact
 this[+0x08] = 0;  this[+0x10] = 0;        // list links empty
 this[+0x00] = off_8FBD00;                 // base vtable
 this[+0x18] = kind;                       // ArgumentKind ordinal (leaf-supplied)
@@ -120,7 +120,7 @@ this[+0x28] = parent->NamedObject::getUniqueId();      // stable per-instruction
 
 ### The Role Enum and the Three Lists
 
-`bir::InstructionArgumentType` (`0x2e4a80`) has exactly three values; an `Instruction` owns one intrusive circular doubly-linked list head per value (initialised empty, `next==prev==&head`; D-D12 §5.2):
+`bir::InstructionArgumentType` (`0x2e4a80`) has exactly three values; an `Instruction` owns one intrusive circular doubly-linked list head per value (initialised empty, `next==prev==&head`):
 
 | Role | Ord | List head | qword idx | JSON section |
 |---|---|---|---|---|
@@ -177,7 +177,7 @@ function Argument::createFromJson(inst, role, j):          // 0x235500
 
 > **GOTCHA —** the three immediate kinds (6/7/8) **ignore** the `role` argument entirely. They thread directly onto the input list at `Instruction+0xA0` regardless of the JSON section they appeared in — an immediate is always a plain `Argument`, never an `Output` or `IndirectionArgument`. Only the AP and register kinds forward `role==Output` into `setLocation` to register as a *writer*. A reimplementer who routes every operand through the role-selected list will silently mis-place an immediate that the producer emitted in an `outputs` array.
 
-The dispatch-string assert and the four `operator new` sizes are byte-witnessed in the decompiled body: line 235 carries the verbatim 8-spelling assert string, and the `new(0x50)` / `new(0xD0)` / `new(0x98)` / `new(0x1B8)` allocations appear at lines 748 / 758 / 768 / 881 (CONFIRMED).
+The dispatch-string assert and the four `operator new` sizes are byte-witnessed in the decompiled body: line 235 carries the verbatim 8-spelling assert string, and the `new(0x50)` / `new(0xD0)` / `new(0x98)` / `new(0x1B8)` allocations appear at lines 748 / 758 / 768 / 881.
 
 ---
 
@@ -185,11 +185,11 @@ The dispatch-string assert and the four `operator new` sizes are byte-witnessed 
 
 ### Purpose
 
-An `AccessPattern` is the operand that binds an instruction to a *tensor access* — a `(step, num)`-pair stride descriptor over a `MemoryLocation` (physical) or `MemoryLocationSet` (symbolic / register-offset), plus a logical shape. It is the abstract base of the three AP leaves; it is hard-**abstract**, carrying two `__cxa_pure_virtual` slots (`getLocation`, `getMemoryLocationSet`) that each concrete leaf fills (D-R10 §1b).
+An `AccessPattern` is the operand that binds an instruction to a *tensor access* — a `(step, num)`-pair stride descriptor over a `MemoryLocation` (physical) or `MemoryLocationSet` (symbolic / register-offset), plus a logical shape. It is the abstract base of the three AP leaves; it is hard-**abstract**, carrying two `__cxa_pure_virtual` slots (`getLocation`, `getMemoryLocationSet`) that each concrete leaf fills.
 
 ### Multiple Inheritance and the `+0x50` Data Start
 
-`AccessPattern` is a `__vmi` (multiple-inheritance) class with **two** public bases (`__vmi_class_type_info` @ `0x8fb348`, base_count 2; CONFIRMED):
+`AccessPattern` is a `__vmi` (multiple-inheritance) class with **two** public bases (`__vmi_class_type_info` @ `0x8fb348`, base_count 2):
 
 ```text
 bir::AccessPattern : public bir::Argument        (primary base, offset 0)
@@ -198,7 +198,7 @@ bir::AccessPattern : public bir::Argument        (primary base, offset 0)
 
 The `logging::SrcHandle` subobject is an 8-byte vptr at `+0x48` (a source-location/diagnostic handle, no further data mapped here). Consequently the AP's *own* data resumes at **`+0x50`**, not `+0x48`. The `_ZThn72_` (`thn72 = 0x48`) non-virtual dtor thunk confirms the `0x48` subobject offset.
 
-> **CORRECTION (D-E14→D-E12/D-R10) —** an early read of the operand model (D-E14 §1) described `Argument` as a flat `0x48`-byte header with subclass fields beginning immediately at `+0x48`. For the *immediate and register* families that is correct (they are single-inheritance, no `SrcHandle`). For the **AP family it is not**: the `+0x48` slot is the `logging::SrcHandle` secondary-base vptr, and the AP's first own field (`Pattern.data`) is at `+0x50`. D-E12/D-R10 pin the MI via the typeinfo relocs; treat `+0x50` as the AP data start.
+> **GOTCHA — the AP data start is `+0x50`, not `+0x48`.** For the immediate and register families, which are single-inheritance with no `SrcHandle`, subclass fields do begin at `+0x48` immediately after the `Argument` header. The AP family breaks that pattern: its `+0x48` slot is the `logging::SrcHandle` secondary-base vptr (pinned by the typeinfo relocs), and the AP's first own field, `Pattern.data`, sits at `+0x50`. Reading an AP as a flat `0x48`-byte header shifts every subsequent field by eight bytes.
 
 ### Abstract Base Struct — `bir::AccessPattern` (`0xD0` bytes)
 
@@ -231,7 +231,7 @@ RegisterAccessPattern  kind 3  "register_ap"   0x118  → MemoryLocationSet + Re
 
 **`SymbolicAccessPattern` (`0x1B8`, ctor `0x3d4460`)** carries the symbolic step/num as `pelican::QuasiAffineExpr` trees (32-byte wrappers: `RefPtr<pelican::Expr>` @ `+0x00`, `SmallVector<LoopAxis*>` @ `+0x08`) rather than integers. Its persistent fields: `tensor_indirect_arg_id` @ `+0xD0` (int, init `0xFFFFFFFF`), `num_tensor_indirect_indices` @ `+0xD4`, and the `addrs` vector of `QuasiAffineExpr` @ `+0xE0` (appended by `addAffineExpr` `0x3d6640`). Fields `+0x100`/`+0x130`/`+0x178` are evaluation caches (predicates / shard-in APs / evaluated concrete APs — derived, not serialised). Two wire spellings (`"symbolic_ap"`, `"symbolic_pwap"`) map to this one class.
 
-**`RegisterAccessPattern` (`0x118`, ctor `0x3c4fd0`)** is a *dynamic* AP: the start address or a per-dim offset is supplied at runtime by a `Register`, not a compile-time constant. Concrete fields and wire keys (from `to_json` `0x487090`; CONFIRMED field→key):
+**`RegisterAccessPattern` (`0x118`, ctor `0x3c4fd0`)** is a *dynamic* AP: the start address or a per-dim offset is supplied at runtime by a `Register`, not a compile-time constant. Concrete fields and wire keys, read from `to_json` @ `0x487090`:
 
 | Field | Off | Type | Wire key | Conf |
 |---|---|---|---|---|
@@ -250,11 +250,11 @@ RegisterAccessPattern  kind 3  "register_ap"   0x118  → MemoryLocationSet + Re
 
 ### Purpose
 
-The immediate family carries **inline** literals and symbolic expressions — operands that bind to nothing external (`location` @ `+0x38` stays null, no use-def edge). `ArgValue` is an abstract shim (D-R10 §1b: 4-slot vtable, adds no field or virtual) whose only purpose is to group `ImmediateValue` and its symbolic subclass; `ImmediateArray` deliberately bypasses it.
+The immediate family carries **inline** literals and symbolic expressions — operands that bind to nothing external (`location` @ `+0x38` stays null, no use-def edge). `ArgValue` is an abstract shim (a 4-slot vtable that adds no field and no virtual) whose only purpose is to group `ImmediateValue` and its symbolic subclass; `ImmediateArray` deliberately bypasses it.
 
 ### `ImmediateValue` (kind 6, `0x50`, ctor `0x29ed00`)
 
-A scalar literal: `dtype` @ `+0x30` (Argument base slot), an 8-byte value union @ `+0x48`. Both fields are pinned by the symmetric `createFromJson` (`0x2a7000`, read) / `dataToJson` (`0x2a2c10`, write), which share one `Dtype` switch. The wire `"value"` width is keyed by the `Dtype` ordinal (D-D04 table):
+A scalar literal: `dtype` @ `+0x30` (Argument base slot), an 8-byte value union @ `+0x48`. Both fields are pinned by the symmetric `createFromJson` (`0x2a7000`, read) / `dataToJson` (`0x2a2c10`, write), which share one `Dtype` switch. The wire `"value"` width is keyed by the `Dtype` ordinal:
 
 ```text
 Dtype ordinal → storage width @ +0x48
@@ -271,11 +271,11 @@ Dtype ordinal → storage width @ +0x48
 
 ### `SymbolicImmediateValue` (kind 7, `0xD0`, ctor `0x29f010`)
 
-A 3-level chain (`→ ImmediateValue → ArgValue → Argument`). It carries a `pelican::QuasiAffineExpr` (a symbolic affine expression) at `+0x68`, built from `Instruction::getPelicanContext`, alongside the folded scalar inherited from `ImmediateValue`. The expr's coefficient set heads are self-referential (`+0xB8`/`+0xC0 = this+168`, an empty intrusive `AffineIdx→coeff` map at ctor). The kind-7 ordinal is **byte-witnessed**: the ctor calls `ImmediateValue::ImmediateValue(this, inst, 7)` (CONFIRMED — closes the prior `HIGH`-only inference on ordinal 7).
+A 3-level chain (`→ ImmediateValue → ArgValue → Argument`). It carries a `pelican::QuasiAffineExpr` (a symbolic affine expression) at `+0x68`, built from `Instruction::getPelicanContext`, alongside the folded scalar inherited from `ImmediateValue`. The expr's coefficient set heads are self-referential (`+0xB8`/`+0xC0 = this+168`, an empty intrusive `AffineIdx→coeff` map at ctor). The kind-7 ordinal is byte-witnessed: the ctor calls `ImmediateValue::ImmediateValue(this, inst, 7)`.
 
 ### `ImmediateArray` (kind 8, `0x98`, ctor `0x29f890`)
 
-> **QUIRK —** `ImmediateArray` derives `bir::Argument` **directly**, not `ArgValue` — confirmed both by the ctor (`Argument::Argument(this, 8, inst)`) and by the `_ZTI` reloc (`__si → Argument 0x8fbc88`, not `ArgValue`; D-R10 §1a). Its siblings `ImmediateValue`/`SymbolicImmediateValue` go through the `ArgValue` shim; `ImmediateArray` skips it. A reimplementer modeling the family as a clean `ArgValue ⊃ {scalar, array, symbolic}` will get the vtable shape wrong.
+> **QUIRK —** `ImmediateArray` derives `bir::Argument` **directly**, not `ArgValue` — confirmed both by the ctor (`Argument::Argument(this, 8, inst)`) and by the `_ZTI` reloc (`__si → Argument 0x8fbc88`, not `ArgValue`). Its siblings `ImmediateValue`/`SymbolicImmediateValue` go through the `ArgValue` shim; `ImmediateArray` skips it. A reimplementer modeling the family as a clean `ArgValue ⊃ {scalar, array, symbolic}` will get the vtable shape wrong.
 
 It is a `SmallVector<int64,8>` where **every** element is widened to 8 bytes regardless of `dtype`:
 
@@ -334,18 +334,20 @@ The five rules that connect an instruction's operands to the values they referen
 
 ---
 
-## Verification Ceiling
+## Evidence Summary
 
-What is **CONFIRMED** (byte-witnessed in the decompiled/disasm sidecars of libBIR.so):
+Byte-witnessed in the decompiled/disasm sidecars of `libBIR.so`:
 
 - The `Argument` base ctor's eight field stores at `0x2320c0` (offsets `+0x08`/`+0x10`/`+0x18`/`+0x20`/`+0x28`/`+0x2C`/`+0x38`/`+0x40`) and the NULL-parent throw.
 - The eight-spelling `"kind"` assert string verbatim and the four `operator new` sizes (`0x50`/`0xD0`/`0x98`/`0x1B8`) inside `createFromJson` (`0x235500`).
-- The `ArgumentKind` discriminator ordinals and their leaf-ctor witnesses (kind 7 now byte-exact via `ImmediateValue::ImmediateValue(this, inst, 7)`).
-- The full RTTI inheritance graph (12 typeinfos, the `AccessPattern` `__vmi` MI, `ImmediateArray`-direct-Argument, `RegisterSet` no-factory) from D-R10 base relocs.
+- The `ArgumentKind` discriminator ordinals and their leaf-ctor witnesses, including kind 7 via `ImmediateValue::ImmediateValue(this, inst, 7)`.
+- The full RTTI inheritance graph — 12 typeinfos, the `AccessPattern` `__vmi` multiple inheritance, `ImmediateArray` deriving `Argument` directly, and `RegisterSet` having no factory — from the base relocations.
 
-What is **STRONG but frame-limited**: the `RegisterAccessPattern`/`PhysicalAccessPattern` `to_json` wire-key→offset mappings are pinned in D-E12/D-E14 from the real serialiser body, but in *this* corpus the serialiser sidecars resolve to their thunk frame (`0x181570`) which tail-calls the un-named real body at `0x487090`/`0x4869b0` — the two-VA-frame artifact. The keys are cross-checked via ctor⇄setter⇄serialiser agreement, not re-read line-by-line here.
+### Limits of this reading
 
-What is **INFERRED / not pinned**: the exact `APPair` internal field *names* (mapped as `{step:i64, num:i64}` by stride and the `getStepBytesPerHighestDim` read, but not name-witnessed); the `SymbolicImmediateValue` `QuasiAffineExpr` coefficient encoding (structural, not element-by-element); the `SymbolicAccessPattern` cache regions `+0x100`/`+0x130`/`+0x178` (role-inferred, element types `MEDIUM`); the `logging::SrcHandle` subobject's own data beyond its vptr (none mapped). No NEFF/BIR-JSON fixture byte-diff was available to round-trip any of this against a real serialised operand.
+The `RegisterAccessPattern` / `PhysicalAccessPattern` `to_json` wire-key→offset mappings come from the real serialiser bodies, but in this corpus the serialiser sidecars resolve to their thunk frame (`0x181570`), which tail-calls the un-named real bodies at `0x487090` / `0x4869b0` — the two-VA-frame artifact. Those keys are cross-checked by ctor⇄setter⇄serialiser agreement rather than re-read line by line.
+
+Four things are inferred rather than pinned. The `APPair` internal field *names* are mapped as `{step:i64, num:i64}` from the stride and the `getStepBytesPerHighestDim` read, not name-witnessed. The `SymbolicImmediateValue` `QuasiAffineExpr` coefficient encoding is described structurally, not element by element. The `SymbolicAccessPattern` cache regions at `+0x100`/`+0x130`/`+0x178` are identified by role, with their element types [INFERRED]. The `logging::SrcHandle` subobject has no data mapped beyond its vptr. No NEFF or BIR-JSON fixture was available to round-trip any of this against a real serialised operand.
 
 ---
 

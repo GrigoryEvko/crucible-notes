@@ -20,8 +20,9 @@
 >
 > All offsets, widths, bit positions, access types, and reset values are
 > **byte-exact** from the shipped Cayman register-description schema
-> (`InterfaceType APB`, `DataWidth 32`, `RegfileFlavor POSEDGE`). Every claim is
-> tagged **HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED**. Cayman (v3) is
+> (`InterfaceType APB`, `DataWidth 32`, `RegfileFlavor POSEDGE`). The page default
+> is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+> **HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED** tag. Cayman (v3) is
 > byte-grounded; cross-gen counts (v2 sunda / v4 mariana family / v5 maverick) are
 > JSON-grounded; v5-*interior* semantics are flagged **INFERRED** where the header
 > is the only OBSERVED anchor.
@@ -53,10 +54,9 @@ The Cayman `csrs/tpb/` directory contains exactly **10 `.json` regfiles** (+ one
 | `tpb_arr_seq_top_protected.json` | `0x1000` | 1 / 1 | **§6** |
 | `tpb_ham.json` | `0x1000` | 7 / 30 | **§3** |
 
-`[HIGH/OBSERVED — counts re-grounded directly against each JSON's
-`RegistersBundleArrays`, never a decompile grep.]`
+Counts above come from each JSON's own `RegistersBundleArrays`.
 
-**Common schema shape `[HIGH/OBSERVED]`.** Every file is `{ "RegFile": {...} }` with
+**Common schema shape.** Every file is `{ "RegFile": {...} }` with
 scalar metadata (`UnitName`, `DataWidth="32"`, `AddrWidth`, `SizeInBytes`,
 `InterfaceType`, `Type="REGFILE"`, `RegfileFlavor="POSEDGE"`). The register tree
 is `RegistersBundleArrays[]` → `{ Name, AddressOffset, BundleSizeInBytes,
@@ -69,17 +69,17 @@ stride** — a bundle's total span = `BundleSizeInBytes × ArraySize`.
 > `AccessType` is almost always `RW`; the *real* read/write/read-only semantics
 > live on the `BitField`. In `tpb_events_semaphores_axi` the register node says
 > `RW` while the bitfield says `RO`/`WO` per window. Always read access from the
-> bitfield. `[HIGH/OBSERVED]`
+> bitfield.
 
 > **GOTCHA — mixed `ResetValue` formatting.** `tpb_events_semaphores_axi` uses a
 > bare `"0"` (no `0x`) for every reset value; the other five batch files use
 > `"0x.."`. Do not assume a uniform encoding when parsing. All `AddressOffset` /
-> `BundleSizeInBytes` / `SizeInBytes` are hex everywhere. `[HIGH/OBSERVED]`
+> `BundleSizeInBytes` / `SizeInBytes` are hex everywhere.
 
 > **GOTCHA — name vs bus type.** `tpb_events_semaphores_axi.json` declares
 > `InterfaceType = "APB"` (`DataWidth 32`, `AddrWidth 20`) despite the `_axi`
 > filename suffix. The filename describes the *fabric port*, not the regfile's CSR
-> interface. `[HIGH/OBSERVED]`
+> interface.
 
 ---
 
@@ -108,7 +108,7 @@ spare_regs       0x500   0x100   1    spare_register0..3
 arbitrates the stage-1 winner against the **4 pool/act read/write clients**. Both
 stages carry a 3-bit strict priority and a 4-bit round-robin weight per client.
 
-`arb_stage1.arb_prio @0x000` RW — strict priority, 5 PE-array clients `[HIGH/OBSERVED]`
+`arb_stage1.arb_prio @0x000` RW — strict priority, 5 PE-array clients
 
 | bits | field | rst |
 | --- | --- | --- |
@@ -121,7 +121,7 @@ stages carry a 3-bit strict priority and a 4-bit round-robin weight per client.
 `arb_stage1.arb_weight @0x004` RW — round-robin weight, **4 bits each, all rst `0x1`**
 (`pe_client_0 [3:0]` … `pe_client_4 [19:16]`).
 
-`arb_stage2.arb_prio @0x100` RW — strict priority, second stage `[HIGH/OBSERVED]`
+`arb_stage2.arb_prio @0x100` RW — strict priority, second stage
 
 | bits | field | rst |
 | --- | --- | --- |
@@ -143,7 +143,7 @@ stages carry a 3-bit strict priority and a 4-bit round-robin weight per client.
 
 ### 1.2 TDM and transpose
 
-`tdm_config.tdm_cfg @0x300` RW `[HIGH/OBSERVED]`
+`tdm_config.tdm_cfg @0x300` RW
 
 | bits | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -166,7 +166,7 @@ stages carry a 3-bit strict priority and a 4-bit round-robin weight per client.
 > the file to **5 bundles / 13 regs** (RAW-format + convolution SBUF support not
 > present in Cayman). **Sunda (NC-v2) drops the entire `axi2sram_config` bundle**
 > (4 bundles / 9 regs — no AXI→SRAM transpose mode). Maverick (NC-v5) matches the
-> mariana 5/13 shape. `[HIGH/OBSERVED — per-bundle reg names.]` See the
+> mariana 5/13 shape. See the
 > [capability matrix](../../generations/master-capability-matrix.md).
 
 ---
@@ -185,7 +185,7 @@ dve_throttler   0x200   1    (same 4)
 spare_regs      0x300   1    spare_register0..3
 ```
 
-**Throttler template (identical in pool/act/dve) `[HIGH/OBSERVED]`:**
+**Throttler template (identical in pool/act/dve):**
 
 | reg @off | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -202,14 +202,13 @@ that keeps one streaming engine from starving the matmul read port arbitrated in
 
 > **There is no `pe_throttler` here.** The PE/matmul path is governed by the §1
 > arbiter priorities and the §6 *protected* XBUS throttle — not a token bucket.
-> POOL/ACT/DVE are the only three throttled SBUF consumers. `[HIGH/OBSERVED
-> absence.]`
+> POOL/ACT/DVE are the only three throttled SBUF consumers.
 
 > **CROSS-GEN.** Sunda (NC-v2) is **3 bundles / 16 regs**: it **drops the
 > `dve_throttler` bundle** but **adds a `*_throttle_cfg2` (rd+wr) pair** to each of
 > `pool_throttler` and `act_throttler` (6 regs each), netting the same 16. So
 > sunda has *no* DVE SBUF throttler but a richer pool/act throttler. The mariana
-> family and maverick all match Cayman's 4/16. `[HIGH/OBSERVED per-bundle counts.]`
+> family and maverick all match Cayman's 4/16.
 
 ---
 
@@ -226,8 +225,7 @@ SW, and GPIO monitors to select the final ratio fed to the array's input gate.
 > register named `tpb_ham_table` ("Monitor Action Table"). It maps PE-array
 > *activity* → `{k,n}` *power-throttle* ratios. It is **completely unrelated** to
 > the ACT engine's activation-function tables (§8), which map a function-id + input
-> → piecewise-cubic coefficients. Same word, different subsystem. `[HIGH/OBSERVED
-> — both schemas read directly.]`
+> → piecewise-cubic coefficients. Same word, different subsystem.
 
 ```
 bundle          off     stride  arr  role
@@ -242,7 +240,7 @@ tpb_ham_notifi  0x900   0x100   1    periodic / throttle notification queue
 
 ### 3.1 HW monitors (`tpb_ham_mon`, 4 instances)
 
-`ctrl @+0x0` RW `[HIGH/OBSERVED]`
+`ctrl @+0x0` RW
 
 | bits | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -263,7 +261,7 @@ arbitration-win count (cleared on read). `test_activity @+0x24` RW —
 > **NOTE — `act_shift_amt` description math is for an 8-row util width.** The
 > description derives `3` from "utilization width of 8 (0–128 rows/cycle) shifted
 > to a 3-bit table index". The action table is therefore **8 entries** indexed by
-> the top 3 bits of compressed activity. `[HIGH/OBSERVED text.]`
+> the top 3 bits of compressed activity.
 
 ### 3.2 Monitor Action Table (`tpb_ham_table`)
 
@@ -277,7 +275,7 @@ arbitration-win count (cleared on read). `test_activity @+0x24` RW —
 
 `table_num` selects one of **four** action tables: `00`=Util short, `01`=Util med,
 `10`=Util long, `11`=Data Activity. Each table is 16 entries (`entry_num [3:0]`),
-mapping a measured-activity index → a `{k,n}` throttle ratio. `[HIGH/OBSERVED.]`
+mapping a measured-activity index → a `{k,n}` throttle ratio.
 
 > **QUIRK — `rd_en`/`wr_en` name↔description swap in the shipped schema.** Bit
 > `[28]` is *named* `rd_en` but its description reads "**Write** enable. Causes data
@@ -287,8 +285,7 @@ mapping a measured-activity index → a `{k,n}` throttle ratio. `[HIGH/OBSERVED.
 > and pin it — by the *descriptions* (which agree with the `entry_wr`/`entry_rd`
 > data flow), `[28]` triggers the **write** and `[29]` triggers the **read**; by
 > the *names* it is the reverse. Treat this as an un-resolved schema bug and verify
-> against silicon before trusting either polarity. `[HIGH/OBSERVED — both fields
-> read verbatim.]`
+> against silicon before trusting either polarity.
 
 ### 3.3 SW / GPIO throttlers and the arbiter
 
@@ -298,7 +295,7 @@ notific_en, interrupt_en}` payload (RW here), `notific_meta_lo/hi @0x04/0x08`,
 adds `status @0x10 [0] active` (RO) and a richer `ctrl @0x14`:
 `[0] throttle_en`, `[1] sticky_sel` (1=pulse / 0=level detect), `[2] clear`.
 
-`tpb_ham_arb` — the decision unit `[HIGH/OBSERVED]`:
+`tpb_ham_arb` — the decision unit:
 
 | reg @off | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -314,15 +311,14 @@ adds `status @0x10 [0] active` (RO) and a richer `ctrl @0x14`:
 | `winner @0x10` RO | `[14:0] winner_vector` | **`0x4000`** | one-hot `{no_throttle, gpio[7:0], sw[1:0], hw[3:0]}` |
 
 `winner` reset `0x4000` = bit 14 set = the `no_throttle` slot (the MSB of the
-15-bit one-hot) — so at reset nothing throttles. `[HIGH/OBSERVED; bit decode
-arithmetic-verified.]`
+15-bit one-hot) — so at reset nothing throttles.
 
 > **GOTCHA — clock-gated disable ordering.** The `arb @0x800[31]` field's own
 > description warns that clearing it while HAM is active gates the clocks of
 > several arbiter flops and can leave arbiter signals "stuck". The documented
 > sequence is: disable the per-class enables (`hw_mon`/`sw_mon`/`gpio_mon`)
 > **first**, wait ≥1 cycle for the arbiter flops to settle, *then* clear the master
-> `arb` bit. `[HIGH/OBSERVED — verbatim field note.]`
+> `arb` bit.
 
 `tpb_ham_notifi.queue @0x900` RW — SW queue numbers + enables for HAM **periodic**
 (`[3:0] ham_periodic`, `[16] ham_periodic_en`) and HAM **throttle**
@@ -342,7 +338,7 @@ measurement window.
 > notification queue). **Mariana_plus (NC-v4) is 8/34** — it inserts a
 > `tpb_gradual_gpio_throttle` bundle (arr=2: `step_down_config`, `step_down_delay`,
 > `step_up_config`, `step_up_delay`) between `tpb_ham_gpio` and `tpb_ham_table`
-> for ramped (rather than step) GPIO throttling. `[HIGH/OBSERVED.]`
+> for ramped (rather than step) GPIO throttling.
 
 ---
 
@@ -366,12 +362,11 @@ operation-aliased address windows** (read / set / inc / dec). This is the
 | `tpb_semaphores_dec` | `0x1C00` | atomic `-=` | `WO` `[31:0]` | `value` — "value to decrement semaphore by" |
 
 Each window's byte span is `256 × 4 = 0x400` (1 KiB); the four semaphore windows
-pack contiguously `0x1000 → 0x2000`. `[HIGH/OBSERVED — arithmetic verified.]`
+pack contiguously `0x1000 → 0x2000`.
 
 > **GOTCHA — the bitfield is named `value`, not `events`/`sems`.** The register
 > nodes are named `events` / `semaphores`; the single bitfield inside each is named
 > `value`. ResetValue is the bare `"0"` form (no `0x`) for this file only.
-> `[HIGH/OBSERVED.]`
 
 ### 4.1 Same physical array, op-per-window
 
@@ -385,8 +380,7 @@ write +0x1C00[i]  →  sem[i] -= written            (dec, WO)
 read  +0x1000[i]  →  current sem[i]               (read, RO)
 ```
 
-`[HIGH/INFERRED-strong — identical geometry + op-named windows + "value to
-inc/dec semaphore by" text; matches the address-map page byte-for-byte.]`
+`[HIGH/INFERRED-strong — identical geometry + op-named windows]`
 
 This block is programmed by **all five TPB engines** (the shared `Event_Semaphore`
 opcode; engine enum `PE=0 / ACT=1 / POOL=2 / DVE=3 / TPB_SP=4`) — it is the
@@ -398,7 +392,7 @@ inter-engine barrier/handshake fabric. The NCFW barrier primitives map onto it:
 ### 4.2 The control plane lives in `tpb.json`
 
 The *data* array here has no threshold/notify logic. That is a separate 3-register
-bundle, `events_semaphores @0x800` in [`tpb.json`](tpb.md) `[HIGH/OBSERVED]`:
+bundle, `events_semaphores @0x800` in [`tpb.json`](tpb.md):
 
 | reg @off | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -417,12 +411,11 @@ threshold compare + notify enable that fires when a semaphore crosses
 > off `0x0000` and the four semaphore windows at `0x1000 / 0x1400 / 0x1800 /
 > 0x1C00`. The CSR schema confirms exactly 5 bundles at exactly those offsets. The
 > CSR view is the relative-offset ground truth; the address-map page is the
-> absolute SoC placement. **No divergence.** `[HIGH/OBSERVED both sides.]`
+> absolute SoC placement. **No divergence.**
 
 > **CROSS-GEN.** `5/5/0x100000` is **identical** across cayman / mariana /
 > mariana_plus / sunda, and **absent in maverick (NC-v5)** — the event/semaphore
 > fabric is relocated/restructured under maverick's `tpb_top.json` reorg.
-> `[HIGH/OBSERVED.]`
 
 ---
 
@@ -441,7 +434,7 @@ arr_seq_queue_perf    0x100   0x30    36   6   (3 × 64-bit lsb/msb counters / r
 arr_seq_rd_rsp_debug  0x900   0x4     36   1   (1 debug vector / rowgroup)
 ```
 
-`arr_seq_cfg.arr_cluster_cfg @0x000` RW `[HIGH/OBSERVED]`
+`arr_seq_cfg.arr_cluster_cfg @0x000` RW
 
 | bits | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -456,7 +449,7 @@ arr_seq_rd_rsp_debug  0x900   0x4     36   1   (1 debug vector / rowgroup)
 > gives `[26:24] p2fifo_af` the *same* description string as `en_inter_instr_dly`
 > ("add delay between instruction responses…"). By its field name and 3-bit width
 > this is the **p2-FIFO almost-full threshold**, not a delay enable; the
-> description is a documentation copy-paste artifact. `[HIGH/OBSERVED.]`
+> description is a documentation copy-paste artifact.
 
 `arr_seq_cfg.perf_cntr_cfg @0x004` RW — `[0] cntr_en` (enable all `arr_seq_ififo`
 counters), `[4] cntr_rst` (write-pulse, reset all perf counters). Four
@@ -474,14 +467,13 @@ RO `[31:0]` — internal read-response-block signal observability, one per row g
 > array. The [top sequencer page](pe-array-sequencer.md) reports the array's
 > top-level instance/counter model; this cluster file adds the per-row-group
 > breakdown. PSUM/precision control remain **absent** here (they live in other
-> files). `[HIGH/OBSERVED.]`
+> files).
 
 > **CROSS-GEN.** Cayman / mariana / maverick are **3/17**. **Sunda (NC-v2) is
 > 3/13** — it drops the four `array_stagger_rg0..3_ctrl1` regs, and its perf/debug
 > bundles are **`arr=20`** (20 XBUS row groups, not 36). **Mariana_plus (NC-v4) is
 > 3/21** — it adds four `array_stagger_allow_rg0..3_ctrl` registers to
 > `arr_seq_cfg` (stagger-allow control; *not* the rampdown power-mgmt of §6).
-> `[HIGH/OBSERVED.]`
 
 ---
 
@@ -491,7 +483,7 @@ The **protected (privileged, non-host-visible)** face of the array sequencer. On
 Cayman it is a **single register**: a per-XBUS throttle config. 1 bundle, 1 reg
 (`SizeInBytes 0x1000` reserved, only `0x20` populated).
 
-`arr_seq_cfg.throttle_cfg @0x000` RW `[HIGH/OBSERVED]`
+`arr_seq_cfg.throttle_cfg @0x000` RW
 
 | bits | field | rst | meaning |
 | --- | --- | --- | --- |
@@ -500,8 +492,8 @@ Cayman it is a **single register**: a per-XBUS throttle config. 1 bundle, 1 reg
 
 The 9-bit disable mask implies the matmul array has **9 XBUS throttle lanes**,
 defaulting to throttling disabled. This is the privileged counterpart to the §2
-token-bucket throttlers — but for the matmul/PE *data-into-array* path. `[HIGH/OBS
-for the fields; "9 XBUS lanes" INFERRED from the 9-bit width.]`
+token-bucket throttlers — but for the matmul/PE *data-into-array* path.
+`[HIGH/OBSERVED for the fields; "9 XBUS lanes" INFERRED from the 9-bit width]`
 
 > **CROSS-GEN — newer gens add adaptive array power rampdown.** Cayman **1/1** and
 > sunda **1/1** are just `throttle_cfg`. **Mariana (NC-v4) is 1/5** and
@@ -511,7 +503,7 @@ for the fields; "9 XBUS lanes" INFERRED from the 9-bit width.]`
 > `rampdown_decrease`, `rampdown_busy_control`, `rampdown_busy_threshold`,
 > `rampdown_busy_history`, `rampdown_auto_on`, `rampdown_auto_off`,
 > `rampdown_auto_status`. The protected sequencer governs adaptive array power
-> rampdown on those gens; Cayman does not. `[HIGH/OBSERVED.]`
+> rampdown on those gens; Cayman does not.
 
 ---
 
@@ -525,16 +517,15 @@ static analysis it resolves to two existing homes:
 `act_sequencer @0x200` (18 regs), `dve_sequencer @0x300` (11 regs), each
 `ArraySize 1`. These carry rounding mode, instruction debug, timestamp increment,
 and special-value compare config — *datapath* config, not engine enable/PC.
-`[HIGH/OBSERVED.]`
 
 **(b) There is no `sp_sequencer` bundle.** The engine enum includes `TPB_SP=4`, but
-SP has no datapath sequencer bundle — its control is the **Q7-core run-state** set.
-`[HIGH/OBSERVED — verified by enumerating `tpb.json` bundles.]`
+SP has no datapath sequencer bundle — its control is the **Q7-core run-state** set
+(no `sp_sequencer` appears anywhere in `tpb.json`).
 
 **(c) `run_state_0..7` lives in [`tpb_xt_local_reg`](tpb-xt-local-reg.md), not in
 any engine bundle.** `release_run_stall` (holds all 8 Q7 cores at reset, rst
 `0xFF`), `start_ctrl`, and `run_state_0..7` (one opaque status word per Q7
-sequencer core) are Q7-core CSRs. `[HIGH/OBSERVED.]`
+sequencer core) are Q7-core CSRs.
 
 > **RECONCILIATION.** "Per-engine run-state" is realized at the **Xtensa-core**
 > level (8 Q7 cores + per-NX), not at the datapath-engine level. The 8 Q7 cores
@@ -555,8 +546,7 @@ addressed as `TPB_0_ACT_{PROFILE_CAM, PROFILE_TABLE, BUCKET_TABLE, CONTROL_TABLE
 not a POSEDGE regfile with bitfields. The element function is a CAM match → PROFILE
 128 B entry → BUCKET 32 B `{d0, d1, d2, d3, x0}` cubic. See the
 [activation/transcendental tables page](../../uarch/activation-transcendental-tables.md).
-`[HIGH/OBSERVED — verified by `rg` over the entire `csrs/` tree: no act-table
-JSON.]`
+No act-table JSON exists anywhere in the `csrs/` tree.
 
 The activation-function *select* path is in the instruction (the `Activate`
 micro-op carries an `activation_func` byte → CAM id), and the ACT engine's CSR
@@ -564,7 +554,7 @@ surface is the `act_sequencer` bundle in `tpb.json` (its **special-value compare
 bank** — `zero_val/mask`, `nan_val/mask`, `pos_inf_val/mask`, `neg_inf_val/mask`,
 plus per-lane `rnd_mode` and stochastic-rounding control). So the ACT "CSR" =
 `act_sequencer` config (regfile) + four ACT memory tables (RAM) — **no
-activation-table regfile to extract.** `[HIGH/OBSERVED.]`
+activation-table regfile to extract.**
 
 > **Do not conflate with §3.** The §3 `tpb_ham_table` "Monitor Action Table" maps
 > *array activity → power-throttle ratio*; the ACT activation tables map *function
@@ -582,8 +572,7 @@ tail-increment** registers (the M2S / S2M descriptor-ring CSRs) plus the RDM.
 `DGE_MEMORY` is the descriptor RAM (a memory region), not a regfile. So the "DGE
 CSRs" resolve to: *(none of its own)* → UDMA ring CSRs + RDM. The DGE micro-op
 encoding it stages into that RAM is documented in
-[DGE micro-op encoding](../../dma/dge-microop-encoding.md). `[HIGH/OBSERVED
-absence.]`
+[DGE micro-op encoding](../../dma/dge-microop-encoding.md).
 
 ---
 
@@ -595,7 +584,7 @@ ECC bank** (16 SBUF nodes `SBUF_CLUSTER_{0..7}_{0,1}_ERG_CSR` + 32 PSUM nodes
 `PSUM_CLUSTER{0..3}_ERG_CSR_{0..7}`, each a `0x40`-byte block at stride `0x40`).
 `AddrWidth 6`, `SizeInBytes 0x40` (64 B), 1 bundle (`erg`), 10 regs. The
 SBUF/PSUM banking that places these nodes is on the
-[SBUF/PSUM banks page](../../dma/sbuf-psum-banks.md). `[HIGH/OBSERVED.]`
+[SBUF/PSUM banks page](../../dma/sbuf-psum-banks.md).
 
 | reg @off | fields | role |
 | --- | --- | --- |
@@ -609,8 +598,7 @@ SBUF/PSUM banking that places these nodes is on the
 The `cfg.erg_type [20]` (RO) field is the **Parity-vs-ECC discriminator** for the
 bank instance — `0` = parity, `1` = ECC. `mem_cfg` carries the SRAM **redundancy
 MUX** repair selects (`rmea`/`rmeb` enables + `rma`/`rmb` 4-bit read-margin ports)
-*and* the `shutdown` power-gate *and* the four self-timed/margin test pins. `[HIGH/
-OBSERVED.]`
+*and* the `shutdown` power-gate *and* the four self-timed/margin test pins.
 
 > **CORRECTION vs [SBUF/PSUM banks](../../dma/sbuf-psum-banks.md) (#838) §3.2.** That
 > page states that `mem_cfg` carries "only `shutdown` + the four
@@ -631,19 +619,19 @@ OBSERVED.]`
 > #838's "not present" statement reads true for the **mariana-class** copy of the
 > file, but the **Cayman and Sunda** copies *do* expose the redundancy MUX repair
 > fields. A Cayman/Sunda control plane must program `rma/rmb/rmea/rmeb`; a
-> mariana-class one must not (they are absent). `[HIGH/OBSERVED — five-gen byte
-> diff.]`
+> mariana-class one must not (they are absent).
 
 > **NOTE — parity, not ECC, by default reset.** `erg_type` resets read-only to
 > the synthesized bank type; the filename (`erg_parity_model`) and the
 > `0=Parity` encoding indicate the baseline SBUF banks are **parity** protected.
-> The same regfile serves ECC banks when `erg_type` reads `1`. `[HIGH/OBSERVED.]`
+> The same regfile serves ECC banks when `erg_type` reads `1`.
 
 ---
 
 ## 11. Cross-generation summary (NC-v2 … NC-v5)
 
-All counts **HIGH/OBSERVED** (`jq` over each gen's `csrs/tpb/` + `csrs/erg/`).
+Every count below is `[HIGH/OBSERVED]`, read from each gen's `csrs/tpb/` +
+`csrs/erg/` trees.
 Cayman is the byte-grounded baseline; v5 *interior* semantics beyond the header are
 **INFERRED** where flagged.
 
@@ -667,20 +655,20 @@ the Cayman-class ECC redundancy fields. Maverick is a *structural reorg* (no
 `tpb.json` → `tpb_top.json`; dedicated `tpb_dve` CSR block; no `events_sem`
 regfile; `tpb_misc_amzn` gains three `tpb_fab_remap*` bundles).
 
-> **CORRECTION vs SX-CSR-19 §11.** The backing analysis lists `tpb_misc_amzn` as
+> **CORRECTION — `tpb_misc_amzn` is not mariana-only.** It is often listed as
 > "(mariana/mariana_plus only)". **Maverick (NC-v5) also ships `tpb_misc_amzn`** —
 > as **9 bundles / 9 regs**: the six `*_wob` write-ordering bundles
 > (`pe_seq_wob`, `dve_seq_wob`, `sp_seq_wob`, `aseq_wob`, `pseq_wob` + `q7_wob_misc`,
 > each carrying `wob_wr_bypass[0]`, `wob_wr_clear[1]`, `wob_force_inorder[2]`,
 > `wob_use_wid_base[3]`, `wob_wid_base[8:4]`) **plus three extra fabric-remap
 > bundles** (`tpb_fab_remap`, `tpb_fab_remap_mask`, `tpb_fab_remap_local_bit`). It
-> is absent only in cayman and sunda. `[HIGH/OBSERVED — five-gen `jq` sweep.]`
+> is absent only in cayman and sunda.
 
-> **CORRECTION vs SX-CSR-19 §11.** The backing analysis names mariana_plus's four
-> extra `tpb_arr_seq_cluster_host_visible` regs only as "(4 extra regs)". They are
+> **CORRECTION — naming mariana_plus's four extra cluster regs.** They are often
+> given only as "(4 extra regs)". They are
 > the four `array_stagger_allow_rg0..3_ctrl` registers (stagger-*allow* control) —
 > distinct from the rampdown power-management registers, which belong to
-> `tpb_arr_seq_top_protected` (§6), not the cluster file. `[HIGH/OBSERVED.]`
+> `tpb_arr_seq_top_protected` (§6), not the cluster file.
 
 ---
 

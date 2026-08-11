@@ -107,7 +107,7 @@ device generates descriptors.
 
 The reshape engine's output is one of three ISA descriptor structs, each
 `ISA_STATIC_ASSERT`ed to 64 bytes in the shipped clean headers and
-**compile-verified** this analysis with `gcc -I .../neuron_mariana_arch_isa/tpb`
+**compile-verified** with `gcc -I .../neuron_mariana_arch_isa/tpb`
 (`sizeof()` returned `64`, `64`, `64`):
 
 ```text
@@ -561,14 +561,6 @@ the `RD`/`WR` GENERATE direction tags.)
   against ring depth. (String + position OBSERVED; credit-counter mechanics
   LOW/flagged.)
 
-> **CORRECTION / refinement vs the backing report.** The report tags the fusion
-> and credit semantics INFERRED-HIGH; this analysis upholds that, but adds a
-> stronger structural corroboration confirmed by re-disassembly (§6.6): the IRAM
-> *grew* while the entry-prologue *count* *fell*, which is the signature of
-> inlining the spray + gather-pattern + emit into one larger function. No
-> divergence found — the report's reading is sound; this page simply makes the
-> evidence explicit.
-
 ### 6.5 `push REGWRITE` retired — the decisive correlate
 
 `push REGWRITE to DMA` is present on CAYMAN and MARIANA but **absent on
@@ -581,7 +573,7 @@ INFERRED-HIGH.)
 
 ### 6.6 Structural corroboration — IRAM grew, entries fell
 
-Re-disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`),
+Disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`),
 counting `entry` prologues (`rg -c '\tentry\t'`):
 
 | Image | NX IRAM size (B) | `entry` prologues |
@@ -614,7 +606,7 @@ There are **two unrelated transpose mechanisms** in the device, at two different
 layers. The DGE reshape transpose documented here is *not* the DVE
 StreamTranspose opcode:
 
-| Aspect | DGE reshape transpose (this page) | DVE `StreamTranspose` ([kernel page](../../kernels/stream-transpose.md)) |
+| Aspect | DGE reshape transpose (this page) | DVE `StreamTranspose` ([kernel page](../kernels/stream-transpose.md)) |
 |---|---|---|
 | Layer | Descriptor-generation (builds a 64-B descriptor) | Compute *opcode* (executed by the engine) |
 | Engine | POOL/Q7 GPSIMD — "SW-DGE backend" | DVE vector engine |
@@ -628,10 +620,6 @@ DVE), and mechanism (xbar-on-DMA vs DVE-datapath). The `sb2sb` fast-path reshape
 (§6.4) is **still** a *descriptor* transpose — it generates the SB2SB descriptors;
 it is not a DVE `StreamTranspose`. (HIGH/OBSERVED — header layer statement +
 distinct symbol sets.)
-
-> **NOTE.** [`stream-transpose.md`](../../kernels/stream-transpose.md) is a stub at
-> the time of writing; this page forward-links it for the datapath-transpose
-> details.
 
 ---
 
@@ -657,12 +645,11 @@ NO-BACKEND`).
 
 - **Emit** — the post-transpose `num_elem[4]`/`step_elem[4]` drive the three push
   primitives (§4.6); the exact `SDMA_CME_BD_DESC` word packing is owned by
-  [DGE emit](./dge-emit.md). *(stub — forward-link.)*
+  [DGE emit](./dge-emit.md).
 - **SB2SB transport** — `tensor_reshape_transpose_sb2sb` targets the SBUF-to-SBUF
   collective transport; the reshape generates the descriptors, then the RDMA ring
   builder/drainer rings the doorbell. See
-  [gather-scatter descriptors](../../dma/gather-scatter-descriptors.md).
-  *(not yet authored — forward-link, Part 9.)*
+  [gather-scatter descriptors](../../dma/gather-scatter-descriptors.md) (Part 9).
 - **DMA-avail / carveout** — the `#DMA Avail` the reshape consults (§4.2/§4.3) is
   the `MEMCOPY_DMA_CFG` local reg (`AWS_NEURON_ISA_XT_MEMCOPY_DMA_CFG = 40`:
   lower-16 = DMA bitfield, upper-16 = queue bitfield). The descriptor RAM the BDs
@@ -698,7 +685,7 @@ NO-BACKEND`).
 transpose-reshape ISA (§3.4).
 
 > **LOW / flagged — MAVERICK (v5).** MAVERICK ships `gather_xpose.h` (own
-> `arch_isa` dir) but no MAVERICK NX_POOL DGE image was carved in this analysis —
+> `arch_isa` dir) but no MAVERICK NX_POOL DGE image was carved —
 > v5 reshape behaviour is header-OBSERVED only, INFERRED, not claimed here.
 
 ---
@@ -732,12 +719,12 @@ transpose-reshape ISA (§3.4).
 - [DGE 3-Backend Selector](./dge-backend-selector.md) — the `Pool | RTL |
   software | NO-BACKEND` selection the resolved Kind feeds.
 - [DGE Descriptor-Emit Path](./dge-emit.md) — the `GENERATE`/`DIMPUSH`/`REGWRITE`
-  BD word packing *(stub — forward-link)*.
+  BD word packing.
 - [DGE Error Notifications](./dge-errors.md) — bounds-check + completion notify.
-- [StreamTranspose (DVE datapath transpose)](../../kernels/stream-transpose.md) —
-  the distinct DVE-compute transpose *(stub — forward-link)*.
+- [StreamTranspose (DVE datapath transpose)](../kernels/stream-transpose.md) —
+  the distinct DVE-compute transpose.
 - [Gather/Scatter Descriptors](../../dma/gather-scatter-descriptors.md) — the
-  SB2SB descriptor ring the `sb2sb` reshape feeds *(not yet authored — forward-link)*.
+  SB2SB descriptor ring the `sb2sb` reshape feeds.
 - [MARIANA_PLUS Delta](../../generations/mariana-plus-delta.md) — the broader v4+
-  generation diff *(not yet authored — forward-link)*.
+  generation diff.
 - [The Confidence & Walls Model](../../reference/confidence-model.md).

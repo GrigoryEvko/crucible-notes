@@ -21,8 +21,8 @@ together — neither repeats the other's depth.
 > `aws-neuronx-gpsimd-customop-lib_0.21.2.0` package (the `libneuroncustomop.a` archive
 > + DWARF v4, the `build_custom_op.py` driver, the per-core LSPs) and the host
 > `libnrtucode`, disassembled natively with the shipped
-> `xtensa-elf-objdump --xtensa-core=ncore2gp`. Five of this page's framing claims were
-> re-verified against those objects this session — see *Self-Verification* at the end.
+> `xtensa-elf-objdump --xtensa-core=ncore2gp`. Five of this page's framing claims are
+> grounded directly in those objects — see *Self-Verification* at the end.
 
 ---
 
@@ -186,8 +186,9 @@ multicore-spmd §7.]`
 > run lock-free. HBM is *physically* shared but each core's *view* is window-private. If
 > an op needs the 8 cores to rendezvous, that synchronization must come from **outside**
 > this library; the host-side join after a custom op (DRAIN + completion-semaphore wait)
-> is the runtime's responsibility, not the device library's (Part 8 — host runtime, not
-> yet authored). `[HIGH · OBSERVED — multicore-spmd §8.]`
+> is the runtime's responsibility, not the device library's (see
+> [the 8-Core SPMD Execution Model + Teardown](../runtime/spmd-teardown.md)).
+> `[HIGH · OBSERVED — multicore-spmd §8.]`
 
 The core id is encoded **twice**: at *link* time (each `_cpuN.so` is linked to its own
 SRAM window, §5) and at *run* time (the PRID read). Both agree on the `{0..7}` domain.
@@ -240,16 +241,14 @@ families ([tensorstream-tcm](tensorstream-tcm.md)):
 
 Every staging copy funnels through `neuron_memcpy`, which dispatches a 3-entry method
 table — `C_MEMCPY(0)`, `VEC_MEMCPY(1)`, `DMA(2)` — that **defaults to DMA** (the on-die
-SDMA engine; the `.data` table word reads `2` = `DEFAULT_METHOD`, re-verified this
-session). The DMA backend builds a CME BD ring and kicks the **M2S** doorbell for
+SDMA engine; the `.data` table word reads `2` = `DEFAULT_METHOD`). The DMA backend builds a CME BD ring and kicks the **M2S** doorbell for
 HBM→dataram reads / **S2M** for dataram→HBM writes. `[HIGH · OBSERVED — tensorstream-tcm
 §3/§6, data-transfer-backends.]`
 
 > **GOTCHA — the `>= 4` method-set bound.** `neuron_set_memcpy_method` guards `>= 4`, so
 > it **accepts `3` = `MAX_METHODS`**, which indexes `table[3]` **out of bounds** (the
 > table has only 3 entries, `0..2`). Pass only `C_MEMCPY`/`VEC_MEMCPY`/`DMA`
-> (`0`/`1`/`2`); `3` is a latent OOB. `[LOW · OBSERVED — data-transfer-backends; raw
-> §G6.]`
+> (`0`/`1`/`2`); `3` is a latent OOB. `[LOW · OBSERVED — data-transfer-backends.]`
 
 > **GOTCHA — streams ignore strides.** The stream/TCM families sweep **storage order**
 > (`hbm_addr + sizeof(T)*idx`), ignoring `strides_`. A non-contiguous (transposed /
@@ -360,7 +359,7 @@ fp64). `[HIGH · OBSERVED — scalartype-dtype-rosetta §1.]` **Deep page:**
 [ScalarType ↔ DTYPE Rosetta](scalartype-dtype-rosetta.md).
 
 > **CORRECTION — FP32R is *not* marshallable; the count is 8, not 9.** An earlier
-> end-to-end synthesis (SX-ABI-18 §7.2) listed **9** marshallable dtypes, counting
+> end-to-end synthesis (ABI-18 §7.2) listed **9** marshallable dtypes, counting
 > `FP32R`→`Float` as a 9th (alongside `FP32`). The binary disagrees: the wrapper's decoded
 > ordinal tree accepts exactly `{0x2,0x3,0x4,0x6,0x7,0x8,0xA,0xC}` and routes `FP32R`
 > (`0xB`) to the **abort** arm — it has no ScalarType and is treated as a programming
@@ -435,15 +434,18 @@ Three numbers look similar and are not:
 | Marshalling, dtypes, allocators, coherency | [customop_* Marshalling](customop-marshalling.md), [DTYPE Rosetta](scalartype-dtype-rosetta.md), [Allocators](device-allocators.md), [CoherencyEnforcer](coherency-enforcer.md) |
 | The whole device ABI on one screen | [Device-Side ABI Reference](device-abi-reference.md), [The Complete Custom-Op ABI](complete-customop-abi.md) |
 
-Host-side load/prelink/dispatch and the 8-core join belong to Part 8 (Host Runtime); the
-cross-rank device collective barrier to Part 10 (NCFW); the Xtensa KSL/ISL stack-limit
-exception model to Part 13 — those pages are not yet authored.
+Host-side load/prelink/dispatch belongs to [the Host Prelinker](../runtime/prelinker-ucpl.md)
+and the 8-core join to
+[the 8-Core SPMD Execution Model + Teardown](../runtime/spmd-teardown.md); the cross-rank
+device collective barrier to [the NEFF Device Barrier](../collectives/ncfw/neff-device-barrier.md);
+the Xtensa KSL/ISL stack-limit exception model to
+[the XEA3 Interrupt / Exception Architecture](../control/interrupt/xea3-interrupt-architecture.md).
 
 ---
 
-## Self-verification (five framing claims, re-grounded in the binary this session)
+## Self-verification — five framing claims, grounded in the binary
 
-Each was read directly from a shipped object with the native
+Each is read directly from a shipped object with the native
 `xtensa-elf-objdump --xtensa-core=ncore2gp` / `xtensa-elf-nm`, not carried from a report.
 
 1. **`get_cpu_id` is a cached PRID read.** `parallel.o` @0x00 disassembles to

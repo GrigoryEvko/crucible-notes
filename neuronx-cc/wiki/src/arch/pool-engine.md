@@ -8,7 +8,7 @@ The **Pool engine** is Trainium's windowed-reduction unit — the leg of the TPB
 
 Two design choices make this leg counter-intuitive. First, **the pooling window is not a field** — there is no `window_size`/`stride` in the bundle. The window is the *product of the two innermost access-pattern dimensions*, and for average pooling the encoder folds it into a single reciprocal constant `1/N` written at bundle `+0x28`, so the silicon does a sum and one multiply, never a divide. Second, **`TensorReduce` is two physically distinct datapaths wearing one BIR op**: a *free-axis* path that reduces innermost loop dimensions, and a *cross-lane* path that reduces across the partition (channel) axis — different opcodes, different reduce-command encodings, different legality rules. Choosing the wrong one is silently wrong.
 
-This page is the **functional/architectural model**: the op→datapath→opcode routing, the window-as-reciprocal trick, the two reduce datapaths, and the MaxIndex 1→2 bundle split — enough to map a pooling or reduction op onto the correct Pool-leg datapath and opcode, and to know the engine's hard limits. It does **not** cover the bit-level layout of the sync-command regions or the `TENSORxD` descriptor interiors; that is [ISA: Pool encoding](../isa/pool-encoding.md) (2.12).
+This page is the **functional/architectural model**: the op→datapath→opcode routing, the window-as-reciprocal trick, the two reduce datapaths, and the MaxIndex 1→2 bundle split — enough to map a pooling or reduction op onto the correct Pool-leg datapath and opcode, and to know the engine's hard limits. It does **not** cover the bit-level layout of the sync-command regions or the `TENSORxD` descriptor interiors; that is [ISA: Pool encoding](../isa/pool-reduce-encoding.md) (2.12).
 
 For reimplementation, the contract is:
 
@@ -50,9 +50,7 @@ InstMax           88   DVE (5)         108        (MAX8)           8-wide runnin
 InstMaxIndex      89   DVE (5)         109 + 110  (FIND_INDEX8)    8-wide argmax (two bundles)
 ```
 
-The ten opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-vector); **66, 82, 131, 132** (cross-lane reduce, forked on bit-vector × transpose — see [The Cross-Lane Opcode Fork](#the-cross-lane-opcode-fork)); **108** (Max8); **109, 110** (the two MaxIndex bundles). That is 1 + 2 + 4 + 1 + 2 = **10**. (CONFIRMED — re-disassembled from `libwalrus.so` cp310; see the per-op `### Algorithm` sections for the byte anchors.)
-
-> **CORRECTION —** the wire-opcode count is **ten**, not nine. The enumerated set above (`69`; `124`/`125`; `66`/`82`/`131`/`132`; `108`; `109`/`110`) sums to ten distinct opcodes; the opcode list was always right, only the running tally said "nine".
+The ten opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-vector); **66, 82, 131, 132** (cross-lane reduce, forked on bit-vector × transpose — see [The Cross-Lane Opcode Fork](#the-cross-lane-opcode-fork)); **108** (Max8); **109, 110** (the two MaxIndex bundles). That is 1 + 2 + 4 + 1 + 2 = **10**. Each opcode's byte anchor appears in the per-op `### Algorithm` section below.
 
 > **QUIRK — the engine is *not* in the opcode byte.** None of the four CoreV2 encoders assigns the engine. They *read* `EngineInfo` at `inst+144` (set by an upstream scheduling/placement pass) only for the per-engine census and stream binding: Pool→Pool engine, Max/MaxIndex→DVE(5), TensorReduce→its engine field. A reimplementer who tries to derive the engine from the opcode will fail — the opcode tells you the *micro-op*, the engine binding is a separate scheduling decision carried on the IR node. The same fact holds for the [PE engine](pe-engine.md) (`getDefaultEngine`), so the pattern is consistent across the backend.
 
@@ -68,7 +66,7 @@ The ten opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-
 | 8 largest values per partition | `InstMax` | DVE 8-wide running max |
 | positions of those 8 maxima | `InstMaxIndex` | DVE argmax, back-resolves indices |
 
-> **GOTCHA — there is no `Sum` pool variant.** `PoolFunctionType` has exactly two members, `Max(0)` and `Avg(1)` (CONFIRMED, `libBIR` `PoolFunctionType2string` @ `0x4010e0`). A reimplementer driving off a "max/avg/sum" pool enum will emit a third byte the encoder never produces and the verifier rejects (`"has unimplemented Pooling type"`). Sum is a `TensorReduce` with `reduce_op = add`; min is `reduce_op = min`. The pool engine *only* averages and maxes.
+> **GOTCHA — there is no `Sum` pool variant.** `PoolFunctionType` has exactly two members, `Max(0)` and `Avg(1)` — `libBIR` `PoolFunctionType2string` @ `0x4010e0` enumerates them both and nothing else. A reimplementer driving off a "max/avg/sum" pool enum will emit a third byte the encoder never produces and the verifier rejects (`"has unimplemented Pooling type"`). Sum is a `TensorReduce` with `reduce_op = add`; min is `reduce_op = min`. The pool engine *only* averages and maxes.
 
 `InstPool` also hard-codes a **2-innermost-dim window** — its `AxisListType` is ignored on the Pool path. `TensorReduce`, by contrast, *reads* `AxisListType` to choose how many innermost dims to collapse. So "how many dimensions are reduced" is **dynamic for `TensorReduce`, fixed at 2 for `InstPool`**.
 
@@ -84,8 +82,8 @@ The ten opcodes are: **69** (Pool); **124, 125** (free-axis reduce, float / bit-
 
 | Role | What it is | Binding | Wire slot | Confidence |
 |---|---|---|---|---|
-| **in** (data) | the tensor being pooled (5-dim band-pool AP on the Avg path) | `arg0` | `+0x0C` `TENSOR4D` | CONFIRMED |
-| **out** (pooled) | the reduced output | `out0` | `+0x2C` `TENSOR4D` | CONFIRMED |
+| **in** (data) | the tensor being pooled (5-dim band-pool AP on the Avg path) | `arg0` | `+0x0C` `TENSOR4D` | CERTAIN |
+| **out** (pooled) | the reduced output | `out0` | `+0x2C` `TENSOR4D` | CERTAIN |
 
 The wire struct is `S4D4_PL_STRUCT` — a 4-dim source + 4-dim destination descriptor pair (`PL` = Pool).
 
@@ -107,7 +105,7 @@ SCALE   Max pool: bundle[+0x28] = 1.0f          (no divide)
 
 For **average** pooling the encoder pre-computes `1/N` at encode time and writes it as a float constant. The silicon datapath then computes `Σwindow × (1/N)` — a sum plus a single multiply, never a hardware divide. The window *extent* is thus encoded **twice and redundantly**: once as the reciprocal constant `1/N` at `+0x28`, and once as the descriptor's innermost `(step, num)` pairs (which drive the actual iteration). For **max** pooling the scale is `1.0f` and the datapath ignores it.
 
-> **QUIRK — fold the divide into the encoder, not the silicon.** The reason `1/N` is computed at encode time is that `N` is statically known from the AP geometry, so the divide can happen once on the host instead of every output element on the chip. A reimplementer who writes `N` into the bundle and divides on-device will produce numerically-correct but slower silicon, *and* will mismatch the reference model, which multiplies by the encoder-supplied reciprocal (CONFIRMED — `birsim` `visitInstPool` @ `0x1d7340`: `AvgPool out = sum × (1.0/window_N)`).
+> **QUIRK — fold the divide into the encoder, not the silicon.** The reason `1/N` is computed at encode time is that `N` is statically known from the AP geometry, so the divide can happen once on the host instead of every output element on the chip. A reimplementer who writes `N` into the bundle and divides on-device will produce numerically-correct but slower silicon, *and* will mismatch the reference model, which multiplies by the encoder-supplied reciprocal — `birsim` `visitInstPool` @ `0x1d7340` computes `AvgPool out = sum × (1.0/window_N)`.
 
 ### Algorithm
 
@@ -143,28 +141,28 @@ function visitInstPool(InstPool &I):
     emitBundle(bundle)                            // append to Pool stream + fwrite 0x40 bytes
 ```
 
-> **NOTE — the function byte is `BIR enum + 1`.** `PoolFunctionType` is `{Max=0, Avg=1}` in BIR, but the wire byte at `+0x24` is `Max→1`, `Avg→2` (a `+1` shift; CONFIRMED — `movb $0x1,0x24` / `movb $0x2,0x24`). A reimplementer copying the raw enum value to the wire produces a `0`/`1` pair the silicon reads as the wrong function. The shift is deliberate — wire value `0` is reserved.
+> **NOTE — the function byte is `BIR enum + 1`.** `PoolFunctionType` is `{Max=0, Avg=1}` in BIR, but the wire byte at `+0x24` is `Max→1`, `Avg→2` — a `+1` shift, emitted as `movb $0x1,0x24` / `movb $0x2,0x24`. A reimplementer copying the raw enum value to the wire produces a `0`/`1` pair the silicon reads as the wrong function. The shift is deliberate — wire value `0` is reserved.
 
 ### Field Map (opcode 69)
 
 | Offset | Field | Source | Confidence |
 |---|---|---|---|
-| `+0x00` | opcode = 69 (`0x45`) | `setupHeader` seed | CONFIRMED |
-| `+0x01` | hdr len/version = 16 | `setupHeader` (`0x10`) | CONFIRMED |
-| `+0x04…` | sync-wait / update region | `setupSyncWait/Update<S4D4_PL>` | CONFIRMED |
-| `+0x0C` | **in** `TENSOR4D` descriptor | `assignAccess<TENSOR4D>(in0)` | CONFIRMED |
-| `+0x20` | in dtype wire-tag | `sub_120E650(in0.Dtype)` | CONFIRMED |
-| `+0x21` | out dtype wire-tag | `sub_120E650(out.Dtype)` | CONFIRMED |
-| `+0x22` | lane / partition count | `in0.Pattern[0].num` | CONFIRMED |
-| `+0x24` | **pool function** | `Max→1, Avg→2` (BIR `func+1`) | CONFIRMED |
-| `+0x25` | mode byte = 3 | constant pool sub-mode | CONFIRMED value / INFERRED meaning |
-| `+0x28` | **scale = 1/window** | `Max→1.0f`, `Avg→1.0f/(p3.num·p4.num)` | CONFIRMED |
-| `+0x2C` | **out** `TENSOR4D` descriptor | `assignAccess<TENSOR4D>(out)` | CONFIRMED |
+| `+0x00` | opcode = 69 (`0x45`) | `setupHeader` seed | CERTAIN |
+| `+0x01` | hdr len/version = 16 | `setupHeader` (`0x10`) | CERTAIN |
+| `+0x04…` | sync-wait / update region | `setupSyncWait/Update<S4D4_PL>` | CERTAIN |
+| `+0x0C` | **in** `TENSOR4D` descriptor | `assignAccess<TENSOR4D>(in0)` | CERTAIN |
+| `+0x20` | in dtype wire-tag | `sub_120E650(in0.Dtype)` | CERTAIN |
+| `+0x21` | out dtype wire-tag | `sub_120E650(out.Dtype)` | CERTAIN |
+| `+0x22` | lane / partition count | `in0.Pattern[0].num` | CERTAIN |
+| `+0x24` | **pool function** | `Max→1, Avg→2` (BIR `func+1`) | CERTAIN |
+| `+0x25` | mode byte = 3 | constant pool sub-mode | CERTAIN value / MEDIUM meaning |
+| `+0x28` | **scale = 1/window** | `Max→1.0f`, `Avg→1.0f/(p3.num·p4.num)` | CERTAIN |
+| `+0x2C` | **out** `TENSOR4D` descriptor | `assignAccess<TENSOR4D>(out)` | CERTAIN |
 
 ### Datapath Semantics (reference model)
 
 ```c
-// birsim visitInstPool @ 0x1d7340 (CONFIRMED)
+// birsim visitInstPool @ 0x1d7340
 window = AP[size-1].num * AP[size-2].num         // two innermost dims; AxisListType IGNORED
 out_count = window_count * getNumElementsPerPartition(inAP)
 
@@ -208,6 +206,7 @@ This is the silicon realization of "`axis = C` ⇒ cross-lane reduce." The two d
 | Reduce command | full `AluOp → ALU_OP` convert @ `+0x24` | inline 6-entry switch @ `+0x23` |
 | Axis byte | `AxisListType + 2` @ `+0x25` | `CROSS_LANE` flag @ `+0x24` |
 | Negate | post-reduce negate @ `+0x23` | **none** (verifier-banned) |
+| Byte `+0x23` means | negate flag | reduce command |
 | Mean (Avg) | datapath `1/N` functor | `1/N` @ `+0x28` |
 | Indirection | allowed only for `AxisListType::X` | not yet ISA-legal |
 
@@ -224,7 +223,7 @@ XYZWC(4) → cross-lane (partition/channel) collapse, flag OFF
 C(5)     → cross-lane collapse, flag ON
 ```
 
-`reduce_extent = Π` of the innermost reduce-count AP-dim element counts. On the free-axis path the axis *number* is encoded at `+0x25` via `sub_120EAB0(axis) = (axis > 3 ? assert : axis + 2)` ⇒ `X→2, XY→3, XYZ→4, XYZW→5`. The helper asserts on `axis > 3` precisely because cross-lane axes 4/5 take the CR path and never reach this byte (CONFIRMED).
+`reduce_extent = Π` of the innermost reduce-count AP-dim element counts. On the free-axis path the axis *number* is encoded at `+0x25` via `sub_120EAB0(axis) = (axis > 3 ? assert : axis + 2)` ⇒ `X→2, XY→3, XYZ→4, XYZW→5`. The helper asserts on `axis > 3` precisely because cross-lane axes 4/5 take the CR path and never reach this byte.
 
 ### The Reduce-Command — Two Op-Byte Channels
 
@@ -258,13 +257,17 @@ switch (I.reduce_op):                  // inline; sourced into mov %al,0x23(%r13
 
 ### Negate / Abs / Accumulate Modifiers
 
-- **Negate** is a *post-reduce* negate at `+0x23` on the **TR path only**, sourced from `InstTensorReduce.negate@+0x120`. The CR path has no negate slot — matching the verifier ban `"Cross-lane-reduce cannot perform negate"` (string CONFIRMED). In the datapath, negate is applied to the reduced scalar **after** the fold, **before** the optional accumulate.
-- **Abs / abs_max / abs_min** are *not* separate modifier bits — they are ordinary `AluOpType` values (`abs=29, abs_max=30, abs_min=31`) that reach the datapath as reduce ops via `sub_12039C0` (`abs→0x19, abs_max→0x20, abs_min→0x21`). An abs-reduce is simply `reduce_op ∈ {29,30,31}` on the TR path. (STRONG.)
+- **Negate** is a *post-reduce* negate at `+0x23` on the **TR path only**, sourced from `InstTensorReduce.negate@+0x120`. The CR path has no negate slot — matching the verifier ban `"Cross-lane-reduce cannot perform negate"`. In the datapath, negate is applied to the reduced scalar **after** the fold, **before** the optional accumulate.
+- **Abs / abs_max / abs_min** are *not* separate modifier bits — they are ordinary `AluOpType` values (`abs=29, abs_max=30, abs_min=31`) that reach the datapath as reduce ops via `sub_12039C0` (`abs→0x19, abs_max→0x20, abs_min→0x21`). An abs-reduce is simply `reduce_op ∈ {29,30,31}` on the TR path.
 - **Accumulate** flows through `EngineAccumulationType` (the live RMW path), *not* through `ReduceCmdType`.
 
 ### The Dormant ReduceCmdType
 
-> **CORRECTION (M09-C1) — `reduce_cmd` is NOT a `bir::ReduceCmdType` field on `InstTensorReduce`.** The enum `ReduceCmdType {Idle, Reset, Reduce, ResetReduce}` exists in `libBIR` with full `2string`/`string2`/`from_json`/`to_json` bodies, but it has **no `Instruction` consumer** — `InstTensorReduce::readFields` @ `0x41a7c0` reads only `{axis, op, negate, apply_transpose}`. The live reduce-command modifiers surfaced at the wire are the inline 6-entry CR switch (`+0x23`) and the TR negate (`+0x23`) shown above — *not* the `ReduceCmdType` enum, which is a sim/runtime RMW-phase enum only. The JSON key `"reduce_cmd"` that *does* appear (on `InstExponential`/`InstRangeSelect`, **not** `TensorReduce`) deserializes to `EngineAccumulationType`. A reimplementer wiring a `ReduceCmdType` field into `TensorReduce` encodes dead state. (D-D02 C1, re-affirmed.)
+`libBIR` defines an enum `ReduceCmdType {Idle, Reset, Reduce, ResetReduce}` with complete `2string` / `string2` / `from_json` / `to_json` bodies — everything a live field would have except a consumer. No `Instruction` reads it. `InstTensorReduce::readFields` @ `0x41a7c0` reads exactly `{axis, op, negate, apply_transpose}`, and the only reduce-command modifiers that reach the wire are the two already described — the inline 6-entry cross-lane switch and the free-axis negate, which share byte `+0x23` because they belong to two mutually exclusive opcodes ([below](#byte-0x23-is-opcode-dependent)). `ReduceCmdType` is a sim/runtime RMW-phase enum, dormant on the encode path.
+
+The name collision is what makes this trap sharp. A JSON key `"reduce_cmd"` *does* exist in BIR — on `InstExponential` and `InstRangeSelect` — but it deserializes to `EngineAccumulationType`, an unrelated enum, and it never appears on `InstTensorReduce` at all.
+
+> **GOTCHA —** do not wire a `ReduceCmdType` field into `InstTensorReduce`. The enum is fully serializable and looks live, but nothing consumes it; a reimplementation that carries it encodes dead state and will not match the reference encoder.
 
 ### The Cross-Lane Opcode Fork
 
@@ -275,7 +278,9 @@ non-bitvec, tag==0 → 66      bitvec, tag==0 → 82
 non-bitvec, tag==1 → 131     bitvec, tag==1 → 132
 ```
 
-(CONFIRMED — `add $0x83,%ebx` = 131 / `add $0x84,%ebx` = 132 on the transpose arm; `sub $0x7d` = 125 / `sub $0x7c` = 124 base seeds on the TR arm.) The `CROSS_LANE` flag at `+0x24` is `axis==5(C)→1` (on), `axis==4(XYZWC)→0` (off), else `assert "getAxis() == bir::AxisListType::XYZWC"`. Indirection on the cross-lane path is gated by the TODO string `"TODO: support CROSS_LANE_REDUCE with TensorIndirect AP once ISA supports it"` — not yet ISA-legal.
+The `CROSS_LANE` flag at `+0x24` is `axis==5(C)→1` (on), `axis==4(XYZWC)→0` (off), else `assert "getAxis() == bir::AxisListType::XYZWC"`. Indirection on the cross-lane path is gated by the TODO string `"TODO: support CROSS_LANE_REDUCE with TensorIndirect AP once ISA supports it"` — not yet ISA-legal.
+
+*Anchors: the transpose arm seeds 131/132 via `add $0x83,%ebx` / `add $0x84,%ebx`; the free-axis arm seeds 124/125 via `sub $0x7c` / `sub $0x7d`.*
 
 ### Algorithm
 
@@ -316,34 +321,47 @@ function visitInstTensorReduce(InstTensorReduce &I):
 
 | Offset | Field | Source | Confidence |
 |---|---|---|---|
-| `+0x00` | opcode 124/125 | `124 + isBitVecInstruction` | CONFIRMED |
-| `+0x0C` | in `TENSOR4D` | `assignAccess(in)` | CONFIRMED |
-| `+0x20` | in dtype tag | `sub_120E650(in.Dtype)` | CONFIRMED |
-| `+0x21` | out dtype tag | `sub_120E650(out.Dtype)` | CONFIRMED |
-| `+0x22` | lane count | `in.Pattern[0].num` | CONFIRMED |
-| `+0x23` | **negate** | `negate@+0x120` | CONFIRMED |
-| `+0x24` | **reduce-op (ISA)** | `sub_12039C0(op)` — full AluOp wire | CONFIRMED |
-| `+0x25` | **axis (ISA)** | `sub_120EAB0(axis)` = `AxisListType + 2` | CONFIRMED |
-| `+0x2C` | out `TENSOR4D` | `assignAccess(out)` | CONFIRMED |
+| `+0x00` | opcode 124/125 | `124 + isBitVecInstruction` | CERTAIN |
+| `+0x0C` | in `TENSOR4D` | `assignAccess(in)` | CERTAIN |
+| `+0x20` | in dtype tag | `sub_120E650(in.Dtype)` | CERTAIN |
+| `+0x21` | out dtype tag | `sub_120E650(out.Dtype)` | CERTAIN |
+| `+0x22` | lane count | `in.Pattern[0].num` | CERTAIN |
+| `+0x23` | **negate** | `negate@+0x120` | CERTAIN |
+| `+0x24` | **reduce-op (ISA)** | `sub_12039C0(op)` — full AluOp wire | CERTAIN |
+| `+0x25` | **axis (ISA)** | `sub_120EAB0(axis)` = `AxisListType + 2` | CERTAIN |
+| `+0x2C` | out `TENSOR4D` | `assignAccess(out)` | CERTAIN |
 
 **Cross-lane (CR, opcode 66/82/131/132):**
 
 | Offset | Field | Source | Confidence |
 |---|---|---|---|
-| `+0x00` | opcode 66/82/131/132 | `f(isBitVec, apply_transpose@+0xF8)` | CONFIRMED |
-| `+0x0C` | in `TENSOR4D` | `assignAccess(in)` | CONFIRMED |
-| `+0x20` | in dtype tag | `sub_120E650(in.Dtype)` | CONFIRMED |
-| `+0x21` | out dtype tag | `sub_120E650(out.Dtype)` | CONFIRMED |
-| `+0x22` | lane count | `in.Pattern[0].num` | CONFIRMED |
-| `+0x23` | **reduce-cmd (6-set)** | inline switch `op→{add0/avg1/max2/or3/and4/xor5}` | CONFIRMED |
-| `+0x24` | **CROSS_LANE flag** | `axis==5→1`, `axis==4→0` | CONFIRMED |
-| `+0x28` | mean `1/N` | avg → `1.0f/(p?.num·numElemPerPart)` | CONFIRMED |
-| `+0x2C` | out `TENSOR4D` | `assignAccess(out)` | CONFIRMED |
+| `+0x00` | opcode 66/82/131/132 | `f(isBitVec, apply_transpose@+0xF8)` | CERTAIN |
+| `+0x0C` | in `TENSOR4D` | `assignAccess(in)` | CERTAIN |
+| `+0x20` | in dtype tag | `sub_120E650(in.Dtype)` | CERTAIN |
+| `+0x21` | out dtype tag | `sub_120E650(out.Dtype)` | CERTAIN |
+| `+0x22` | lane count | `in.Pattern[0].num` | CERTAIN |
+| `+0x23` | **reduce-cmd (6-set)** | inline switch `op→{add0/avg1/max2/or3/and4/xor5}` | CERTAIN |
+| `+0x24` | **CROSS_LANE flag** | `axis==5→1`, `axis==4→0` | CERTAIN |
+| `+0x28` | mean `1/N` | avg → `1.0f/(p?.num·numElemPerPart)` | CERTAIN |
+| `+0x2C` | out `TENSOR4D` | `assignAccess(out)` | CERTAIN |
+
+#### Byte `+0x23` is opcode-dependent
+
+The two tables above assign different fields to `+0x23` because the byte is genuinely reused: which datapath's meaning applies is decided by the opcode already written at `+0x00`, and the two arms are the two sides of the `axis <= XYZW(3)` fork. Both stores are in `CoreV2GenImpl::visitInstTensorReduce` (`0x12383a0`) and neither arm can reach the other's:
+
+| Arm | Store | Source |
+|---|---|---|
+| free-axis (124/125) | `mov BYTE PTR [r15+0x23],al` @ `0x12393e9` | `movzx eax,BYTE PTR [r13+0x120]` @ `0x12393e1` — `InstTensorReduce.negate` |
+| cross-lane (66/82/131/132) | `mov BYTE PTR [r13+0x23],al` @ `0x1238ae3` | `movzx eax,BYTE PTR [rbp-0x300]` @ `0x1238adc` — the 6-entry `reduce_op` switch result, materialized earlier in the block |
+
+The neighbouring bytes disambiguate the two encodings the same way: the free-axis arm writes the converted `AluOp` at `+0x24` (`0x123938b`, from `reduce_op@+0xF0` via `sub_12039C0`) and the ISA axis code at `+0x25` (`0x12393a2`, from `axis@+0xF4` via `sub_120EAB0`), while the cross-lane arm writes the `CROSS_LANE` flag at `+0x24` as a bare `0`/`1` immediate (`0x1239650` / `0x12397c0`) and no `+0x25` at all.
+
+> **GOTCHA — do not merge the two field maps.** A single flat "TensorReduce bundle layout" that lists `+0x23` once will be wrong for one of the two opcode families, and `+0x24`/`+0x25` diverge with it. Decode `+0x23`..`+0x25` only after reading the opcode at `+0x00`.
 
 ### Datapath Semantics (reference model)
 
 ```c
-// birsim visitInstTensorReduce @ 0x1d7720 / applyEngReduce<float> @ 0x225600 (CONFIRMED)
+// birsim visitInstTensorReduce @ 0x1d7720 / applyEngReduce<float> @ 0x225600
 for k in 0..n_out:
     acc = in[base]
     if is_average: acc = acc / N                 // divide-first (mean)
@@ -391,13 +409,13 @@ function visitInstMax(InstMax &I):
     emitBundle(bundle)
 ```
 
-`dtypeBytes` comes from the `.rodata` stride LUT @ `0x1DF59E0` — a qword table decoding to `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]` (CONFIRMED byte-exact). The `+0x36`/`+0x3A` flag words (`0`/`1`) are INFERRED to be the mem-pattern `is_immediate`/`dim-valid` flags.
+`dtypeBytes` comes from the `.rodata` stride LUT @ `0x1DF59E0` — a qword table decoding byte-exact to `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]`. The `+0x36`/`+0x3A` flag words carry `0`/`1`; their meaning — most likely the mem-pattern `is_immediate` / `dim-valid` flags — is [INFERRED].
 
 ### InstMaxIndex — FIND_INDEX8 (opcodes 109 + 110)
 
 `InstMaxIndex` is the index back-resolution pass, and its defining structural fact is the **1→2 bundle split**:
 
-> **QUIRK — one `InstMaxIndex` emits TWO co-issued DVE bundles, and the split is in the encoder.** `visitInstMaxIndex` @ `0x1254650` emits opcode **109** (`MATCH_VALUE_LOAD`-class — loads the 8 maxVals to match against) *and* opcode **110** (the index-emit micro-op — scans the data array and writes the first-match index). Both `movl $0x6d` and `movl $0x6e` seeds are present in the body (CONFIRMED — at `0x12546d3` / `0x1254732`, plus 8 seed/fwrite sites total). This is **distinct** from `MatchReplace8`, whose 1→2 split happens at KLR→BIR codegen; here the split is purely in the CoreV2 silicon encoder. A reimplementer who emits one bundle per `InstMaxIndex` produces a half-instruction the DVE cannot execute.
+> **QUIRK — one `InstMaxIndex` emits TWO co-issued DVE bundles, and the split is in the encoder.** `visitInstMaxIndex` @ `0x1254650` emits opcode **109** (`MATCH_VALUE_LOAD`-class — loads the 8 maxVals to match against) *and* opcode **110** (the index-emit micro-op — scans the data array and writes the first-match index). Both seeds sit in the one body: `movl $0x6d` @ `0x12546d3` and `movl $0x6e` @ `0x1254732`, across eight seed/fwrite sites. This is **distinct** from `MatchReplace8`, whose 1→2 split happens at KLR→BIR codegen; here the split is purely in the CoreV2 silicon encoder. A reimplementer who emits one bundle per `InstMaxIndex` produces a half-instruction the DVE cannot execute.
 
 ```c
 // CoreV2GenImpl::visitInstMaxIndex @ 0x1254650
@@ -421,7 +439,7 @@ function visitInstMaxIndex(InstMaxIndex &I):
     emitBundle(b2)
 ```
 
-Each bundle pairs a 4D **data** descriptor at `+0x0C` with a 2D **index/maxVals** descriptor at `+0x30` (the 8-wide vector). The index output dtype is `uint32`, flowing through the `+0x21` dtype tag. The DVE machine: bundle 109 loads the 8 max *values* (computed by a prior MAX8 / opcode-108 pass) into the match register; bundle 110 scans the data array per partition and, for each of the 8 maxVals, writes the index of the **first** array element that equals it — elements with no match keep the `-1` sentinel. (STRONG — the value/index pairing is the MAX8→FIND_INDEX8 two-stage argmax.)
+Each bundle pairs a 4D **data** descriptor at `+0x0C` with a 2D **index/maxVals** descriptor at `+0x30` (the 8-wide vector). The index output dtype is `uint32`, flowing through the `+0x21` dtype tag. The DVE machine: bundle 109 loads the 8 max *values* (computed by a prior MAX8 / opcode-108 pass) into the match register; bundle 110 scans the data array per partition and, for each of the 8 maxVals, writes the index of the **first** array element that equals it — elements with no match keep the `-1` sentinel. The value/index pairing across the two bundles is what makes MAX8 → FIND_INDEX8 a two-stage argmax.
 
 ### Max / Index Relationship
 
@@ -436,7 +454,7 @@ The 8-wide width is the DVE silicon lane count, hard-asserted (`out == 8`) on bo
 
 ## The Shared 64-Byte Bundle Prologue
 
-Every Pool/reduce/Max/MaxIndex bundle is 64 bytes, emitted via the **same** skeleton (CONFIRMED, the N11 common ABI shared with the rest of the backend):
+Every Pool/reduce/Max/MaxIndex bundle is 64 bytes, emitted via the **same** skeleton — the N11 common ABI shared with the rest of the backend:
 
 ```text
 setupHeader @ 0x1172120  → bundle[0] = opcode byte, bundle[1] = 16 (0x10 hdr len/ver),
@@ -456,17 +474,17 @@ The descriptor-template family (named by the `setupSync*` tag) is: `Pool→S4D4_
 
 | Helper | Address | Role | Confidence |
 |---|---|---|---|
-| `sub_120E650` | `0x120E650` | `Dtype → NEURON_ISA_TPB_DTYPE` wire-tag (reads `AP.Dtype@+0x30`) → `+0x20`/`+0x21` | CONFIRMED |
-| `sub_12039C0` | `0x12039C0` | `CoreV2Convert::convert(AluOpType) → ISA ALU_OP` byte → TR reduce-op `+0x24` | CONFIRMED |
-| `sub_120EAB0` | `0x120EAB0` | `AxisListType → ISA axis` byte = `(a>3 ? assert : a+2)` → TR axis `+0x25` | CONFIRMED |
-| `sub_12095A0` | `0x12095A0` | append bundle ptr into the engine compound stream | CONFIRMED |
-| `assignAccess<TENSOR4D>` | `0x603EE0` | AP → in-bundle wire descriptor (`<TENSOR2D>` sibling) | CONFIRMED |
+| `sub_120E650` | `0x120E650` | `Dtype → NEURON_ISA_TPB_DTYPE` wire-tag (reads `AP.Dtype@+0x30`) → `+0x20`/`+0x21` | CERTAIN |
+| `sub_12039C0` | `0x12039C0` | `CoreV2Convert::convert(AluOpType) → ISA ALU_OP` byte → TR reduce-op `+0x24` | CERTAIN |
+| `sub_120EAB0` | `0x120EAB0` | `AxisListType → ISA axis` byte = `(a>3 ? assert : a+2)` → TR axis `+0x25` | CERTAIN |
+| `sub_12095A0` | `0x12095A0` | append bundle ptr into the engine compound stream | CERTAIN |
+| `assignAccess<TENSOR4D>` | `0x603EE0` | AP → in-bundle wire descriptor (`<TENSOR2D>` sibling) | CERTAIN |
 
 ---
 
 ## The ALU Substrate
 
-The reduce/pool operators draw from four global functor maps, built once by `sub_133280` @ `0x133280` (CONFIRMED):
+The reduce/pool operators draw from four global functor maps, built once by `sub_133280` @ `0x133280`:
 
 | Map | Domain | What it holds |
 |---|---|---|
@@ -481,10 +499,10 @@ The reduce-op *semantics* (commutativity, `acc = LHS`) are exactly these functor
 
 ## Gaps and Confidence
 
-- **CONFIRMED (re-disassembled, `libwalrus.so` cp310):** all four visitor addresses; Pool opcode `0x45`, func byte `Max→1`/`Avg→2` @ `+0x24`, mode `3` @ `+0x25`, scale `1.0f`/computed `1/N` @ `+0x28`; TensorReduce opcode arithmetic (`0x83`/`0x84` = 131/132, `0x7c`/`0x7d` = 124/125), the `+0x20..+0x23` byte stores, the CR axis fork (`cmp $0x5→1`, `cmp $0x4→0`), the CR mean `movss` @ `+0x28`; Max opcode `0x6c` with the `out==8` / `[8,16384]` asserts and `+0x36`/`+0x3A` flag stores; MaxIndex **both** `0x6d` and `0x6e` seeds; the dtype stride LUT @ `0x1DF59E0`; `PoolFunctionType = {Max, Avg}` only. All headline strings (`"has unimplemented Pooling type"`, `"in0.size() == 5"`, `"Cross-lane-reduce cannot perform negate"`, `"getAxis() == bir::AxisListType::XYZWC"`, `"CROSS_LANE_REDUCE"`, `"MATCH_VALUE_LOAD"`) verbatim.
-- **STRONG:** MaxIndex op109 = `MATCH_VALUE_LOAD`-class (string + single-2D `S2_BN` descriptor); the two bundles are co-issued find-index8 micro-ops; the MAX8→FIND_INDEX8 two-stage argmax; the engine bindings (DVE(5) for Max/MaxIndex, Pool engine for Pool, read from `inst+144`); the `1/N` Avg-fold rationale (sum + single multiply, no on-silicon divide).
-- **INFERRED:** the `+0x36`/`+0x3A` Max mem-pattern flag words (`0`/`1`) as `is_immediate`/`dim-valid` flags (byte values confirmed, meaning inferred); the Pool `+0x25` "mode = 3" sub-mode (value confirmed, meaning inferred).
-- **SPECULATIVE / not field-walked:** the exact bit layout *within* the `S4D4`/`S4D2`/`S2` sync-command regions and the `TENSORxD` descriptor interiors (rendered by `assignAccess`/`setupSync*`, the shared N-strand common code, out of this leg's scope — see [ISA: Pool encoding](../isa/pool-encoding.md)).
+- **CERTAIN (`libwalrus.so` cp310):** all four visitor addresses; Pool opcode `0x45`, func byte `Max→1`/`Avg→2` @ `+0x24`, mode `3` @ `+0x25`, scale `1.0f`/computed `1/N` @ `+0x28`; TensorReduce opcode arithmetic (`0x83`/`0x84` = 131/132, `0x7c`/`0x7d` = 124/125), the `+0x20..+0x23` byte stores, the CR axis fork (`cmp $0x5→1`, `cmp $0x4→0`), the CR mean `movss` @ `+0x28`; Max opcode `0x6c` with the `out==8` / `[8,16384]` asserts and `+0x36`/`+0x3A` flag stores; MaxIndex **both** `0x6d` and `0x6e` seeds; the dtype stride LUT @ `0x1DF59E0`; `PoolFunctionType = {Max, Avg}` only. All headline strings (`"has unimplemented Pooling type"`, `"in0.size() == 5"`, `"Cross-lane-reduce cannot perform negate"`, `"getAxis() == bir::AxisListType::XYZWC"`, `"CROSS_LANE_REDUCE"`, `"MATCH_VALUE_LOAD"`) verbatim.
+- **HIGH:** MaxIndex op109 = `MATCH_VALUE_LOAD`-class (string + single-2D `S2_BN` descriptor); the two bundles are co-issued find-index8 micro-ops; the MAX8→FIND_INDEX8 two-stage argmax; the engine bindings (DVE(5) for Max/MaxIndex, Pool engine for Pool, read from `inst+144`); the `1/N` Avg-fold rationale (sum + single multiply, no on-silicon divide).
+- **MEDIUM:** the `+0x36`/`+0x3A` Max mem-pattern flag words (`0`/`1`) as `is_immediate`/`dim-valid` flags — byte values pinned, meaning not; the Pool `+0x25` "mode = 3" sub-mode — likewise value-pinned, meaning open.
+- **LOW / not field-walked:** the exact bit layout *within* the `S4D4`/`S4D2`/`S2` sync-command regions and the `TENSORxD` descriptor interiors (rendered by `assignAccess`/`setupSync*`, the shared N-strand common code, out of this leg's scope — see [ISA: Pool encoding](../isa/pool-reduce-encoding.md)).
 
 ## Related Components
 
@@ -496,7 +514,7 @@ The reduce-op *semantics* (commutativity, `acc = LHS`) are exactly these functor
 
 ## Cross-References
 
-- [ISA: Pool Encoding](../isa/pool-encoding.md) — the bit-level 64-byte bundle layout this page describes functionally (2.12): the `S4D4`/`S4D2`/`S2` descriptor interiors and the dtype/AluOp/Axis wire tables.
+- [ISA: Pool Encoding](../isa/pool-reduce-encoding.md) — the bit-level 64-byte bundle layout this page describes functionally (2.12): the `S4D4`/`S4D2`/`S2` descriptor interiors and the dtype/AluOp/Axis wire tables.
 - [PE Engine](pe-engine.md) — the systolic matmul array (1.08); the sibling per-engine functional model and the shared bundle-prologue ABI.
 - [SBUF / PSUM Bank Geometry](sbuf-psum-geometry.md) — the partition/free-axis memory model the `Pattern[0]` lane count and the 5-dim band-pool AP shape live in.
 - [BIR Instruction Hierarchy](../bir/) — `InstPool` / `InstTensorReduce` / `InstMax` / `InstMaxIndex` as `bir::Instruction` nodes (Part 7), the dormant `ReduceCmdType` enum, and the `readFields` accessors.

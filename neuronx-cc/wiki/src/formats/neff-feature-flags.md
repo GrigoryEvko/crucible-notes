@@ -38,17 +38,17 @@ The "set by" column names the codegen routine that records the attribute via `se
 
 | Flag (`def.json` name) | Bit | Ord | Meaning / gated capability | Set by (`setAttribute` site) | Runtime effect | Conf |
 |---|---|---|---|---|---|---|
-| `collective_has_offset` | `0x000002` | 2 | Collective ops carry a CC-group offset | `visitInstCollectiveSend` `0x1272440` / `Recv` `0x1272ab0` / `Compute` (`esi=2`, 5 sites) | Collective engine applies the per-op offset | CONFIRMED |
-| `neff_feature_custom_ops` | `0x000004` | 3 | NEFF carries GPSIMD/Xtensa custom-op (µcode-library) kernels: `ucode_lib.json` manifest + `cpu.so`/`cpu.params` present | `visitInstCustomOp` `0x12613c0`, site `0x12619b0` (`esi=3`) | Provision GPSIMD/Xtensa engine; load µcode lib; `dlopen` `cpu.so` | CONFIRMED |
-| `neff_coalesced_ccops` | `0x000008` | 4 | Collective-compute ops coalesced across channels (`coalesce_multichannel_cc_ops` ran) | `visitInstCollectiveCompute` `0x126c380`, sites `0x126e31d`/`0x126e9ad` (`esi=4`) | Collective engine expects coalesced multi-channel CC descriptors | CONFIRMED |
-| `neff_queue_set_instances` | `0x000010` | 5 | NEFF uses DMA queue-set instances (parameterised group of DMA queue instances) | `visitInstSwitchQueueInstance` `0x1264240`, site `0x1264274` (`esi=5`, unconditional) | Loader allocates the queue-set instances declared in `def.json` | CONFIRMED |
-| `neff_has_functions` | `0x000020` | 6 | Multi-function NEFF: module carries callable `bir::Function` definitions (function/call table) | `visitInstCall` `0x12633e0`, site `0x126343f` (`esi=6`) | Loader builds a function dispatch/call table; supports intra-NEFF calls | CONFIRMED |
-| `neff_feature_dynamic_pwp` | `0x000040` | 7 | Runtime-programmable Pool-Window-Program (dynamic, vs compile-time-baked, PWP path) | `LowerPWPImpl::LowerPWPImpl` ctor `0x115d130`, site `0x115da0a` (`esi=7`) | Loader programs the PWP table at load/exec from NEFF data (INFERRED) | CONFIRMED |
-| `neff_feature_indirect_memcpy_32b_sem_wait` | `0x000080` | 8 | Indirect-DMA (gather/scatter memcpy) uses a 32-bit semaphore-wait value | `generateIndirectLoadSave` `0x1268c00`, sites `0x12695ef`/`0x1269dbf` (`esi=8`) | DMA queue/semaphore engine treats the wait value as 32-bit | CONFIRMED |
-| `neff_feature_indirect_memcpy_bound_check` | `0x000100` | 9 | Indirect-DMA gather/scatter has HW bounds-checking on the index | `generateIndirectLoadSave` `0x1268c00` (`0x1268e6e`) / `visitInstStreamTranspose` `0x1266df0` (`0x1266ef6`) (`esi=9`) | DMA engine bounds-checks the index (faults / clamps) | CONFIRMED |
-| `neff_feature_DMA_desc_higher_dim` | `0x000200` | 10 | NEFF uses 3D/4D (higher-than-2D) DMA descriptors | `DescGen::dumpToFile` `0x11e4760`, site `0x11e4de7` (`esi=0xa`) | DMA descriptor decoder must support the higher-dim layout | CONFIRMED |
-| `neff_feature_vnc` | `0x000400` | — | Multi-LNC / virtual-NeuronCore NEFF: more than one virtual core per physical core | **Procedural** in `writeNEFFFeatures`: `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f` (`options.vnc_nc_count > 1`) | Loader instantiates N virtual cores; maps each subgraph to a vNC | CONFIRMED |
-| `neff_feature_remote_sem` | `0x004000` | — | NEFF issues cross-core remote semaphore updates (one core signals another's semaphore) | **Procedural** in `writeNEFFFeatures`: scan every block for an `InstDMABlock` (`classof@plt 0x625200`) where `isRemoteUpdateInstruction@plt 0x61ced0` is true; first match sets bit | CONFIRMED |
+| `collective_has_offset` | `0x000002` | 2 | Collective ops carry a CC-group offset | `visitInstCollectiveSend` `0x1272440` / `Recv` `0x1272ab0` / `Compute` (`esi=2`, 5 sites) | Collective engine applies the per-op offset | CERTAIN |
+| `neff_feature_custom_ops` | `0x000004` | 3 | NEFF carries GPSIMD/Xtensa custom-op (µcode-library) kernels: `ucode_lib.json` manifest + `cpu.so`/`cpu.params` present | `visitInstCustomOp` `0x12613c0`, site `0x12619b0` (`esi=3`) | Provision GPSIMD/Xtensa engine; load µcode lib; `dlopen` `cpu.so` | CERTAIN |
+| `neff_coalesced_ccops` | `0x000008` | 4 | Collective-compute ops coalesced across channels (`coalesce_multichannel_cc_ops` ran) | `visitInstCollectiveCompute` `0x126c380`, sites `0x126e31d`/`0x126e9ad` (`esi=4`) | Collective engine expects coalesced multi-channel CC descriptors | CERTAIN |
+| `neff_queue_set_instances` | `0x000010` | 5 | NEFF uses DMA queue-set instances (parameterised group of DMA queue instances) | `visitInstSwitchQueueInstance` `0x1264240`, site `0x1264274` (`esi=5`, unconditional) | Loader allocates the queue-set instances declared in `def.json` | CERTAIN |
+| `neff_has_functions` | `0x000020` | 6 | Multi-function NEFF: module carries callable `bir::Function` definitions (function/call table) | `visitInstCall` `0x12633e0`, site `0x126343f` (`esi=6`) | Loader builds a function dispatch/call table; supports intra-NEFF calls | CERTAIN |
+| `neff_feature_dynamic_pwp` | `0x000040` | 7 | Runtime-programmable Pool-Window-Program (dynamic, vs compile-time-baked, PWP path) | `LowerPWPImpl::LowerPWPImpl` ctor `0x115d130`, site `0x115da0a` (`esi=7`) | Loader programs the PWP table at load/exec from NEFF data (**[INFERRED]**) | CERTAIN |
+| `neff_feature_indirect_memcpy_32b_sem_wait` | `0x000080` | 8 | Indirect-DMA (gather/scatter memcpy) uses a 32-bit semaphore-wait value | `generateIndirectLoadSave` `0x1268c00`, sites `0x12695ef`/`0x1269dbf` (`esi=8`) | DMA queue/semaphore engine treats the wait value as 32-bit | CERTAIN |
+| `neff_feature_indirect_memcpy_bound_check` | `0x000100` | 9 | Indirect-DMA gather/scatter has HW bounds-checking on the index | `generateIndirectLoadSave` `0x1268c00` (`0x1268e6e`) / `visitInstStreamTranspose` `0x1266df0` (`0x1266ef6`) (`esi=9`) | DMA engine bounds-checks the index (faults / clamps) | CERTAIN |
+| `neff_feature_DMA_desc_higher_dim` | `0x000200` | 10 | NEFF uses 3D/4D (higher-than-2D) DMA descriptors | `DescGen::dumpToFile` `0x11e4760`, site `0x11e4de7` (`esi=0xa`) | DMA descriptor decoder must support the higher-dim layout | CERTAIN |
+| `neff_feature_vnc` | `0x000400` | — | Multi-LNC / virtual-NeuronCore NEFF: more than one virtual core per physical core | **Procedural** in `writeNEFFFeatures`: `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f` (`options.vnc_nc_count > 1`) | Loader instantiates N virtual cores; maps each subgraph to a vNC | CERTAIN |
+| `neff_feature_remote_sem` | `0x004000` | — | NEFF issues cross-core remote semaphore updates (one core signals another's semaphore) | **Procedural** in `writeNEFFFeatures`: scan every block for an `InstDMABlock` (`classof@plt 0x625200`) where `isRemoteUpdateInstruction@plt 0x61ced0` is true; first match sets bit | CERTAIN |
 
 > **QUIRK — `vnc` and `remote_sem` are NOT `ModuleAttribute` enum members.** They have a header bit (`0x400`/`0x4000`) and a `def.json` name (`.rodata 0x1c86973`/`0x1c86992`), but **no** enum ordinal, **no** `getAttribute` read, and **no** `setAttribute` write. They are computed at package time inside `writeNEFFFeatures` itself — `vnc` from `options.vnc_nc_count` (`options+0x1a4`), `remote_sem` from an `InstDMABlock` IR scan. A roster that assigns either an enum ordinal is wrong for 2.24.5133. This is the report's flag-level correction C-1, re-affirmed below.
 
@@ -62,28 +62,28 @@ The "set by" column names the codegen routine that records the attribute via `se
 
 | Bit | Ord | `def.json` name pushed | How set | Conf |
 |---|---|---|---|---|
-| `0x0000002` | 2 | `collective_has_offset` | `getAttribute(2)` @ `0x15294f8` | CONFIRMED |
-| `0x0000004` | 3 | `neff_feature_custom_ops` | `getAttribute(3)` @ `0x1529523` | CONFIRMED |
-| `0x0000008` | 4 | `neff_coalesced_ccops` | `getAttribute(4)` @ `0x1529549` | CONFIRMED |
-| `0x0000010` | 5 | `neff_queue_set_instances` | `getAttribute(5)` @ `0x152956f` | CONFIRMED |
-| `0x0000020` | 6 | `neff_has_functions` | `getAttribute(6)` @ `0x1529595` | CONFIRMED |
-| `0x0000040` | 7 | `neff_feature_dynamic_pwp` | `getAttribute(7)` @ `0x15295bb` | CONFIRMED |
-| `0x0000080` | 8 | `neff_feature_indirect_memcpy_32b_sem_wait` | `getAttribute(8)` @ `0x15295e1` | CONFIRMED |
-| `0x0000100` | 9 | `neff_feature_indirect_memcpy_bound_check` | `getAttribute(9)` @ `0x1529607` | CONFIRMED |
-| `0x0000200` | 10 (`0xa`) | `neff_feature_DMA_desc_higher_dim` | `getAttribute(0xa)` @ `0x152962d` | CONFIRMED |
-| `0x0000400` | — | `neff_feature_vnc` | `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f` | CONFIRMED |
-| `0x0000800` | — | *(no name — DVE perf mode)* | `cmpl $0x14,0xac(%r13)` @ `0x152965c` (arch>20) `&& !disableDVEPerfMode` | CONFIRMED |
-| `0x0001000` | 11 (`0xb`) | *(bit only)* `neff_feature_DGE` | `getAttribute(0xb)` @ `0x152967f`; `or $0x1000,%r14` @ `0x15296a4` | CONFIRMED |
-| `0x0002000` | 12 (`0xc`) | *(bit only)* `neff_feature_POOL_RSQRT` | `getAttribute(0xc)` @ `0x15296b8`; `or $0x2000,%r14` @ `0x15296dd` | CONFIRMED |
-| `0x0020000` | 15 (`0xf`) | *(bit only)* `neff_feature_embedding_stride32` | `getAttribute(0xf)` @ `0x15296f1`; `or $0x20000,%r14` @ `0x1529716` | CONFIRMED |
-| `0x0004000` | — | `neff_feature_remote_sem` | `InstDMABlock` `isRemoteUpdateInstruction` scan (`0x625200`/`0x61ced0`) | CONFIRMED |
-| `0x0008000` | 13 (`0xd`) | *(bit only)* `neff_feature_DGE_cast` | `getAttribute(0xd)` @ `0x1529800`; `or $0x8000,%r14` @ `0x1529825` | CONFIRMED |
-| `0x0010000` | 14 (`0xe`) | *(bit only)* `neff_feature_vector_DGE` | `getAttribute(0xe)` @ `0x1529839`; `or $0x10000,%r14` @ `0x152985e` | CONFIRMED |
-| `0x0200000` | 17 (`0x11`) | *(bit only)* `neff_feature_hardware_DGE` | `getAttribute(0x11)` @ `0x1529872`; `or $0x200000,%r14` @ `0x1529897` | CONFIRMED |
-| `0x0100000` | 20 (`0x14`) | *(bit only)* `neff_feature_SQI_no_rearm` | `getAttribute(0x14)` @ `0x15298ab`; `or $0x100000,%r14` @ `0x15298d0` | CONFIRMED |
-| `0x0400000` | 21 (`0x15`) | *(bit only)* `neff_feature_partial_sb2sb_ccop` | `getAttribute(0x15)` @ `0x15298e4`; `or $0x400000,%r14` @ `0x1529909` | CONFIRMED |
-| `0x2000000` | 22 (`0x16`) | *(bit only)* `neff_feature_large_tensor_support` | `getAttribute(0x16)` @ `0x152991d`; `or $0x2000000,%r14` @ `0x1529eb9` | CONFIRMED |
-| `0x1000000` | 22+ | *(bit only — no ordinal)* | `or $0x1000000,%r14` @ `0x1529ecf`, only when `arch>39` (`cmpl $0x27,0xac(%r13); jg` @ `0x152993b`) | CONFIRMED |
+| `0x0000002` | 2 | `collective_has_offset` | `getAttribute(2)` @ `0x15294f8` | CERTAIN |
+| `0x0000004` | 3 | `neff_feature_custom_ops` | `getAttribute(3)` @ `0x1529523` | CERTAIN |
+| `0x0000008` | 4 | `neff_coalesced_ccops` | `getAttribute(4)` @ `0x1529549` | CERTAIN |
+| `0x0000010` | 5 | `neff_queue_set_instances` | `getAttribute(5)` @ `0x152956f` | CERTAIN |
+| `0x0000020` | 6 | `neff_has_functions` | `getAttribute(6)` @ `0x1529595` | CERTAIN |
+| `0x0000040` | 7 | `neff_feature_dynamic_pwp` | `getAttribute(7)` @ `0x15295bb` | CERTAIN |
+| `0x0000080` | 8 | `neff_feature_indirect_memcpy_32b_sem_wait` | `getAttribute(8)` @ `0x15295e1` | CERTAIN |
+| `0x0000100` | 9 | `neff_feature_indirect_memcpy_bound_check` | `getAttribute(9)` @ `0x1529607` | CERTAIN |
+| `0x0000200` | 10 (`0xa`) | `neff_feature_DMA_desc_higher_dim` | `getAttribute(0xa)` @ `0x152962d` | CERTAIN |
+| `0x0000400` | — | `neff_feature_vnc` | `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f` | CERTAIN |
+| `0x0000800` | — | *(no name — DVE perf mode)* | `cmpl $0x14,0xac(%r13)` @ `0x152965c` (arch>20) `&& !disableDVEPerfMode` | CERTAIN |
+| `0x0001000` | 11 (`0xb`) | *(bit only)* `neff_feature_DGE` | `getAttribute(0xb)` @ `0x152967f`; `or $0x1000,%r14` @ `0x15296a4` | CERTAIN |
+| `0x0002000` | 12 (`0xc`) | *(bit only)* `neff_feature_POOL_RSQRT` | `getAttribute(0xc)` @ `0x15296b8`; `or $0x2000,%r14` @ `0x15296dd` | CERTAIN |
+| `0x0020000` | 15 (`0xf`) | *(bit only)* `neff_feature_embedding_stride32` | `getAttribute(0xf)` @ `0x15296f1`; `or $0x20000,%r14` @ `0x1529716` | CERTAIN |
+| `0x0004000` | — | `neff_feature_remote_sem` | `InstDMABlock` `isRemoteUpdateInstruction` scan (`0x625200`/`0x61ced0`) | CERTAIN |
+| `0x0008000` | 13 (`0xd`) | *(bit only)* `neff_feature_DGE_cast` | `getAttribute(0xd)` @ `0x1529800`; `or $0x8000,%r14` @ `0x1529825` | CERTAIN |
+| `0x0010000` | 14 (`0xe`) | *(bit only)* `neff_feature_vector_DGE` | `getAttribute(0xe)` @ `0x1529839`; `or $0x10000,%r14` @ `0x152985e` | CERTAIN |
+| `0x0200000` | 17 (`0x11`) | *(bit only)* `neff_feature_hardware_DGE` | `getAttribute(0x11)` @ `0x1529872`; `or $0x200000,%r14` @ `0x1529897` | CERTAIN |
+| `0x0100000` | 20 (`0x14`) | *(bit only)* `neff_feature_SQI_no_rearm` | `getAttribute(0x14)` @ `0x15298ab`; `or $0x100000,%r14` @ `0x15298d0` | CERTAIN |
+| `0x0400000` | 21 (`0x15`) | *(bit only)* `neff_feature_partial_sb2sb_ccop` | `getAttribute(0x15)` @ `0x15298e4`; `or $0x400000,%r14` @ `0x1529909` | CERTAIN |
+| `0x2000000` | 22 (`0x16`) | *(bit only)* `neff_feature_large_tensor_support` | `getAttribute(0x16)` @ `0x152991d`; `or $0x2000000,%r14` @ `0x1529eb9` | CERTAIN |
+| `0x1000000` | 22+ | *(bit only — no ordinal)* | `or $0x1000000,%r14` @ `0x1529ecf`, only when `arch>39` (`cmpl $0x27,0xac(%r13); jg` @ `0x152993b`) | CERTAIN |
 
 > **QUIRK — bit order ≠ ordinal order, and two bits have no ordinal at all.** The function reads `getAttribute` ordinals out of numeric order (`…10, [vnc], [DVE], 11, 12, 15, [remote_sem], 13, 14, 17, 20, 21, 22`), but each OR constant is a fixed wire bit, so the *encoding* is stable regardless of read order. Two bits — `0x800` (DVE perf) and `0x1000000` (the arch>39 companion) — are pure arch-version triggers with **no** `ModuleAttribute` and **no** name. `arch` here is read from `Module+0xac` (172); `0x14`=ArchLevel 20 and `0x27`=ArchLevel 39 are ArchLevel ordinals.
 
@@ -140,7 +140,7 @@ function writeNEFFFeatures(json &def, NeffFileWriter &w, Module const &m):
 22 neff_feature_large_tensor_support
 ```
 
-> **CORRECTION (D-S04 C-1, re-affirms D-D12 §6) —** `neff_feature_vnc` and `neff_feature_remote_sem` are **not** in this enum. They exist only as (a) `writeNEFFFeatures` procedural bits and (b) `def.json` name strings in `libwalrus` `.rodata` (`0x1c86973` `"neff_feature_vnc"`, `0x1c86992` `"neff_feature_remote_sem"`). Ordinal `16` (`neuron_core_id`) is a `ModuleAttribute` but is **not** a feature bit — it is set by the vNC concretizers (`test_vnc` `0x110f030`, `BirLinker::initModule` `0x15d3b30`, `LncSplitter::concretizeModule` `0x16d3bf0`) to stamp each module's core index, and `writeNEFFFeatures` never reads it.
+> **GOTCHA — two feature names have no enum ordinal, and one ordinal is not a feature.** `neff_feature_vnc` and `neff_feature_remote_sem` are absent from this enum entirely: they exist only as `writeNEFFFeatures` procedural bits and as `def.json` name strings in `libwalrus` `.rodata` (`0x1c86973` `"neff_feature_vnc"`, `0x1c86992` `"neff_feature_remote_sem"`). Conversely, ordinal `16` (`neuron_core_id`) *is* a `ModuleAttribute` but is **not** a feature bit — the vNC concretizers (`test_vnc` `0x110f030`, `BirLinker::initModule` `0x15d3b30`, `LncSplitter::concretizeModule` `0x16d3bf0`) set it to stamp each module's core index, and `writeNEFFFeatures` never reads it.
 
 ### Storage type — the `boost::variant` bool arm
 
@@ -182,7 +182,7 @@ The DGE cluster (ords 11/13/14/17) is set by **one** routine, `CoreV2GenImpl::ge
 
 ### Runtime read and the compat-reject contract
 
-The Neuron runtime (the NEFF loader) extracts the PAX tar, reads `neff_header+192 feature_flags` (u64) **before** wiring engines, and uses the bits two ways: (a) gate which HW/firmware capabilities to provision (GPSIMD for `custom_ops`, the higher-dim DMA decoder, the remote-sem fabric, vNC partitioning, queue sets, the function call table), and (b) reject a NEFF whose bits it does not recognize. The `def.json` `"neff_features"` array is the human-readable mirror. *(The runtime side is in `libnrt`, outside this corpus; the read-and-gate semantics are STRONG/INFERRED from the producer contract and the append-only encoding.)*
+The Neuron runtime (the NEFF loader) extracts the PAX tar, reads `neff_header+192 feature_flags` (u64) **before** wiring engines, and uses the bits two ways: (a) gate which HW/firmware capabilities to provision (GPSIMD for `custom_ops`, the higher-dim DMA decoder, the remote-sem fabric, vNC partitioning, queue sets, the function call table), and (b) reject a NEFF whose bits it does not recognize. The `def.json` `"neff_features"` array is the human-readable mirror. *(The runtime side is in `libnrt`, outside this corpus; the read-and-gate semantics are **[INFERRED]** from the producer contract and the append-only encoding.)*
 
 The bitmask **is** the forward/backward-compat mechanism:
 
@@ -200,23 +200,23 @@ provision_engines(header_mask);                   // per-feature provisioning of
 
 ### Adjacent resource keys — not feature flags
 
-Right after the `neff_features` array, `writeDefJson` emits a `.rodata` string cluster at `0x1c869b9..` — `"runtime_event_count"` (xref `0x152a7e4`), `"runtime_semaphore_count"`, `"runtime_statebuffer_reservation"` (xref `0x152c043`). These are per-core **resource** declarations the runtime reads to provision events / semaphores / state-buffer bytes before exec. They are complementary to the capability bits — the bits say *which* features, these say *how much* resource — and are **not** part of the feature mask. *(Keys CONFIRMED; provisioning semantics STRONG.)*
+Right after the `neff_features` array, `writeDefJson` emits a `.rodata` string cluster at `0x1c869b9..` — `"runtime_event_count"` (xref `0x152a7e4`), `"runtime_semaphore_count"`, `"runtime_statebuffer_reservation"` (xref `0x152c043`). These are per-core **resource** declarations the runtime reads to provision events / semaphores / state-buffer bytes before exec. They are complementary to the capability bits — the bits say *which* features, these say *how much* resource — and are **not** part of the feature mask. The keys are read directly; their provisioning semantics are **[INFERRED]** from the names and the emission site.
 
 ---
 
-## Verification and Re-Verify Ceiling
+## Evidence summary
 
-The five strongest claims were re-walked against the cp310 `libwalrus.so` this session:
+The five strongest claims, each walked against the cp310 `libwalrus.so`:
 
-| Claim | Evidence | Result |
+| Claim | Evidence | Confidence |
 |---|---|---|
-| Mask stored to header+192 | `mov %r14,0xc0(%rax)` @ `0x1529971`; `writeNEFFFeatures` exported `T` @ `0x15294b0` with the 4-arg `(json&, NeffFileWriter&, Module const&)` signature | CONFIRMED |
-| Every bit↔ordinal pairing | `getAttribute(ord)` `%edx` imms `2..0xa, 0xb, 0xc, 0xf, 0xd, 0xe, 0x11, 0x14, 0x15, 0x16` with matching `or $bit,%r14` constants, all `@0x15294f8..0x1529928` | CONFIRMED |
-| `vnc`/`remote_sem` are procedural | `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f`; `InstDMABlock::classof@plt 0x625200` + `isRemoteUpdateInstruction@plt 0x61ced0` @ `0x1529787`/`0x1529793` — no ordinal | CONFIRMED |
-| `def.json` key is `"neff_features"` (plural) | `lea # 1c86984` @ `0x1529a88`; string @ file offset `29911428` = `0x1c86984` | CONFIRMED |
-| Schema bump = `max(schema_min,2)` for arch>39 / large-tensor | `cmpl $0x27,0xac(%r13); jg` @ `0x152993b`; `cmovb`-clamp on `0xc8(%rcx)` @ `0x1529ee0..0x1529eee`; `or $0x1000000` @ `0x1529ecf` | CONFIRMED |
+| Mask stored to header+192 | `mov %r14,0xc0(%rax)` @ `0x1529971`; `writeNEFFFeatures` exported `T` @ `0x15294b0` with the 4-arg `(json&, NeffFileWriter&, Module const&)` signature | CERTAIN |
+| Every bit↔ordinal pairing | `getAttribute(ord)` `%edx` imms `2..0xa, 0xb, 0xc, 0xf, 0xd, 0xe, 0x11, 0x14, 0x15, 0x16` with matching `or $bit,%r14` constants, all `@0x15294f8..0x1529928` | CERTAIN |
+| `vnc`/`remote_sem` are procedural | `cmpl $0x1,0x1a4(%rax); ja` @ `0x152964f`; `InstDMABlock::classof@plt 0x625200` + `isRemoteUpdateInstruction@plt 0x61ced0` @ `0x1529787`/`0x1529793` — no ordinal | CERTAIN |
+| `def.json` key is `"neff_features"` (plural) | `lea # 1c86984` @ `0x1529a88`; string @ file offset `29911428` = `0x1c86984` | CERTAIN |
+| Schema bump = `max(schema_min,2)` for arch>39 / large-tensor | `cmpl $0x27,0xac(%r13); jg` @ `0x152993b`; `cmovb`-clamp on `0xc8(%rcx)` @ `0x1529ee0..0x1529eee`; `or $0x1000000` @ `0x1529ecf` | CERTAIN |
 
-> **NOTE — re-verify ceiling.** The producer (`writeNEFFFeatures`) was disassembled byte-for-byte this session: the store, every `getAttribute` ordinal/bit pair, both procedural bits, the arch gates, the schema clamp, and the `"neff_features"` key are all directly observed in the cp310 `.so`. What was **not** independently re-walked: (1) the *setter* function-entry addresses (`visitInstCustomOp` `0x12613c0`, `generateDynamicDMA` `0x1276b10`, etc.) — the shipped `.so` has no local symbols, so these come from the cp310 IDA decompile, though the `setAttribute` call-site `%esi` ordinals (`esi=3` @ `0x12619b0`, `esi=6` @ `0x126343f`, …) were spot-checked and confirmed. (2) The runtime-side reject logic lives in `libnrt`, outside this corpus, so §"Runtime read" is the contract reconstruction (STRONG/INFERRED), not a disassembly. (3) The `ModuleAttribute` enum ordinal-to-name mapping is `libBIR`-defined and cross-referenced from D-D12; each ordinal's *bit* is confirmed in `libwalrus`, but the *name* for the unnamed ordinal-≥11 bits is from the `libBIR` string table, not the `libwalrus` `.rodata`.
+> **NOTE — what is directly observed, and what is not.** The producer `writeNEFFFeatures` is disassembled byte-for-byte: the store, every `getAttribute` ordinal/bit pair, both procedural bits, the arch gates, the schema clamp, and the `"neff_features"` key all come straight out of the cp310 `.so`. Three things do not. (1) The *setter* function-entry addresses (`visitInstCustomOp` `0x12613c0`, `generateDynamicDMA` `0x1276b10`, and the rest) come from the cp310 IDA decompile, because the shipped `.so` carries no local symbols — though the `setAttribute` call-site `%esi` ordinals (`esi=3` @ `0x12619b0`, `esi=6` @ `0x126343f`, …) were spot-checked against it. (2) The runtime-side reject logic lives in `libnrt`, outside this corpus, so §"Runtime read" is a contract reconstruction, **[INFERRED]** rather than disassembled. (3) The `ModuleAttribute` ordinal-to-name mapping is `libBIR`-defined: each ordinal's *bit* is read from `libwalrus`, but the *name* for the unnamed ordinal-≥11 bits comes from the `libBIR` string table, not `libwalrus` `.rodata`.
 
 ---
 

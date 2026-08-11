@@ -69,7 +69,7 @@ All offsets are byte offsets into `this`. Each row is pinned to a constructor st
 
 The base header is opcode-independent. The first op-specific field begins after `+0xD8`: the matmul family's first `MaybeAffine` is at `+0xF0`, `InstDMA`'s `DGEType` at `+0xF8`. So `+0xD8 .. +0xEF` is a subclass-dependent gap before the per-op payload.
 
-> **CORRECTION —** an earlier survey placed `engine`/`engine_id` (`+0x90`/`+0x94`) inside `bir::InstDMA`. They are **base** `Instruction` fields inherited by all 110 opcodes: the ctor zeroes `qword@+0x90`, `setEngineId` (@ `0x2d6ab0`) reads idx 36 / writes idx 37 on the base class, and the base `toJson` reads both. `InstDMA`'s own first field is `DGEType @ +0xF8`.
+> **NOTE —** `engine`/`engine_id` (`+0x90`/`+0x94`) are **base** fields inherited by all 110 opcodes, not `InstDMA` fields as their DMA-centric naming suggests. `setEngineId` (@ `0x2d6ab0`) and the base `toJson` both operate on them at the base offsets; `InstDMA`'s own first field is `DGEType` @ `+0xF8`.
 
 ### The `NamedObject` CRTP sub-object (`+0x08 .. +0x4F`)
 
@@ -89,11 +89,11 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 
 | Block off | Type | Meaning / JSON key | Anchor | Conf |
 |---|---|---|---|---|
-| `+0x008` | `qword` count | `numDependencies()` (predecessor count) | `numDependencies` @ `0x2d69c0`: `*(*(this+26)+8)` | CERTAIN |
-| `+0x020` | intrusive list head | `"dependencies"` head (predecessor edges) | `toJson` walks `*(blk)+32` (`0x2e31d0`: `lea rbx,[rax+0x20]`); ctor leaves it zeroed | CERTAIN |
-| `+0x270` | `qword` head | descendents / successors list head | `clearDescendents` (`v1[78] = 0`) | CERTAIN |
-| `+0x4A8` | `qword` guard | `"loop_carried_dependencies"` count/guard | `toJson` `v80[149]` | CERTAIN |
-| `+0x4C0` | intrusive list head | `"loop_carried_dependencies"` head | `toJson` walks `*(blk)+1216` | CERTAIN |
+| `+0x008` | concurrent-set header | normal-dependency **set**; `[+0]` = element count (`numDependencies()`) | `numDependencies` @ `0x2d69c0`; `addDependency` @ `0x2e6e90` | CERTAIN |
+| `+0x020` | intrusive list head | `"dependencies"` — serialized *ordered* edge list | `toJson` walks `blk+0x20` | CERTAIN |
+| `+0x270` | `qword` head | descendents / successors list head | `clearDescendents` | CERTAIN |
+| `+0x4A8` | concurrent-set header | loop-carried dependency **set**; `[+0]` = element count | `addDependency` @ `0x2e6e90` | CERTAIN |
+| `+0x4C0` | intrusive list head | `"loop_carried_dependencies"` — serialized ordered list | `toJson` walks `blk+0x4C0` | CERTAIN |
 | `+0x948`/`+0x950` | `vector<…>` begin/end | `"unroll_dependencies"` | `toJson +2376/+2384` | CERTAIN |
 | `+0x960` | `bir::OpDebugInfo` (opt) | `"debug"` / `ir_debug_info`; flag byte `@+0x960` | `getDebugInfo` @ `0x2d82c0`: `*(this+26)+2400`; `toJson` guard `*(blk+2400)` | CERTAIN |
 | `+0x9F0` | `bir::SyncInfo` (opt) | `"sync_info"`; payload maps `@+0x9F8`/`+0xA30`; flag `@+0x9F0` | `getSyncInfo` @ `0x2d7dd0`: `*(this+26)+2544`; `setSyncInfo` @ `0x2e49a0` | CERTAIN |
@@ -102,17 +102,27 @@ Each of the three operand lists is an `llvm::ilist`-style intrusive **circular**
 | `+0xA88` | `int64` | `"scheduled_start"` | `toJson [p+0xA88]`; ctor zeroes | CERTAIN |
 | `+0xA90` | `int64` | `"scheduled_end"` | `toJson [p+0xA90]` | CERTAIN |
 
-> **CORRECTION — the dependency edges live in *two* structures, not one intrusive list.** `addDependency(EdgePtr, bool)` @ `0x2e6e90` selects a container base by the `loop_carried` flag (`0x2e6ea4: mov rbp,[rdi+0xD0]` then `0x2e6eb0: lea rdx,[rbp+0x4A8]` / `0x2e6eb7: add rbp,8` / `0x2e6ebe: cmovnz rbp,rdx`): **normal → `blk+0x08`, loop-carried → `blk+0x4A8`**. That base is the header of a `tbb::…::concurrent_unordered_set<bir::EdgePtr>` (the mangled `concurrent_unordered_set_traits<bir::EdgePtr, …EdgeHash, …EdgeEqual>` appears in the call at `0x2e6fb2`): `[base+0]` is the element **count** (`0x2e7056: lock xadd [rbp+0], rdx`), `[base+8]` the segment-table size used as the hash divisor (`0x2e6f9b: mov rcx,[rbp+8]` → `div rcx`), and `[base+0x10]` a `4.0f` max-load-factor compared via `comiss` (`0x2e708d`) — which is the `0x40800000` the ctor writes at `blk+0x18`/`blk+0x4B8` (encoded as the `+0x1A`/word `0x4080` and the explicit `movss`). So the `+0x08`/`+0x4A8` qwords this table calls "count"/"guard" are the **set element counts**, byte-exact. The serialized `"dependencies"`/`"loop_carried_dependencies"` *ordered* lists at `+0x20`/`+0x4C0` are a **separate** intrusive structure that `toJson` walks (`0x2e31d0: lea rbx,[rax+0x20]`, sentinel `byte[rbx+8]&1`; `0x2e3d7a: lea rbx,[rax+0x4C0]`). The OPEN-LEAD suspect ctor stores `+0x40 = blk+0x48` and `lea rcx,[rdx+0x240]` are the concurrent-set's embedded 63-segment bucket array (zeroed `[0x48..0x240)`), **not** the `+0x20` head — this page's four offsets (`+0x08`, `+0x20`, `+0x4A8`, `+0x4C0`) are all correct; only the old `+0x20`-row anchor that cited `+0x40 = blk+0x48` was misattributed.
+### Dependencies are stored twice
+
+Each edge is held in **two** independent structures, and a reimplementer must maintain both.
+
+The **authoritative** container is a `tbb::concurrent_unordered_set<bir::EdgePtr>` — one per edge class, with its header inline in the block at `+0x08` (normal) and `+0x4A8` (loop-carried). `addDependency(EdgePtr, bool loop_carried)` picks between them with a `cmov` on the flag, so the two classes never share a set. The header is the standard TBB layout: element count at `[base+0x00]` (bumped with a `lock xadd`, which is what `numDependencies()` returns), segment-table size at `[base+0x08]` used as the hash divisor, a `4.0f` max-load-factor at `[base+0x10]`, and a 63-segment bucket array occupying `[base+0x40 .. base+0x240)`.
+
+The **serialization** container is a separate intrusive list, headed at `+0x20` and `+0x4C0`, which `toJson` walks to emit `"dependencies"` and `"loop_carried_dependencies"`. It preserves edge *order*; the set does not.
+
+The split matters because the two answer different questions: the set gives O(1) membership and a lock-free concurrent insert for the scheduler's parallel passes, while the list gives the deterministic ordering the JSON round-trip needs. Writing an edge to only one of them yields an instruction that either loses a dependency on reload or reports the wrong `numDependencies()`.
+
+*Anchors: `addDependency` @ `0x2e6e90` (container select, `lock xadd`, `comiss` load-factor); `toJson` @ `0x2e31d0` / `0x2e3d7a` (list walks, sentinel bit `byte[head+8]&1`).*
 
 > **NOTE — symbolic vs resolved schedule.** `"order"` (`+0xA68`, a `vector<QuasiAffineExpr>`) is the *symbolic* multi-dimensional schedule key; `"scheduled_start"`/`"scheduled_end"` (`+0xA88`/`+0xA90`, scalar `int64`) are the *resolved* cycle slots. The pre-scheduling representation carries `order`; the post-scheduling representation fills `scheduled_start/end`. There is no `getHeight`/`getDepth` accessor on `Instruction` — schedule height/depth are computed over the edge lists and the `order` vector, not stored as named base fields.
 
 ### What is *not* serialized
 
-The block is mostly scheduler scratch. The ctor seeds several intrusive list/map roots not reached by `toJson` — at `+0x40` (`= blk+0x48`), `+0x290`, `+0x4E0`, `+0x730` (each set to a self-relative root) — and writes a recurring float `1082130432` (`0x40800000` = `4.0f`) at `+0x268`, `+0x4B8`, and `+0x708` (three `movss [rdx+off], xmm0` of `dword_781930`), plausibly a default per-edge weight or schedule priority.
+The block is mostly scheduler scratch. Only the dependency, loop-carried, and unroll lists, `order`, `scheduled_start`/`_end`, `sync_info`, and `debug` reach JSON; everything else is internal state the scheduler passes own.
 
-> **CORRECTION —** an earlier draft cited the float slots as `+0x4A0` and `+0x4B8`/`+0x614`. The ctor at `0x2dafb0` instead `movss`-stores `dword_781930` (= `0x40800000` = `4.0f`, dumped byte-for-byte from `.rodata` at file offset `0x79930`) at `+0x268` (`0x2db148`), `+0x4B8` (`0x2db1b8`), and `+0x708` (`0x2db21d`); `+0x4A0` receives a *byte 0* (`0x2db13a`), not the float. Note `0x40800000` is IEEE-754 `4.0f`, **not** `2.0f` (`2.0f` = `0x40000000`); an earlier survey mis-decoded the constant. Only the dependency/loop-carried/unroll lists, `order`, `scheduled_start/end`, `sync_info`, and `debug` reach JSON; the rest is internal state the scheduler passes own.
+The ctor seeds four self-relative list/map roots that `toJson` never reaches — `+0x40`, `+0x290`, `+0x4E0`, `+0x730` — and writes `4.0f` (`0x40800000`) at `+0x268`, `+0x4B8`, and `+0x708`. That float is not a weight or a priority: it is the **max-load-factor field of an embedded TBB concurrent set**, the same constant `addDependency` compares against with `comiss`. `+0x4B8` is the load factor of the loop-carried set headed at `+0x4A8`; the copies at `+0x268` and `+0x708` mark two further concurrent sets in the block whose accessors are not traced.
 
-> **INFERRED —** the precise semantics of the `4.0f` constant and the extra map roots are not pinned to a named accessor. They are scheduling scratch (mobility / slack / weight); naming them exactly needs the scheduler passes that read them.
+> **INFERRED —** what those two further sets hold is unknown. Given their position — bracketing the descendents head at `+0x270` — they are most likely the successor-side mirrors of the two dependency sets, but no named accessor reads them.
 
 ---
 
@@ -229,7 +239,7 @@ int addDependency(Instruction* this, Instruction* former, char kind_and_lc) {
 
 The edge node layout (in either list) is `{ next@+0x00, byte&1 sentinel-flag @+0x08, EdgePtr @+0x10 }`. `toJson` decodes each node as `EdgeKind2string(*(node+0x10) & 7)` for the kind and `*(node+0x10) & ~7` for the target.
 
-> **GOTCHA — kinds are tags, lists are heads, and they are orthogonal.** There are *two* edge list heads in the block — normal **`dependencies`** (head `+0x20`, count `+0x08`) and **`loop_carried_dependencies`** (head `+0x4C0`, guard `+0x4A8`) — chosen by `addDependency`'s `loop_carried` argument. The four edge *kinds* — `EdgeKind = {Invalid 0, Ordered 1, Anti 2, Output 3, Flow 4}` — are **not** separate heads; they are the 3-bit tag on each node within whichever list. FLOW vs ANTI vs OUTPUT is a per-edge property; normal vs loop-carried is a per-list property. *(The `EdgeKind` value→name mapping is STRONG — recovered from the `EdgeKind2string` switch — not pinned to a named enum, since IDA carries no `EdgeKind` enum.)*
+> **GOTCHA — kinds are tags, lists are heads, and they are orthogonal.** There are *two* edge list heads in the block — normal **`dependencies`** (head `+0x20`, count `+0x08`) and **`loop_carried_dependencies`** (head `+0x4C0`, guard `+0x4A8`) — chosen by `addDependency`'s `loop_carried` argument. The four edge *kinds* — `EdgeKind = {Invalid 0, Ordered 1, Anti 2, Output 3, Flow 4}` — are **not** separate heads; they are the 3-bit tag on each node within whichever list. FLOW vs ANTI vs OUTPUT is a per-edge property; normal vs loop-carried is a per-list property. *(The `EdgeKind` value→name mapping is recovered from the `EdgeKind2string` switch, not pinned to a named enum — IDA carries no `EdgeKind` enum.)*
 
 The `+0x270` head holds the reverse **descendents/successors** list, maintained alongside the predecessor edges and cleared by `clearDescendents`.
 
@@ -250,7 +260,7 @@ There is exactly **one** polymorphic root, `bir::Instruction` (`_ZTSN3bir11Instr
 
 These six are exactly the ITs that route to the *base* `visitInstruction` in the simulator and have family-level bodies in the verifier — three independent confirmations that they are abstract. The two deep chains, both confirmed by ctor base-calls: `Instruction → InstGeneric → InstEventSemaphore → InstAbstractCopy` and `Instruction → InstDMA → InstLoad → InstSave` (where `InstSave::readFieldsFromJson` *tail-jumps* to `InstLoad`'s — "Save = Load on the wire"). All other ~90 opcodes derive directly from `bir::Instruction`. The full leaf→opcode crosswalk is the `InstructionType` table; see [`bir/instruction-type.md`](instruction-type.md).
 
-> **QUIRK — `InstDMADescriptor` is NOT under `InstDMA`.** Despite the name, the descriptor family (IT 68–72) derives directly from `Instruction`, not from `InstDMA`: its ctor calls `Instruction::Instruction` directly and the subtree has no `dge_type`/`queue` field. Likewise `InstQuantizeMx`(96) is a *sibling* of the matmul family, not a `InstMatmultBase` child. And `InstBranchHint`(80) is a control op that is *excluded* from terminator-class equality — its base edge is STRONG-not-confirmed.
+> **QUIRK — `InstDMADescriptor` is NOT under `InstDMA`.** Despite the name, the descriptor family (IT 68–72) derives directly from `Instruction`, not from `InstDMA`: its ctor calls `Instruction::Instruction` directly and the subtree has no `dge_type`/`queue` field. Likewise `InstQuantizeMx`(96) is a *sibling* of the matmul family, not a `InstMatmultBase` child. And `InstBranchHint`(80) is a control op that is *excluded* from terminator-class equality — its base edge is argued from that exclusion rather than read from a ctor base-call [INFERRED].
 
 ### The 113-vs-401 reconciliation
 
@@ -265,7 +275,7 @@ A naive count of typeinfo-name *hits* mentioning a `bir::Inst` type returns ~401
 
 The inflation from 113 to 401 is (a) the per-class RTTI **triplet** — `_ZTV` vtable / `_ZTI` typeinfo / `_ZTS` type-string (~3×) — and (b) template instantiations whose mangled names merely *mention* an `Inst` type (`ilist_iterator<…Instruction…>`, `DenseSet<Instruction const*>`, the ~60 `bir::Hwm::getLatency(InstX&)` overloads, the `visitInst<X>` method symbols). None of those are subclasses. The hard floor is independent: `getValidEngines` is overridden by ~105 concrete leaves, and there are 113 typeinfo strings — both an order of magnitude below 401.
 
-> **NOTE — the `113` here is the *loose-typeinfo* lens.** The 113-string count (`_ZTSN3bir.*Inst`, including the `NamedObject<Instruction,…>` template) and the strict-RTTI-triplet count (`112`, `_ZTSN3bir[0-9]+Inst…E` only) are two of six interlocking lenses on one ~112-class population. The full **121 / 113 / 112 / 110 / 104–105** decomposition — with the nine non-IR symbol-token contaminants enumerated — lives in the canonical reconciliation table at [cross-language wire-keys §2](cross-language-wirekeys.md#2-the-birinst-class-family-and-the-121--113--110--105-reconciliation). Use **112** for the polymorphic-class population, **110** for opcodes, **104–105** for concrete leaves; this page's `113 ⇒ 105` is the loose-grep route to the same floor.
+> **NOTE — the `113` here is the *loose-typeinfo* lens.** The 113-string count (`_ZTSN3bir.*Inst`, including the `NamedObject<Instruction,…>` template) and the strict-RTTI-triplet count (`112`, `_ZTSN3bir[0-9]+Inst…E` only) are two of six interlocking lenses on one ~112-class population. The full **121 / 113 / 112 / 110 / 104–105** decomposition — with the nine non-IR symbol-token contaminants enumerated — lives in the canonical reconciliation table at [cross-language wire-keys §2](cross-language-wirekeys.md#2-the-birinst-class-family-and-the-121--113--112--110--105-reconciliation). Use **112** for the polymorphic-class population, **110** for opcodes, **104–105** for concrete leaves; this page's `113 ⇒ 105` is the loose-grep route to the same floor.
 
 ---
 
@@ -279,7 +289,7 @@ The central design point is that the vtable is *small*: most per-opcode behavior
 |---|---|---|---|
 | `getValidEngines` | **virtual**, vt+0x60 | reloc on `InstMatmult` vt | CERTAIN |
 | `toJson` | **virtual** (leaf chains base) | base @ `0x2e2ea0` | CERTAIN |
-| `getDebugInfoSource` | **virtual**, slot 2 | — | STRONG |
+| `getDebugInfoSource` | **virtual**, slot 2 | — | HIGH |
 | destructor + Itanium pair | **virtual** | — | HIGH |
 | visitor `visit`/`accept` | **opcode switch** on `+0x58` (110 arms) | sim + verifier dispatch | CERTAIN |
 | `sameInst` | base 110-arm switch + 16 leaf delegates | base @ `0x2db7b0` | CERTAIN |

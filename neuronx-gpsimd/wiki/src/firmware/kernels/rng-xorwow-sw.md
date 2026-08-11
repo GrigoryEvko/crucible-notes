@@ -26,8 +26,8 @@ carries the literal `(SW)` suffix, and a whole-archive string sweep finds **no
 The algorithm is therefore composed entirely from the generic integer vector-ALU
 primitives — there is no bespoke RNG instruction in this ISA.
 
-> **NOTE — what was carved this session, and the exact objects used.** Every
-> fact below is byte-pinned to a shipped artifact re-carved this session from the
+> **NOTE — the carved objects.** Every
+> fact below is byte-pinned to a shipped artifact carved from the
 > RNG-bearing blob
 > `libnrtucode_internal.so`
 > (`sha256 b7c67e89…`, ELF64 x86-64 DYN). The POOL DEBUG images are carved by
@@ -44,9 +44,7 @@ primitives — there is no bespoke RNG instruction in this ISA.
 > | `CAYMAN_NX_POOL_DEBUG_IRAM` (off `0x1b1420`) | `116768 B` (`0x1c820`) | `8e4412b99201f62d` |
 > | `CAYMAN_NX_POOL_DEBUG_DRAM` (off `0x1cdc40`) | `28448 B` (`0x06f20`) | `7bdf6ed7ccd27b37` |
 >
-> The full `xtensa-elf-objdump -D` of the Q7 DEBUG IRAM is `48,807` lines, exit
-> `0`, empty stderr. `[HIGH/OBSERVED — all four sha256 reproduce the published
-> anchors exactly.]`
+> All four sha256 reproduce the published anchors exactly.
 
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW**
@@ -70,19 +68,18 @@ across its two cores:
 
 * **NX POOL sequencer (`'S:'` stream)** — decode/log/route only. Opcode `0x4d`
   `'M'` resolves through the SEQ opcode table to a handler that logs
-  `S: Rng (XORWOW)` (NX DRAM file `0x2d20` → VA `0x82d20`, **byte-confirmed this
-  session**). Opcodes `0x77`/`0x78` are the inline `Rand{Get,Set}State`
+  `S: Rng (XORWOW)` (NX DRAM file `0x2d20` → VA `0x82d20`, **byte-confirmed**).
+  Opcodes `0x77`/`0x78` are the inline `Rand{Get,Set}State`
   front-ends; the SEQ-side error string
   `S: RandGetState : rand_algorithm(0x%x) not currently supported on POOL`
   (NX DRAM file `0xe51`, **byte-confirmed**) is the **unsupported-algorithm**
   arm — it fires when an algo code other than the one wired on this gen is
-  requested. `[HIGH/OBSERVED]`
+  requested.
 * **Q7 POOL compute (`'P%i:'` stream)** — the actual Xorwow math and the state
   get/set live here, in the Q7 kernels decoded in §2–§6. The SEQ `0xf0`
   ExtendedInst escape registers the `ExtendedInstRand{Get,Set}State` variants on
   the Q7 kernel-info table; the Q7 dispatcher then runs the kernels.
-  `[HIGH/OBSERVED — the Q7 entry/log/call edges; the SEQ→Q7 escape registration
-  is CARRIED from the dispatch survey.]`
+  `[HIGH/OBSERVED; CARRIED registration]`
 
 > **NOTE — `'S: Rng (XORWOW)'` vs `'P%i: XorwowRng(SW)'` are not the same
 > string.** The SEQ-side `XORWOW` is the *opcode mnemonic* logged by the
@@ -126,8 +123,7 @@ Rng dispatcher 0xb838 ──(setup 0x7d90, 0x452c)──▶ XorwowRng driver 0xb
            ──▶ XorwowGetSeeds 0xb600 → 0xb60c
     Init 0x749c ──(call8 0x185a0 memset 0x180)──▶ seed-load (6 const16 + per-word vector setup)
 ```
-`[HIGH/OBSERVED at every listed call8 edge; see §5.3 GOTCHA on the per-step
-target addresses.]`
+`[HIGH/OBSERVED — but see §5.3 GOTCHA]`
 
 ---
 
@@ -170,8 +166,7 @@ written into the per-lane state via the vector-store machinery:
 
 ### 3.1 The smoking gun — five-of-five canonical seeds, byte-grounded
 
-The raw `movi`/`const16` immediate bytes were re-read this session and the
-arithmetic identity verified. The `x` seed is the cleanest witness — its **high
+The `x` seed is the cleanest witness — its **high
 half is in the `movi`, observed directly**, not inferred:
 
 | word | bytes (IRAM) | reconstructed value | Marsaglia default | match |
@@ -182,17 +177,16 @@ half is in the `movi`, observed directly**, not inferred:
 | `w` | `… a5 49 34 33 13` (`const16` pair 0x0549/0x1333) | `0x05491333` = 88675123 | 88675123 | ✓ |
 | `v` | `34 19 3f` (`const16 a3,0x3f19`) | `0x00583F19` = 5783321 | 5783321 | ✓ |
 
-> **NOTE — the high halves are not all guessed.** On re-read this session the `x`
+> **NOTE — the high halves are not all guessed.** The `x`
 > high half (`0x75b`) is a **clean `movi a3,0x75b` in the byte stream**
 > (`32 a7 5b`), and the `w` high half (`0x0549`) is visible in the byte run
 > `a5 49 34 33 13` at the `w` const16 chain. Where a high half is not directly
 > visible it is still uniquely fixed by the low half plus the known Marsaglia
 > constant — but `x` and `w` are *observed*, not merely identity-fixed.
-> `[HIGH/OBSERVED]`
 
 This is unambiguous textbook Marsaglia Xorwow seeding: `(123456789, 362436069,
 521288629, 88675123, 5783321)` is the exact published xorwow default seed vector.
-`[HIGH/OBSERVED — arithmetic identity on five independent immediates.]`
+`[HIGH/OBSERVED]`
 
 ### 3.2 The Weyl counter init — a DIVERGENCE from the curand default
 
@@ -204,24 +198,24 @@ half is `0xc934`.
 > is simply not set here.** The common curand / Numerical-Recipes xorwow
 > Weyl-counter default is `d = 6615241 = 0x0064F0C9` (low half `0xF0C9`). The
 > firmware's `d`-init low half is `0xc934`, which **does not match** `0xF0C9` —
-> a genuine divergence from the curand reference, not a copy of it. Re-disasm
-> this session resolves a subtlety: there is **no paired high-half setter** for
+> a genuine divergence from the curand reference, not a copy of it. There is
+> **no paired high-half setter** for
 > `a6`. The instruction immediately before `0x7538` is `0x7535: l32r a4,…`
 > (writes `a4`, ends exactly at `0x7538` — no room for a hidden `const16`), and a
 > scan of `0x7500–0x7540` finds `a6` written **nowhere except this single
 > `const16`**. Since Xtensa `CONST16` semantics are `AR ← (AR<<16) | imm16`, an
 > unpaired `const16` sets only the low half (`0xc934`); the high 16 bits are
 > *whatever `a6` held coming in* — not "desync-hidden", simply not established
-> here at all. So the `d`-init **low half is `0xc934` `[HIGH/OBSERVED]`** and
-> **diverges from curand `[HIGH/OBSERVED]`**; the *full* 32-bit `d`-init value is
+> here at all. So the `d`-init **low half is `0xc934`** and **diverges from
+> curand**; the *full* 32-bit `d`-init value is
 > `[MED/INFERRED — the high half is an uninitialized-register carry]`.
 
 ### 3.3 The per-word seed write path — NOT five splat helpers
 
-> **CORRECTION (vs the backing report) — the `0x88xx` call targets are NOT five
-> separate "splat-one-seed-across-16-lanes" helpers.** The backing-report draft
+> **CORRECTION (vs an earlier draft) — the `0x88xx` call targets are NOT five
+> separate "splat-one-seed-across-16-lanes" helpers.** An earlier draft
 > described `0x8844/0x8858/0x8870/0x8884/0x8898` as five `0x14`-apart broadcast
-> helpers. Re-disasm refutes this on two counts. (1) **The spacing is not
+> helpers. The disassembly refutes this on two counts. (1) **The spacing is not
 > uniform `0x14`**: the deltas are `0x14/0x18/0x14/0x14`. (2) **None of the five
 > addresses is a function `entry`** — they are all inline instructions inside
 > **one** function that begins at `0x8744: entry a1, 0x1c0` and ends before the
@@ -232,14 +226,12 @@ half is `0xc934`.
 > (`ivp_lvnx8s_ip`, `ivp_mulqan16xr8`, `ivp_sel2nx8t`) that writes the per-word
 > state. So the seeds *are* written into a 16-lane-replicated state via a vector
 > loop — but the "five tidy splat helpers" model is wrong; it is one descriptor-
-> driven vector-store routine, entered repeatedly. `[REFUTED the five-helper
-> model; HIGH/OBSERVED that the writes go through a single vector-store routine
-> @0x8744.]`
+> driven vector-store routine, entered repeatedly.
+> `[REFUTED five-helper model; HIGH @0x8744]`
 
 The net effect is unchanged: all 16 lanes **start from the same default seed
 vector**, and per-lane decorrelation comes from the per-lane stream advance
-and/or a per-lane seed override via `RandSetState` (§6).
-`[MED/INFERRED — the same-default-then-decorrelate reading.]`
+and/or a per-lane seed override via `RandSetState` (§6). `[MED/INFERRED]`
 
 ---
 
@@ -252,9 +244,8 @@ and/or a per-lane seed override via `RandSetState` (§6).
   register is 512-bit; a 32-bit word packs **16 lanes** per vector register. The
   6-word state `(x, y, z, w, v, d)` therefore occupies six 64-byte vector
   registers = 384 bytes — i.e. **16 independent Xorwow streams**, one per SIMD
-  lane, each carrying its own `(x, y, z, w, v, d)`. `[HIGH 384-byte size + 6
-  words / OBSERVED; the exact 16-lane × 6-word tiling MED/INFERRED from
-  `6·16·4 = 384` and the 512/32 vector width.]`
+  lane, each carrying its own `(x, y, z, w, v, d)`.
+  `[HIGH size; MED/INFERRED 16-lane tiling]`
 
 | field | offset (lane 0) | width | meaning |
 |---|---:|---|---|
@@ -277,9 +268,8 @@ and/or a per-lane seed override via `RandSetState` (§6).
   *"Initializing XORWOW state in DRAM scratch."* The state lives in the Q7 POOL
   DRAM scratch region, **not** in a per-instruction operand block — so it
   **persists across `Rng` calls** and the stream advances monotonically.
-  `RandSetState`/`RandGetState` read/write this same scratch. `[HIGH the string
-  names DRAM scratch / OBSERVED; the cross-call persistence is INFERRED-HIGH from
-  the get/set interface existing.]`
+  `RandSetState`/`RandGetState` read/write this same scratch.
+  `[HIGH/OBSERVED; INFERRED persistence]`
 
 ---
 
@@ -331,8 +321,7 @@ static inline uint32_t xorwow_next(xorwow_lane_t *s)
 > carries no per-function `.xt.prop` table (a flat-image limitation), so objdump
 > emits plausible-but-unreliable `ivp_*` mnemonics mid-bundle. The *structure*
 > (6 steps + Weyl add + `v+d` output) is HIGH; the exact tap/shift constants are
-> `[MED/INFERRED — matched to the canonical Xorwow, not read from the bundle
-> immediates]`.
+> `[MED/INFERRED — matched, not read]`.
 
 ### 5.2 The driver `0xb7b4` (per-element loop)
 
@@ -375,8 +364,7 @@ ba6e:  call8 <step 6>      ; bytes 25 02 01   (output formation: v + d)
 ```
 
 Six xor/shift/move ALU steps + one Weyl add — the **exact operation count of the
-Marsaglia xorwow inner loop**. `[HIGH structure / OBSERVED; per-step micro-op
-identity MED — §5.1 GOTCHA.]`
+Marsaglia xorwow inner loop**. `[HIGH structure; MED per-step identity]`
 
 > **GOTCHA — the printed step-call *target addresses* are FLIX-desync artifacts;
 > do not hard-code them.** All six step calls carry the **identical operand bytes
@@ -403,7 +391,7 @@ identity MED — §5.1 GOTCHA.]`
 > standard integer vector primitives** (`xor`, `sll`/`srl`, `add`) — there is
 > **no dedicated shift-register RNG instruction** in this ISA. That absence is
 > exactly why CAYMAN is SW-only: with no RNG TIE encoding, the SW composition is
-> the *only* path (§8). `[HIGH/OBSERVED]`
+> the *only* path (§8).
 
 ### 5.4 The Weyl constant — instruction-exact
 
@@ -417,13 +405,13 @@ ba63:  call8   0x1ccd4          ; vector add-immediate: d_lane += 362437  (all l
 increment**, recovered byte-exact from the `movi.n`/`const16` immediate pair. The
 add helper `0x1ccd4` is reached by a `call8` with operand bytes `25 27 11`
 (distinct from the `25 02 01` of the xorshift steps), so this call is *not* one
-of the desynced step calls — it is its own resolvable dispatch. `[HIGH/OBSERVED]`
+of the desynced step calls — it is its own resolvable dispatch.
 
 > **GOTCHA — `362437` exists ONLY as an immediate-build, never as a 4-byte
 > literal.** A raw byte search for `C5 87 05 00` anywhere in the image returns
 > zero — the constant is materialized *only* by the `movi.n a2,5 ; const16
 > a2,0x87c5` pair. A reimplementer scanning `.rodata` for the magic number will
-> not find it; it is encoded in the instruction stream. `[HIGH/OBSERVED]`
+> not find it; it is encoded in the instruction stream.
 
 ---
 
@@ -459,7 +447,7 @@ b42c:  retw.n
 `rand_algo` **bit 0 selects Xorwow**. On CAYMAN, Xorwow is the **only** algo
 present (no LFSR), so the non-Xorwow path is a no-op here and the SEQ front-end
 logs `rand_algorithm(0x%x) not currently supported on POOL` for any other algo
-code. `[HIGH/OBSERVED — `bbci a2,0` + `extui a10,a2,0,1` read directly.]`
+code. `[HIGH/OBSERVED]`
 
 ### 6.2 `XorwowSetSeeds` `0xb430` → vector body `0xb43c`
 
@@ -475,11 +463,10 @@ b471,b481,b491,b4a1,b4b1,b4c1: SIX unrolled FLIX vector-store bundles, ONE PER S
 ```
 
 The **six** unrolled per-word vector writes (one per `x,y,z,w,v,d`) after the
-`0x180` memset were verified this session as six 16-byte FLIX bundles at
+`0x180` memset are six 16-byte FLIX bundles at
 `0xb471/0xb481/0xb491/0xb4a1/0xb4b1/0xb4c1` (each carrying `ivp_*` vector ops);
 the trailing `.byte 0xee … add.n` run at `0xb4d1` is a desync tail, not real
-code. `[HIGH the 6-fold unroll + the 0x180 memset / OBSERVED; the exact bundle
-mnemonics MED — §5.1 GOTCHA.]`
+code. `[HIGH/OBSERVED unroll; MED mnemonics]`
 
 ### 6.3 `RandGetState` dispatcher `0xb56c` and `XorwowGetSeeds` `0xb600`
 
@@ -502,13 +489,13 @@ b600 → b60c:  logs "XorwowGetSeeds(SW)" @DRAM 0x81f09 ; read path uses helper 
 > 16 lanes into the output operand record, hence more bundles. The read/write
 > symmetry and the higher Get unroll count are OBSERVED; the exact per-bundle
 > lane-permute ops are `[MED/INFERRED]` (FLIX desync, same desync-tail caveat as
-> Set). `[HIGH the 6-vs-10 bundle counts / OBSERVED.]`
+> Set).
 
 **State I/O contract.** `RandSetState` writes the per-lane 6-word state from a
 host-supplied operand into the 384-byte DRAM scratch; `RandGetState` reads it
 back out. Both gated by `rand_algo` bit 0 = Xorwow. This is the
 checkpoint/restore interface for the RNG stream — e.g. to make a kernel
-re-runnable, or to seed per-lane streams independently. `[HIGH/OBSERVED]`
+re-runnable, or to seed per-lane streams independently.
 
 ---
 
@@ -516,16 +503,16 @@ re-runnable, or to seed per-lane streams independently. `[HIGH/OBSERVED]`
 
 * **The raw draw is `uint32` per lane** (`out = v + d`, both 32-bit, the standard
   xorwow return). The 6-step ALU pipeline operates on 32-bit lanes
-  (`sll`/`srl` unsigned 32). `[HIGH/OBSERVED — 32-bit state words + 32-bit add.]`
+  (`sll`/`srl` unsigned 32). `[HIGH/OBSERVED]`
 * **The `blti a0, 5` switch** in the vector core (`0xb92f`) selects among ≤5
   element/dtype paths — the output is then narrowed/cast to the requested tensor
-  dtype using the same dtype machinery the other POOL kernels use. `[HIGH the
-  switch exists / OBSERVED; the dtype-enum mapping MED.]`
+  dtype using the same dtype machinery the other POOL kernels use.
+  `[HIGH/OBSERVED switch; MED dtype mapping]`
 
 ### 7.1 The `[0,1)` uniform-float construction — fully recovered
 
 The Rng top dispatcher `0xb838` builds the IEEE-754 constants for an optional
-cast of the `uint32` draw to a uniform float, and on re-read this session the
+cast of the `uint32` draw to a uniform float, and the
 **full construction is instruction-exact** — not just the bare `0x3f80` constant:
 
 ```asm
@@ -544,9 +531,9 @@ b8a2:  slli  a2, a2, 23              ┘    << 23 → 0x3F800000 = 1.0f exponent
 b8a5:  s32i.n a2,[a1+16]
 ```
 
-> **CORRECTION (vs the backing report) — the float cast is HIGH, not MED.** The
+> **CORRECTION (vs an earlier draft) — the float cast is HIGH, not MED.** The
 > draft flagged the uint32→float path as "INFERRED-MED — the exact mantissa-fill
-> cast is NOT instruction-exact recovered." On re-read the dispatcher builds
+> cast is NOT instruction-exact recovered." The dispatcher builds
 > **both** halves of the canonical trick byte-exact: the **mantissa mask**
 > `0x007FFFFF` (via `movi -1 ; srli ,9`) **and** the **1.0f exponent field**
 > `0x3F800000` (via both `const16 0x3f80` *and* `movi 127 ; slli ,23`). That is
@@ -575,8 +562,7 @@ band:
 > `XorwowGetSeeds(SW)` @`0x7950`, `XorwowRng(SW)` @`0x8003`) and **zero** hits for
 > `(TIE)`, `Lfsr`, `LFSR`, or bare `TIE` — the SW path is the only RNG present on
 > this image. The `(TIE)` + `Lfsr` strings appear only at the five higher file
-> offsets belonging to newer generations' images. `[HIGH/OBSERVED — presence of
-> the `(SW)` set + absence of `(TIE)`/`Lfsr` in the carved CAYMAN blob.]`
+> offsets belonging to newer generations' images. `[HIGH/OBSERVED]`
 
 The boundary is therefore a **generation/config select**, not a runtime branch
 inside one image: CAYMAN has no RNG TIE op in its ISA, so its only path is the SW
@@ -588,13 +574,13 @@ reference and a `(TIE)` hardware path, plus a second algorithm (LFSR);
   generations** (it is the algorithm; the TIE path only *accelerates* the state
   advance). On CAYMAN it is the *only* RNG. The `(TIE)` hardware variant and the
   LFSR second algorithm are **additions** in MARIANA / MARIANA_PLUS / MAVERICK.
-  `[HIGH for CAYMAN (carved) / OBSERVED; the newer-gen TIE *implementations* are
-  string-OBSERVED only — those images were identified by offset but not
-  disassembled here, so the newer-gen interiors are INFERRED.]`
+  Those newer images are identified by offset but not disassembled here, so their
+  TIE *implementations* are string-OBSERVED only.
+  `[HIGH CAYMAN; INFERRED newer gens]`
 
 > **NOTE — v5 / MAVERICK interiors.** The MAVERICK RNG body is **header-OBSERVED
 > only** (its `(TIE)`/`Lfsr` strings exist at the higher file offsets above); the
-> actual per-generation TIE state-advance instructions were not carved this pass.
+> actual per-generation TIE state-advance instructions are not carved here.
 > Treat any MAVERICK-specific claim as `[INFERRED]` until that image is
 > disassembled. The TIE path is documented on the sibling
 > [RNG — Xorwow TIE Hardware Path](./rng-xorwow-tie.md); the LFSR second algo on
@@ -608,8 +594,7 @@ The RNG is centralized on the POOL engine; its draws feed the stochastic
 kernels. The clearest consumer is **Dropout**: `S: Dropout` is a DVE-engine SEQ
 handler, and dropout needs exactly the uniform-`[0,1)` float that §7.1
 constructs (compare the per-element keep/drop mask against the keep probability).
-`[HIGH that Dropout is a DVE handler / OBSERVED; the Dropout → POOL-RNG
-cross-engine call path is INFERRED — not traced this pass.]` See
+`[HIGH/OBSERVED; INFERRED call path]` See
 [Dropout](./dropout.md) and the related [rand2](./rand2.md) kernel.
 
 ---
@@ -678,10 +663,10 @@ cross-engine call path is INFERRED — not traced this pass.]` See
   lane-permute in `XorwowGetSeeds` (FLIX desync; would need the per-function
   `.xt.prop` table the flat DEBUG Q7 IRAM does not carry).
 * The `(TIE)` hardware Xorwow + LFSR implementations on the newer generations
-  (string-identified by file offset, not disassembled this pass) — see the
+  (string-identified by file offset, not disassembled here) — see the
   sibling [TIE](./rng-xorwow-tie.md) and [LFSR](./rng-lfsr-dispatch.md) pages.
 
-**REFUTED (vs the backing report):**
+**REFUTED (vs earlier drafts):**
 
 * The "five `0x14`-apart splat helpers" `0x8844..0x8898` model — they are inline
   instructions inside one descriptor-table + vector-store routine at `0x8744`

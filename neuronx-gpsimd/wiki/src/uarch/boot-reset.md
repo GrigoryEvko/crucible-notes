@@ -5,17 +5,18 @@ core (`ncore2gp`, XEA3 / Xtensa24, one per NeuronCore) — from the architectura
 `0x0`, through the `_ResetHandler` early hardware init, the crt1 C-runtime, the multi-core
 PRID-gated shared reset vector, and out the far side into the on-device dispatch loop, where
 it meets the host across a single device↔host rendezvous word. Everything here is
-**byte-pinned to a shipped artifact this session**: the device reset/crt objects disassembled
+**byte-pinned to a shipped artifact**: the device reset/crt objects disassembled
 with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`), the `core-isa.h` / `specreg.h`
 config headers, the host `libnrtucode.so` boot/claim handshake disassembled with stock
 `objdump`, and the **embedded device firmware ELF** carved out of `libnrtucode_internal.so`
-(the image the host BAR0-writes into the core). Where prompt-level folklore or a sibling note
+(the image the host BAR0-writes into the core). Where a sibling note
 disagrees with the binary, **the binary wins** — and an in-place **CORRECTION** callout says so.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/define read from a shipped artifact this session; `INFERRED` =
+`OBSERVED` = a byte/string/define read from a shipped artifact; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed
-with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
+with `HIGH`/`MED`/`LOW`. Untagged claims default to `[HIGH/OBSERVED]`; only departures carry a
+tag. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
 
 Two corpus facts govern the anchors. (1) The device reset/crt objects are **relocatable
@@ -91,27 +92,27 @@ carved firmware ELF, and the host lib.
 
 ## 1. Configuration grounding — pin these or you are not booting this core
 
-All values read directly this session from `core-isa.h` / `specreg.h` (config
-`ncore2gp`, at `…/ncore2gp/xtensa-elf/arch/include/xtensa/config/`).
+All values read directly from `core-isa.h` / `specreg.h` (config
+`ncore2gp`, at `…/ncore2gp/xtensa-elf/arch/include/xtensa/config/`), all `[HIGH/OBSERVED]`.
 
-| Knob | Value | Read from (`core-isa.h` / `specreg.h` line) | Conf |
-|---|---|---|---|
-| Exception arch | **XEA3** | `core-isa.h:719` `XCHAL_XEA_VERSION 3`; `:726` `XCHAL_HAVE_XEA3 1` | `[HIGH/OBSERVED]` |
-| VECBASE reset value | `0x00000000` | `:736` `XCHAL_VECBASE_RESET_VADDR` | `[HIGH/OBSERVED]` |
-| Reset PC (VECTOR0) | `0x00000000` | `:740,741` `XCHAL_RESET_VECTOR0_VADDR/PADDR` | `[HIGH/OBSERVED]` |
-| Alt reset (VECTOR1) | `0x00100000` | `:742,743` (system-RAM alternate; unused) | `[HIGH/OBSERVED]` |
-| VECBASE↔reset overlap | `0` (UNUSED) | `:738` `XCHAL_RESET_VECBASE_OVERLAP` | `[HIGH/OBSERVED]` |
-| ISB (interrupt-stack base) | `0x0008FED0` | `:706` `XCHAL_ISB_VADDR` | `[HIGH/OBSERVED]` |
-| I-cache | **16384 B / 64 B line / 4-way** | `:296,291,369` SIZE/LINESIZE/WAYS | `[HIGH/OBSERVED]` |
-| D-cache | **0** (none) | `:298` `XCHAL_DCACHE_SIZE 0` | `[HIGH/OBSERVED]` |
-| `iii` (Icache test) | present | `:311` `XCHAL_HAVE_ICACHE_TEST 1` | `[HIGH/OBSERVED]` |
-| Prefetch | **8 entries** | `:304,307` `HAVE_PREFETCH 1`, `PREFETCH_ENTRIES 8` | `[HIGH/OBSERVED]` |
-| MPU | **16 fg + 2 bg, 4 KiB align, no lock** | `:800–809` `HAVE_MPU 1`, `ENTRIES 16`, `BACKGROUND_ENTRIES 2`, `ALIGN 4096`, `ALIGN_BITS 12`, `LOCK 0` | `[HIGH/OBSERVED]` |
-| Legacy CACHEATTR reg | **absent** | `:784` `XCHAL_HAVE_CACHEATTR 0` | `[HIGH/OBSERVED]` |
-| Local-mem ECC/parity | **0** (none) | `:733` `XCHAL_HAVE_MEM_ECC_PARITY 0` | `[HIGH/OBSERVED]` |
-| Register window | **64 AR, windowed, no CALL4/12** | `:50,51` `HAVE_WINDOWED 1`, `NUM_AREGS 64`; `:74` `XCHAL_HAVE_CALL4AND12 0` | `[HIGH/OBSERVED]` |
-| PRID core-id field | low 4 bits | `:332–334` `PRID_ID_SHIFT 0`, `_BITS 4`, `_MASK 0xF` | `[HIGH/OBSERVED]` |
-| Vision type | **Q7** | `:208` `XCHAL_VISION_TYPE 7`; `:94` `CP_MAXCFG 7` | `[HIGH/OBSERVED]` |
+| Knob | Value | Read from (`core-isa.h` / `specreg.h` line) |
+|---|---|---|
+| Exception arch | **XEA3** | `core-isa.h:719` `XCHAL_XEA_VERSION 3`; `:726` `XCHAL_HAVE_XEA3 1` |
+| VECBASE reset value | `0x00000000` | `:736` `XCHAL_VECBASE_RESET_VADDR` |
+| Reset PC (VECTOR0) | `0x00000000` | `:740,741` `XCHAL_RESET_VECTOR0_VADDR/PADDR` |
+| Alt reset (VECTOR1) | `0x00100000` | `:742,743` (system-RAM alternate; unused) |
+| VECBASE↔reset overlap | `0` (UNUSED) | `:738` `XCHAL_RESET_VECBASE_OVERLAP` |
+| ISB (interrupt-stack base) | `0x0008FED0` | `:706` `XCHAL_ISB_VADDR` |
+| I-cache | **16384 B / 64 B line / 4-way** | `:296,291,369` SIZE/LINESIZE/WAYS |
+| D-cache | **0** (none) | `:298` `XCHAL_DCACHE_SIZE 0` |
+| `iii` (Icache test) | present | `:311` `XCHAL_HAVE_ICACHE_TEST 1` |
+| Prefetch | **8 entries** | `:304,307` `HAVE_PREFETCH 1`, `PREFETCH_ENTRIES 8` |
+| MPU | **16 fg + 2 bg, 4 KiB align, no lock** | `:800–809` `HAVE_MPU 1`, `ENTRIES 16`, `BACKGROUND_ENTRIES 2`, `ALIGN 4096`, `ALIGN_BITS 12`, `LOCK 0` |
+| Legacy CACHEATTR reg | **absent** | `:784` `XCHAL_HAVE_CACHEATTR 0` |
+| Local-mem ECC/parity | **0** (none) | `:733` `XCHAL_HAVE_MEM_ECC_PARITY 0` |
+| Register window | **64 AR, windowed, no CALL4/12** | `:50,51` `HAVE_WINDOWED 1`, `NUM_AREGS 64`; `:74` `XCHAL_HAVE_CALL4AND12 0` |
+| PRID core-id field | low 4 bits | `:332–334` `PRID_ID_SHIFT 0`, `_BITS 4`, `_MASK 0xF` |
+| Vision type | **Q7** | `:208` `XCHAL_VISION_TYPE 7`; `:94` `CP_MAXCFG 7` |
 
 Boot-relevant special-register numbers (`specreg.h`, all OBSERVED), cross-checked against the
 `wsr.<reg>` opcodes decoded in §3/§4:
@@ -580,7 +581,7 @@ path. (The `entry a1, 32` is itself an OBSERVED witness of the 8-window / min-32
 ## 6. The `.globstruct` boot structure + the DRAM[0] ready sentinel
 
 The on-device firmware image — the one the host BAR0-writes — is **embedded in
-`libnrtucode_internal.so`**. Scanning that lib this session for `\x7fELF` with `e_machine = 94`
+`libnrtucode_internal.so`**. Scanning that lib for `\x7fELF` with `e_machine = 94`
 (Xtensa) finds six device ELF32-LE images; the first, at file offset `0x2ef7e0`, has
 **`e_entry = 0x01005610`** — the dispatch-loop entry. Carving it and reading its section
 headers (native `xtensa-elf-objdump -h`, VMA==file-offset for `.text`/`.rodata`/`.data`):
@@ -604,7 +605,7 @@ The first word, read directly from the carved file:
 .globstruct[0] (VMA 0x02000408) = 0x6099CB34      ← the READY SENTINEL
 ```
 
-The full `0x48`-byte structure (now OBSERVED, where a prior pass could only infer it):
+The full `0x48`-byte structure:
 
 | Off | Word | Off | Word | Off | Word |
 |---|---|---|---|---|---|
@@ -627,7 +628,7 @@ The full `0x48`-byte structure (now OBSERVED, where a prior pass could only infe
 > earlier framing ("the FW writes 0x6099CB34 before the dispatch loop") was an inference made
 > before the loadable initializer was confirmed; pin the loadable-initializer model.
 
-> **NOTE — why the FLIX store site can't be re-disassembled.** The `ncore2gp` `objdump` emits
+> **NOTE — why the FLIX store site can't be disassembled.** The `ncore2gp` `objdump` emits
 > this image's `.text` FLIX bundles as **raw 4-byte words** (e.g. at `e_entry` the bytes decode
 > as `bf004136 20003200 a4015083 …`, not instructions) — a known decode limitation for this
 > Vision-Q7 FLIX config. The carving above sidesteps it entirely: the sentinel is a *data*
@@ -643,7 +644,7 @@ at entries 6–10 carrying `spec 0..4` (the POOL extended-opcode fan-out). `[HIG
 
 ## 7. The device↔host boot / claim handshake
 
-`nrtucode_core_on_ucode_booted` — disassembled this session from the host x86
+`nrtucode_core_on_ucode_booted` — disassembled from the host x86
 `libnrtucode.so` at **`0x308F90`** (`nm: T nrtucode_core_on_ucode_booted`). It is the host
 counterpart of the device "ready" word, bound into the runtime as the
 `on_ucode_booted = START` step of `ucode_core_create`. The exact flow:
@@ -676,7 +677,7 @@ int nrtucode_core_on_ucode_booted(nrtucode_core_t *core /*rbx*/) {
 }
 ```
 
-OBSERVED corroboration this session:
+OBSERVED corroboration:
 - the two compares are byte-exact: `41 81 f9 34 cb 99 60  cmp $0x6099cb34,%r9d` and
   `41 81 f9 a1 2d 2b 50  cmp $0x502b2da1,%r9d`;
 - the claim write stages `c7 44 24 0c a1 2d 2b 50  movl $0x502b2da1,0xc(%rsp)` and calls the
@@ -705,7 +706,7 @@ Immediate byte-counts (python3 scan):
 
 This is a **one-word spin-mailbox claim**, not a hardware CAS: the host reads, branches, then
 writes; serialization comes from the single-host-thread per-core bring-up ordering, not an
-atomic. `[HIGH/OBSERVED — fresh disasm + carved strings + byte counts this session.]`
+atomic. `[HIGH/OBSERVED — disasm + carved strings + byte counts.]`
 
 > **GOTCHA — the read/write target is `core->target` at `0x20(%rbx)`, the boot_state is at
 > `0x30(%rbx)`.** Do not conflate them. The handshake reads/writes 4 bytes at the *device*
@@ -770,7 +771,7 @@ a reset-class event. **The boot path and the steady-state interrupt path share V
 
 ## 10. Adversarial self-verification ledger
 
-The five strongest boot-spine claims, each re-challenged against the disassembly this session:
+The five strongest boot-spine claims and their verdicts against the disassembly:
 
 | # | Claim | Re-challenge | Verdict |
 |---|---|---|---|
@@ -785,7 +786,7 @@ Two prior-note discrepancies were checked and **corrected in place**: the Window
 "size" figures (`0x131` reset body, `0x15c` unpack body) were reconciled as *symbol-body* sizes
 vs *section* sizes (`0x145` / `0x170`) — both correct, framed differently (§2, §5.2). The one
 honest decode limit is the **FLIX `.text` of the firmware image**: the `ncore2gp` `objdump`
-emits its bundles as raw words, so the in-loop kernel bodies are not re-disassembled here —
+emits its bundles as raw words, so the in-loop kernel bodies are not disassembled here —
 but every *boot-spine* fact (reset vector, handler, crt, sentinel value/location, handshake) is
 read from a decodable object, a config header, a data section, or x86 host code. The
 scalar-LX-vs-FLIX ambiguity does **not** touch the reset/crt objects (those are scalar XEA3 and

@@ -1,6 +1,6 @@
 # libcas-core — The Cycle/Pipeline Timing Model
 
-> **Scope.** This is the **timing half** of the cas/fiss reference oracle. `libcas-core.so` decodes a FLIX bundle, schedules every operand read and write on a 32-deep pipeline-stage ring, runs a latency-aware RAW-hazard scoreboard with a forwarding window, enforces the structural writeback-port and multi-slot-dispatch interlocks, and steps one cycle per `dll_cycle_advance` tick. It computes **zero element values** — those are produced by `libfiss-base` and the host TIE-port callbacks ([`fiss-datapath-oracle.md`](./fiss-datapath-oracle.md), referenced by title where the file is a stub). A reimplementer diffs their **cycle counts and stall decisions** against this page; they diff their **element values** against the fiss page. The two are orthogonal and were read from the same binary.
+> **Scope.** This is the **timing half** of the cas/fiss reference oracle. `libcas-core.so` decodes a FLIX bundle, schedules every operand read and write on a 32-deep pipeline-stage ring, runs a latency-aware RAW-hazard scoreboard with a forwarding window, enforces the structural writeback-port and multi-slot-dispatch interlocks, and steps one cycle per `dll_cycle_advance` tick. It computes **zero element values** — those are produced by `libfiss-base` and the host TIE-port callbacks ([`fiss-datapath-oracle.md`](./fiss-datapath-oracle.md)). A reimplementer diffs their **cycle counts and stall decisions** against this page; they diff their **element values** against the fiss page. The two are orthogonal and were read from the same binary.
 >
 > **Binary.** `libcas-core.so` — 45,878,080 bytes, ELF64 x86-64, **not stripped**, GCC 4.9.4. Identity `dll_get_version → 0x1381f`, `dll_get_data_size → 0x4a09f0` (**4,852,208 B (0x4a09f0, ≈4.63 MB)** per-instance state). Modeled core = **Cayman / Vision-Q7 IVP VLIW** (FLIX) on Xtensa. All addresses below are file offsets into that image; `.text`/`.rodata` are VMA==fileoffset, `.data.rel.ro`/`.data` carry a **+0x200000** VMA→fileoffset delta (subtract before `xxd`). Sibling surface/ABI facts: [`cas-core-surface.md`](./cas-core-surface.md).
 >
@@ -10,7 +10,7 @@
 
 ## 0. Executive finding — what the timing model *is*
 
-`libcas-core` is a **cycle-accurate interlock simulator with no datapath math**. The decisive evidence is negative and total: the entire 45 MB image contains **not one packed/SIMD arithmetic instruction** — a full-disassembly sweep for `paddw/psubw/pmullw/pmaxsw/pminsw/paddd/paddb/vpadd*` returns **0**. `[HIGH, OBSERVED]` cas therefore cannot and does not compute lane values. It computes exactly five things:
+`libcas-core` is a **cycle-accurate interlock simulator with no datapath math**. The decisive evidence is negative and total: the entire 45 MB image contains **not one packed/SIMD arithmetic instruction** — a full-disassembly sweep for `paddw/psubw/pmullw/pmaxsw/pminsw/paddd/paddb/vpadd*` returns **0**. cas therefore cannot and does not compute lane values. It computes exactly five things:
 
 1. per-bundle **instruction decode** (op0-nibble length table + 47-record slot dispatch);
 2. the **per-operand read/write schedule** on a 32-deep pipeline-stage ring;
@@ -18,7 +18,7 @@
 4. **structural hazards** (a 6-lane writeback buffer + multi-slot-dispatch interlocks);
 5. the **one-tick cycle advance** that commits pending writes and shifts the ring.
 
-Element values are delegated to the host via **119** `nx_*_interface` TIE-port callbacks (`nm -D | rg -c 'nx_.*_interface' == 119`, `[HIGH, OBSERVED]`); the host datapath fires at the execute stage (stage 10).
+Element values are delegated to the host via **119** `nx_*_interface` TIE-port callbacks (`nm -D | rg -c 'nx_.*_interface' == 119`); the host datapath fires at the execute stage (stage 10).
 
 The split, proven from both sides:
 
@@ -35,7 +35,7 @@ The split, proven from both sides:
 
 ## 1. The pipeline stage model — a 32-deep stage RING
 
-The pipeline is a **circular ring of 32 stage-records**. Every timing routine indexes it as `(base_head + distance) & 0x1f`, stride 4 bytes per scoreboard column. This `& 0x1f` masking appears **identically** in `dll_cycle_advance`, `my_vec_stall`, `my_AR_stall`, and every per-register `_cycle` routine. `[HIGH, OBSERVED]`
+The pipeline is a **circular ring of 32 stage-records**. Every timing routine indexes it as `(base_head + distance) & 0x1f`, stride 4 bytes per scoreboard column. This `& 0x1f` masking appears **identically** in `dll_cycle_advance`, `my_vec_stall`, `my_AR_stall`, and every per-register `_cycle` routine.
 
 **Stage-ring control offsets in the per-instance state struct (arg0 / `%rdi`):**
 
@@ -52,17 +52,17 @@ The pipeline is a **circular ring of 32 stage-records**. Every timing routine in
 
 ### Per-register pipeline latches — the 81 `my_<SR>_cycle` shift registers
 
-There are **81** `my_*_cycle` routines (`nm | rg -c 'my_.*_cycle' == 81`, `[HIGH, OBSERVED]`): `my_CCOMPARE0_cycle` `@0x176f710`, `my_EPC_cycle` `@0x1766240`, `my_EXCCAUSE_cycle` `@0x1768c60`, `my_IVP_FS0_cycle` `@0x1773050`, and so on across the timer/compare, FP-status, exception, and breakpoint special registers. Each is a **stage-indexed shift register**: keyed on a stage argument (`cmp $0x5/$0x4,%ebp`), it copies a special-register value from stage `N+1` down to stage `N`, so the architectural SR state stays phase-coherent with the timing ring. This is how `CCOMPARE0/1/2`, `IVP_FS0..7`, `EPC`/`EXCCAUSE`/`EXCVADDR` advance exactly one stage per cycle. `[HIGH, OBSERVED]`
+There are **81** `my_*_cycle` routines (`nm | rg -c 'my_.*_cycle' == 81`, `[HIGH, OBSERVED]`): `my_CCOMPARE0_cycle` `@0x176f710`, `my_EPC_cycle` `@0x1766240`, `my_EXCCAUSE_cycle` `@0x1768c60`, `my_IVP_FS0_cycle` `@0x1773050`, and so on across the timer/compare, FP-status, exception, and breakpoint special registers. Each is a **stage-indexed shift register**: keyed on a stage argument (`cmp $0x5/$0x4,%ebp`), it copies a special-register value from stage `N+1` down to stage `N`, so the architectural SR state stays phase-coherent with the timing ring. This is how `CCOMPARE0/1/2`, `IVP_FS0..7`, `EPC`/`EXCCAUSE`/`EXCVADDR` advance exactly one stage per cycle.
 
 ### Pipeline squash — `dll_kill_stage`
 
-`dll_kill_stage` `@0x17ae3e0` takes `(from_stage %esi, to_stage %edx)` and **memsets the per-stage records** over `[+0xbf8.., +0xc01..]`, clearing in-flight bits — a flush of a stage range on misprediction / exception / replay. The two `memset` calls are explicit: `lea 0xbf8(%rdi,%r13,1),%rdi; call memset` and `lea 0xc01(%r12,%r13,1),%rdi; call memset`. `[HIGH, OBSERVED]`
+`dll_kill_stage` `@0x17ae3e0` takes `(from_stage %esi, to_stage %edx)` and **memsets the per-stage records** over `[+0xbf8.., +0xc01..]`, clearing in-flight bits — a flush of a stage range on misprediction / exception / replay. The two `memset` calls are explicit: `lea 0xbf8(%rdi,%r13,1),%rdi; call memset` and `lea 0xc01(%r12,%r13,1),%rdi; call memset`.
 
 ---
 
 ## 2. The decode / instruction-length model — cycles begin at fetch width
 
-`dll_instruction_get_length` `@0x17b57a0` is three instructions: `lea CSWTCH.4667(%rip),%rax; movsbl (%rax,%rsi,1),%eax; ret`. It indexes a **256-entry signed-byte table @0x17d0640** by the low opcode byte. The table (`xxd -s 0x17d0640`, `.rodata` so VMA==fileoffset) decodes by op0 nibble: `[HIGH, OBSERVED]`
+`dll_instruction_get_length` `@0x17b57a0` is three instructions: `lea CSWTCH.4667(%rip),%rax; movsbl (%rax,%rsi,1),%eax; ret`. It indexes a **256-entry signed-byte table @0x17d0640** by the low opcode byte. The table (`xxd -s 0x17d0640`, `.rodata` so VMA==fileoffset) decodes by op0 nibble:
 
 ```
 017d0640: 03 03 03 03 03 03 03 03   nibble 0x0..0x7 -> 0x03 (3 B : x24 / base 24-bit density)
@@ -72,7 +72,7 @@ There are **81** `my_*_cycle` routines (`nm | rg -c 'my_.*_cycle' == 81`, `[HIGH
                                                    or 0xFF (-1 = ILLEGAL) for two reserved rows
 ```
 
-`dll_instruction_speculate_length` `@0x17b57b0` uses a parallel 16×int32 table `@0x17d0600` (`xxd`: eight `03`, six `02`, two `00` → `{0..7:3, 8..D:2, E/F:0}`) — the pre-byte3 length for early PC advance / branch-target sizing. `[HIGH, OBSERVED]`
+`dll_instruction_speculate_length` `@0x17b57b0` uses a parallel 16×int32 table `@0x17d0600` (`xxd`: eight `03`, six `02`, two `00` → `{0..7:3, 8..D:2, E/F:0}`) — the pre-byte3 length for early PC advance / branch-target sizing.
 
 Wall-clock cycle accounting starts from the per-bundle **fetch width**; one FLIX bundle issues per cycle, subject to the issue/stall checks of §3-4. `[MED]`
 
@@ -82,11 +82,11 @@ Wall-clock cycle accounting starts from the per-bundle **fetch width**; one FLIX
 
 ### Issue grid
 
-A FLIX bundle co-issues up to **4** parallel ops/cycle (wide formats F0/F1/F2/F4/F6/F7) or **5** (F3, F11 — dual/triple-ALU); narrow N0/N1/N2 issue 2-3. The 14 formats span 46 FLIX slots over the units `{LdSt, LdStALU, Ld, Mul, ALU, none(NOP)}`. cas models this as **parallel per-slot dispatch**. Peak issue width = 5; ≤2 memory ops/bundle, ≤1 store/bundle, ≤1 `S2_Mul` lane (see [`../uarch/co-issue-matrix.md`](../uarch/co-issue-matrix.md)). `[HIGH]`
+A FLIX bundle co-issues up to **4** parallel ops/cycle (wide formats F0/F1/F2/F4/F6/F7) or **5** (F3, F11 — dual/triple-ALU); narrow N0/N1/N2 issue 2-3. The 14 formats span 46 FLIX slots over the units `{LdSt, LdStALU, Ld, Mul, ALU, none(NOP)}`. cas models this as **parallel per-slot dispatch**. Peak issue width = 5; ≤2 memory ops/bundle, ≤1 store/bundle, ≤1 `S2_Mul` lane (see [`../uarch/co-issue-matrix.md`](../uarch/co-issue-matrix.md)).
 
 ### Three parallel 47-record dispatch tables
 
-The top-level cas issue model is three sibling tables, each **47 records × 32 bytes**, in `.data.rel.ro` (subtract `0x200000` for `xxd`): `[HIGH, OBSERVED]`
+The top-level cas issue model is three sibling tables, each **47 records × 32 bytes**, in `.data.rel.ro` (subtract `0x200000` for `xxd`):
 
 | Symbol | VMA | File offset (−0x200000) |
 |---|---|---|
@@ -109,7 +109,7 @@ struct slot_dispatch_record {           // 32 bytes (NOT 188x8; stride is 32 B)
 
 ### Per-slot dispatch arrays and their census
 
-Each `dispatch_array` is one `{const char *mnemonic, void *fn}` 16-byte record per mnemonic that can issue in that `(format,slot)`. Representative record counts (array size / 16): `[HIGH, OBSERVED]`
+Each `dispatch_array` is one `{const char *mnemonic, void *fn}` 16-byte record per mnemonic that can issue in that `(format,slot)`. Representative record counts (array size / 16):
 
 | Slot class | Examples (issue/stall arrays) |
 |---|---|
@@ -119,13 +119,13 @@ Each `dispatch_array` is one `{const char *mnemonic, void *fn}` 16-byte record p
 | LdSt | `F0_S0_LdSt` 352, `F7_S0_LdSt` 352 |
 | NOP "none" | `N0_S1_None` 2-4 records (narrow-bundle filler, no real issue unit) |
 
-Image-wide totals: **2,149** `*_inst_*_issue` and **1,651** `*_inst_*_stall` functions (`nm | rg -c '_inst_.*_issue' == 2149`, `rg -c '_inst_.*_stall' == 1651`). `[HIGH, OBSERVED]`
+Image-wide totals: **2,149** `*_inst_*_issue` and **1,651** `*_inst_*_stall` functions (`nm | rg -c '_inst_.*_issue' == 2149`, `rg -c '_inst_.*_stall' == 1651`).
 
 > **CORRECTION.** The microarch pages ([`../uarch/regfile-ports.md`](../uarch/regfile-ports.md), [`../uarch/pipeline-timing.md`](../uarch/pipeline-timing.md)) cite "**1746/1748** stall functions". That is a **superset scope**, not a conflict: `nm | rg -c ' [tT] .*_stall' == 1748` counts *every* stall symbol, which is the **1,651 per-mnemonic `*_inst_*_stall` thunks plus the shared `my_*_stall` predicates** (`nm | rg -c 'my_.*_stall' == 93`: the 6 `my_WB_*` lanes, `my_<rf>_stall` per-file interlocks, `my_MS_*`, `my_CPENABLE_stall`, `my_InOCDMode_stall`, etc., minus a handful of non-`t` duplicates). The figure to reimplement is **1,651 per-op stall thunks** (each tail-chaining into the shared predicates).
 
 ### Issue function = "admit op, POST its def reservations"
 
-`F0_F0_S3_ALU_36_inst_MOVI_issue` `@0x14b2bd0` shows the canonical body verbatim: `[HIGH, OBSERVED]`
+`F0_F0_S3_ALU_36_inst_MOVI_issue` `@0x14b2bd0` shows the canonical body verbatim:
 
 ```c
 // F0_F0_S3_ALU_36_inst_MOVI_issue @0x14b2bd0  (annotated from disasm)
@@ -145,24 +145,24 @@ Three offsets carry the split, all directly observed in this one function: **`+0
 
 ### Structural hazards (the stall chain)
 
-Every `*_inst_*_stall` tail-chains into the shared predicates: `[HIGH, OBSERVED]`
+Every `*_inst_*_stall` tail-chains into the shared predicates:
 
 - **Writeback-port conflict — `my_WB_{S,P,C,N,T,M}_stall`** (six write-buffer lanes; `nm` confirms `my_WB_S_stall` `@0x17782f0`, `_P_` `@0x1778690`, `_C_` `@0x1778a30`, `_N_` `@0x1778dd0`, `_T_` `@0x1779170`, `_M_` `@0x1779510`). `my_WB_S_stall` walks a 6-deep writeback queue: per-stage busy flags at `+0xde4..+0xde9` (`cmpb $0x0,…`), latency counters at `+0xdeb..+0xdf0` (`movzbl`), each compared `cnt - {0,2,3,4,5,6} <= esi -> STALL`. This models the drain of a 6-stage write-buffer: a producer cannot issue if its writeback stage/port is occupied.
 - **Multi-slot dispatch — `my_MS_DISPST_stall` `@0x1779c50` / `my_MS_DE_stall` `@0x177be30`** — gating co-issue when the bundle decode/dispatch resource is busy. `[HIGH presence / MED exact rule]`
-- **Coprocessor enable — `my_CPENABLE_stall` `@0x178e420`** (`esi=3`) — a vector op stalls/faults at stage 3 if its coprocessor is disabled. `[HIGH, OBSERVED]`
-- **Debug halt — `my_InOCDMode_stall` `@0x177c1d0`** (the OCD halt interlock). `[HIGH]`
+- **Coprocessor enable — `my_CPENABLE_stall` `@0x178e420`** (`esi=3`) — a vector op stalls/faults at stage 3 if its coprocessor is disabled.
+- **Debug halt — `my_InOCDMode_stall` `@0x177c1d0`** (the OCD halt interlock).
 
 Each predicate returns **1 ⇒ the op cannot issue this cycle** (re-presented next cycle); 0 ⇒ clear. The issue routine runs only after *all* stall predicates clear.
 
 #### The fp-width 4-port 2:1 structural mismatch
 
-The fp-width converts (fp32↔fp16) occupy **four** structural writeback ports for a 2:1 register-width mismatch — an fp32 result is twice the fp16 register footprint, so it claims multiple writeback slots. `IVP_CVTF16F32_issue` `@0x14b47b0` opens with **four** `mov $0xe,%esi` (the structural horizon arg `$0xe`=14) feeding the WB-port hooks before any operand resolves, then posts the result vec at `mov $0xd` (LAT 13) and the sources at `mov $0xa` (LAT 10). The unsigned `ufloat` variant uses an *extra* structural port versus the signed (see [`cas-convert-pack-fp.md`](./cas-convert-pack-fp.md) §10). `[HIGH, OBSERVED]`
+The fp-width converts (fp32↔fp16) occupy **four** structural writeback ports for a 2:1 register-width mismatch — an fp32 result is twice the fp16 register footprint, so it claims multiple writeback slots. `IVP_CVTF16F32_issue` `@0x14b47b0` opens with **four** `mov $0xe,%esi` (the structural horizon arg `$0xe`=14) feeding the WB-port hooks before any operand resolves, then posts the result vec at `mov $0xd` (LAT 13) and the sources at `mov $0xa` (LAT 10). The unsigned `ufloat` variant uses an *extra* structural port versus the signed (see [`cas-convert-pack-fp.md`](./cas-convert-pack-fp.md) §10).
 
 ---
 
 ## 4. The RAW-dependency scoreboard + bypass/forwarding network
 
-This is the genuine cycle-accuracy core. For each register file there is a `my_<rf>_stall` **consumer interlock** predicate plus reservation records on the 32-deep ring. The six exist as: `my_vec_stall` `@0x17994d0`, `my_AR_stall` `@0x1795bb0`, `my_vbool_stall` `@0x17a2df0`, `my_wvec_stall` `@0x17a7ac0`, `my_valign_stall` `@0x17a6b80`, `my_gvr_stall` `@0x17a9970`. `[HIGH, OBSERVED]`
+This is the genuine cycle-accuracy core. For each register file there is a `my_<rf>_stall` **consumer interlock** predicate plus reservation records on the 32-deep ring. The six exist as: `my_vec_stall` `@0x17994d0`, `my_AR_stall` `@0x1795bb0`, `my_vbool_stall` `@0x17a2df0`, `my_wvec_stall` `@0x17a7ac0`, `my_valign_stall` `@0x17a6b80`, `my_gvr_stall` `@0x17a9970`.
 
 ### Mechanism (decoded from `my_vec_stall` head)
 
@@ -189,7 +189,7 @@ int my_vec_stall(state *s, int src_reg, int need_lat /*esi*/) {
 }
 ```
 
-A RAW hazard stalls **only if** the producer's result will not have propagated far enough down the pipe to be **forwarded** by the time the consumer needs it (`need_lat > ready - dist`). This is a **latency-aware bypass/forwarding network**, not a naive "any pending def ⇒ stall". The reservation triple `+0x9554(reg#)/+0x94d4(valid)/+0x93d4(value)` matches the surface page's slot layout exactly. `[HIGH, OBSERVED — sub %r8d,%r14d ; cmp %esi,%r14d over each lane.]`
+A RAW hazard stalls **only if** the producer's result will not have propagated far enough down the pipe to be **forwarded** by the time the consumer needs it (`need_lat > ready - dist`). This is a **latency-aware bypass/forwarding network**, not a naive "any pending def ⇒ stall". The reservation triple `+0x9554(reg#)/+0x94d4(valid)/+0x93d4(value)` matches the surface page's slot layout exactly.
 
 ### The consumer-need argument (`esi`) IS the per-operand latency
 
@@ -202,7 +202,7 @@ call opnd_sem_vec_addr   ; mov $0xa,%esi    ; vec source           -> LAT 10
 call opnd_sem_vec_addr   ; mov $0xb,%esi    ; vec dest             -> LAT 11
 ```
 
-A histogram of `mov $imm,%esi` immediates, keyed by the preceding `opnd_sem_<rf>_addr` resolver, over the full disassembly gives the canonical per-register-file latency table. `[HIGH, OBSERVED]`
+A histogram of `mov $imm,%esi` immediates, keyed by the preceding `opnd_sem_<rf>_addr` resolver, over the full disassembly gives the canonical per-register-file latency table.
 
 #### Per-register-file latency table
 
@@ -263,7 +263,7 @@ The max stage-distance each stall predicate scans (`cmp $0xN,%r8d/%ecx` loop bou
 
 ## 5. The cycle counter / clock advancement — `dll_cycle_advance`
 
-`dll_cycle_advance` `@0x17aa3c0` (≈16 KB, `0x401d` B) is the **one-tick pipeline stepper**, signature `(state *s /*rdi*/, int dir /*esi*/)`. Decoded head + body: `[HIGH, OBSERVED]`
+`dll_cycle_advance` `@0x17aa3c0` (≈16 KB, `0x401d` B) is the **one-tick pipeline stepper**, signature `(state *s /*rdi*/, int dir /*esi*/)`. Decoded head + body:
 
 ```c
 // dll_cycle_advance @0x17aa3c0   (annotated from disasm)
@@ -297,7 +297,7 @@ void dll_cycle_advance(state *s, int dir) {
 }
 ```
 
-`dll_reset_cycle_advanced` `@0x17aa3b0` is two instructions — `andb $0xf7,0x5a8(%rdi); ret` — clearing bit3. `[HIGH, OBSERVED]`
+`dll_reset_cycle_advanced` `@0x17aa3b0` is two instructions — `andb $0xf7,0x5a8(%rdi); ret` — clearing bit3.
 
 The four committed write-back lanes (`+0x25f4/+0x28f4/+0x2bf4/+0x2ef4`, each landing its value into the `+0x8f8` scoreboard/regfile array) correspond to the up-to-4 parallel writes a wide FLIX bundle retires per cycle. The `dir` argument's three-way split (`==0 / <0 / >0`) means the timing model is **reversible / checkpointable** — the harness can step backward, consistent with a debugger-driven cycle ISS. `[HIGH presence / MED rollback rule]`
 
@@ -321,7 +321,7 @@ What cas times: `[HIGH, OBSERVED via the LdSt/Ld-slot stall chains]`
 
 ## 7. The cas-TIMING vs fiss-VALUE split — the per-op handoff
 
-For one vector op the two libraries cooperate as: `[HIGH]`
+For one vector op the two libraries cooperate as:
 
 ```
 cas:  decode (length table @0x17d0640)
@@ -337,7 +337,7 @@ host/fiss: the nx_*_interface callback computes the actual element values
 
 The cas scoreboard **never inspects the value**; it only schedules the read/write slots by reg# and latency. Signed / unsigned / saturating differ **only** in which host callback fires (distinct decode bit / distinct opcode), **never** in cas timing.
 
-State-struct vtable slots that carry the split (ref-count over the full disassembly): `[HIGH, OBSERVED]`
+State-struct vtable slots that carry the split (ref-count over the full disassembly):
 
 | Slot | Refs | Role |
 |---|---|---|

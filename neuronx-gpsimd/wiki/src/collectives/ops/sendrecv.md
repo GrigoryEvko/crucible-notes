@@ -24,14 +24,15 @@ directed leg of the same SB2SB/RDMA data path documented in
 > `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, x86-64, **not stripped, with DWARF** — the
 > host runtime that lowers the pseudo-op). All addresses are file offsets; in this image
 > `.text`, `.rodata` **and** `.data` all satisfy VMA==file-offset (no delta —
-> `readelf -SW`: `.text`@`0x3dbc0`, `.rodata`@`0x7cf000`, `.data`@`0xc07e00`).
+> `readelf -SW`: `.text`@`0x3dbc0`, `.rodata`@`0x7cf000`, `.data`@`0xc07e00`). The page
+> default is `[HIGH / OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
 ## 1. The opcode — one opcode, not SEND+RECV
 
 From `aws_neuron_isa_tpb_common.h` (the `NEURON_ISA_TPB_OPCODE` enum) and
-`instruction_mapping.json`. **[HIGH / OBSERVED]**
+`instruction_mapping.json`.
 
 ```c
 // aws_neuron_isa_tpb_common.h:273  (cayman/NC-v3; identical across all 4 archs)
@@ -84,7 +85,7 @@ so the opcode occupies exactly **1 byte** in the instruction header.
 Verbatim from `aws_neuron_isa_tpb_pseudo_sendrecv.h`. The struct body is
 **byte-identical** across cayman (NC-v3) / mariana (NC-v4) / maverick (NC-v5) / sunda
 (NC-v2) — `diff` of `tail -n +5` is empty for every pair; only the *"ISA header for
-NC-v{2,3,4,5}"* comment differs. **[HIGH / OBSERVED + COMPILE-VERIFIED]**
+NC-v{2,3,4,5}"* comment differs.
 
 ```c
 typedef struct NEURON_ISA_TPB_PSEUDO_SENDRECV_STRUCT {
@@ -99,7 +100,7 @@ typedef struct NEURON_ISA_TPB_PSEUDO_SENDRECV_STRUCT {
 } NEURON_ISA_TPB_PSEUDO_SENDRECV_STRUCT;
 ```
 
-**Compile-verified** (`gcc -Wpadded` against the real shipped header, this session):
+**Compile-verified** (`gcc -Wpadded` against the real shipped header):
 
 ```
 sizeof(SENDRECV)=64
@@ -128,16 +129,16 @@ typedef struct NEURON_ISA_TPB_EVENTS {      // 8 B  — the inline completion se
 
 ### 2.1 Field semantics
 
-| Field | Off | Width | Meaning | Confidence |
-|---|---|---|---|---|
-| `header` | 0 | 4 B | `opcode=0xCB` + word-len + debug | HIGH/OBSERVED |
-| `events` | 4 | 8 B | inline HW semaphore: **wait** before issue, **update** on completion (§8) | HIGH/OBSERVED |
-| `tensor_id` | 12 | u32 | **index** of the local data buffer (a collectives memory-region id); resolved host-side to a SoC VA. SRC on a SEND, DST on a RECV — one field, direction set by `is_send` | HIGH/OBSERVED |
-| `peer_id` | 16 | u64 | the **remote rank** (NCCL/global device id) to send-to / recv-from. One peer field: a SEND's peer is the destination, a RECV's peer is the source | HIGH/OBSERVED |
-| `is_send` | 24 | u8 | **direction selector**: `1` ⇒ SEND (TX leg), `0` ⇒ RECV (RX leg) | HIGH/OBSERVED |
-| `reserved0[23]` | 25 | 23 B | reserved (must be zero) | HIGH/OBSERVED |
-| `offset_bytes` | 48 | u64 | byte offset into the `tensor_id` buffer where the transfer starts | HIGH/OBSERVED |
-| `size_bytes` | 56 | u64 | byte **length** of the transfer (the "count", in bytes) | HIGH/OBSERVED |
+| Field | Off | Width | Meaning |
+|---|---|---|---|
+| `header` | 0 | 4 B | `opcode=0xCB` + word-len + debug |
+| `events` | 4 | 8 B | inline HW semaphore: **wait** before issue, **update** on completion (§8) |
+| `tensor_id` | 12 | u32 | **index** of the local data buffer (a collectives memory-region id); resolved host-side to a SoC VA. SRC on a SEND, DST on a RECV — one field, direction set by `is_send` |
+| `peer_id` | 16 | u64 | the **remote rank** (NCCL/global device id) to send-to / recv-from. One peer field: a SEND's peer is the destination, a RECV's peer is the source |
+| `is_send` | 24 | u8 | **direction selector**: `1` ⇒ SEND (TX leg), `0` ⇒ RECV (RX leg) |
+| `reserved0[23]` | 25 | 23 B | reserved (must be zero) |
+| `offset_bytes` | 48 | u64 | byte offset into the `tensor_id` buffer where the transfer starts |
+| `size_bytes` | 56 | u64 | byte **length** of the transfer (the "count", in bytes) |
 
 **Where is dtype? Where is "count"?** There is **no dtype field and no element-count
 field** in the struct. The element **dtype** is carried by the *resolved tensor
@@ -164,9 +165,9 @@ int, …` — OBSERVED, §5/§7). The **count** is expressed as `size_bytes`; el
 
 ## 3. The host op-kind — `ENC_SEND=5` / `ENC_RECV=6`
 
-Read directly from the `libnrt.so` DWARF this session (enum DIE `<0x3bbd0>`, name
+Read directly from the `libnrt.so` DWARF (enum DIE `<0x3bbd0>`, name
 `enc_op_type`, `DW_AT_encoding = unsigned`, `DW_AT_byte_size = 4`; every enumerator's
-`DW_AT_const_value` re-read). **[HIGH / OBSERVED]** This is the same enum and the same
+`DW_AT_const_value` read). This is the same enum and the same
 values committed in [TriggerCollective2 + Ext](trigger-collective2-ext.md) and
 [Collective-Type + cc_op Enum Reference](collective-enums.md):
 
@@ -196,7 +197,7 @@ send_recv_op_type == ENC_SEND || send_recv_op_type == ENC_RECV
 ```
 
 referenced from `enc_metaring_primitive::__compose_p2p_channel` (the reject path of the
-`(op-5)<=1` guard, §5). **[HIGH / OBSERVED]**
+`(op-5)<=1` guard, §5).
 
 > **NOTE — SEND/RECV are not a `COLLECTIVE_TYPE` variant.** Unlike the reducing
 > collectives, SEND and RECV have **no** entry in the on-instruction ISA
@@ -225,8 +226,7 @@ sendrecv pair, it reads the group's rank vector via `end - begin`:
 ```
 
 The canonical P2P semantics: a 2-element replica group encodes the `{sender, receiver}`
-pair, and `peer = the element that is not self`. **[HIGH / OBSERVED — the `begin@0x28 /
-end@0x30` group-struct offsets are byte-exact.]**
+pair, and `peer = the element that is not self`.
 
 The 2-rank communicator is bootstrapped by **`enc_init_sendrecv_group`** @ **`0x139870`**
 (`NRT_STATUS enc_init_sendrecv_group(encd_context*, const enc_replica_group_info*,
@@ -241,7 +241,7 @@ string @`0x841e4f`). The two leg labels it logs are verbatim:
 ```
 
 It also references `init_sendrecv_intra_node_comm(int, int, enc_glb_comm*, enc_comm*)`
-for the same-node case. **[HIGH / OBSERVED]**
+for the same-node case.
 
 ### 4b. Peer rank → NeuronCore node — the per-arch `encd` helpers
 
@@ -330,8 +330,7 @@ instruction-exact in the function body):
 
 The channel-field strings the composer writes are OBSERVED in `.rodata`:
 `channel->net_recv` @`0x842b8a`, `net_send` @`0x842b9c` — the P2P channel composes a
-`net_send` or `net_recv` edge. **[HIGH / OBSERVED — the `(op-5)<=1` guard, the `cmp $0x5`
-SEND split, and both `direct_send` / `direct_recv` call targets are instruction-exact.]**
+`net_send` or `net_recv` edge.
 
 ### 5b. The complete call set of `__compose_p2p_channel` (exhaustive)
 
@@ -352,8 +351,7 @@ enc_primitive::enc_primitive(…, SDMA_DTYPE, int, int, …)  ← ctor carries t
 ```
 
 These are the **same** SB2SB step primitives every ring/mesh leg uses (the
-`enc_primitive` family). On device they resolve to the SB2SB (`0xBF`) iDMA copy. **[HIGH /
-OBSERVED]**
+`enc_primitive` family). On device they resolve to the SB2SB (`0xBF`) iDMA copy.
 
 ### 5c. The device leg — the SB2SB TX/RX protocol
 
@@ -375,8 +373,7 @@ is_send=0 ⇒ ENC_RECV ⇒ direct_recv ⇒ SB2SB RX leg
 ```
 
 This is the same `TX=M2S` / `RX=S2M` `left_pop`/`right_push` handshake documented in
-[rdma-cross-die.md](../../dma/rdma-cross-die.md). **[the device TX/RX protocol HIGH/OBSERVED
-there; the `is_send`→TX/RX-role binding HIGH via the §5a `direct_send`/`direct_recv` split.]**
+[rdma-cross-die.md](../../dma/rdma-cross-die.md).
 
 ### 5d. The instruction handler — `instr_col_translate_psr` / `instr_col_setup_psr`
 
@@ -386,7 +383,7 @@ instr_col_add` (OBSERVED callees). **`instr_col_setup_psr`** @ **`0x26df50`** re
 buffer and validates the peer (OBSERVED callees): `lookup_memref_by_idx`,
 `mem_ref_to_addr`, `mem_ref_get_va`, `get_enc_tensor_from_collectives_tensor`
 (`tensor_id` → memory-region → SoC VA) and `encd_get_global_comm` (the comm/peer
-context). It references all three guard strings directly (§8). **[HIGH / OBSERVED]**
+context). It references all three guard strings directly (§8).
 
 ---
 
@@ -430,7 +427,7 @@ Three independent OBSERVED facts, mutually reinforcing:
    **no** `recv_reduce_*`, **no** `direct_reduce_*`, and **no** `SDMA_CCETYPE` — only
    `direct_send` / `direct_recv` plus the credit / advance / mark bookkeeping. A reducing
    leg would call `recv_reduce_copy` / `recv_reduce_send` / `__recv_reduce_write` /
-   `direct_reduce_*`; the P2P composer calls **none** of them. **[HIGH / OBSERVED]**
+   `direct_reduce_*`; the P2P composer calls **none** of them.
 
 2. **Leg-primitive signatures.** The leg methods the composer calls take **no**
    `SDMA_CCETYPE` argument: `direct_send(enc_half_chunk_index)` and
@@ -444,15 +441,15 @@ Three independent OBSERVED facts, mutually reinforcing:
    enc_primitive::__recv_reduce_write(enc_half_chunk_index, SDMA_CCETYPE, reduction_type_t, …)@0x16a0a0
    ```
 
-   None of these appears in the P2P composer. **[HIGH / OBSERVED — symbol signatures.]**
+   None of these appears in the P2P composer.
 
 3. **The struct (§2) and the ctor.** The struct has no reduce-op field, and the
    `enc_primitive` ctor in this path carries an **`SDMA_DTYPE`** (the element dtype, for
-   the copy) — **not** an `SDMA_CCETYPE` (the reduce op). **[HIGH / OBSERVED]**
+   the copy) — **not** an `SDMA_CCETYPE` (the reduce op).
 
 So SENDRECV performs a pure data copy of `size_bytes` from
 `tensor_id@offset_bytes` to/from `peer_id`; it **never folds**. This matches NCCL P2P
-semantics (`ncclSend`/`ncclRecv` are non-reducing). **[HIGH / OBSERVED]**
+semantics (`ncclSend`/`ncclRecv` are non-reducing).
 
 ---
 
@@ -476,7 +473,7 @@ via the REMOTE semaphore descriptor routed by `routing_id` across the die fabric
 window at **`+0x1800`** (write-only atomic `+=`; 256 hardware semaphores, 4-B stride) —
 the same two-semaphore (`local_sem` / `remote_sem`) completion model decoded in
 [rdma-cross-die.md](../../dma/rdma-cross-die.md). The next step waits its `recv_sema ≥
-target`. **[HIGH / OBSERVED — device side; "no timeout field" HIGH from the struct.]**
+target`.
 
 ### 8b. Errors (all strings verbatim, OBSERVED)
 
@@ -499,8 +496,7 @@ target`. **[HIGH / OBSERVED — device side; "no timeout field" HIGH from the st
 `NEURON_RT_ASYNC_SENDRECV_EXPERIMENTAL_ENABLED` and a bootstrap port (both OBSERVED in
 `.rodata`). That is a **host inter-node network transport**, *distinct* from the on-device
 `0xCB` pseudo-op decoded here (which lowers to the on-chip SB2SB iDMA). Do not implement
-the `0xCB` device leg against the async API's namespace. **[HIGH / OBSERVED — both exist;
-the distinction is OBSERVED via the separate symbol/string namespaces.]**
+the `0xCB` device leg against the async API's namespace.
 
 ---
 
@@ -508,12 +504,12 @@ the distinction is OBSERVED via the separate symbol/string namespaces.]**
 
 * The SENDRECV **struct body** is byte-identical across cayman (NC-v3) / mariana (NC-v4)
   / maverick (NC-v5) / sunda (NC-v2) — only the *"ISA header for NC-v{2,3,4,5}"* comment
-  differs. **[HIGH / OBSERVED]**
+  differs.
 * The opcode `PSEUDO_SEND_RECV = 0xCB` and the `struct2opcode` binding are present in all
-  four `instruction_mapping.json` copies. **[HIGH / OBSERVED]**
+  four `instruction_mapping.json` copies.
 * `libnrt.so` is a **single binary** (one runtime serves all gens); `enc_op_type` and the
   `__compose_p2p_channel` lowering are gen-independent. Only the PEER→node helpers are
-  per-arch (`cayman_/mariana_/sunda_*` + the `encd_arch_*` family). **[HIGH / OBSERVED]**
+  per-arch (`cayman_/mariana_/sunda_*` + the `encd_arch_*` family).
 
 > **PROVENANCE OF v5/MAVERICK.** The maverick (NC-v5) header was byte-diffed and is
 > identical to the others for *this* struct; the per-arch `maverick_*` peer-node helper

@@ -23,11 +23,11 @@ of copy/cast, not the `S2S2D2_STT` of the reduce), and like the rest of the fami
 > `dst` where the predicate is true. A dedicated `reversed_pred` polarity bit (unique to `0xe8`)
 > flips it back to the family convention. This is the page's central correction to a naïve reading
 > of the family — see [§7](#7-semantics--the-predicate-gated-scalar-blend-the-decoded-behavior).
-> `[HIGH/OBSERVED — header pseudocode lines 42-47, read verbatim this pass.]`
+> `[HIGH/OBSERVED — header pseudocode lines 42-47, verbatim.]`
 
 Confidence convention on this page: `[HIGH/OBSERVED]` = read directly from byte / header / compile;
 `[MED/INFERRED]` = reasoned over an OBSERVED fact; `[…/CARRIED]` = re-used from a sibling page at its
-stated confidence without re-reading the artifact this pass. Every count is re-grounded to
+stated confidence without re-reading the artifact. Every count is grounded to
 `nm` / `rg -c` on the shipped binary, never the decompile.
 
 > **NOTE — provenance.** Every primary fact below derives from the shipped customop-lib package
@@ -60,7 +60,7 @@ stated confidence without re-reading the artifact this pass. Every count is re-g
 > count **4**). There is **no** `COPY_PREDICATED_REDUCE` opcode in any header. This page does not
 > disturb that finding — see [CopyPredicatedReduce](copypredicatedreduce.md) §2. By contrast,
 > `0xe8`'s host enum and device self-name **agree** (`COPY_PREDICATED_SCALAR` ↔ `CopyPredicatedScalar`).
-> `[HIGH/OBSERVED — CARRIED from copypredicatedreduce.md; `rg -c` re-grounded this pass.]`
+> `[HIGH/CARRIED — copypredicatedreduce.md]`
 
 What separates the four:
 
@@ -85,7 +85,7 @@ not zero). `[HIGH/OBSERVED]`
    (sunda:295 / cayman:298 / mariana:308 / maverick:314). Host enum
    `NEURON_ISA_TPB_OPCODE_COPY_PREDICATED_SCALAR`. `[HIGH/OBSERVED — §3]`
 2. **Operand struct = `NEURON_ISA_TPB_S3D3_CP_PRED_SCALAR_STRUCT`**, a **dedicated 64-byte struct**,
-   **compile-verified this pass** (sizeof 64, every offset matches the header). It is the **sole**
+   **compile-verified** (sizeof 64, every offset matches the header). It is the **sole**
    opcode on its struct in `instruction_mapping.json` (all four gens). `[HIGH/OBSERVED — §4]`
 3. **No data-source tensor.** The struct carries one *predicate* tensor, one *dst* tensor, and a
    **scalar-immediate triple** `(src0_imm, src0_imm_src, reversed_pred)`. The replacement value is a
@@ -131,7 +131,7 @@ predicated-family opcode is actively maintained. Per-gen line numbers for
 | MARIANA (NC-v4)  | `:308` | `0xe8 // Y` |
 | MAVERICK (NC-v5) | `:314` | `0xe8 // Y` |
 
-`[HIGH/OBSERVED — `rg -n 'COPY_PREDICATED_SCALAR\s*=\s*0xe8'` over all four `common.h` this pass.]`
+`[HIGH/OBSERVED — all four `common.h`.]`
 
 > **GOTCHA — `0xe8` is NOT adjacent to `0xea` in opcode value, but they are neighbours in the
 > family.** `0xe8` (scalar copy) and `0xea` (`SELECT_REDUCE` / `CopyPredicatedReduce`) are two apart
@@ -174,9 +174,9 @@ ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S3D3_CP_PRED_SCALAR_STRUCT) == 64,
 > carries **one** source tensor (the predicate), **one** dst tensor, and trades the missing data
 > tensor for the **scalar-immediate triple** `(src0_imm @44, src0_imm_src @43, reversed_pred @33)`.
 > No shared struct carries that triple, which is exactly why `0xe8` gets its own format.
-> `[HIGH/OBSERVED — all three struct headers read this pass.]`
+> `[HIGH/OBSERVED — all three struct headers.]`
 
-### 4.1 Compile-verify (this pass, all four gens)
+### 4.1 Compile-verify (all four gens)
 
 Built the struct against the shipped CAYMAN tpb header with `gcc -I<cayman tpb dir>` (offsets are
 byte-identical for all four gens):
@@ -190,7 +190,7 @@ sizeof: TENSOR3D=16  DTYPE=1  IMM_SRC=1  IMM_VAL_INST_FIELD=4
 ```
 
 Every offset matches the header annotation exactly; the `ISA_STATIC_ASSERT(… == 64)` holds in all
-four gens. `[HIGH/OBSERVED — `gcc -Wall` clean, struct executed this pass.]`
+four gens. `[HIGH/OBSERVED — `gcc -Wall` clean.]`
 
 ### 4.2 The scalar-immediate triple
 
@@ -200,7 +200,7 @@ The three fields that replace the family's second tensor:
   `common.h:866-874`): it can hold a typed scalar value (`imm_arith_fp32` / `imm_bitvec_int32` /
   `imm_bitvec_uint32` / `imm_bitvec_uint16[2]` / `imm_bitvec_uint8[4]`), a `PartitionOffset` pointer
   (`imm_ptr`), or a register handle (`imm_reg`). For a typical attention-mask fill this is the
-  inline `-inf` / large-negative constant. `[HIGH/OBSERVED]`
+  inline `-inf` / large-negative constant.
 * **`src0_imm_src` (@43)** — `NEURON_ISA_TPB_IMM_SRC` (verbatim, `common.h:1207-1211`):
   ```c
   typedef enum NEURON_ISA_TPB_IMM_SRC {
@@ -211,10 +211,9 @@ The three fields that replace the family's second tensor:
   ```
   Validated by `has_valid_immediates` (`common.h:1356`): `InstructionImmediate` always valid;
   `PointerImmediate` requires the per-lane pointer be active-channel-bounded and dtype-aligned;
-  `RegPtrImmediate` requires a valid imm-reg. `[HIGH/OBSERVED]`
+  `RegPtrImmediate` requires a valid imm-reg.
 * **`reversed_pred` (@33)** — the polarity bit, validated by `has_valid_reversed_pred`
   (`common.h:1365-1368`): `reversed_pred == 0 || reversed_pred == 1` — *exactly two* legal values.
-  `[HIGH/OBSERVED]`
 
 > **QUIRK — `PointerImmediate` makes the "scalar" per-lane, but it is still a scalar, not a tensor.**
 > With `src0_imm_src == PointerImmediate(1)` the immediate is a `PartitionOffset` pointer "that has a
@@ -237,7 +236,7 @@ The CAYMAN `struct2opcode` map binds **exactly one** opcode to this struct, verb
 A reverse query — *which struct(s) reference `COPY_PREDICATED_SCALAR`* — returns exactly
 `NEURON_ISA_TPB_S3D3_CP_PRED_SCALAR_STRUCT`, nothing else, in all four gens. `0xe8` is therefore a
 1-of-1 occupant of a dedicated struct, disjoint from the `S3S3D3_TT` of `0x72`/`0x99` and the
-`S2S2D2_STT` of `0xea`. `[HIGH/OBSERVED — `jq` over `instruction_mapping.json` this pass.]`
+`S2S2D2_STT` of `0xea`. `[HIGH/OBSERVED — `instruction_mapping.json`.]`
 
 ---
 
@@ -249,10 +248,10 @@ A reverse query — *which struct(s) reference `COPY_PREDICATED_SCALAR`* — ret
 entries. The **count** of a given self-name across the whole file selects the engine family by the
 blob-multiplicity rule: **16 = iTPB SEQUENCER, 4 = DVE, 3 = ACT/PE/POOL**.
 
-### 5.1 DVE-presence — the self-name tag (this pass)
+### 5.1 DVE-presence — the self-name tag
 
 `"S: CopyPredicatedScalar"` appears **exactly 4 times** in `libnrtucode_internal.so`
-(`rg -c -a 'S: CopyPredicatedScalar'` → **4** this pass), each inside a per-gen DVE DEBUG blob:
+(`rg -c -a 'S: CopyPredicatedScalar'` → **4**), each inside a per-gen DVE DEBUG blob:
 
 | file offset | enclosing blob | range (`nm -S`) | contained? |
 |---|---|---|---|
@@ -261,7 +260,7 @@ blob-multiplicity rule: **16 = iTPB SEQUENCER, 4 = DVE, 3 = ACT/PE/POOL**.
 | `0x6efb90` | `MARIANA_PLUS_NX_DVE_DEBUG_DRAM_get.data` | `0x6ed240 .. 0x6f43a0` (size `0x7160`) | yes |
 | `0x8aff40` | `MAVERICK_NX_DVE_DEBUG_DRAM_get.data`     | `0x8ad5c0 .. 0x8b3540` (size `0x5f80`) | yes |
 
-(Decimal byte offsets from `rg -a -b -o` this pass: `1629072 / 4357744 / 7273360 / 9109312`
+(Decimal byte offsets: `1629072 / 4357744 / 7273360 / 9109312`
 = `0x18db90 / 0x427e70 / 0x6efb90 / 0x8aff40`.) Containment is arithmetic, not inferred: e.g.
 `0x18b320 ≤ 0x18db90 < 0x192080`. The "×4" is the **four generations'** DVE DEBUG images, not four
 lanes. Count 4 ⇒ DVE family. `[HIGH/OBSERVED]`
@@ -272,7 +271,7 @@ lanes. Count 4 ⇒ DVE family. `[HIGH/OBSERVED]`
 > delta that bites the ncore2gp *config* DLLs does **not** apply here — these blobs are
 > `.rodata`-resident (the writable `.data`/`.data.rel.ro` sections sit at VMA `0x9b8cf0`/`0x9ba4a8`,
 > far above these offsets), so a byte read at the file offset lands directly on the string.
-> `[HIGH/OBSERVED — `readelf -SW`, `nm` symbol class this pass.]`
+> `[HIGH/OBSERVED — `readelf -SW` + `nm` symbol class.]`
 
 The CAYMAN DVE kernel-name roster around the tag (dumped `0x18db40..0x18e260`) places
 `CopyPredicatedScalar` squarely inside the **predicate-select cluster**:
@@ -291,9 +290,9 @@ S: TensorTensorScan      @0x18dc70
 ```
 
 It sits beside `TensorScalarSelect` (the immediate-predicate blend) and the rest of the
-predicated-op family — all on DVE. `[HIGH/OBSERVED]`
+predicated-op family — all on DVE.
 
-Self-name counts re-grounded this pass (`rg -c -a 'S: <name>' libnrtucode_internal.so`):
+Self-name counts (`rg -c -a 'S: <name>' libnrtucode_internal.so`):
 
 | self-name | count | family |
 |---|---|---|
@@ -309,7 +308,7 @@ Self-name counts re-grounded this pass (`rg -c -a 'S: <name>' libnrtucode_intern
 > (`12 = 4 + 4 + 4`). Always anchor counts to the full self-name string `S: CopyPredicatedScalar\n`,
 > never a substring. `[HIGH/OBSERVED — CARRIED from copypredicatedreduce.md §4.]`
 
-### 5.2 POOL-absence — direct byte scan (this pass)
+### 5.2 POOL-absence — direct byte scan
 
 Scanning the entire CAYMAN POOL territory (`0x1cdc40 .. 0x310000` — the NX_POOL DEBUG +
 `Q7_POOL_PERF_EXTISA` blobs) for `CopyPredicatedScalar` / `copy_predicated_scalar` / `CopyPredicated`
@@ -317,9 +316,8 @@ Scanning the entire CAYMAN POOL territory (`0x1cdc40 .. 0x310000` — the NX_POO
 the DVE blobs). The predicated kernels are **not** POOL software kernels. For contrast, plain
 `Cast (0x47)` / `Copy (0x46)` **are** POOL kernels (see [Cast and Copy](cast-copy.md)) — the same
 surface split that holds for the rest of the family: **plain = POOL, predicated = DVE.**
-`[HIGH/OBSERVED]`
 
-**Verdict: `CopyPredicatedScalar` dispatches on the DVE engine, hardware-native.** `[HIGH/OBSERVED]`
+**Verdict: `CopyPredicatedScalar` dispatches on the DVE engine, hardware-native.**
 
 ---
 
@@ -353,14 +351,12 @@ any nonzero value is "true". `[HIGH/OBSERVED]`
 > a strict subset of the general `is_valid_int_dtype` (which also admits `INT64`/`UINT64`): the mask
 > **cannot** be a 64-bit int, an `INT4`, an `FP4`, or any float. This is the family-invariant
 > predicate machinery; only the *scalar* domain (§8) and the *dst* addressing (§9) differ per gen.
-> `[HIGH/OBSERVED.]`
 
 There is **one predicate element per dst element**: `same_element_count_t3d(pred_mem_pattern,
 dst_mem_pattern)` (SUNDA/CAYMAN) / `s3d3_cp_pred_scalar_src_dst_elements_same` (MARIANA+, §9). On the
 DVE datapath the integer predicate is materialised to a `vbool` and consumed through the `bitkillt`
 write-enable guard — see [§7](#7-semantics--the-predicate-gated-scalar-blend-the-decoded-behavior).
-`[HIGH validator OBSERVED; the vbool/bitkillt consume MED/INFERRED + CARRIED from the predicate ISS
-model.]`
+`[HIGH/OBSERVED validator; MED/CARRIED the vbool/bitkillt consume]`
 
 ---
 
@@ -399,7 +395,7 @@ Decomposed per-lane (`src0` = the scalar `src0_imm`; `pred` = `pred_mem_pattern[
 > caller's mask. The header's own narrative example — *"writes the immediate value to the destination
 > tensor whenever the corresponding predicate value is true"* — describes the `reversed_pred == 1`
 > reading; the struct **default** is the complementary fill. `[HIGH/OBSERVED — the header pseudocode
-> + the `has_valid_reversed_pred` validator, read verbatim this pass.]`
+> + the `has_valid_reversed_pred` validator.]`
 
 ### 7.1 The merge — not zero
 
@@ -409,9 +405,8 @@ merge of `dst`, not a zero-fill and not skip-with-undefined. `dst_mem_pattern` i
 `bitkillt`-guarded select: the integer predicate becomes a `vbool`, the scalar is splatted across
 lanes, and the per-lane write-enable is the `bitkillt` mask, which raises an **all-ones** write-mask
 in the *killed* (non-selected) lanes so the destination is held. The `reversed_pred` bit selects
-`bitkillt` vs `bitkillf` (which polarity of lane is killed). `[merge polarity HIGH/OBSERVED at the
-predicate ISS source; that THIS op uses `bitkillt`/`bitkillf` with `reversed_pred` selecting the
-kill polarity MED/INFERRED from its DVE-cluster co-residence and the clean mapping — see the
+`bitkillt` vs `bitkillf` (which polarity of lane is killed). `[HIGH/OBSERVED merge polarity; MED the
+`bitkillt`/`bitkillf` + `reversed_pred` mapping — see the
 [predicate ISS page](../../iss/cas-predicate-boolean.md).]`
 
 ### 7.2 Algorithm — annotated C pseudocode (naming the recovered symbols)
@@ -474,10 +469,9 @@ dst          = select_t(/*killed=*/dst, /*live=*/splat, kill);            // "ME
 > lanes — *not* a constant fill, *not* skip-with-undefined. (2) Unlike `CastPredicated (0x99)`, there
 > is **no** dtype conversion: `in_dtype == out_dtype` is hard-required, the header explicitly says
 > *"DVE data converters off"*, and the scalar is written bit-accurate. (3) The written value is a
-> single immediate, **not** a copied data tensor — there is no `src1_mem_pattern`. `[merge polarity
-> HIGH/OBSERVED at the predicate ISS source; the DVE body MED/INFERRED — see the
-> [predicate ISS page](../../iss/cas-predicate-boolean.md). The no-cast / scalar facts are
-> HIGH/OBSERVED from the header.]`
+> single immediate, **not** a copied data tensor — there is no `src1_mem_pattern`.
+> `[HIGH/OBSERVED merge polarity + the no-cast/scalar facts; MED the DVE body — see the
+> [predicate ISS page](../../iss/cas-predicate-boolean.md).]`
 
 ---
 
@@ -525,13 +519,13 @@ Contrast with the family dtype rules:
   path lacks a 32-bit-int primitive); `out` allows `FP32R` (the wide accumulator).
 * **`0xe8` CopyPredicatedScalar** — `in_dtype == out_dtype` (copy-only); `FP32R::False` **and no
   64-bit int**. **No cast, no FP32R, no 64-bit.** The scalar is a plain typed immediate in that
-  domain. `[HIGH/OBSERVED]`
+  domain.
 
 > **NOTE — `FP32R` is excluded here but allowed for the reduce.** `CopyPredicatedScalar` forbids
 > `FP32R` on *both* `in_dtype` and `out_dtype`, because it has no wide accumulator — it only copies a
 > typed scalar. `CopyPredicatedReduce` allows `FP32R` on `out_dtype` precisely because its `out` is
 > the running-max accumulator. The exclusion is structural, not arbitrary. `[HIGH/OBSERVED;
-> FP32R-output-only fact CARRIED from the dtype model.]`
+> CARRIED the FP32R-output-only fact]`
 
 See the [unified datatype model](dtype-model.md) for the full code table and the FP32R / 64-bit
 gating rationale.
@@ -551,7 +545,7 @@ gating rationale.
 but it has **no** separate arch_isa header (only `sunda` / `cayman` / `mariana` / `maverick`
 `neuron_*_arch_isa` directories exist).
 
-### 9.1 The per-gen struct evolution (header diff this pass)
+### 9.1 The per-gen struct evolution (header diff)
 
 The struct **layout is invariant** — sizeof 64 and every field offset is byte-identical across all
 four gens (compile-verified). What evolves is the *type* of the mem-pattern fields and the *richness*
@@ -559,17 +553,16 @@ of the validator:
 
 * **SUNDA / CAYMAN** — `pred_mem_pattern` and `dst_mem_pattern` are `NEURON_ISA_TPB_TENSOR3D`. The
   validator uses `tensor3d_valid` + `start_addr_active_channels` + `same_element_count_t3d` — a plain
-  3-D tensor predicated scalar write. `[HIGH/OBSERVED]`
+  3-D tensor predicated scalar write.
 * **MARIANA / MAVERICK** — the mem patterns become `NEURON_ISA_TPB_MEM_PATTERN3D` (the
   tensor-OR-indirect pattern union). The validator switches to `mem3d_valid` +
   `s3d3_cp_pred_scalar_src_dst_elements_same` (which matches element counts across tensor-pattern,
   indirect-pattern, and mixed tensor/indirect cases) + `indirect_quadrant_check_src3d` /
   `indirect_quadrant_check_src3d_dst3d`. **MARIANA+ therefore adds INDIRECT (gather/scatter)
-  addressing**: the masked scalar write can target an indirect *scatter* destination. `[HIGH/OBSERVED]`
+  addressing**: the masked scalar write can target an indirect *scatter* destination.
 * **MAVERICK additionally** — `has_valid_active_channel_range_with_tile(num_active_channels,
   DVE_NUM_CHANNELS, header.inst_flags)` replaces CAYMAN's `has_valid_active_channel_range`, i.e. a
   **tile-aware** channel-range check driven by `inst_flags` (the MAVERICK tiling feature).
-  `[HIGH/OBSERVED]`
 
 The invariants across all four gens: opcode `0xe8 // Y`, the integer predicate rule, the
 `in_dtype == out_dtype` copy-only rule, the `reversed_pred` bit, `DVE_NUM_CHANNELS = 128`, and
@@ -579,8 +572,7 @@ sizeof 64. `[HIGH/OBSERVED]`
 > ships only a `SUNDA_NX_DVE_RELEASE_*` blob (no DEBUG variant), and RELEASE blobs of *every* gen
 > likewise lack the `"S:"` self-name tags (the tags are a DEBUG-build feature). SUNDA presence rests
 > on the ISA header (opcode + full validator + compile-verified struct, all OBSERVED), not the
-> string. `[opcode + validator + struct HIGH/OBSERVED all four gens; SUNDA string-absence
-> MED/INFERRED — consistent with castpredicated.md §8 and copypredicatedreduce.md §11.]`
+> string. `[HIGH/OBSERVED opcode + validator + struct all four gens; MED SUNDA string-absence]`
 
 > **v5/MAVERICK caution.** The MAVERICK opcode line, validator, and struct are **header-OBSERVED**;
 > the MAVERICK DVE DEBUG blob self-name `@0x8aff40` is OBSERVED in the binary, but the v5 device
@@ -695,7 +687,7 @@ kill-polarity selection) — would require a device Xtensa disassembly
 is the standard FLIX-desync risk surface. It is left MED and was **not** asserted byte-exact — the
 same boundary flagged for the rest of the family. The `bitkillt`/`bitkillf` MERGE polarity and the
 `reversed_pred` → kill-polarity mapping are OBSERVED at the predicate ISS source and CARRIED, not
-re-derived from a device body. `[NOTE]`
+re-derived from a device body.
 
 ---
 
@@ -722,7 +714,7 @@ re-derived from a device body. `[NOTE]`
 * `neuron_{…}_arch_isa/tpb/instruction_mapping.json` — `S3D3_CP_PRED_SCALAR_STRUCT →
   [COPY_PREDICATED_SCALAR]` (sole occupant; sunda:231 / cayman:247 / mariana:262 / maverick:280).
 
-**Compile-verify** (this pass): `S3D3_CP_PRED_SCALAR` struct against the CAYMAN tpb header →
+**Compile-verify:** `S3D3_CP_PRED_SCALAR` struct against the CAYMAN tpb header →
 `sizeof = 64` + all offsets (§4.1), all four gens.
 
 **Firmware** (in-package): `…/c10/lib/libnrtucode_internal.so`

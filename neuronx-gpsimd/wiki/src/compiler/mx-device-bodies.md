@@ -27,12 +27,12 @@ version, and the true floor is **MARIANA (v4)**.
 > narrow + ldexp leg is `mulus4tn16xr16 (×packed scale)` + `trunc16nxf16` +
 > `baddnorm/bsubnormnx16`; the clamp + ×4-pack is `cvtg48n_2x32h` + `ueqn_2xf32t` +
 > `sel2nx8i_s4`. The scale rides a **packed scale register** (`xb_int64pr`) into the
-> MAC on *both* engines. `[HIGH/OBSERVED — every cited bundle disassembled native this
-> pass, SHA-pinned carve.]`
+> MAC on *both* engines. `[HIGH/OBSERVED — every cited bundle disassembled native,
+> SHA-pinned carve.]`
 
 Confidence per [the Confidence & Walls model](../reference/confidence-model.md):
 `[HIGH/MED/LOW]` × `OBSERVED` (read from byte / disassembled / compile-verified /
-live-driven this pass) / `INFERRED` (reasoned over OBSERVED) / `CARRIED` (re-used from
+live-driven) / `INFERRED` (reasoned over OBSERVED) / `CARRIED` (re-used from
 a cited sibling page at its confidence). The `extracted/` and `ida/` trees are
 gitignored — reach them with `fd --no-ignore` or an absolute path.
 
@@ -63,7 +63,7 @@ gitignored — reach them with `fd --no-ignore` or an absolute path.
    `S3DMX1_QUANT` (`sizeof==64`): `src_mem_pattern@16` (MEM_PATTERN3D),
    `num_active_channels@33`, `in_dtype@34`, `out_dtype@35`, `dst_mem_pattern@48`
    (MXMEM_PATTERN1D). Its dst is **the same descriptor the PE matmul reads** — producer
-   format == consumer format. `[HIGH/OBSERVED — `gcc -I…/mariana/tpb` this pass]`
+   format == consumer format. `[HIGH/OBSERVED — `gcc -I…/mariana/tpb`]`
 6. **The v4 PE pair is byte-pinned on both sides.** Firmware dispatch (`movi.n a3,9 ;
    bne a2,a3 ; j 0x2baf` → op `0x09` LdweightsMX; `bnei a2,10 ; j 0x2bb7` → op `0x0A`
    MatmulMX) + the `SMX1_LW`/`SMX1D3_MM` structs + the out-of-band E8M0 scale at
@@ -81,10 +81,10 @@ gitignored — reach them with `fd --no-ignore` or an absolute path.
 
 ---
 
-## 1. Locator + toolchain — the carve, re-verified this pass
+## 1. Locator + toolchain — the carve
 
 Every fact below is read from the carried-device firmware image
-`libnrtucode_internal.so` (`sha256 b7c67e898a116454…`, re-confirmed this pass) inside
+`libnrtucode_internal.so` (`sha256 b7c67e898a116454…`) inside
 the GPSIMD custom-op library, disassembled **native** with the shipped Cadence Xtensa
 toolchain registered for the Vision-Q7 `ncore2gp` config.
 
@@ -99,7 +99,7 @@ LF=$NEST/ncore2gp/config/libfiss-base.so             # the ISS value oracle (x86
 ```
 
 The four MARIANA images carved identity-mapped (`.text`/`.rodata` VMA == file offset;
-IRAM offset == device IRAM VA, reset-vector byte 0) and **SHA-re-verified this pass**:
+IRAM offset == device IRAM VA, reset-vector byte 0):
 
 | image | file off / size | sha256[:8] | role |
 |---|---|---|---|
@@ -157,8 +157,8 @@ model needs — the unique signature of the MX-quantize body: `[HIGH/OBSERVED]`
 ```
 
 - `ivp_srln_2x32 v14,v25,v5` — 32-bit-lane **logical** shift-right by a *vector* amount;
-  `v5` broadcasts the literal **23** (`movi.n a0,23` present `@PERF 0xc795` — confirmed
-  this pass). This is the `(bits >> 23)` of the biased fp32 exponent.
+  `v5` broadcasts the literal **23** (`movi.n a0,23` present `@PERF 0xc795`). This is the
+  `(bits >> 23)` of the biased fp32 exponent.
 - `ivp_bmaxn_2x32 vb0,v12,v5,v24` — the 32-bit **max-reduce** producing the running max
   over the [8,4] block = the per-block shared exponent (E8M0). The `& 0xFF` falls out of
   the downstream byte-lane narrowing.
@@ -260,7 +260,7 @@ void quantize_mx_body(const f16 *src, u32 *dst, u8 *dst_scale, int P, int F, mx_
 ### 2.5 The compile-verified operand struct
 
 `NEURON_ISA_TPB_S3DMX1_QUANT_STRUCT` (`aws_neuron_isa_tpb_s3dmx1_quant.h`, opcode
-`QuantizeMX = 0xe3`), **compile-verified `sizeof==64` and offsets this pass**
+`QuantizeMX = 0xe3`), **compile-verified `sizeof==64` and offsets**
 (`gcc -I…/mariana/tpb`, `__builtin_offsetof`): `[HIGH/OBSERVED]`
 
 | off | field | type | note |
@@ -312,11 +312,11 @@ PE_DEBUG IRAM (`sha 6600e24a`), `@0x296c` (`[HIGH/OBSERVED]`):
 This sits in the same dispatch ladder as the non-MX ops (`bnei a2,1 → 0x2b86`
 Ldweights; `bnei a2,2 → 0x2b8e` Matmul; …) — confirming `0x09`/`0x0A` are **separate,
 dedicated** MX opcodes on v4, not a flag on the base matmul. Re-confirmed against the
-carved image this pass (matches [pe-matmul §2](../firmware/kernels/pe-matmul.md)). `[HIGH/OBSERVED]`
+carved image (matches [pe-matmul §2](../firmware/kernels/pe-matmul.md)). `[HIGH/OBSERVED]`
 
 ### 3.2 v4 operand structs — compile-verified `sizeof==64`
 
-All offsets `__builtin_offsetof`-verified this pass (`gcc -I…/mariana/tpb`): `[HIGH/OBSERVED]`
+All offsets `__builtin_offsetof`-verified (`gcc -I…/mariana/tpb`): `[HIGH/OBSERVED]`
 
 ```c
 NEURON_ISA_TPB_SMX1_LW_STRUCT   (op 0x09, sizeof==64):
@@ -349,7 +349,7 @@ So the v4 PE pair loads the packed weight from `start_addr` and the E8M0 scale
 > **CORRECTION — operand-name reconciliation (`MXMEM_PATTERN1D` ⊃ `MXTENSOR1D`).**
 > [pe-matmul §7](../firmware/kernels/pe-matmul.md) names the v4 operand
 > `MXMEM_PATTERN1D` (and does not print `MXTENSOR1D`); the
-> [DX-CC-03/DX-CC-04 family](mx-path.md) call it `MXTENSOR1D`. **These are the same
+> [MX path page](mx-path.md) calls it `MXTENSOR1D`. **These are the same
 > object at two levels:** the *struct field* `src_mem_pattern` has type
 > `MXMEM_PATTERN1D`, which is the `union { t: MXTENSOR1D | i: MXIndirect16B }`;
 > `MXTENSOR1D` is its `.t` member (`start_addr@0`/`scale_addr@4`). A reimplementer must
@@ -359,7 +359,7 @@ So the v4 PE pair loads the packed weight from `start_addr` and the E8M0 scale
 
 ### 3.3 v5 (MAVERICK) — the `MXTENSOR_V2` ADDR-marker fold
 
-`NEURON_ISA_TPB_MXTENSOR_V2` (MAVERICK `common.h`, compile-read this pass — offsets
+`NEURON_ISA_TPB_MXTENSOR_V2` (MAVERICK `common.h`, compile-read — offsets
 from the struct text): `[HIGH/OBSERVED struct; v5 firmware-interior INFERRED]`
 
 ```c
@@ -434,21 +434,21 @@ applied as part of the widening MAC, **before** the FP32 PSUM accumulate.
 
 The forward EXTRACT+÷ and the inverse ×scale are the **same** exponent-add primitive in
 opposite directions. Five altitudes now agree, with the firmware leg **OBSERVED** and
-the ISS leg **driven live** this pass:
+the ISS leg **driven live**:
 
 | altitude | the operation | status |
 |---|---|---|
 | **sim** ([mx-path §4](mx-path.md)) | `exp=(bits>>23)&0xFF` → `max(...)` → `−max_exp`; `clip(src/2^(s−127), ±max_val)`; ×4 view | OBSERVED (CARRIED) |
 | **torch** (`mx_torch`) | `(exp_per_block + 127 − max_exp).to(uint8)` E8M0; `2^(s−127)` mult | OBSERVED (CARRIED) |
-| **FIRMWARE** (this pass) | `srln_2x32(>>23)` + `bmaxn_2x32` (extract) ; `bsubnorm/baddnormnx16` + `mulus4tn16xr16(×pr8)` (÷×ldexp) ; `cvtg48n_2x32h` + `ueqn_2xf32t` + `sel2nx8i_s4` (clamp/pack) | **OBSERVED** ✔ (§2) |
-| **ISS value leaf** (this pass) | `module__xdref_addexp` / `addexpm` = "fp exponent-add (ldexp)" | **OBSERVED — driven live** ✔ |
+| **FIRMWARE** | `srln_2x32(>>23)` + `bmaxn_2x32` (extract) ; `bsubnorm/baddnormnx16` + `mulus4tn16xr16(×pr8)` (÷×ldexp) ; `cvtg48n_2x32h` + `ueqn_2xf32t` + `sel2nx8i_s4` (clamp/pack) | **OBSERVED** ✔ (§2) |
+| **ISS value leaf** | `module__xdref_addexp` / `addexpm` = "fp exponent-add (ldexp)" | **OBSERVED — driven live** ✔ |
 
 ### 4.1 The live ISS drive — `xdref_addexp` IS `ldexp`
 
 The ISS value oracle `libfiss-base.so` (x86-64, not stripped) exports
 `module__xdref_addexp_32f_32f_32f @0x87a5a0` and `…_16f_16f_16f @0x5218d0` (and the
 `addexpm` siblings `@0x87a5e0` / `@0x521900`). Rather than cite the symbol, the
-`addexp_32f` body was **driven live via `ctypes`** this pass:
+`addexp_32f` body was **driven live via `ctypes`**:
 
 ```python
 lib = ctypes.CDLL(".../ncore2gp/config/libfiss-base.so")
@@ -546,8 +546,8 @@ device-validity gate and the host emitter agree field-for-field.
 | *(E8M0 scale dtype)* | `SFP8_E8 = 0x13 = FP8_S0E8M0` | — | — | power-of-two block scale, bias 127, no sign | — |
 
 `[opcode numerics + engine + gen CARRIED from the ledger and the firmware pages; struct
-offsets + opcode enums + validity predicates OBSERVED (compile-verified this pass); the
-`0xE3` DVE body (§2) + PE dispatch/scale-MAC (§3) OBSERVED this pass.]`
+offsets + opcode enums + validity predicates OBSERVED (compile-verified); the
+`0xE3` DVE body (§2) + PE dispatch/scale-MAC (§3) OBSERVED.]`
 
 ### 6.1 The gen-floor question — RESOLVED from the device body's own gen-gate
 

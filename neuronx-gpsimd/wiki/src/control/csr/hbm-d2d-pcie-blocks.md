@@ -8,12 +8,11 @@ controller architecture, the *vendor IP identity* recoverable from the register/
 taxonomy, and the **key** control / init / ECC-scrub / link-state / error-capture
 registers — not a mechanical dump of all 41 thousand HBM-PHY fields.
 
-Every register cited below was read byte-exact from the JSON with `jq`. Each schema is
+Every register cited below is read byte-exact from the JSON. Each schema is
 plain text (`file …json → JSON text data`), so the `.data` VMA/file-offset delta that
 governs the ncore2gp config DLLs is **not applicable here** — there are no binary
-struct offsets to correct, only schema `AddressOffset` strings (all hex, `0x`-prefixed,
-re-verified for this batch). Counts are grounded in the JSON itself, never a decompile
-grep.
+struct offsets to correct, only schema `AddressOffset` strings (all hex,
+`0x`-prefixed). Counts are grounded in the JSON itself.
 
 > **SCHEMA NOTE — the `RegFile` container.** Each unit JSON is
 > `{ "RegFile": { UnitName, AddrWidth, DataWidth, SizeInBytes, GenFlavor, Memories,
@@ -21,9 +20,10 @@ grep.
 > `{ Name, AddressOffset, ArraySize, BundleSizeInBytes, Registers[] }`; a register is
 > `{ Name, AddressOffset, AccessType, BitFields[] }`. Absolute register address =
 > `bundle.AddressOffset + register.AddressOffset` (+ `ArraySize` stride for arrayed
-> bundles). `[HIGH · OBSERVED]`
+> bundles).
 
-> **PROVENANCE LEGEND.** `HIGH` = value read byte-exact from the JSON
+> **PROVENANCE LEGEND.** The page default is `[HIGH · OBSERVED]`; claims that depart
+> from it carry an explicit tag. `HIGH` = value read byte-exact from the JSON
 > (offset/bits/access/reset/name). `MED` = the byte value is HIGH but the *semantic*
 > reading is inferred. `LOW` = meaning genuinely uncertain. `OBSERVED` = read from a
 > shipped file; `INFERRED` = reasoned from corroboration; `CARRIED` = taken from a
@@ -33,7 +33,7 @@ grep.
 > key: `"EXTERNAL_IP"` on imported vendor IP (DDR controller, DWC HBM PHY, DWC PCIe
 > controller, Marvell MPCS/XSR), `null` on the Amazon-authored config/glue wrappers and
 > RAS blocks. This is a clean, machine-readable separation of bought-IP vs in-house
-> integration and is leaned on throughout. `[HIGH · OBSERVED]`
+> integration and is leaned on throughout.
 
 ---
 
@@ -46,14 +46,14 @@ grep.
 | **PCIe** (host bridge) | `pcie5_x8_DWC_pcie_ctl` | `dwc_e32mp_phy_x4_ns` | Synopsys DWC PCIe5 x8 · Synopsys DWC e32mp (Enterprise-32G) PHY | 228 `pcie_triggers` |
 
 Trigger counts are `rg -c '^- trigger'` on the Cayman `intc/*_triggers.yaml` (223 / 216
-/ 228). `[HIGH · OBSERVED]`
+/ 228).
 
 > **The single strongest structural finding of this batch — two SerDes vendors.** The
 > **host PCIe** bridge rides a **Synopsys** PHY (`dwc_e32mp_phy_x4_ns`); the **die-to-die
 > link** rides a **Marvell XSR** PHY (`mrvl_xsr_phy`) under a **Synopsys DWC PCIe
 > controller** (`snps_ctrl`). So D2D is a *hybrid* stack: Synopsys controller over a
 > Marvell PHY. The host-vs-D2D split is provable purely from the PCIe-capability bundle
-> set (§II-1). `[HIGH · OBSERVED]`
+> set (§II-1).
 
 > **GENERATION WALL — this page is Cayman / NC-v3.** The two committed address-map
 > siblings, [`pkl-hbm-subtree`](../address/pkl-hbm-subtree.md) (#906) and
@@ -62,13 +62,13 @@ Trigger counts are `rg -c '^- trigger'` on the Cayman `intc/*_triggers.yaml` (22
 > architecture (§V below). Do **not** read their `32 HBM_CTRL_DP`, `HBM_XBAR_8X32`,
 > `39 UCIE links`, or `128 GiB` aperture as Cayman facts — those are v5. The Cayman CSR
 > schemas on this page and the Cayman flat band (4 × 64 GiB stacks; DWC-PCIe-derived
-> D2D) are the v3 anchor that the siblings cross-reference back to. `[HIGH · OBSERVED]`
+> D2D) are the v3 anchor that the siblings cross-reference back to.
 
 ---
 
 ## I. HBM — the DDR controller / PHY / scrubber / repair / crossbar
 
-Six `csrs/hbm/*.json` units, byte-exact metadata (`jq` from scratch):
+Six `csrs/hbm/*.json` units, byte-exact metadata:
 
 | unit | `GenFlavor` | AddrW | `SizeInBytes` | bundles | regs | fields |
 |------|------------|:-----:|:-------------:|:-------:|:----:|:------:|
@@ -80,7 +80,7 @@ Six `csrs/hbm/*.json` units, byte-exact metadata (`jq` from scratch):
 | `hbm_cfg` | null | 12 | `0x1000` | 3 | 6 | 15 |
 
 All `DataWidth = 32`. The two EXTERNAL_IP units are the bought controller + PHY; the
-four `null` units are Amazon RAS/config glue. `[HIGH · OBSERVED]`
+four `null` units are Amazon RAS/config glue.
 
 ### I-1. `ddr_csr_apb` — the HBM/DDR controller (Cadence/Denali-class)
 
@@ -109,8 +109,6 @@ Bundle map (base / ArraySize / BundleSizeInBytes / nregs), `jq`-verified:
 | `ADV_MEM_TEST_PS0/1` | `0x8800`/`0x8a00` | 1 | `0x44` | 17 | | `MTA_PS0/1` | `0x8c00`/`0x9000` | 1 | `0xb8` | 46 |
 | `MC_BASE5` | `0x9400` | 1 | `0x244` | 40 | | `ACT_MON_PS0/1` | `0xac00`/`0xcc00` | 1 | `0xc0` | 44 |
 | `csr_custom` | `0xe800` | 1 | `0x1c` | 7 | | | | | | |
-
-`[HIGH · OBSERVED]`
 
 #### Key registers — the controller interrupt-gen family
 
@@ -151,7 +149,7 @@ control — full byte-exact register list:
 (rst `0x0`) + `reserved_31_8[31:8]` RO. An 8-bit count of correctable errors that must
 be *exceeded* before `stat_int_ecc_1bit_thresh` (and the interrupt pin) assert; `0x00`
 = interrupt on every correctable error, `0xff` = disable. This is the exact register the
-M=3 / `one_bit_ecc_error_on_read_above_threshold` trigger names. `[HIGH · OBSERVED]`
+M=3 / `one_bit_ecc_error_on_read_above_threshold` trigger names.
 
 The scrub period lives separately: `MC_BASE5.CFG_ECC_SCRUB_PERIOD` @ `0x94e0` RW.
 
@@ -171,8 +169,7 @@ ECC status (per pseudo-channel, `ECC_STAT_ERR_PS0` base `0x6800`):
 DQ/CA parity enables live in `MC_BASE1` (`CFG_RD_DQ_PARITY_EN` @ `0x40a0`,
 `CFG_WR_DQ_PARITY_EN` @ `0x40a4`, `CFG_CA_PARITY_EN` @ `0x40a8`); the status side is in
 `PARITY_ERROR_PS0` (base `0x6c00`): `STAT_{DI_WRITE,WRITE,READ}_DATA_PARITY_ERROR` +
-`STAT_CA_PARITY_ERROR`. These feed M=0 (write-parity) / M=1 (read-parity). `[HIGH ·
-OBSERVED]`
+`STAT_CA_PARITY_ERROR`. These feed M=0 (write-parity) / M=1 (read-parity).
 
 **Thermal (critical fast-path).** Two DFI status bits get dedicated `critical=1` apex
 handling:
@@ -222,7 +219,7 @@ canonical DWC HBM PHY taxonomy (`jq | rg | uniq -c`-verified):
 | `PPGC` | 1 | PHY Pattern Generator/Checker (BIST) |
 
 `Pn = P0..P3` = the 4 PHY instances (one per HBM channel-quad); `PALL` = the broadcast
-write-all alias. `[HIGH · OBSERVED]`
+write-all alias.
 
 > **CORRECTION — the PHY file exposes NO trigger CSR.** All 273 bundles are config;
 > there is no interrupt/status register. The "PHY-side" causes (DQ-parity, init/training
@@ -277,7 +274,7 @@ the single `hbm_hpr_done_int_trigger`. Full register list (per pseudo-channel):
 
 > **NOTE — page retirement, not row/lane hard-repair.** The descriptions describe
 > *swapping a bad page to a reserved page* (a soft, page-granular repair), not
-> JEDEC row/column hard-repair. `[HIGH · OBSERVED]` The trigger ORs `swap_done_ch_0 |
+> JEDEC row/column hard-repair. The trigger ORs `swap_done_ch_0 |
 > swap_done_ch_1`; the `swap_page_full_*` "no spare pages left" status is also present
 > (an unanticipated terminal condition). `[HIGH presence · OBSERVED; MED OR-aggregation]`
 
@@ -295,7 +292,7 @@ swizzle**: each entry's `addr_bit_cfg` has `bit_select[5:0]` (input addr bit ind
 channel-interleave / address-hash remapper. `global_cfg.addr_transl_cfg` @ `0x0` carries
 `en_1G_per_ch[0]` (500 MB↔1 GB-per-channel translation). `xbar_top_32.ok_to_fail` @
 `0x0` (enable + 8-bit data + credit-oversubscribe @ `0x4`) is the degraded-mode /
-poison-on-fail RAS config. `[HIGH · OBSERVED]`
+poison-on-fail RAS config.
 
 > **NOTE — no readable corr/uncorr status register.** `hbm_xbar_cfg` exposes the
 > `ok_to_fail` RAS config + the address maps, but **no** error-status register —
@@ -309,13 +306,12 @@ Amazon-authored (`GenFlavor=null`, `0x1000`, 3 bundles / 6 regs / 15 fields). `g
 @ `0x0` (3 regs), **`hbm_ctrl_debug` @ `0x300` (ArraySize=16, 1 reg)**, `spare` @ `0x200`
 (Arr2). The `hbm_ctrl_debug` array of **16** is the strongest in-schema evidence that
 the single-channel `ddr_csr_apb` controller is replicated ×16 — exactly the
-`hbm_ctrl_interrupt_gen[0..15]` trigger dimension. `[HIGH · OBSERVED]`
+`hbm_ctrl_interrupt_gen[0..15]` trigger dimension.
 
 > **HBM RAS is rich** — controller SBE+threshold (`CFG_ECC_1BIT_INT_THRESH`) + DBE +
 > DQ/CA parity + **dual** scrubber (ECS in `ECC_CONFIG` *and* the BIST `hbm_scbr`) + HW
 > page-retirement (`hbm_hpr`) + xbar OR roll-up + HBM3 on-die ECC (device) +
 > dedicated `critical=1` thermal fast-paths (`STAT_DFI_CATTRIP` / `STAT_DFI_TCR_TEMP`).
-> `[HIGH · OBSERVED]`
 
 ---
 
@@ -334,8 +330,7 @@ Eight `csrs/d2d/*.json` units, byte-exact:
 | `d2d_mpcs_cfg` | null | `0x1000` | 2 | 4 |
 | `d2d_xsr_cfg` | null | `0x1000` | 6 | 34 |
 
-`erg_ecc_model` (the shared SRAM-ECC RAS block, §II-5) sits under `csrs/erg/`. `[HIGH ·
-OBSERVED]`
+`erg_ecc_model` (the shared SRAM-ECC RAS block, §II-5) sits under `csrs/erg/`.
 
 ### II-1. `snps_ctrl` — Synopsys DWC PCIe controller, repurposed die-to-die
 
@@ -368,7 +363,7 @@ live LTSSM state vs a programmable compare value (programmed via `SD_CONTROL1/2_
 link-up/training bits: `PCIE_CAP_DLL_ACTIVE[29]`, `PCIE_CAP_LINK_TRAINING[27]`,
 `PCIE_CAP_NEGO_LINK_WIDTH[25:20]`, `PCIE_CAP_LINK_SPEED[19:16]`,
 `PCIE_CAP_RETRAIN_LINK[5]` — reflected by the `smlh_link_{up,down}` / `rdlh_link_{up,down}`
-triggers (PHY-link / data-link state machines). `[HIGH · OBSERVED]`
+triggers (PHY-link / data-link state machines).
 
 **RAS — the cleanest 1:1 reconciliation in this batch.** `PF0_AER_CAP.UNCORR_ERR_STATUS_OFF`
 @ `0x4` (abs `0x104`, RW) maps bit-for-bit to the `ctrl.core` triggers:
@@ -388,14 +383,14 @@ triggers (PHY-link / data-link state machines). `[HIGH · OBSERVED]`
 (`RPL_TIMER_TIMEOUT` → `replay_timer_timeout_error`, `REPLAY_NO_ROLEOVER` →
 `replay_number_rollover_error`, `BAD_DLLP`/`BAD_TLP`/`RX_ERR` → the matching triggers).
 Companions: `UNCORR/CORR_ERR_{MASK,SEV}_OFF` (per-bit mask/severity) + `HDR_LOG_0..3_OFF`
-@ `0x1c..0x28` RO (the offending TLP header capture). `[HIGH · OBSERVED]`
+@ `0x1c..0x28` RO (the offending TLP header capture).
 
 **RASDP (datapath ECC/parity over the controller's internal RAMs).** `PF0_VSECRAS_CAP`
 @ `0x2fc` is the DWC "RAS Data Path" vendor cap — SOURCE of `{mstr,slv}_rasdp_error_mode`.
 Full register list includes `RASDP_ERROR_PROT_CTRL_OFF` @ `0x8`, `RASDP_{CORR,UNCORR}_COUNT_REPORT_OFF`
 @ `0x10`/`0x18` RO, `RASDP_ERROR_INJ_CTRL_OFF` @ `0x1c`, `RASDP_{CORR,UNCORR}_ERROR_LOCATION_OFF`
 @ `0x20`/`0x24` RO, and `RASDP_ERROR_MODE_{EN,CLEAR}_OFF` @ `0x28`/`0x2c` RW — the latter
-two driving the `rasdp_error_mode` entry/exit the triggers report. `[HIGH · OBSERVED]`
+two driving the `rasdp_error_mode` entry/exit the triggers report.
 
 `PF0_PORT_LOGIC` (@ `0x700`, 54 regs) carries `PORT_LINK_CTRL_OFF`, `PL_DEBUG0/1_OFF`
 (link-state debug), `AMBA_LINK_TIMEOUT_OFF` (the AXI/AMBA timeout behind the queue/counter
@@ -408,8 +403,7 @@ Precision Time Measurement for inter-die clock alignment. `[HIGH names · OBSERV
 
 > **ACCESS-TYPE NOTE.** `snps_ctrl` is the only block in this batch to use the full
 > `{RW, RO, Reserved, WO}` vocabulary at bitfield level (the DBI write-once /
-> event-counter-clear semantics). The HBM blocks use only `{RO, RW}`. `[HIGH ·
-> OBSERVED]`
+> event-counter-clear semantics). The HBM blocks use only `{RO, RW}`.
 
 ### II-2. `mrvl_mpcs_x16` — Marvell MPCS x16 (PIPE coding + ULFEC)
 
@@ -418,15 +412,14 @@ bundle / 31 regs / 56 fields. The single bundle is `ulfec120_addr_block` (ArrayS
 **ULFEC** = Ultra-Low-latency FEC, the D2D forward-error-correction coding layer.
 Registers are all `ULFEC120_*`: `CONTROL`, `STATUS`, `RX/TXCONTROL`, `RECEIVED_CW_{L,H}`,
 `GOOD_CW_{L,H}`, `CORRECTED_CW`, `UNCORRECTED_CW`, `SYMBOL_ERR_*`, `PAM4_ERR_*` (FEC
-codeword + symbol statistics). `[HIGH · OBSERVED]`
+codeword + symbol statistics).
 
 > **The MPCS CSR file and its trigger set are complementary surfaces.** The 12 mpcs
 > triggers per instance (`pipe_phystatus_{rising,falling}`, `pipe_txdetectrx_*`,
 > `pipe_powerdown_p0/p0s/p1/p2`, spares) are **PIPE-interface status edges**, not ULFEC
 > registers. D2D FEC errors are corrected silently (no FEC-error trigger exists); only
 > PIPE state transitions interrupt. The ULFEC counters are read for statistics. The
-> Amazon `d2d_mpcs_cfg` (2 bundles / 4 regs) holds the MPCS clock/reset glue. `[HIGH ·
-> OBSERVED]`
+> Amazon `d2d_mpcs_cfg` (2 bundles / 4 regs) holds the MPCS clock/reset glue.
 
 ### II-3. `mrvl_xsr_phy` — Marvell XSR die-to-die SerDes PHY
 
@@ -436,7 +429,7 @@ with per-lane eye-metric registers (`RX{A..P}_PDF_Eye_Metrics_Register`,
 `RX{A..P}_Waveform_Eye_Metrics_Register_1/2`) plus an **embedded MCU complex**
 (`mcu_control_0/1`, `MCU_Debug0/1`, `mcu_info_0..3`, `mcu_addr_reg`) and a common-block
 interrupt set (`cmn_mcu_int_reg0..12`) + internal memory ECC (`mem_cmn_ecc_err_address0`).
-The MCU runs microcode loaded from `mrvl_xsr_pram`. `[HIGH · OBSERVED]`
+The MCU runs microcode loaded from `mrvl_xsr_pram`.
 
 The 10 `xsr` triggers reconcile by concept: `hsseyequality` → eye-metrics, `hssplllocka`
 → HS PLL lock, `hssprtreadya` → port ready, `phy_int` → `cmn_mcu_int_reg*` aggregation,
@@ -483,13 +476,13 @@ register list:
 
 > **NOTE — the correctable ERG path is counted, not exposed.** Only the **un**correctable
 > line (`uncerr_cnt` / `uncerr_sram_status`) feeds a D2D trigger; the `corerr_*` path is
-> counted internally with no D2D trigger leaf. `[HIGH · OBSERVED]`
+> counted internally with no D2D trigger leaf.
 
 > **D2D RAS is PCIe-controller-integrity-dominated** — AER protocol/TLP/DLLP errors +
 > RASDP datapath ECC + axi/ram parity + the XSR PHY internal ECC + MCU watchdog + ERG
 > uncorrectable. Unlike HBM, **D2D has no `critical=1` apex fast-path**: even
 > `uncorrectable_internal_error` / `mcu_wdt` roll into the single `d2d_combined_nmi`
-> summary. `[HIGH · OBSERVED]`
+> summary.
 
 ---
 
@@ -513,13 +506,13 @@ the D2D `snps_ctrl` (which repurposes the same DWC PCIe IP die-to-die, §II).
 `PF0_SN_CAP`, `PF0_VPD_CAP`, `PF0_DLINK_CAP` over the D2D variant, while KEEPING the same
 `PF0_AER_CAP` / `PF0_PCIE_CAP` / `PF0_RAS_DES_CAP` / `PF0_VSECRAS` (RASDP) / `PF0_PTM` /
 `PF0_PORT_LOGIC` and the **same** LTSSM register (`SD_STATUS_L1LTSSM_REG` @ `0xb4` in
-RAS_DES). Same DWC PCIe IP family, configured as a host endpoint/RC. `[HIGH · OBSERVED]`
+RAS_DES). Same DWC PCIe IP family, configured as a host endpoint/RC.
 
 `pcie_appaxi_model` (224 regs) / `pcie_appcore_model` (63 regs) are the Amazon
 application-AXI / application-core wrappers (BAR decode, doorbell/MSI generation, host-DMA
 glue); `pcie_user` (4 regs) is user scratch. The host PHY is a Synopsys **DWC e32mp**
 (Enterprise 32G multi-protocol) x4 (`dwc_e32mp_phy_x4_ns`, `0x20000`, AddrWidth 17) —
-**distinct** from the Marvell XSR die-to-die PHY. `[HIGH · OBSERVED]`
+**distinct** from the Marvell XSR die-to-die PHY.
 
 For the PCIe-trigger detail itself (228 leaves), see
 [`pcie-hbm-tpb-d2d-triggers`](../interrupt/pcie-hbm-tpb-d2d-triggers.md).
@@ -597,7 +590,7 @@ schemas for other gens; the deltas (all `[HIGH · OBSERVED]` from the JSON):
 > **GOTCHA — the decimal `SizeInBytes` recurs only in Mariana.** All Cayman-target files
 > carry hex `0x`-prefixed `SizeInBytes`/`BundleSizeInBytes`. The Mariana
 > `hbm_xbar_port_hbm.json` carries `SizeInBytes "1024"` (decimal = `0x400`). Parse the
-> size-key per file. `[HIGH · OBSERVED]`
+> size-key per file.
 
 ---
 

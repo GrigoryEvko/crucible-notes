@@ -8,16 +8,17 @@ directly from `libnrtucode_internal.so` (sha256 `b7c67e89…632fc329b`) via its 
 shipped Cadence Vision-Q7 `ncore2gp` `xtensa-elf-objdump` decoding the flat blobs.
 This page is the **template** the rest of Part 6 follows: it *diffs* against the
 committed [CAYMAN × ACT baseline](./cayman-act.md) rather than re-deriving the engine.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **The two headline facts up front.**
 > 1. **MARIANA still ships a STANDALONE ACT image** — the "ACT folded into DVE?"
 >    question is **NO** for MARIANA. The fold is a **MAVERICK-only** event. MARIANA is
 >    the *last* generation with its own `NX_ACT` sequencer image, placed contiguously
->    *before* DVE in `.rodata`. [HIGH/OBSERVED]
+>    *before* DVE in `.rodata`.
 > 2. **The reset vector shifted +0x1c** — CAYMAN `06 76 00 00` (`j 0x1dc`) becomes
 >    MARIANA `06 7d 00 00` (`j 0x1f8`); the secondary vector moves `0x1e8`→`0x204`,
 >    also **+0x1c**. Same boot *structure*, relocated layout: a full recompile, not a
->    binary patch. [HIGH/OBSERVED]
+>    binary patch.
 >
 > Engine **model** is unchanged: MARIANA ACT is the *same* `cayman/seq/`-style
 > NX-class SEQ ASCII-opcode dispatch engine, recompiled for v4 with **+3 handlers**, a
@@ -72,7 +73,7 @@ changed row are in the sections that follow. Carve geometry, packaging, dispatch
 > reads the wrong stub bytes. The MARIANA PERF-IRAM getter at `.text` VA `0x9b3ca0`
 > disassembles (VA-aware) to `lea …# 30b8a0 ; mov %rax,(%rdi) ; movq $0x11180,(%rsi)`
 > — confirming ptr `0x30b8a0` / size `0x11180`. [HIGH/OBSERVED — CORRECTION carried
-> from the CAYMAN page; re-verified this task]
+> from the CAYMAN page]
 
 ---
 
@@ -82,7 +83,7 @@ changed row are in the sections that follow. Carve geometry, packaging, dispatch
 the `MARIANA_PLUS` set); the IDA `_names.json` sidecar independently lists **14**. 8
 carry real bytes; 6 SRAM/EXTRAM getters emit `movq $0x0,(%rsi)` and alias the
 contiguous-layout DVE cursor — ACT runs entirely from IRAM (code) + DRAM (data), as on
-CAYMAN. [HIGH/OBSERVED]
+CAYMAN.
 
 | VARIANT | REGION | ACCESSOR (.text VA) | IMG-PTR (.rodata VA == file off) | SIZE | sha256 |
 |---|---|---|---|---|---|
@@ -103,7 +104,7 @@ exactly, and each is **byte-identical** to the matching `libnrtucode.a` member
 `.rodata` (`ar x` → `objcopy --only-section=.rodata`): the static archive ships exactly
 14 `MARIANA_NX_ACT` members (12 `img_*_contents.c.o` + 2
 `hwdecode_*_PROF_{CAM,TABLE}_contents.c.o`), **8/8 IDENTICAL** to the in-`.so` getter
-blobs. One firmware corpus, two packaging views. [HIGH/OBSERVED]
+blobs. One firmware corpus, two packaging views.
 
 ---
 
@@ -118,7 +119,7 @@ MARIANA IRAM:  06 7d 00 00 | 00 00 | 86 7e 00 00 | 00 00 | a0 71 69 80
                └ j 0x1f8 ┘         └ j 0x204 ┘            └ shared stub ┘
 ```
 
-Decoded with the shipped `ncore2gp` `xtensa-elf-objdump` (exit 0, empty stderr):
+Decoded with the shipped `ncore2gp` `xtensa-elf-objdump`:
 
 ```text
 0x000:  06 7d 00     j        0x1f8      ; primary reset vector → boot path  (CAYMAN: j 0x1dc)
@@ -136,7 +137,7 @@ the boot entry, the secondary vector tracking the same delta. The two IRAMs **di
 at byte 2** (the `J` displacement) yet the boot-stub body at bytes `[12..15]` (`a0 71
 69 80`) is byte-identical to CAYMAN — a recompile with a shifted IRAM layout, **not** a
 binary patch. The boot *scheme* (`const16 a0,0x90 ; jx a0` → C `enter_run`; 2nd vector
-`halt 0`) is unchanged. [HIGH/OBSERVED]
+`halt 0`) is unchanged.
 
 > **NOTE — what the +0x1c buys.** The shift is the downstream symptom of the +3
 > handlers and the recompile, not a deliberate ABI move: ~0x1c more of boot/trampoline
@@ -174,11 +175,11 @@ MARIANA ACT **retains every CAYMAN ACT handler and adds three**:
 > with a glued prefix: `VS: Cast`, `VS: Copy`, `TS: TensorScalar`, `TS:
 > ActivateQuantize`, `@S: ActivationReadAccumulator`. The glue-stripped extractor
 > yields the *true* delta: **+3, −0**. Any Part-6 cross-gen handler diff MUST
-> glue-strip. [HIGH/OBSERVED]
+> glue-strip.
 
 Each new handler is a **real dispatch handler**, confirmed by its self-naming log-call
 entry in DEBUG IRAM (the exact `const16 a10,8 ; const16 a10,<DRAM-off> ; call8
-<log-helper>` pattern): [HIGH/OBSERVED]
+<log-helper>` pattern):
 
 | Handler | IRAM entry | log string (DRAM VA) | role |
 |---|---|---|---|
@@ -211,7 +212,7 @@ opcode=0x%x` per-fetch log and the four `ErrorHandler` arms (`Bad Opcode` / `Ill
 Instruction` / `FP Error` / `Int Div Zero`) are present byte-for-byte, sourced from
 `…/cayman/seq/src/handlers/exception_handler.hpp`. The DEBUG compare-chain uses the
 **same shared dispatch-control constants** as CAYMAN (`movi a3,{145,167-171,176-179,
-181,184,189}` decode-identically on both DEBUG IRAMs). [HIGH/OBSERVED]
+181,184,189}` decode-identically on both DEBUG IRAMs).
 
 > **CORRECTION — the main DRAM table is no longer at file `0x814`.** On CAYMAN, PERF
 > DRAM file `0x814` holds the 178-entry 4-byte LE IRAM-target table (head `23 99 00 00`
@@ -221,7 +222,7 @@ Instruction` / `FP Error` / `Int Div Zero`) are present byte-for-byte, sourced f
 > word-scan finds big runs at MARIANA file `0x80`/`0x870` vs CAYMAN `0xc0`/`0x720`).
 > The dispatch *model* is HIGH; the exact MARIANA main-table base + entry count is
 > **MED** — the PERF IRAM dispatch desyncs under FLIX-VLIW bundling (the documented
-> SX-FW-00 `{ const16 ; nop ; nop ; ivp_… }` bundle form). [HIGH model / MED base]
+> FW-00 `{ const16 ; nop ; nop ; ivp_… }` bundle form). [HIGH model / MED base]
 
 **Dtype delta: none visible at the firmware-string layer.** The only dtype constants in
 any MARIANA ACT image are `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}` — byte-for-byte
@@ -278,18 +279,18 @@ run time. Field schema not exhaustively decoded. [HIGH content-delta / MED schem
 - **Same DEBUG-vs-RELEASE model as CAYMAN:** only DEBUG carries the `S:` runtime logs
   (MARIANA 152 vs CAYMAN 150; the +2 = the new `RandGet/SetState` logs, `Activate2`
   offset by glue-merges). PERF strips all `S:` (15 strings, all assertion source-paths);
-  TEST keeps function/file symbols (57 strings). [HIGH/OBSERVED]
+  TEST keeps function/file symbols (57 strings).
 - **Cross-gen IRAM is SMALLER in every variant** (PERF `−0x2c40` ≈ 14 %, DEBUG `−0x640`,
   TEST `−0x2700`); **DRAM is slightly LARGER** (DEBUG `+0x160`, PERF `+0x2a0`, TEST
   `+0x260` — the +3 handlers' strings). A tighter/different compile, not a patch (the
   IRAMs diverge at byte 2). IVP distinct-mnemonic counts drop (266 vs 297-299); as on
   CAYMAN this is a **floor** — the larger DEBUG image desyncs more of the linear sweep
-  across FLIX boundaries (157 vs PERF 266), not a real op-inventory loss. [HIGH/OBSERVED]
+  across FLIX boundaries (157 vs PERF 266), not a real op-inventory loss.
 - The dispatch **mechanism is invariant** across all three MARIANA variants *and* vs
   CAYMAN (same reset-vector form, `S: Dispatch opcode` log, compare-chain constants,
   `ErrorHandler` arms, `cayman/seq/` codebase). A DEBUG↔RELEASE swap is pure
   observability; a CAYMAN↔MARIANA swap is recompile + 3 handlers + re-armed PROF +
-  relocated layout — **not** a model change. [HIGH/OBSERVED]
+  relocated layout — **not** a model change.
 
 > **NOTE — MARIANA ≠ MARIANA_PLUS at the ACT-image level.** A refinement worth
 > carrying: MARIANA_PLUS ACT is **not** byte-identical to MARIANA ACT — DEBUG_DRAM
@@ -297,7 +298,7 @@ run time. Field schema not exhaustively decoded. [HIGH content-delta / MED schem
 > differs (size `0x14be0` vs `0x11180`). But the PROF_CAM **is** byte-identical
 > (`326bc0dd`) and MARIANA_PLUS carries the same +3 handlers. So the v4/v4+ byte-identity
 > holds for the EXTISA Q7 blobs and NCFW DRAM but **not** for the `NX_ACT` sequencer
-> images — see [MARIANA+ delta](../generations/mariana-plus-delta.md). [HIGH/OBSERVED]
+> images — see [MARIANA+ delta](../generations/mariana-plus-delta.md).
 
 ---
 
@@ -310,16 +311,16 @@ DVE." This page tests that at the **MARIANA firmware-image layer**, and the answ
 
 - **MARIANA ships a separate, dedicated `NX_ACT` image** — the full 14-getter set
   (§2), identical in *shape* to CAYMAN's 14. `nm` lists exactly 14 `MARIANA_NX_ACT_*_get`
-  + 14 `_get.data`. [HIGH/OBSERVED]
+  + 14 `_get.data`.
 - **The layout adjacency is the fold-disproof:** the ACT PERF DRAM ends at file
   `0x31ca20 + 0x2ba0 = 0x31f5c0`, which is **exactly** where
   `MARIANA_NX_DVE_PERF_IRAM_get.data` begins. ACT is its own contiguous image block,
   placed immediately **before** DVE in `.rodata` — a separate engine image, not a
-  DVE sub-table. [HIGH/OBSERVED]
+  DVE sub-table.
 - **Different SoC instances, different layers.** The MAVERICK finding is a *hardware
   address-map* phenomenon on the v5 SoC; this is the *firmware-image catalog* on the v4
   generation. It is **MAVERICK** — not MARIANA — that ships **no `NX_ACT` image at all**
-  (its NX engines are DVE/PE/POOL/SP only). [HIGH/OBSERVED]
+  (its NX engines are DVE/PE/POOL/SP only).
 
 > **INTERPRETATION (INFERRED-MED).** The cross-gen trajectory is ACT-standalone on
 > SUNDA/CAYMAN/MARIANA/MARIANA_PLUS (each with its own `NX_ACT` image), then **ACT
@@ -334,13 +335,13 @@ DVE." This page tests that at the **MARIANA firmware-image layer**, and the answ
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (direct byte read or `ncore2gp` disassembly this task):**
+**HIGH / OBSERVED (direct byte read or `ncore2gp` disassembly):**
 
 - 14 `MARIANA_NX_ACT` getters (`nm` count 14, IDA `_names` sidecar 14); 8 real
-  (ptr/size re-read via VA-aware `objdump`, the `0x2000` `.text` delta respected) + 6
+  (ptr/size read via VA-aware `objdump`, the `0x2000` `.text` delta respected) + 6
   zero-size DVE-cursor aliases (all six `movq $0x0`).
 - 8 carves reproduce their sha256 and are byte-identical (8/8) to the `libnrtucode.a`
-  member `.rodata`. CAYMAN baseline re-carved + re-hashed (DEBUG_DRAM `f6c5136e`,
+  member `.rodata`. CAYMAN baseline shas MATCH (DEBUG_DRAM `f6c5136e`,
   PROF_CAM `8fd7e422`, PROF_TABLE `ce761f81`, DEBUG_IRAM `ffbb78fe` — all MATCH the
   committed CAYMAN page, so the diff is against the authentic baseline).
 - Reset vector `06 7d 00 00` (`j 0x1f8`) byte-identical across DEBUG/PERF/TEST,

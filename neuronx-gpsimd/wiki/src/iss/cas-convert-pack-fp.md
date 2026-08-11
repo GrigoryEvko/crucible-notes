@@ -34,8 +34,7 @@ stripped**, `sha256 260b110c…`); cas offsets into `libcas-core.so` (45 878 080
 > (`0x88ff00`) are **VMA == file offset** — every `objdump`/`xdref` body below is read at raw VMA.
 > The writable sections carry the **`0x200000` delta** (`.data.rel.ro` VMA `0xc17e80` → file
 > `0xa17e80`; `.data` VMA `0xc8eb68` → file `0xa8eb68`; `readelf -SW`). All the convert/pack value
-> bodies are `.text`, so the delta never bites the disassembly here. `[HIGH/OBSERVED]`
-
+> bodies are `.text`, so the delta never bites the disassembly here.
 ---
 
 ## 1. Executive finding — the convert/pack machine, decoded *and* driven
@@ -61,7 +60,6 @@ The five claims this page stakes — **(1)** bf16/fp8 have no native convert (FP
 `packl` wraps while `packvr` rounds and `sats` saturates, **(3)** `trunc` is round-toward-zero,
 **(4)** the default fp rounding is RNE, **(5)** the fiss soft-float values are exact IEEE-754 — are
 each verified against the binary *and*, for (2)/(3)/(5), against **live `ctypes` execution** (§13).
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -94,8 +92,7 @@ return pack_fp32(neg, exp, mantissa); // assemble sign|exp|mantissa, value in %e
 The **sign** is the leading `neg %edi ; test %esi,%esi ; js` triple. The magnitude is normalized,
 the exponent rebiased to the fp32 bias, the mantissa rounded per the FSR mode (the `cmp $0x3 ; sete`
 is the round-to-nearest-**even** tie-break), overflow clamps to inf. It is **integer-only soft-float
-— zero hardware FP** (no `cvtsi2ss`, no SSE). `[HIGH/OBSERVED]`
-
+— zero hardware FP** (no `cvtsi2ss`, no SSE).
 ### 2.2 Signed vs unsigned is the prologue — `ufloat_1_32f_32_32_2` @ `0x87b0d0`
 
 The unsigned counterpart is **identical except it omits the sign prologue**. Disassembled head:
@@ -110,15 +107,13 @@ bool gr = (mag & 0x7f) != 0;      // 87b0eb: test $0x7f,%dil ; setne   (SAME rou
 ```
 
 So **signedness = presence/absence of the `neg/test/js` prologue** — exactly the operand-prologue
-discriminator the multiply path uses. `[HIGH/OBSERVED]`
-
+discriminator the multiply path uses.
 > **NOTE — narrower forms.** `float16_1_16f_16_32_2` @ `0x522070` (INT16 → FP16) is the same
 > shape with the 5-bit-exp / 10-bit-mant geometry (`lea 0x20(…)` fp16 `0xf` rebias, `0x7c00`-inf
 > overflow). The scalar leaf is invoked **32 times** by the NX16 vector caller
 > (`opcode__ivp_float16nx16__stage_5` @ `0x7fd910` — one call per lane). The named int→fp forms
 > cover `{INT8/16/32, UINT8/16/32} → {FP16, FP32}`. There is **no** int→bf16 and **no** int→fp8
-> leaf (§5). `[HIGH/OBSERVED]`
-
+> leaf (§5).
 ---
 
 ## 3. FP → INT converts — `ivp_trunc` / `utrunc` (round-toward-zero)
@@ -142,8 +137,7 @@ The exponent is extracted, the right-shift amount computed as `(mantissa-width +
 implied-`1.mantissa` shifted right, and **the fractional bits are dropped unconditionally** — that
 is round-toward-zero, the C-cast / `numpy.astype(int)` semantics. A byte sweep of the entire body
 (`0x87b240`–`0x87b510`) finds **zero** `cmp $0x3` RNE tie-breaks — the contrast with `float`/narrow
-(which carry the tie-break) is decisive. `[HIGH/OBSERVED]`
-
+(which carry the tie-break) is decisive.
 ### 3.2 fp16 and unsigned forms
 
 `trunc16_1_1_16_16f_32` @ `0x522610` is the fp16 form (`shr $0xa ; and $0x1f` 5-bit exp,
@@ -156,8 +150,7 @@ from the unsigned target.]`
 > rounding mode (§8) governs fp→int as it governs int→fp. The bytes refute it: `trunc`/`utrunc`
 > carry **no** round-mode operand and **no** `cmp $0x3` tie-break — they are **always**
 > round-toward-zero, regardless of FSR. The FSR mode steers **only** the rounding converts
-> (int→fp and fp32→fp16-narrow and the rounding packs). `[HIGH/OBSERVED]`
-
+> (int→fp and fp32→fp16-narrow and the rounding packs).
 ---
 
 ## 4. FP-width converts — `fp16 ↔ fp32` (the only native fp-width pair)
@@ -175,7 +168,7 @@ opcode__ivp_cvtf32nxf16_0__stage_5@0x250b80 -> call xdref_cvtf32_1_32f_32f_0    
 ```
 
 The `_0`/`_1` suffixes are the **low / high** half of the source pair (the `2NX` format packs two
-fp16 per fp32 lane). `[HIGH/OBSERVED — xdref dispatch resolved.]`
+fp16 per fp32 lane).
 
 ### 4.2 The WIDEN — `cvtf32_1_32f_16f` @ `0x5b77f0` (fp16 → fp32, lossless)
 
@@ -197,8 +190,7 @@ uint32_t sign = (uint32_t)(h & 0x8000) << 16;   // fp16 sign -> fp32 sign bit
 ```
 
 Widening is **lossless** (fp32 strictly contains fp16, so no rounding is needed); NaN/Inf propagate
-with the qNaN bit preserved; **denormal fp16 inputs are normalized** (`bsr`), not flushed. `[HIGH/OBSERVED]`
-
+with the qNaN bit preserved; **denormal fp16 inputs are normalized** (`bsr`), not flushed.
 ### 4.3 The NARROW — `cvtf16_1_1_1_1_16f_32f_2` @ `0x5b78f0` (fp32 → fp16, must round)
 
 This is the largest convert body (~0x600 B) precisely because narrowing **rounds**:
@@ -221,8 +213,7 @@ return sign | (e5 << 10) | mant10;
 
 Two `cmp $0x3` tie-breaks (vs **zero** in `trunc`) confirm the narrow rounds. Overflow → fp16 inf
 `0x7c00`; underflow → fp16 **denormal** (gradual, not FTZ); NaN/Inf propagate. The round mode is the
-`%edx[1:0]` operand (§8). `[HIGH/OBSERVED]`
-
+`%edx[1:0]` operand (§8).
 ### 4.4 The cas ENCODE (libisa-core, F1\_S3\_ALU, byte-exact)
 
 ```
@@ -231,22 +222,19 @@ Opcode_ivp_cvtf32f16_Slot_f1_s3_alu_encode @0x353620 : movl $0x27d050f0   (widen
 ```
 
 The widen/narrow direction differs in **byte[2]** (`0xb0` vs `0xd0` = a `+0x20000` enumerated
-direction field); both share the `0x…050f0` cvt opcode base. `[HIGH/OBSERVED — verified against the
-live `libisa-core.so` thunk table.]`
+direction field); both share the `0x…050f0` cvt opcode base.
 
 ---
 
 ## 5. bf16 / fp8 — **NO NATIVE CONVERT OP** (the negative finding)
 
-### 5.1 Exhaustive negative control (this pass, both binaries)
+### 5.1 Exhaustive negative control (both binaries)
 
 * **fiss:** an `nm -D` sweep over the **20 368** exported `T` symbols of `libfiss-base.so` for any of
   `{bf16, bfloat, _8f_, fp8, e4m3, e5m2}` returns **0 hits**. The only fp-width convert leaves are
   `cvtf16_…{16f,32f}` and `cvtf32_…{16f,32f}` — **binary16 (1-5-10) and binary32 (1-8-23) ONLY**.
 * **cas:** no `IVP_*BF16*` / `IVP_*FP8*` / `IVP_*E4M3*` / `IVP_*E5M2*` convert issue function exists
   (apparent "bf16" string hits were hex addresses `0xbf16xx`, not mnemonics).
-
-`[HIGH/OBSERVED — exhaustive symbol sweep, both binaries.]`
 
 > **QUIRK — there is no hardware bf16 or fp8 convert.** The native fp-width converter is
 > **fp16 ↔ fp32 only**. Every bf16 and every fp8 (E5M2 / E4M3) conversion the firmware appears to
@@ -268,7 +256,7 @@ live `libisa-core.so` thunk table.]`
   kernel bitfield op (exp rebias + mantissa zero-extend). `[HIGH — from MX §7.]`
 
 End to end: the ISS exposes `fp16↔fp32 + int↔fp + saturating narrow/pack`; bf16 and the fp8 forms
-ride those primitives via the FP32 hub (Cast) or the unpack+scale+clamp (MX). `[HIGH]`
+ride those primitives via the FP32 hub (Cast) or the unpack+scale+clamp (MX).
 
 ---
 
@@ -283,8 +271,7 @@ ride those primitives via the FP32 hub (Cast) or the unpack+scale+clamp (MX). `[
 ```
 
 These are trivial leaves — the value in, sign/zero-extended, value out via the `%rdx` pointer.
-`sext_32_16` and `zeroext_48_32` are **live-confirmed** in §13. `[HIGH/OBSERVED]`
-
+`sext_32_16` and `zeroext_48_32` are **live-confirmed** in §13.
 ### 6.2 Saturating narrow — `sats_16_32` @ `0x5baaa0`
 
 ```c
@@ -296,10 +283,9 @@ else result = (in < 0) ? 0x8000 : 0x7fff;// CLAMP by sign to INT16_MIN / INT16_M
 
 `sats_8_16` @ `0x8711a0` is the same at 8-bit (clamp `0x80`/`0x7f`). The canonical
 "sign-extend-low + compare-to-high + clamp" saturating narrow; `cvt16s*` (signed narrow) calls
-`sats`, `cvt16u*` (unsigned narrow) clamps to the unsigned range. `[HIGH/OBSERVED]`
-
+`sats`, `cvt16u*` (unsigned narrow) clamps to the unsigned range.
 The int cvt/sext ops issue in `S3_ALU` at vec LAT 10–12 (exact sext/zeroext at 10, narrow cvt at
-12). `[HIGH/OBSERVED for the family.]`
+12).
 
 ---
 
@@ -333,16 +319,14 @@ return val & 0xffff;                     // round-to-nearest narrowing
 
 **(c) SATURATING — `packv*` / `packs` / `sats`.** Sign-extend the low + overflow-detect + clamp to
 `0x7fff`/`0x8000` (the §6.2 `sats` body). `packv*` = vector pack with saturation, `packvu` =
-unsigned-saturate, `packvnr` = no-round saturating. `[HIGH/OBSERVED]`
-
+unsigned-saturate, `packvnr` = no-round saturating.
 So **`packl` = WRAP, `pack`/`packvr` = ROUND, `packv*`/`sats` = SATURATE** — three distinct
 primitives, not a single op with a flag.
 
 > **CORRECTION — `PACKL` is the wrap form, not the clamp form.** An earlier MED-inferred binding
 > read the MAC-drain `PACKL` post-op as a *saturating* narrow. The byte truth is the opposite:
 > `packl` is `movzwl`-low with **no clamp** (and `_nosat` is byte-identical). The **saturating**
-> drain is `packv*`/`packs`/`sats`; the **rounding** drain is `pack`/`packvr`. `[HIGH/OBSERVED —
-> refines the MAC/pack sibling.]`
+> drain is `packv*`/`packs`/`sats`; the **rounding** drain is `pack`/`packvr`.
 
 ### 7.2 The accumulator pack (the MAC drain) — `packvr_16_48_32` @ `0x5e98b0`
 
@@ -360,8 +344,7 @@ The `packvrnr_16_48_32` sibling **omits** the `+1` round bias (truncating accumu
 `packvru` is unsigned-saturate. The `8_24_32` / `32_48_32` / `32_96_32` variants drain the 24/48/96-bit
 accumulators. This is the canonical MAC-accumulator → vec drain:
 **arithmetic-right-shift (the scale) → round-half-up → saturating-clamp to the lane width** — and it
-is the same family as the MX `cvtg48` accumulator→lane extract. `[HIGH/OBSERVED]`
-
+is the same family as the MX `cvtg48` accumulator→lane extract.
 ### 7.3 cas DECODE/TIMING — `IVP_PACKVR2NX24_issue` @ `0x71e4c0` (S1\_Ld, the pack unit)
 
 ```
@@ -371,15 +354,13 @@ reads  opnd_sem_AR_addr   (the shift/scale amount) at LAT 3
 ```
 
 The accumulator pack issues in `S1_Ld`, posts the vec result at **LAT 12**, and takes the shift
-amount from an address register. `[HIGH/OBSERVED]`
-
+amount from an address register.
 ### 7.4 The widen / unpack side
 
 The `cvt*_l` / `cvt*_h` half-extracts (`cvt48u_48_64l/h`, `cvt24u_24_32l/h`) and
 `cvtg48_48_32_16_l/h` (@ `0x855b00`/`0x855b10`) are the accumulator **unpack** — the inverse of pack,
 widening one wide value to two vec halves. The MX 4-bit nibble-unpack is the `ivp_sel2nx8i_s4`
-sub-byte select (a lane-reorg, not a fiss arithmetic op). `[HIGH/OBSERVED for the half-extracts; the
-sub-byte unpack reconciled from the MX kernel.]`
+sub-byte select (a lane-reorg, not a fiss arithmetic op).
 
 ---
 
@@ -415,14 +396,12 @@ opcode__ivp_float16nx16__stage_5 @0x7fd952:  mov 0xd4(%rdi),%eax ; … ; mov %ea
 
 Rounding is a software-visible mode in the FSR SR, plumbed per-op into the soft-float body — the
 RoundMode-SR finding, now **pinned to the FSR (UR `0xe9`)** and OBSERVED in the convert path.
-`[HIGH/OBSERVED]`
 
 ### 8.3 Scope
 
 `trunc`/`utrunc` **ignore** the FSR mode (always RTZ, §3.2). The widen needs no rounding (lossless).
 So the FSR round mode affects **only** the rounding converts: int→fp and fp32→fp16-narrow (and the
 rounding pack). The Cast kernel's "RNE for fp targets" is exactly FSR default **mode 0**.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -439,15 +418,14 @@ rounding pack). The Cast kernel's "RNE for fp targets" is exactly FSR default **
 | Denorm | `exp == 0` **and** `mant != 0` |
 
 The dedicated `clsfy_16f_16f` @ `0x524b00` / `clsfy_32f_32f` @ `0x87dc60` emit the full multi-bit
-IEEE class field (`is_nan/is_inf/is_zero/is_normal/is_subnormal/sign`). `[HIGH/OBSERVED]`
-
+IEEE class field (`is_nan/is_inf/is_zero/is_normal/is_subnormal/sign`).
 ### 9.2 Propagation on convert (byte-read *and* live-confirmed in §13)
 
 * **Widen** (fp16→fp32): NaN → NaN (`0x1f → 0xff` exp, qNaN bit preserved); Inf → Inf
   (`mov $0x7f800000`); denormal fp16 → **normalized** fp32 (`bsr`).
 * **Narrow** (fp32→fp16): NaN → fp16 NaN (`or $0x7c,%dh` = `0x7c00` + mantissa); Inf → `0x7c00`;
   **overflow** (exp too large for fp16) → fp16 Inf `0x7c00`; **underflow** → fp16 **denormal**
-  (gradual, **not** flush-to-zero — explicit subnormal-output path). `[HIGH/OBSERVED]`
+  (gradual, **not** flush-to-zero — explicit subnormal-output path).
 * fp8 special encodings (E5M2 has Inf/NaN, E4M3 is NaN-only no-Inf) are handled by the MX saturating
   clamp + kernel rebias, **not** an ISS op (§5).
 
@@ -477,7 +455,7 @@ Read by the issue-fn `mov $LAT,%esi` method (the value before each scoreboard `c
 | `PACKVR2NX24` (acc→vec) | S1\_Ld | 12 | wvec 10 | + AR 3 (shift) |
 
 The `FLOAT16NX16T` issue fn @ `0x14b6860` carries `mov $0xa` (src LAT 10), `mov $0xd` (result LAT
-13), `mov $0xe` (structural horizon 14) — read live this pass. `[HIGH/OBSERVED]`
+13), `mov $0xe` (structural horizon 14).
 
 Interpretation:
 
@@ -489,9 +467,9 @@ Interpretation:
   The **unsigned** int→fp (`ufloat`) uses an **extra** structural port vs the signed.
 * **The round mode has NO extra cas latency cost** — rounding is internal to the fiss body; the
   scoreboard sees the same LAT 13 regardless of FSR mode. cas timing is **mode-agnostic**; only the
-  VALUE differs. `[HIGH/OBSERVED]`
+  VALUE differs.
 * As always, the cas scoreboard **never inspects the converted value** — it schedules reg#/LAT slots;
-  the exp-rebias / round / saturate / special-value is the fiss xdref's job (§2–9). `[HIGH]`
+  the exp-rebias / round / saturate / special-value is the fiss xdref's job (§2–9).
 
 ---
 
@@ -517,7 +495,7 @@ E2M1→E5M2 rebias is a kernel bitfield op. No dedicated fp8 convert op — conf
 `[HIGH/OBSERVED + MX §7.]`
 
 The dtype superset (BF16, FP16, FP32, FP8\_E3/E4/E5, FP4) is the Cast/MX matrix; the ISS
-native-convert subset is `{INT8/16/32, UINT8/16/32, FP16, FP32}` — the rest via the hub. `[HIGH]`
+native-convert subset is `{INT8/16/32, UINT8/16/32, FP16, FP32}` — the rest via the hub.
 
 ---
 
@@ -546,7 +524,7 @@ native-convert subset is `{INT8/16/32, UINT8/16/32, FP16, FP32}` — the rest vi
 
 The value claims above are not inferred from disassembly alone — `libfiss-base.so` loads standalone
 (`DT_NEEDED = libc.so.6` only) and the leaf `module__xdref_*` value functions are **called directly**.
-This is the executable-oracle method that names this Part: the binary *is* the spec, and we run it.
+This is the executable-oracle method that names this Part: the binary *is* the spec, and it is run.
 
 ### 13.1 A convert — `cvtf32_1_32f_16f` (fp16 → fp32 widen)
 
@@ -610,7 +588,7 @@ confirming the `movswl` leaf. `[HIGH/OBSERVED — live]`
 
 ## 14. Honesty / uncertainty ledger
 
-**HIGH / OBSERVED (disassembled bytes + live `ctypes` this pass):**
+**HIGH / OBSERVED (disassembled bytes + live `ctypes`):**
 
 * int→fp = `float` (signed, `neg/test/js` prologue) / `ufloat` (no prologue); fp→int =
   `trunc`/`utrunc`, **round-toward-zero** (fractional bits discarded; **zero** `cmp $0x3` tie-breaks

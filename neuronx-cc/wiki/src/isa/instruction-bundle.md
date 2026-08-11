@@ -8,20 +8,20 @@ Every TPB engine stream — PE, Pool, Act, DVE, SP, DMA — is a flat array of *
 
 The single piece of structure that is **truly universal** across all ops and all three generations is the **4-byte header word** at `+0x00`: `{opcode, 0x10, 0x00, 0x00}`. It is written by one function, `setupHeader`, which is **byte-for-byte identical** in `CoreV2`, `CoreV3`, and `CoreV4` — six instructions, no data dependence on anything but the opcode byte. `byte[1] = 0x10` is `inst_word_len` = 16 dwords = 64 bytes, a hardcoded immediate. That is the whole header.
 
-The other 60 bytes are **not** a fixed struct. They are an op-specific union body (the `NEURON_ISA_TPB_INST_UNION`). But the descriptor *slots* — the encoded memory-access patterns for the operands — do not land at arbitrary offsets. They land at one of **three family-fixed offset patterns** (A / B / C), chosen by descriptor width and operand count, with a control-byte band wedged into whichever 16-byte region the slots leave free. This page documents the universal header, the emission skeleton, the three slot families, and the single most-repeated error in earlier field maps — that there is a descriptor at `+0x48`. There is not.
+The other 60 bytes are **not** a fixed struct. They are an op-specific union body (the `NEURON_ISA_TPB_INST_UNION`). But the descriptor *slots* — the encoded memory-access patterns for the operands — do not land at arbitrary offsets. They land at one of **three family-fixed offset patterns** (A / B / C), chosen by descriptor width and operand count, with a control-byte band wedged into whichever 16-byte region the slots leave free. This page documents the universal header, the emission skeleton, the three slot families, and the one offset most often mistaken for a descriptor slot — `+0x48`, which is a vtable offset in the encoder, not a bundle byte.
 
 This is the skeleton the per-engine encoding pages (2.10 PE matmul, 2.11 Pool, … 2.22 DMA) fill in. After this page a reimplementer can lay out an empty 64-byte bundle and place the header for any opcode in the [master opcode table](../walrus/opcode-master.md).
 
 | | |
 |---|---|
-| **Bundle size** | exactly 64 bytes (`std::array<u8,64>`); `fwrite(…, 0x40, …)` — CONFIRMED |
-| **Header word** | `+0x00..+0x03 = {opcode, 0x10, 0x00, 0x00}` little-endian `*(u16*)bundle = 0x10NN` — CONFIRMED |
-| **`inst_word_len`** | `byte[1] = 0x10` = 16 dwords = 64 B, hardcoded, no non-16 length exists — CONFIRMED |
-| **Header writer** | `CoreV2/V3/V4GenImpl::setupHeader` @ `0x1172120` / `0x1369280` / `0x143f440` — byte-identical — CONFIRMED |
-| **Reached via** | virtual call, vtable slot 9 = `call [rax+0x48]` (a *code* offset, not a bundle byte) — CONFIRMED |
-| **Slot families** | A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C` — CONFIRMED |
-| **Slot sizes** | TENSOR1D=8 · 2D=12 · 3D=16 · 4D=20 bytes (`.rodata` asserts) — CONFIRMED |
-| **No `+0x48` descriptor** | a 16-B slot at `+0x48` ends at `0x58` > `0x40` — would overflow the bundle — CONFIRMED |
+| **Bundle size** | exactly 64 bytes (`std::array<u8,64>`); `fwrite(…, 0x40, …)` |
+| **Header word** | `+0x00..+0x03 = {opcode, 0x10, 0x00, 0x00}` little-endian `*(u16*)bundle = 0x10NN` |
+| **`inst_word_len`** | `byte[1] = 0x10` = 16 dwords = 64 B, hardcoded, no non-16 length exists |
+| **Header writer** | `CoreV2/V3/V4GenImpl::setupHeader` @ `0x1172120` / `0x1369280` / `0x143f440` — byte-identical |
+| **Reached via** | virtual call, vtable slot 9 = `call [rax+0x48]` (a *code* offset, not a bundle byte) |
+| **Slot families** | A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C` |
+| **Slot sizes** | TENSOR1D=8 · 2D=12 · 3D=16 · 4D=20 bytes (`.rodata` asserts) |
+| **No `+0x48` descriptor** | a 16-B slot at `+0x48` ends at `0x58` > `0x40` — would overflow the bundle |
 
 ---
 
@@ -49,7 +49,7 @@ So the 4-byte header word is:
 | `+0x01` | `inst_word_len` | `0x10` = 16 dwords = 64 B | `setupHeader` | hardcoded immediate, zero data dependence |
 | `+0x02` | format / reserved | `0x0000` (word) | `setupHeader` | always zero on the wire |
 
-Read as a little-endian 16-bit word, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte and the high byte `0x10` is the length. This is why the MX opcodes show up in earlier reports as `0x1009 / 0x100A / 0x10E3` — those are the full *word*, and the opcode proper is the low byte (`0x09 / 0x0A / 0xE3`); the high `0x10` is `inst_word_len`, not part of the opcode. The full per-`InstructionType` × generation opcode table is the [opcode-word authority](../walrus/opcode-master.md).
+Read as a little-endian 16-bit word, `*(u16*)bundle = 0x10NN` where `NN` is the opcode byte and the high byte `0x10` is the length. This is why the MX opcodes are often quoted as `0x1009 / 0x100A / 0x10E3` — those are the full *word*, and the opcode proper is the low byte (`0x09 / 0x0A / 0xE3`); the high `0x10` is `inst_word_len`, not part of the opcode. The full per-`InstructionType` × generation opcode table is the [opcode-word authority](../walrus/opcode-master.md).
 
 > **QUIRK —** `inst_word_len` is named as if a bundle could be a different number of dwords. It cannot. `byte[1]` is the literal immediate `0x10` in all three bodies with no branch, no operand, no field read. Every CoreV\* bundle is exactly 64 bytes — one `emplace_back<std::array<u8,64>>` and one `fwrite(…, 0x40, …)`. There are no non-16 lengths in this ISA.
 
@@ -111,7 +111,7 @@ Two facts a reimplementer must internalize:
 - **Zero-first.** The 64 bytes are zeroed before anything is written. Every byte the op leaves untouched is a hard zero on the wire — the header's `+0x02/+0x03` reserved word, any unused control byte, any descriptor spare byte. You do not need to know what those bytes "mean"; you need to write zero.
 - **The opcode is a stack local passed by pointer.** `setupHeader` reads `*rdx`, so the encoder stages the opcode byte in a frame slot and passes its address. The opcode value itself comes from the per-op table, not from the BIR `InstructionType` ordinal.
 
-> **CORRECTION (N11) —** the recurring `+0x48` in earlier per-op field maps is **not a bundle byte**. It is the *vtable offset* through which `setupHeader` is reached: `call QWORD PTR [rax+0x48]` (slot 9, since `0x48/8 = 9`). It is a code address. No descriptor lives at bundle byte `+0x48`: the narrowest descriptor that could sit there is a TENSOR3D (16 B), which would span `+0x48..+0x57` and overflow the 64-byte bundle (`0x58 > 0x40`). The "`+0x48`" and the on-the-wire `+0x48` are unrelated.
+> **GOTCHA — the `+0x48` you see in the disassembly is not a bundle byte.** It is the *vtable offset* through which `setupHeader` is reached: `call QWORD PTR [rax+0x48]`, i.e. slot 9 (`0x48/8 = 9`) — a code address. No descriptor lives at bundle byte `+0x48`: the narrowest one that could sit there is a TENSOR3D (16 B), spanning `+0x48..+0x57` and overflowing the 64-byte bundle (`0x58 > 0x40`).
 
 ### Codegen modes
 
@@ -135,35 +135,35 @@ The 60 bytes after the header word are an op-specific union. The table below is 
 
 | Off | Field (common interpretation) | Set by | Users / notes | Conf |
 |-----|-------------------------------|--------|---------------|------|
-| `+0x00` | `opcode` byte (L3 ISA op) | `setupHeader` | ALL ops | CONFIRMED |
-| `+0x01` | `inst_word_len` = `0x10` | `setupHeader` | ALL ops (hardcoded) | CONFIRMED |
-| `+0x02..03` | format/reserved = `0x0000` | `setupHeader` | ALL ops | CONFIRMED |
-| `+0x04` | sync WAIT mode | `setupSyncWait` | SyncInfo ops (DVE/Pool/Act/SP/DMA); absent on matmul | STRONG |
-| `+0x05` | sync `wait_idx` | `setupSyncWait` | — | STRONG |
-| `+0x06` | sync UPDATE mode | `setupSyncUpdate` | — | STRONG |
-| `+0x07` | sync `update_idx` | `setupSyncUpdate` | — | STRONG |
-| `+0x08..0B` | sync wait/update value (dword) | `setupSync*` | shared `+8` dword | STRONG |
-| `+0x0C` | **(Family B)** in0\|in1 dtype nibbles · **(Fam A TS)** accum byte | `visitInst` | TensorTensor control band starts here | CONFIRMED |
-| `+0x0C` | **(Family C)** IN TENSOR4D slot START (20 B → `+0x0C..+0x1F`) | `assignAccess<4D>` | Copy/Pool/Reduce/BN in | CONFIRMED |
-| `+0x0D` | **(Family B)** out dtype | `visitInst` | TensorTensor | CONFIRMED |
-| `+0x0E` | **(Family B)** AluOp wire byte | `visitInst` | TensorTensor | CONFIRMED |
-| `+0x0F` | **(Family B)** `num_active_partitions` | `visitInst` | TensorTensor | CONFIRMED |
-| `+0x10` | **(Family A)** SRC/MOVING TENSOR3D slot (16 B → `+0x10..+0x1F`) | `assignAccess<3D>` | matmul ifmap, activation src, TS input | CONFIRMED |
-| `+0x10` | **(Family B)** DST TENSOR3D slot | `assignAccess<3D>` | TensorTensor out | CONFIRMED |
-| `+0x20` | INPUT dtype (wire tag) · **control-band base** (Fam A/C) | `visitInst` | A/C; **(Fam B)** in0 slot lives here | CONFIRMED |
-| `+0x21` | OUTPUT dtype · matmul perf-sel (0/2/3) | `visitInst` | A/C | CONFIRMED |
-| `+0x22` | scalar base/partition · misc | `visitInst` | TensorScalar, Activation | CONFIRMED |
-| `+0x23` | perf-opt / format / `act_tbl_sel` · **DENSE matmul DST DTYPE** (op `0x02`, CoreV2/V3) | `visitInst` | dense matmul PSUM-dst dtype, LoadActFuncSet | CONFIRMED |
-| `+0x24` | op0 ALU wire · ROW group (matmul) · Pool func | `visitInst` | TS op0; Pool {Max=1, Avg=2}; PE row | CONFIRMED |
-| `+0x25` | op1 ALU wire · COL group (matmul) · Pool mode=3 | `visitInst` | TS op1; PE col | CONFIRMED |
-| `+0x26` | reverse-combo · `wtbase`/`num_rows` (matmul) | `visitInst` | TS reverse; PE | STRONG |
-| `+0x27` | `num_active_cols` (matmul) · scalar AP | `visitInst` | PE ncols | STRONG |
-| `+0x28` | **MX matmul DST DTYPE** (op `0x100A`, CoreV4) · fill imm dword (Memset) | `visitInst` | MX PSUM-dst dtype; Memset fill | CONFIRMED |
-| `+0x2B` | **ACCUMULATE** byte {b0 START / b1 STOP / b2 ACCUMULATE} | `visitInst` (set upstream) | matmul/MX PSUM ops | CONFIRMED |
-| `+0x2C` | **(Family C)** OUT TENSOR4D slot START (20 B → `+0x2C..+0x3F`) | `assignAccess<4D>` | Copy/Pool/Reduce/BN out; Memset (1D); PE grp | CONFIRMED |
-| `+0x2F` | `psum_zero_region` (matmul/MX) | `visitInst` | PE | CONFIRMED |
-| `+0x30` | **(Family A)** DST · **(Family B)** in1 TENSOR3D slot START (16 B → `+0x30..+0x3F`) | `assignAccess<3D/2D>` | matmul PSUM-dst, TS out, TT in1, BNStats 2D-out | CONFIRMED |
-| `+0x3F` | last bundle byte | — | end of 64-B / 16-dword bundle | CONFIRMED |
+| `+0x00` | `opcode` byte (L3 ISA op) | `setupHeader` | ALL ops | CERTAIN |
+| `+0x01` | `inst_word_len` = `0x10` | `setupHeader` | ALL ops (hardcoded) | CERTAIN |
+| `+0x02..03` | format/reserved = `0x0000` | `setupHeader` | ALL ops | CERTAIN |
+| `+0x04` | sync WAIT mode | `setupSyncWait` | SyncInfo ops (DVE/Pool/Act/SP/DMA); absent on matmul | HIGH |
+| `+0x05` | sync `wait_idx` | `setupSyncWait` | — | HIGH |
+| `+0x06` | sync UPDATE mode | `setupSyncUpdate` | — | HIGH |
+| `+0x07` | sync `update_idx` | `setupSyncUpdate` | — | HIGH |
+| `+0x08..0B` | sync wait/update value (dword) | `setupSync*` | shared `+8` dword | HIGH |
+| `+0x0C` | **(Family B)** in0\|in1 dtype nibbles · **(Fam A TS)** accum byte | `visitInst` | TensorTensor control band starts here | CERTAIN |
+| `+0x0C` | **(Family C)** IN TENSOR4D slot START (20 B → `+0x0C..+0x1F`) | `assignAccess<4D>` | Copy/Pool/Reduce/BN in | CERTAIN |
+| `+0x0D` | **(Family B)** out dtype | `visitInst` | TensorTensor | CERTAIN |
+| `+0x0E` | **(Family B)** AluOp wire byte | `visitInst` | TensorTensor | CERTAIN |
+| `+0x0F` | **(Family B)** `num_active_partitions` | `visitInst` | TensorTensor | CERTAIN |
+| `+0x10` | **(Family A)** SRC/MOVING TENSOR3D slot (16 B → `+0x10..+0x1F`) | `assignAccess<3D>` | matmul ifmap, activation src, TS input | CERTAIN |
+| `+0x10` | **(Family B)** DST TENSOR3D slot | `assignAccess<3D>` | TensorTensor out | CERTAIN |
+| `+0x20` | INPUT dtype (wire tag) · **control-band base** (Fam A/C) | `visitInst` | A/C; **(Fam B)** in0 slot lives here | CERTAIN |
+| `+0x21` | OUTPUT dtype · matmul perf-sel (0/2/3) | `visitInst` | A/C | CERTAIN |
+| `+0x22` | scalar base/partition · misc | `visitInst` | TensorScalar, Activation | CERTAIN |
+| `+0x23` | perf-opt / format / `act_tbl_sel` · **DENSE matmul DST DTYPE** (op `0x02`, CoreV2/V3) | `visitInst` | dense matmul PSUM-dst dtype, LoadActFuncSet | CERTAIN |
+| `+0x24` | op0 ALU wire · ROW group (matmul) · Pool func | `visitInst` | TS op0; Pool {Max=1, Avg=2}; PE row | CERTAIN |
+| `+0x25` | op1 ALU wire · COL group (matmul) · Pool mode=3 | `visitInst` | TS op1; PE col | CERTAIN |
+| `+0x26` | reverse-combo · `wtbase`/`num_rows` (matmul) | `visitInst` | TS reverse; PE | HIGH |
+| `+0x27` | `num_active_cols` (matmul) · scalar AP | `visitInst` | PE ncols | HIGH |
+| `+0x28` | **MX matmul DST DTYPE** (op `0x100A`, CoreV4) · fill imm dword (Memset) | `visitInst` | MX PSUM-dst dtype; Memset fill | CERTAIN |
+| `+0x2B` | **ACCUMULATE** byte {b0 START / b1 STOP / b2 ACCUMULATE} | `visitInst` (set upstream) | matmul/MX PSUM ops | CERTAIN |
+| `+0x2C` | **(Family C)** OUT TENSOR4D slot START (20 B → `+0x2C..+0x3F`) | `assignAccess<4D>` | Copy/Pool/Reduce/BN out; Memset (1D); PE grp | CERTAIN |
+| `+0x2F` | `psum_zero_region` (matmul/MX) | `visitInst` | PE | CERTAIN |
+| `+0x30` | **(Family A)** DST · **(Family B)** in1 TENSOR3D slot START (16 B → `+0x30..+0x3F`) | `assignAccess<3D/2D>` | matmul PSUM-dst, TS out, TT in1, BNStats 2D-out | CERTAIN |
+| `+0x3F` | last bundle byte | — | end of 64-B / 16-dword bundle | CERTAIN |
 
 > **NOTE —** `+0x20..+0x2F` is the canonical **control band** for Families A and C (it sits *between* their two descriptor slots). For Family B the three 16-B slots fill `+0x10..+0x3F` completely, leaving no room after the slots — so Family B's control band is squeezed into `+0x0C..+0x0F` *before* the slots. There is no single fixed location for the control band; it is family-dependent.
 
@@ -199,7 +199,7 @@ Two TENSOR3D slots with the control band *between* them at `+0x20..+0x2F`. The c
 
 **Users:** Matmul (ifmap `+0x10`, PSUM-dst `+0x30`), Activation, TensorScalar, TensorScalarCache, the DVE scalar ops.
 
-> **CORRECTION (N11/C-1 to J04) —** an earlier TensorScalar map placed its TENSOR3D descriptors at `+0x28..+0x3F`. The real slot offsets are `+0x10` (input) and `+0x30` (output) — byte-verified at `generateTensorScalarOrPtr` `0x1265c8a` (`lea [r14+0x10]`) and `0x1265c9e` (`lea [r14+0x30]`). TensorScalar is **Family A**, identical to matmul and activation — *not* a `+0x28` packing. The `+0x20..+0x27` region J04 cited is the control band (dtype/ALU/scalar), which overlaps the *start* of the `+0x30` output slot's region only in the reader's mind, not on the wire.
+> **GOTCHA — TensorScalar is Family A, not a `+0x28` packing.** Its TENSOR3D descriptors sit at `+0x10` (input) and `+0x30` (output), exactly like matmul and activation — `generateTensorScalarOrPtr` `0x1265c8a` (`lea [r14+0x10]`) and `0x1265c9e` (`lea [r14+0x30]`). The `+0x20..+0x27` bytes are the control band (dtype / ALU / scalar); they abut the output slot rather than being part of a descriptor.
 
 ### Family B — "3D 3-slot" (dst `+0x10`, in0 `+0x20`, in1 `+0x30`)
 
@@ -218,7 +218,7 @@ Because the three slots leave no room after them, the control band is at `+0x0C.
 
 **Users:** TensorTensor (2-input elementwise), ScalarTensorTensor (2D variant, shifted packing), the 3-tensor-operand DVE class.
 
-> **QUIRK —** Family B *is* the layout that earlier reports described as "slots at `+16/+32/+48`" (= `0x10/0x20/0x30`). That premise is correct — **but only for Family B**. It is not the universal layout. Family A has only two slots (`0x10`/`0x30`) with the control band at `0x20` where the "third slot" would be. The `+0x48` in that phrasing is a typo for `+0x30`'s end and/or a confusion with the `vtbl+0x48` code offset; there is no third descriptor and no `+0x48` descriptor.
+> **QUIRK — Family B is the three-slot layout, and only Family B.** A bundle with slots at `0x10`/`0x20`/`0x30` is a genuine Family-B layout, but it is not universal. Family A has only two slots (`0x10`/`0x30`), with the control band sitting at `0x20` where a third slot would otherwise go. No family has a third descriptor beyond `+0x30`, and none has one at `+0x48`.
 
 ### Family C — "4D 2-slot" (in `+0x0C`, out `+0x2C`)
 
@@ -240,7 +240,7 @@ Two TENSOR4D slots (20 B each) with the control band between at `+0x20..+0x2B`. 
 
 > **NOTE — mixed-width slots.** The two anchor positions (low `+0x0C`/`+0x10`, high `+0x2C`/`+0x30`) are *position slots* that accept a variable-width descriptor sized per operand. `visitInstBNStats` (`0x123ab00`) proves it: its IN anchor is `+0x0C` (TENSOR4D, 20 B) but its OUT lands at `+0x30` (`lea [r13+0x30]`, `assignAccess<TENSOR2D>`, 12 B) when the output is a narrow 2-D stat pattern. The anchor is fixed; the width is not.
 
-> **STRONG —** the structural rule behind all three families: the control band occupies a 16-byte region (canonically `+0x20..+0x2F`). The LOW slot sits below it (`+0x10` for a 16-B 3D slot ending at `+0x20`; `+0x0C` for a 20-B 4D slot ending at `+0x20`) and the HIGH slot sits above it (`+0x30` for 3D ending `+0x40`; `+0x2C` for 4D ending `+0x40`). The band width equals exactly one missing descriptor, which is why the low-slot end and high-slot start straddle it. This is inferred from four byte-verified families that all agree, not asserted from a spec.
+> **NOTE — the structural rule behind all three families.** The control band occupies a 16-byte region (canonically `+0x20..+0x2F`). The LOW slot sits below it (`+0x10` for a 16-B 3D slot ending at `+0x20`; `+0x0C` for a 20-B 4D slot ending at `+0x20`) and the HIGH slot sits above it (`+0x30` for 3D ending `+0x40`; `+0x2C` for 4D ending `+0x40`). The band width equals exactly one missing descriptor, which is why the low-slot end and high-slot start straddle it. [INFERRED] The rule itself — four byte-exact families all agree on it, but no spec states it.
 
 ### What rides at slot byte +0
 
@@ -265,19 +265,19 @@ The definitive partition for a reimplementer:
 
 | Claim | Confidence | Evidence |
 |-------|-----------|----------|
-| `setupHeader` byte-identical across V2/V3/V4; writes only `{opcode,0x10,0,0}` | CONFIRMED | objdump of `0x1172120` / `0x1369280` / `0x143f440` — 6 identical instrs |
-| `inst_word_len` always `0x10`; no non-16 lengths | CONFIRMED | hardcoded immediate, zero data dependence in all 3 bodies |
-| emit skeleton: emplace + 4× movups zero-fill + `call [rax+0x48]` | CONFIRMED | `generateMatMul` `0x12487a2..0x12487f1` |
-| Family A slots `0x10`/`0x30` | CONFIRMED | `generateMatMul` `lea [r15+0x10]`/`[r15+0x30]` |
-| Family B slots `0x10`/`0x20`/`0x30` contiguous | CONFIRMED | `visitInstTensorTensor` `lea [r15+0x10/0x20/0x30]` |
-| Family C slots `0x0C`/`0x2C` | CONFIRMED | `visitInstTensorCopy` `lea [rbx+0xc]`/`[rbx+0x2c]` |
-| Mixed-width (BNStats 4D-in `+0x0C` / 2D-out `+0x30`) | CONFIRMED | `visitInstBNStats` `lea [r13+0x30]` + `assignAccess<TENSOR2D>` |
-| Slot sizes 8/12/16/20 B | CONFIRMED | `.rodata` `0x1d6e810/8b0/920/990` assert strings |
-| No descriptor at bundle byte `+0x48` | CONFIRMED | `+0x48` = vtable slot; `0x48+16 = 0x58 > 0x40` overflows |
-| TensorScalar = Family A (corrects J04 `+0x28`) | CONFIRMED | `generateTensorScalarOrPtr` `lea [r14+0x10]`/`[r14+0x30]` |
-| Sync header `+0x04..+0x0B` common-when-present | STRONG | per-op `setupSyncWait`/`Update` calls, not one universal write |
-| Low/high anchor straddling rationale | STRONG | structural inference from 4 agreeing byte-verified families |
-| Exhaustive family membership of all ~68 CoreV2 encoders | INFERRED | 10 disassembled directly; the rest assigned by descriptor-width evidence |
+| `setupHeader` byte-identical across V2/V3/V4; writes only `{opcode,0x10,0,0}` | CERTAIN | objdump of `0x1172120` / `0x1369280` / `0x143f440` — 6 identical instrs |
+| `inst_word_len` always `0x10`; no non-16 lengths | CERTAIN | hardcoded immediate, zero data dependence in all 3 bodies |
+| emit skeleton: emplace + 4× movups zero-fill + `call [rax+0x48]` | CERTAIN | `generateMatMul` `0x12487a2..0x12487f1` |
+| Family A slots `0x10`/`0x30` | CERTAIN | `generateMatMul` `lea [r15+0x10]`/`[r15+0x30]` |
+| Family B slots `0x10`/`0x20`/`0x30` contiguous | CERTAIN | `visitInstTensorTensor` `lea [r15+0x10/0x20/0x30]` |
+| Family C slots `0x0C`/`0x2C` | CERTAIN | `visitInstTensorCopy` `lea [rbx+0xc]`/`[rbx+0x2c]` |
+| Mixed-width (BNStats 4D-in `+0x0C` / 2D-out `+0x30`) | CERTAIN | `visitInstBNStats` `lea [r13+0x30]` + `assignAccess<TENSOR2D>` |
+| Slot sizes 8/12/16/20 B | CERTAIN | `.rodata` `0x1d6e810/8b0/920/990` assert strings |
+| No descriptor at bundle byte `+0x48` | CERTAIN | `+0x48` = vtable slot; `0x48+16 = 0x58 > 0x40` overflows |
+| TensorScalar = Family A (slots `+0x10`/`+0x30`) | CERTAIN | `generateTensorScalarOrPtr` `lea [r14+0x10]`/`[r14+0x30]` |
+| Sync header `+0x04..+0x0B` common-when-present | HIGH | per-op `setupSyncWait`/`Update` calls, not one universal write |
+| Low/high anchor straddling rationale | HIGH | structural inference from 4 agreeing byte-verified families |
+| Exhaustive family membership of all ~68 CoreV2 encoders | MEDIUM | 10 disassembled directly; the rest assigned by descriptor-width evidence |
 
 ---
 

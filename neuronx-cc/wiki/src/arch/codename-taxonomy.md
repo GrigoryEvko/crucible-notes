@@ -40,7 +40,7 @@ This is the deliverable. Every column is a different name for the same five hard
 | **40** | 4 | `core_v4` | `mariana` | `Trn3` | CoreV4 | `CoreV4*` | `CoreV4Gen` | `core_v4` |
 | **50** | 5 | `core_v5` | `core_v5` | `Trn4` | CoreV5 | — (none) | — (throws) | — (no Board → assert) |
 
-*Confidence: arch ordinals, all three name-space strings, CoreVN binding, and the codegen projection are **CONFIRMED** (byte-read off the mapper bodies and the `getArchModel` dispatch arms). The HW-model family ↔ generation binding is **CONFIRMED** (dynsym ctor census). Cores-per-chip is deliberately omitted — it is not a binary literal in this build (see [§ Cores-per-chip](#cores-per-chip-is-not-a-binary-constant)).*
+*Grounding: the arch ordinals, all three name-space strings, the CoreVN binding, and the codegen projection are byte-read off the mapper bodies and the `getArchModel` dispatch arms; the HW-model family ↔ generation binding comes from the dynsym constructor census. Cores-per-chip is deliberately omitted — it is not a binary literal in this build (see [§ Cores-per-chip](#cores-per-chip-is-not-a-binary-constant)).*
 
 Three facts in this table are the ones a reader trips over, so they get their own callouts below: the **internal name and runtime name diverge at gen3+** (`gen3`/`cayman`, `core_v4`/`mariana`); the **marketed Trainium index trails the generation index by one** (`Trn1` = gen2); and **`inf2` is a Sunda SKU**, not its own generation.
 
@@ -68,10 +68,10 @@ returns const Board&  →  one of four .bss singletons, else __assert_fail
 
 ### Algorithm
 
-The body is a flat chain of `std::string::compare(PKc)` calls — ten compares in the libBIR copy — each arm returning the address of a static `Board` on match, with the no-match path aborting. The arms are grouped: several aliases share one return target.
+The body is a flat chain of `std::string::compare(PKc)` calls — exactly ten compares in the libBIR copy — each arm returning the address of a static `Board` on match, with the no-match path aborting. The arms are grouped: several aliases share one return target. The ten break down as `tonga`/`inferentia`/`inf1` (gen1, 3) + `sunda`/`trainium`/`trn1`/`inf2` (gen2, 4) + `cayman`/`gen3` (gen3, 2) + `core_v4` (gen4, 1).
 
 ```c
-// _Z12getArchModel... @ libBIR 0x478f90  — CONFIRMED (data_refs + strings_referenced)
+// _Z12getArchModel... @ libBIR 0x478f90  (data_refs + strings_referenced)
 const Board& getArchModel(const std::string& name) {
     // gen1 cluster → Board @0x91de40
     if (name == "tonga"      // rodata 0x70c6f4
@@ -103,8 +103,6 @@ const Board& getArchModel(const std::string& name) {
 
 The four `Board` return targets (`0x91de40` / `0x91dfc0` / `0x91e140` / `0x91e2c0`) and the ten alias-string addresses are read directly from the function's `data_refs` and `strings_referenced`. The aliases sit in a contiguous `.rodata` run from `0x70c6f4` upward; `core_v5` (`0x70c748`) follows the `"0 && Unknown architecture"` assert literal (`0x70c72c`) and is *not* one of the compare arms — the spatial layout itself shows gen5 is past the table.
 
-> **CORRECTION —** the alias spelling count is **ten**, not nine. The compare chain has exactly ten `std::string::compare(PKc)` arms: `tonga`/`inferentia`/`inf1` (gen1, 3) + `sunda`/`trainium`/`trn1`/`inf2` (gen2, 4) + `cayman`/`gen3` (gen3, 2) + `core_v4` (gen4, 1) = **10**. `core_v5` is **not** a compare arm — its literal sits past the `__assert_fail` string in `.rodata`. Earlier text on this page said "nine spellings"; the body-decompile count of "ten compares" (above) is authoritative.
-
 > **GOTCHA —** `getArchModel` accepts **`inf2` under the gen2/Sunda cluster** and **`trainium`/`trn1` also under Sunda**. `inf2` is the inference-optimised SKU of the *same* gen2 silicon, so it shares Sunda's `Board`. A reimplementer must not give `inf2` its own generation; it is a board variant, not a CoreV. The marketed *output* name for gen2 is `Trn1` (not `Inf2`) — `getArchModel` is a many-spellings-in parser, `ArchLevel2ExternalString` is the one-canonical-name-out emitter.
 
 ### Considerations
@@ -122,7 +120,7 @@ All three are dense `switch(ArchLevel)` bodies over the ordinal axis `{0x0a, 0x1
 ### `ArchLevel2string` — the internal (enum-canonical) name
 
 ```c
-// _ZN3bir16ArchLevel2string... @ libBIR 0x479490  — CONFIRMED
+// _ZN3bir16ArchLevel2string... @ libBIR 0x479490
 const char* ArchLevel2string(ArchLevel a) {     // constants_used: 10,20,30,40,50, ...
     switch (a) {
     case 10: return "inferentia";               // rodata 0x70a339
@@ -135,12 +133,12 @@ const char* ArchLevel2string(ArchLevel a) {     // constants_used: 10,20,30,40,5
 }
 ```
 
-This is the **enum-canonical** roster — the spelling the `bir::ArchLevel` enum is named with, and the spelling `string2ArchLevel` parses back. Note `case 30` yields `"gen3"`, *not* `"cayman"`: the internal name space never uses the silicon codename for gen3+. (Confirmed two ways: the `"cayman"` string at `0x70c718` is referenced only by `getArchModel`, never by `ArchLevel2string`.)
+This is the **enum-canonical** roster — the spelling the `bir::ArchLevel` enum is named with, and the spelling `string2ArchLevel` parses back. Note `case 30` yields `"gen3"`, *not* `"cayman"`: the internal name space never uses the silicon codename for gen3+. The `"cayman"` string at `0x70c718` is referenced only by `getArchModel`, never by `ArchLevel2string`.
 
 ### `ArchLevel2RuntimeTarget` — the runtime codename (the `mariana` proof)
 
 ```c
-// _ZN3bir23ArchLevel2RuntimeTarget... @ libBIR 0x479570  — CONFIRMED
+// _ZN3bir23ArchLevel2RuntimeTarget... @ libBIR 0x479570
 const char* ArchLevel2RuntimeTarget(ArchLevel a) {  // constants_used: 10,20,30,40,50, mari/an, caym/an
     switch (a) {
     case 10: return "inferentia";                    // rodata 0x70a339
@@ -153,16 +151,16 @@ const char* ArchLevel2RuntimeTarget(ArchLevel a) {  // constants_used: 10,20,30,
 }
 ```
 
-> **This is the single in-binary site that ties ArchLevel 40 to the name `mariana`.** The decode is unambiguous: the function's `constants_used` array contains `1769103725` (= `0x6972616d` = `mari` LE) and `28257` (= `0x6e61` = `an` LE), and these occur in the `case 40` arm. Likewise `case 30` carries `1836671331` (= `0x6d796163` = `caym`). So the runtime-codename projection is: gen3 = `cayman`, gen4 = `mariana`. Earlier reports could only *infer* "Mariana = gen4"; this mapper **confirms** it. [CONFIRMED — inline immediate decode]
+This mapper is the single in-binary site that ties ArchLevel 40 to the name `mariana`, and the decode is unambiguous: the function's `constants_used` array contains `1769103725` (= `0x6972616d` = `mari` LE) and `28257` (= `0x6e61` = `an` LE), both occurring in the `case 40` arm. Likewise `case 30` carries `1836671331` (= `0x6d796163` = `caym`). The runtime-codename projection is therefore gen3 = `cayman`, gen4 = `mariana`.
 
 The "runtime target" name is the one the cost model and the perf simulator use as a label. Crucially, **`mariana` has no other home in the binary.** It is *not* a libwalrus hardware-model class name (gen4's HW classes are the generic `CoreV4*`, not `Mariana*`), and the only literal `"mariana"`/`"Mariana"` strings in libwalrus are timezone data (`"North_Mariana"` @ `0x3054cdc`, `"meta:North_Mariana"` @ `0x3885b06`/`0x3931eea`) — unrelated to the codename. The authoritative gen4-codename evidence is this `RuntimeTarget` arm alone, plus the perf-sim `CoreV4Hwm` label.
 
-> **CORRECTION (supersedes prior "Mariana\* HW class" assumptions).** There is **no** `Mariana*` Core/Board/Pe/Engine class in libwalrus. The gen4 hardware-model family reverted to the generic stem `CoreV4*` (`CoreV4Core`, `CoreV4Board`, `CoreV4Pe`, …). The codename `mariana` survives only as (1) this `ArchLevel2RuntimeTarget(40)` string and (2) the perf-sim `CoreV4Hwm` label. Do not look for a `Mariana*` symbol; it does not exist.
+> **GOTCHA —** there is no `Mariana*` Core/Board/Pe/Engine class in libwalrus; the gen4 hardware-model family uses the generic stem `CoreV4*` (`CoreV4Core`, `CoreV4Board`, `CoreV4Pe`, …). The codename `mariana` survives only as the `ArchLevel2RuntimeTarget(40)` string and the perf-sim `CoreV4Hwm` label — searching for a `Mariana*` symbol finds nothing.
 
 ### `ArchLevel2ExternalString` — the marketed device name
 
 ```c
-// _ZN3bir24ArchLevel2ExternalString... @ libBIR 0x479650  — CONFIRMED
+// _ZN3bir24ArchLevel2ExternalString... @ libBIR 0x479650
 const char* ArchLevel2ExternalString(ArchLevel a) { // constants_used: 10,20,30,40,50, Inf1, Trn4
     switch (a) {
     case 10: return "Inf1";   // inline 0x31666e49 = 'I' 'n' 'f' '1'
@@ -182,7 +180,7 @@ This is the customer-facing device-name table — what appears in AWS instance d
 ### The inverse: `string2ArchLevel` and `isArchSupported`
 
 ```c
-// _ZN3bir16string2ArchLevel... @ libBIR 0x479720  — CONFIRMED
+// _ZN3bir16string2ArchLevel... @ libBIR 0x479720
 ArchLevel string2ArchLevel(const std::string& s) {  // constants_used: 10,20,30,40,50
     if (s == "inferentia") return 10;   // 0x70a339
     if (s == "sunda")      return 20;   // 0x70c6ff
@@ -211,7 +209,7 @@ The three libBIR mappers fix *names*; libwalrus fixes *behavior* — which gener
 Two libwalrus sites dispatch ArchLevel to a `CoreVNGen` generator, and both enumerate **exactly the same three** generations:
 
 ```c
-// birverifier::InstVisitor::initCodegen @ libwalrus 0xfc5d00  — CONFIRMED
+// birverifier::InstVisitor::initCodegen @ libwalrus 0xfc5d00
 // selects std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>
 switch (module.archLevel) {                 // constants_used: 20, 30, 40
     case 0x28: construct CoreV4Gen;         // arch 40 → ctor @0x62b170
@@ -222,7 +220,7 @@ switch (module.archLevel) {                 // constants_used: 20, 30, 40
 ```
 
 ```c
-// neuronxcc::backend::Codegen::codegen @ libwalrus 0x11d2c50  — CONFIRMED
+// neuronxcc::backend::Codegen::codegen @ libwalrus 0x11d2c50
 switch (archLevel) {                        // constants_used include 20, 30, 40
     case 0x14: → CoreV2Gen   (arch 20)
     case 0x1e: → CoreV3Gen   (arch 30)
@@ -232,7 +230,7 @@ switch (archLevel) {                        // constants_used include 20, 30, 40
 }
 ```
 
-So the **active codegen world is `{CoreV2, CoreV3, CoreV4}` = arch `{20, 30, 40}` = gens 2–4.** Arch 10 (gen1/Inferentia) is *not* a `CoreVNGen` target — it is handled by the legacy `Inferentia*` path and has no unified generator. Arch 50 (gen5/CoreV5) has no codegen at all and falls through to the throw. The fall-through exception type is **`std::runtime_error`** (`__cxa_throw(runtime_error(...))`), carrying the `"Codegen: unknown arch "` format string (`@0x1c83ec6`) concatenated with `ArchLevel2string(arch)` — **not** `boost::out_of_range`, as an earlier draft recorded; the throw type is pinned in detail by [1.03](vestigial-generations.md#the-codegen-floor). The `std::variant` *type list* itself — `<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — structurally excludes CoreV1Gen and CoreV5Gen.
+So the **active codegen world is `{CoreV2, CoreV3, CoreV4}` = arch `{20, 30, 40}` = gens 2–4.** Arch 10 (gen1/Inferentia) is *not* a `CoreVNGen` target — it is handled by the legacy `Inferentia*` path and has no unified generator. Arch 50 (gen5/CoreV5) has no codegen at all and falls through to the throw. The fall-through exception type is **`std::runtime_error`** (`__cxa_throw(runtime_error(...))`), carrying the `"Codegen: unknown arch "` format string (`@0x1c83ec6`) concatenated with `ArchLevel2string(arch)`; the throw type is pinned in detail by [1.03](vestigial-generations.md#the-codegen-floor). The `std::variant` *type list* itself — `<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` — structurally excludes CoreV1Gen and CoreV5Gen.
 
 The RTTI confirms this independently: the only `GenImpl` typeinfo symbols in libwalrus are `_ZTIN9neuronxcc7backend13CoreV{2,3,4}GenImplE` (with matching `_ZTS`/`_ZTV`); there is no `CoreV1GenImpl` or `CoreV5GenImpl` symbol, vtable, or typeinfo. The variants ctor addresses (`CoreV2Gen @0x611690`, `CoreV3Gen @0x61dcc0`, `CoreV4Gen @0x62b170`) are read off `initCodegen`'s callee list.
 
@@ -248,7 +246,7 @@ Separately from codegen, libwalrus carries a full per-codename hardware-model cl
 | gen4 | `CoreV4*` (generic) | 234 | `CoreV4Gen` |
 | gen5 | — (none) | 0 | — (throws) |
 
-*Confidence: symbol-count census CONFIRMED via `nm`/native-exports. The gen4 stem is the generic `CoreV4`, not `Mariana` (see the runtime-codename correction above).*
+*Grounding: symbol-count census via `nm`/native-exports. The gen4 stem is the generic `CoreV4`, not `Mariana`.*
 
 > **NOTE — the two facets do not line up at the edges.** gen1 has a *full hardware model* (`Inferentia*` + `_inferentia_arch_model`) but **no codegen** — it is a modelled-but-deprecated legacy generation. gen5 has **neither** model nor codegen — a pure forward stub (no `Gen5*`/`CoreV5*` classes, no `_core_v5_arch_model`). So "the floor" differs by layer: the **codegen floor is gen2** (arch 20), but **analysis-layer behavior still exists at gen1** — e.g. `AntiDependencyAnalyzer::getPSUMPartitionRange` keeps a live arch≤19 branch enforcing CoreV1's partition-0 PSUM rule. The full treatment of both edge generations is [1.03](vestigial-generations.md). One implementation detail worth flagging here: the `<Codename>Core` hardware-model classes are **plain structs with no vtables** — they are populated by the per-arch constructors, not dispatched polymorphically.
 
@@ -277,13 +275,13 @@ One level above the codename taxonomy sits the EC2-instance-name layer, in the C
 | `trn3`, `trn3pre`, `core_v4` | `core_v4` / mariana | 40 |
 | `core_v5` | `core_v5` | 50 (forward) |
 
-*Confidence: **STRONG** by correspondence. Each token's arch binding follows the `getArchModel` alias clusters and the `ExternalString` marketed names unambiguously, but the Cython `instanceToFamily` dict body was not byte-disassembled, and the exact fold of the `*n` (network-optimised) / `*pre` (pre-production) suffix variants onto the same ArchLevel is **INFERRED**, not byte-proven.* The libwalrus feature-gate strings corroborate the binding: messages like *"on TRN1 … On TRN3+, use COPY"*, *"PSUM write must be FP32 … for trn2"*, and *"Shared memory is only supported on trn2"* place TRN1 at gen2-era, TRN2 at gen3, TRN3 at gen4 — exactly the `ExternalString` map.
+*Grounding: each token's arch binding follows the `getArchModel` alias clusters and the `ExternalString` marketed names unambiguously, but the Cython `instanceToFamily` dict body was not byte-disassembled, so the exact fold of the `*n` (network-optimised) / `*pre` (pre-production) suffix variants onto the same ArchLevel is [INFERRED].* The libwalrus feature-gate strings corroborate the binding: messages like *"on TRN1 … On TRN3+, use COPY"*, *"PSUM write must be FP32 … for trn2"*, and *"Shared memory is only supported on trn2"* place TRN1 at gen2-era, TRN2 at gen3, TRN3 at gen4 — exactly the `ExternalString` map.
 
 ---
 
 ## Cores-per-chip is not a binary constant
 
-A reader expecting a "NeuronCores per chip" integer (4 for Inferentia, 2 for Trainium, …) will not find one in this build. There is **no** cores-per-chip literal in libBIR or libwalrus. The per-generation geometry is carried by four runtime-built `arch_model` objects (`_inferentia_arch_model`, `_sunda_arch_model`, `_cayman_arch_model`, `_core_v4_arch_model`), populated at load time, and the marketed per-chip core count is runtime state, not a compile-time constant. The only physical-core constant the backend pins is the **logical-core ceiling**: the assert *"`(LNC_SIZE <= 2)` && Only logical cores containing 1 or 2 physical cores are currently supported"* (CONFIRMED) — i.e. a logical NeuronCore spans 1 or 2 physical cores (the LNC2 topology for gen3/gen4). Any exact per-chip count is therefore **SPECULATIVE** from the binary alone and must be read from the `arch_model` object at runtime, never hard-coded. The hardware-constant detail lives in [1.04](hardware-constant-matrix.md).
+A reader expecting a "NeuronCores per chip" integer (4 for Inferentia, 2 for Trainium, …) will not find one in this build. There is **no** cores-per-chip literal in libBIR or libwalrus. The per-generation geometry is carried by four runtime-built `arch_model` objects (`_inferentia_arch_model`, `_sunda_arch_model`, `_cayman_arch_model`, `_core_v4_arch_model`), populated at load time, and the marketed per-chip core count is runtime state, not a compile-time constant. The only physical-core constant the backend pins is the **logical-core ceiling**: the assert *"`(LNC_SIZE <= 2)` && Only logical cores containing 1 or 2 physical cores are currently supported"* — i.e. a logical NeuronCore spans 1 or 2 physical cores (the LNC2 topology for gen3/gen4). Any exact per-chip count is therefore [SPECULATIVE] from the binary alone and must be read from the `arch_model` object at runtime, never hard-coded. The hardware-constant detail lives in [1.04](hardware-constant-matrix.md).
 
 ---
 

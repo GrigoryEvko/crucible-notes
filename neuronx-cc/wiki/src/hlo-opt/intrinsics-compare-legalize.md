@@ -1,6 +1,6 @@
 # Intrinsics & Compare Legalization
 
-> *All addresses on this page apply to `neuronx-cc` 2.24.5133.0+58f8de22 (the `neuronxcc/starfish/bin/hlo-opt` binary, cp310 build). Other versions will differ. `hlo-opt` was built with decompilation suppressed, so every claim below is anchored to the disassembly, the string pool, the static-initializer, or a recovered symbol — control-flow shape is MEDIUM confidence, evidence rows are HIGH–CERTAIN.*
+> *All addresses on this page apply to `neuronx-cc` 2.24.5133.0+58f8de22 (the `neuronxcc/starfish/bin/hlo-opt` binary, cp310 build). Other versions will differ. `hlo-opt` was built with decompilation suppressed, so the readings below rest on disassembly, the string pool, the static initializer, and recovered symbols; the exact control-flow shape of the larger routines is the least certain part.*
 
 ## Abstract
 
@@ -101,7 +101,7 @@ StatusOr<bool> Run(HloModule* m, const flat_hash_set<string_view>& exec_threads)
 
 ### The two dispatch sets
 
-`__static_initialization_and_destruction_0` @ `0x1ef3d30` constructs both `std::set<std::string>`s from `initializer_list`s and registers their teardown via `__cxa_atexit`. The set ctor's element count is the `edx` argument; each member string is a `mov esi, offset aAwsneuron…` immediately above the per-element `std::string` constructor. All seven strings are verbatim in the string pool (`.rodata`), confirmed below.
+`__static_initialization_and_destruction_0` @ `0x1ef3d30` constructs both `std::set<std::string>`s from `initializer_list`s and registers their teardown via `__cxa_atexit`. The set ctor's element count is the `edx` argument; each member string is a `mov esi, offset aAwsneuron…` immediately above the per-element `std::string` constructor. All seven strings appear verbatim in the string pool (`.rodata`), at the offsets tabulated below.
 
 | Set | Global @ | Count | Member(s) | String @ | Role |
 |---|---|---|---|---|---|
@@ -113,13 +113,13 @@ StatusOr<bool> Run(HloModule* m, const flat_hash_set<string_view>& exec_threads)
 | | | | `AwsNeuronSilu` | `0x23fd2c` | |
 | | | | `AwsNeuronSiluBackward` | `0x23485d` | |
 
-> **GOTCHA —** the set is the *whole* dispatch oracle. `AwsNeuronSoftmax*` is **not** here (the softmax family is handled by its own legalize passes that use a decimal-string backend_config). `AwsNeuronDropout` (str `0x282523`) is **not** here either — dropout is lowered by `EmitOffloadedDropout`. `AwsNeuronTopK` / `AwsNeuronArgMax` / `AwsNeuronArgMin` are **not** here — they have their own passes. A reimplementation that lowers any custom-call *not* in one of these two sets is wrong: the correct behaviour for a non-member custom-call is to leave it untouched. (These are exhaustive string-pool negative findings — HIGH.)
+> **GOTCHA —** the set is the *whole* dispatch oracle. `AwsNeuronSoftmax*` is **not** here (the softmax family is handled by its own legalize passes that use a decimal-string backend_config). `AwsNeuronDropout` (str `0x282523`) is **not** here either — dropout is lowered by `EmitOffloadedDropout`. `AwsNeuronTopK` / `AwsNeuronArgMax` / `AwsNeuronArgMin` are **not** here — they have their own passes. A reimplementation that lowers any custom-call *not* in one of these two sets is wrong: the correct behaviour for a non-member custom-call is to leave it untouched. Each absence above is a string-pool search over the whole binary, not an inference from the set contents alone.
 
 ### The intrinsic → custom-call mapping table
 
 This is the centerpiece. For every `target_names` member, the emitted custom-call is `<base>_<dtype>`; operands are `{ inst->operand(0), S32 const{n} }`; `opaque = ""`; `api_version = 1` (`CustomCallApiVersion::API_VERSION_ORIGINAL`); the result shape is `inst->shape()`; the rewrite is `ReplaceInstruction(inst, new)`. `n` is the **flattened element count** of the activation tensor (the product of all dimensions), which the downstream kernel reads as the vector length.
 
-| Intrinsic (match target) | Set | Emitted custom-call | Operands | `opaque` | `api` | Conf |
+| Intrinsic (match target) | Set | Emitted custom-call | Operands | `opaque` | `api` | Confidence |
 |---|---|---|---|---|---|---|
 | `AwsNeuronErf` | `target_names` | `AwsNeuronErf_{f16/f32/bf16}` | `{op0, S32 n}` | `""` | 1 | CERTAIN |
 | `AwsNeuronGelu` | `target_names` | `AwsNeuronGelu_{f16/f32/bf16}` | `{op0, S32 n}` | `""` | 1 | CERTAIN |
@@ -138,9 +138,9 @@ The dtype suffix is a four-case switch on the result/operand element type (XLA `
 | `BF16` | `0x10` | `_bf16` | 5 (str `0x210919`) | `0x1ef48c0` |
 | anything else | — | *(none — bare base name)* | — | default `→ 0x1ef4305` |
 
-> **NOTE —** `_f16` (`0x27e6e7`) and `_f32` (`0x23fc8f`) are **tail-substring** pointers — they point into the suffix of longer `…_f16` / `…_f32` host strings in the pool, so they have no standalone `strings.json` entry. They were verified from the `mov esi, offset` plus the explicit `mov edx, 4` length operand in the `Run` disassembly (`0x1ef48f1`, `0x1ef4933`). `_bf16` (`0x210919`, length 5, append at `mov edx, 5` @ `0x1ef48bb`) is a standalone pool entry. So the suffix encoding is *binary-confirmed by length and offset*, not by a clean named string for two of the three.
+> **NOTE —** `_f16` (`0x27e6e7`) and `_f32` (`0x23fc8f`) are **tail-substring** pointers — they point into the suffix of longer `…_f16` / `…_f32` host strings in the pool, so they have no standalone `strings.json` entry. Their identity comes from the `mov esi, offset` plus the explicit `mov edx, 4` length operand in the `Run` disassembly (`0x1ef48f1`, `0x1ef4933`), not from a named pool entry. `_bf16` (`0x210919`, length 5, append at `mov edx, 5` @ `0x1ef48bb`) is a standalone pool entry. Searching a string dump for `"_f16"` as a distinct symbol will therefore come up empty even though the suffix is real.
 
-> **QUIRK —** the bare-name fallthrough (any dtype ∉ {F16, F32, BF16}) emits e.g. `AwsNeuronGelu(op0, n)` with *no dtype kernel selector*. In practice the Neuron front-end only emits these activations in the three float dtypes, so the fallthrough is a defensive default — likely dead. A reimplementation must still implement it (the switch has an explicit default arm); do not assert-fail there. (MEDIUM that it is ever reached.)
+> **QUIRK —** the bare-name fallthrough (any dtype ∉ {F16, F32, BF16}) emits e.g. `AwsNeuronGelu(op0, n)` with *no dtype kernel selector*. In practice the Neuron front-end only emits these activations in the three float dtypes, so the fallthrough is a defensive default and may be unreachable in practice [INFERRED]. A reimplementation must still implement it — the switch has an explicit default arm; do not assert-fail there.
 
 ### The activation rewrite — lambda#2 @ 0x1ef4c40
 
@@ -171,7 +171,9 @@ void emit_activation():
         // CHECK str 0x2e46c8 "computation->ReplaceInstruction(inst, customCallInst)"
 ```
 
-So an `AwsNeuronGelu` of F32 type becomes `AwsNeuronGelu_f32(operand0, S32 const{n})`, `opaque=""`, `api_version=1`. (HIGH — every step is a confirmed call: `set_element_type(4)`, `CreateConstant`, `CreateCustomCall` with `ecx=2` / `push 1`, `ReplaceInstruction`, plus the verbatim assert string.)
+So an `AwsNeuronGelu` of F32 type becomes `AwsNeuronGelu_f32(operand0, S32 const{n})`, `opaque=""`, `api_version=1`.
+
+*Anchors: `set_element_type(4)` @ `0x1ef4c8d`, `CreateConstant` @ `0x1ef4d2c`, `CreateCustomCall` @ `0x1ef4e19` with `mov ecx,2` (operands) and `push 1` (api version), `ReplaceInstruction` @ `0x1ef4ebe` with assert string `0x2e46c8`.*
 
 ### The bypass rewrite — lambda#1 @ 0x1ef4aa0
 
@@ -185,7 +187,7 @@ void bypass():
         // cold-path CHECK-fail site: LegalizeIntrinsics.cc:22  (str 0x3cf6a0, line 0x16)
 ```
 
-`AwsNeuronTransferWithStaticRing` is therefore *erased* at the HLO layer — it is a transfer/ring-staging marker the HLO optimizer must see through, and the real ring transfer is materialised later in the collective/codegen stages. (HIGH.)
+`AwsNeuronTransferWithStaticRing` is therefore *erased* at the HLO layer — it is a transfer/ring-staging marker the HLO optimizer must see through, and the real ring transfer is materialised later in the collective/codegen stages.
 
 > **NOTE —** a separate diagnostic string exists in this binary — `found illegally nested AwsNeuronTransferWithStaticRing, replacing ` @ `0x34bf18` — but it belongs to a *different* pass that checks for illegal nesting of the marker, not to LegalizeIntrinsics. LegalizeIntrinsics does the unconditional single-level bypass shown above; it does not emit that diagnostic.
 
@@ -236,7 +238,7 @@ StatusOr<bool> Run(HloModule* m, const flat_hash_set<string_view>& exec_threads)
             // "computation->ReplaceInstruction(inst, rectifiedCompareInst)"
 ```
 
-(HIGH — opcode-0x20 test, `___dynamic_cast` to `HloCompareInstruction`, `operand(1)->shape()->element_type` feeding `DefaultComparisonType`, the `cmp [r12+0x211], al` skip-if-equal guard, `CreateCompare` with preserved direction (`+0x208`) and the rebuilt optional type, and the verbatim assert string.)
+*Anchors: opcode test `cmp byte[r13+0x14], 0x20` @ `0x1ef268c`; `___dynamic_cast` to `HloCompareInstruction` @ `0x1ef26a2`; `DefaultComparisonType` call @ `0x1ef26c1`; skip-if-equal guard `cmp [r12+0x211], al` @ `0x1ef26c6`; direction load `movzx eax, byte[r12+0x208]` @ `0x1ef26e3`; `CreateCompare` @ `0x1ef273a`; assert string `0x2ce728`.*
 
 ### The rectification rule and DefaultComparisonType
 
@@ -246,7 +248,7 @@ LegalizeCompare has **no backend_config and no dispatch table**. Its single rule
 
 `xla::Comparison::DefaultComparisonType(PrimitiveType)` @ `0x96ced10` is upstream XLA, reused verbatim (two outlined clones at `0x96cec08`/`0x96cec70`). It maps:
 
-| Operand dtype | hex / test | DefaultComparisonType | Conf |
+| Operand dtype | hex / test | DefaultComparisonType | Confidence |
 |---|---|---|---|
 | `F16` / `F32` / `F64` | `0x0A–0x0C` (`et-0x0A ≤ 2`) | `kFloat` (0) | HIGH |
 | `BF16` | `0x10` (`cmp edi,0x10; jz`) | `kFloat` (0) | HIGH |
@@ -254,11 +256,11 @@ LegalizeCompare has **no backend_config and no dispatch table**. Its single rule
 | signed integers | `_part_0` clone fall-through | `kSigned` | MEDIUM |
 | unsigned integers / `PRED` | `_part_0` clone fall-through | `kUnsigned` | MEDIUM |
 
-The float/complex → `kFloat` path is what these float-heavy Neuron graphs hit, and it is HIGH-confidence (the `lea eax,[rdi-0xA]; cmp eax,2; jbe →0`, the `cmp edi,0x10; jz →0`, and the float/complex bitmask). The integer split (kSigned vs kUnsigned, via the `_part_0` outlined clone) was not disassembled line-by-line and follows upstream XLA semantics — MEDIUM on the exact PRED/unsigned predicate.
+The float/complex → `kFloat` path is what these float-heavy Neuron graphs hit, and it is directly visible in the disassembly: `lea eax,[rdi-0xA]; cmp eax,2; jbe →0` catches F16/F32/F64, `cmp edi,0x10; jz →0` catches BF16, and the bitmask test catches the remaining float and complex types. The integer split — kSigned vs kUnsigned, inside the `_part_0` outlined clone — was not read line by line; the reading there follows upstream XLA semantics, so the exact PRED/unsigned predicate is reconstructed rather than observed.
 
 ### Struct slice — HloCompareInstruction
 
-The two field offsets are binary-confirmed from the two byte loads in `Run`:
+The two field offsets come from the two byte loads in `Run`:
 
 ```c
 // xla::HloCompareInstruction : HloInstruction   (offsets from LegalizeCompare::Run)
@@ -269,7 +271,7 @@ struct HloCompareInstruction : HloInstruction {
 };
 ```
 
-(HIGH — `movzx eax, byte[r12+0x208]` reads direction at `0x1ef26e3`; `cmp [r12+0x211], al` tests type at `0x1ef26c6`. The 8-byte gap holds other `HloCompareInstruction` fields not exercised here.)
+`movzx eax, byte[r12+0x208]` reads the direction at `0x1ef26e3`; `cmp [r12+0x211], al` tests the type at `0x1ef26c6`. The 8-byte gap between them holds other `HloCompareInstruction` fields this pass does not exercise.
 
 ---
 
@@ -288,21 +290,27 @@ The two builders are `HloInstruction::CreateCustomCall(shape, operands, target, 
 | AddInstruction name | `""` | `""` |
 | replace assert (verbatim) | `…ReplaceInstruction(inst, customCallInst)` (`0x2e46c8`) / `…inst->mutable_operand(0))` (`0x3b72e0`) | `…ReplaceInstruction(inst, rectifiedCompareInst)` (`0x2ce728`) |
 
-> **CORRECTION (vs softmax family) —** the activation intrinsics carry **no backend_config**. Unlike the softmax legalize family, which round-trips its reduce-axis through a *decimal-string* `opaque` (itoa/strtol digit-table), LegalizeIntrinsics conveys everything structurally: the **dtype lives in the target-name suffix** and the **flattened element count is a second S32 operand**. So "Neuron activation intrinsics" and "Neuron softmax" do **not** share a backend_config schema. A reimplementer who copies the softmax decimal-string convention here will produce custom-calls the activation kernels cannot bind. (HIGH — empty `opaque` confirmed at the `CreateCustomCall` site; no digit-table / strtol anywhere in `Run` or its lambdas.)
+> **GOTCHA —** the activation intrinsics carry **no backend_config**, so the two Neuron custom-call families do not share an encoding. The softmax legalize family round-trips its reduce-axis through a *decimal-string* `opaque` (itoa/strtol digit table); LegalizeIntrinsics instead conveys everything structurally — the dtype lives in the target-name suffix, and the flattened element count is a second S32 operand. Copying the softmax decimal-string convention here produces custom-calls the activation kernels cannot bind. The `opaque` is empty at the `CreateCustomCall` site, and neither `Run` nor its lambdas contains a digit table or `strtol`.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+The central structural claims and where each is anchored:
 
-1. **`target_names` has exactly 6 members; `to_remove` has exactly 1.** Re-checked: the six `AwsNeuron…` activation strings (`Erf`/`Gelu`/`GeluBackward`/`GeluApprxTanh`/`Silu`/`SiluBackward`) and `AwsNeuronTransferWithStaticRing` are present in `strings.json` at the exact offsets cited; the set ctor counts (`edx=6` / `edx=1`) match. **CONFIRMED.**
-2. **The opcode tests are CustomCall=0x2B (Intrinsics) and Compare=0x20 (Compare).** Re-checked the disassembly: `cmp byte[r13+0x14], 2Bh` @ `0x1ef413f` and `cmp byte[r13+0x14], 20h` @ `0x1ef268c`. **CONFIRMED.**
-3. **The dtype switch maps F32=0x0B/F16=0x0A/BF16=0x10 to `_f32`/`_f16`/`_bf16`.** Re-checked: `cmp eax,0Bh` / `cmp eax,0Ah` / `cmp eax,10h` @ `0x1ef42ea..0x1ef42fc`, with the `mov edx,4/4/5` length operands at the append sites. The two `_f16`/`_f32` pointers are tail-substrings (no standalone string entry) — tagged accordingly, length-confirmed. **CONFIRMED (with the substring caveat noted in-text).**
-4. **The custom-call is built with opaque="" and api_version=1, two operands.** Re-checked lambda#2 @ `0x1ef4c40`: `push 1` (api), `mov ecx,2` (operand count), `CreateCustomCall`, and the verbatim assert `0x2e46c8`. No strtol/itoa table present → empty opaque. **CONFIRMED.**
-5. **LegalizeCompare reads direction at +0x208 and type at +0x211, calls `DefaultComparisonType`, and is idempotent.** Re-checked: `DefaultComparisonType` call @ `0x1ef26c1`, `cmp [r12+0x211],al; jz` skip guard, `movzx [r12+0x208]` direction load, `CreateCompare` with `optional<Type>`, assert `0x2ce728`. **CONFIRMED.**
+| Claim | Anchor |
+|---|---|
+| `target_names` has 6 members, `to_remove` has 1 | set-ctor element counts `edx=6` / `edx=1` at `0x1ef3d30`; all seven `AwsNeuron…` strings present in the pool at the offsets tabulated above |
+| Opcode tests are CustomCall `0x2B` and Compare `0x20` | `cmp byte[r13+0x14], 2Bh` @ `0x1ef413f`; `cmp byte[r13+0x14], 20h` @ `0x1ef268c` |
+| dtype switch maps F32 `0x0B` / F16 `0x0A` / BF16 `0x10` → `_f32` / `_f16` / `_bf16` | `cmp eax,0Bh` / `cmp eax,0Ah` / `cmp eax,10h` @ `0x1ef42ea..0x1ef42fc`, with `mov edx,4/4/5` length operands at the append sites |
+| Custom-call is two operands, `opaque=""`, `api_version=1` | lambda#2 @ `0x1ef4c40`: `push 1`, `mov ecx,2`, `CreateCustomCall`, assert `0x2e46c8`; no strtol/itoa table in the function |
+| LegalizeCompare reads direction @ +0x208, type @ +0x211, and is idempotent | `DefaultComparisonType` @ `0x1ef26c1`; `cmp [r12+0x211],al; jz` skip guard; `movzx [r12+0x208]`; `CreateCompare` with `optional<Type>`; assert `0x2ce728` |
 
-Items left **INFERRED / MEDIUM**: (a) the exact branch nesting of the vector-growth realloc paths in `Run` (no decompile, 117 bb) — the *logic* is HIGH, the *control-flow shape* is MEDIUM; (b) the kSigned/kUnsigned split inside `DefaultComparisonType`'s `_part_0` clone (integer dtypes) — float/complex → `kFloat` is HIGH, the integer predicate follows upstream XLA; (c) whether the bare-name dtype fallthrough is ever reached at runtime (LOW — likely defensive dead code). Nothing on this page was fabricated; every address, offset, string, and enum value above resolves in the cp310 `hlo-opt` artifacts.
+## Limits of this reading
+
+- The vector-growth/realloc branch nesting inside `LegalizeIntrinsics::Run` (117 basic blocks, no decompile) is reconstructed from the call sequence rather than read as control flow. The rewrite logic is solid; the exact branch structure is not.
+- The kSigned/kUnsigned split inside `DefaultComparisonType`'s `_part_0` outlined clone was not disassembled. The float/complex → `kFloat` arm is read directly; the integer predicate is assumed to match upstream XLA.
+- Whether the bare-name dtype fallthrough is ever reached at runtime is unresolved — no emitter of a non-float activation intrinsic was found, so it may be dead defensive code.
 
 ---
 

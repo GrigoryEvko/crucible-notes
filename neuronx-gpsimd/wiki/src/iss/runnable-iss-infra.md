@@ -16,8 +16,8 @@
 All facts below are derived from static analysis of the shipped binaries only,
 plus a **live `ctypes` drive of `libcas-core.so`** that certifies the ABI
 (§1.4). Each claim is tagged **confidence** × **provenance** (`OBSERVED` = read
-directly off the binary / executed this pass, `INFERRED` = strong deduction from
-observed evidence, `CARRIED` = taken from a prior page and re-checked). The two
+directly off the binary / executed, `INFERRED` = strong deduction from
+observed evidence, `CARRIED` = taken from a prior page). The two
 recovered headers cited (`iss/libfiss.h`, the `ncore2gp-params` config) are
 treated as binary-adjacent artifacts: they ship in the same toolchain and every
 constant is corroborated against a binary at the point of use.
@@ -40,8 +40,7 @@ carry the ncore2gp delta **`+0x200000`** (subtract before `xxd` on `.data`/
 `.data.rel.ro`). `libcas-core` / `libctype` ship a `.symtab` but **no
 `.debug_*`** — every offset below is pinned from the `mov`-displacement encoding,
 not DWARF. `libsimxtcore.so` / `nativesim` are stripped of `.symtab`
-(`libsimxtcore` keeps `.dynsym`; `nativesim` is fully stripped). `[HIGH ·
-OBSERVED]`
+(`libsimxtcore` keeps `.dynsym`; `nativesim` is fully stripped).
 
 ---
 
@@ -59,8 +58,6 @@ four `get_xml_*` providers and the RAM-init parameters, then drives the pipeline
 issue/stall/stage thunks each cycle, until teardown. There is **no `main`, no
 `register_client` factory, no getInterface** — the contract is a flat C
 vocabulary of 24 `dll_*` accessors fixed by `libfiss.h` (`LIBFISS_VERSION 2`).
-`[HIGH · OBSERVED]`
-
 ---
 
 ## 1. The `dll_*` lifecycle ABI
@@ -71,8 +68,7 @@ vocabulary of 24 `dll_*` accessors fixed by `libfiss.h` (`LIBFISS_VERSION 2`).
 surface (the other 1087 `T` exports are `opnd_sem_*` resolvers and `my_*`
 scoreboard accessors, never called by name across the dlopen boundary). Every
 accessor takes the per-instance state pointer in `%rdi` (arg0). Grouped by *when
-the harness calls them*: `[HIGH · OBSERVED — addresses from `nm -D`, bodies from
-`objdump -d`]`
+the harness calls them*:
 
 | Phase | Accessor | Addr | Action |
 |---|---|---|---|
@@ -105,14 +101,11 @@ the harness calls them*: `[HIGH · OBSERVED — addresses from `nm -D`, bodies f
 > blocks on TIE I/O. Every port read is assumed same-tick resolvable because the
 > *value* comes from the host vtable (`libfiss-base`), not from a modeled bus. A
 > reimplementer must NOT model a TIE-bus stall here — there is no datapath inside
-> cas that could produce a result to wait on. `[HIGH · OBSERVED]`
-
+> cas that could produce a result to wait on.
 ### 1.2 `dll_initialize` — the install-and-register prologue
 
 `dll_initialize @0x17b5c90 (rdi=state, rsi=harness_handle, rdx=init_ctx)`. The
 prologue does three structural things, each read verbatim from the disassembly:
-`[HIGH · OBSERVED]`
-
 ```c
 // dll_initialize @0x17b5c90  (annotated from disasm)
 void dll_initialize(state *s, void *harness_handle, init_ctx *ctx) {
@@ -141,9 +134,7 @@ every architectural register and calls **back** through that table
 (`call *0x10(%rbx)`, `call *0x28(%rbx)`) passing the harness handle, a name
 string from `.rodata`, and the address of the matching state slot inside the
 block. This is the "register" half of dlopen/register/run. The reg-slot region
-begins at **`state+0x14eb0`** (`lea 0x14eb0(%rbx),%rdx`). `[HIGH · OBSERVED — the
-`memset 0x4a09f0`, `rep movsq`, and `call *N(%rbx)` chain are all in the
-disassembly.]`
+begins at **`state+0x14eb0`** (`lea 0x14eb0(%rbx),%rdx`).
 
 > **CORRECTION — the first registered state register is `"AR"`, not `"REV8AR"`.**
 > The sibling [cas Core Surface](./cas-core-surface.md) reads the first
@@ -156,15 +147,13 @@ disassembly.]`
 > the `"AR"` substring, not the head. Confirm: `xxd -s 0x17cdb4f` shows
 > `REV8AR\0`; the `lea` in the disasm reads `# 17cdb53`, i.e. byte offset +4 =
 > `"AR"`. The first architectural register the ISS publishes is the scalar AR
-> file. `[HIGH · OBSERVED — both the string bytes and the `lea` displacement read
-> off the binary this pass.]`
+> file.
 
 ### 1.3 `dll_instruction_get_length` — the decode that begins every cycle
 
 The fetch width that starts the cycle accounting is a three-instruction table
 lookup. Its signature is `(rdi=unused, esi=op0_byte)` — **the index is arg1**,
-not arg0: `[HIGH · OBSERVED]`
-
+not arg0:
 ```text
 dll_instruction_get_length @0x17b57a0 :
   lea  CSWTCH.4667(%rip),%rax    ; 256-entry signed-byte table @0x17d0640 (.rodata)
@@ -185,12 +174,11 @@ selects the length. Byte-exact (`xxd -s 0x17d0640`):
 
 `dll_instruction_speculate_length @0x17b57b0` uses the parallel 16×int32 table
 `@0x17d0600` (`{0..7:3, 8..D:2, E/F:0}`) for pre-byte3 PC advance and
-branch-target sizing. `[HIGH · OBSERVED]`
-
+branch-target sizing.
 ### 1.4 LIVE CERTIFICATION — driving the ABI through `ctypes`
 
 The lifecycle is not inferred from names — the identity and decode accessors were
-**executed** this pass. Because the core's only non-`memset` imports are the 119
+**executed**. Because the core's only non-`memset` imports are the 119
 `nx_*_interface` host ports (used at the execute stage), an eager `dlopen` fails;
 binding **lazily** (`RTLD_LAZY`) resolves the leaf accessors while leaving the
 ports unbound — which *itself certifies* the 119-port host-seam claim:
@@ -287,7 +275,7 @@ void run_one_core(harness *h, const uint8_t *iram_image, const uint8_t *dram_ima
 > has no teardown entry; teardown is `free(state)`. The per-instance block owns no
 > external resources (the only heap inside it is whatever the harness allocator
 > backs; `libctype`'s `rtor` node lists belong to the *type system*, not the core
-> state). `[HIGH · OBSERVED — no `dll_*` teardown symbol exists.]`
+> state).
 
 ---
 
@@ -295,8 +283,6 @@ void run_one_core(harness *h, const uint8_t *iram_image, const uint8_t *dram_ima
 
 `dll_cycle_advance @0x17aa3c0 (rdi=state, esi=dir)` (~16 KB) is the single
 function that turns wall time into pipeline progress. Decoded head + body:
-`[HIGH · OBSERVED]`
-
 ```c
 // dll_cycle_advance @0x17aa3c0  (annotated from disasm)
 void dll_cycle_advance(state *s, int dir) {
@@ -337,8 +323,7 @@ of [The cas Timing Model](./cas-timing-model.md); this page documents only the
 > *abstractly*. The cycle→ns conversion is a host concern, and it is **config
 > data**, not code: `ncore2gp-params` carries `ImplTargetSpeed = 1111` (MHz) and
 > the per-RAM latencies (§4.2). A reimplementer reads the frequency from the
-> params file, never from the core. `[HIGH · OBSERVED — absence in the binary +
-> presence in the config.]`
+> params file, never from the core.
 
 ---
 
@@ -346,7 +331,7 @@ of [The cas Timing Model](./cas-timing-model.md); this page documents only the
 
 The harness reads one text params file to discover every DLL by role. The
 shipped `ncore2gp/config/ncore2gp-params` (auto-generated, "Do not edit") binds
-the ISS exactly as the lifecycle expects: `[HIGH · OBSERVED — read off the file]`
+the ISS exactly as the lifecycle expects:
 
 ```ini
 ConfigName  = Xm_ncore2gp      arch = Xtensa24      uarchName = Cairo
@@ -368,15 +353,13 @@ So the run wires the **timing** core (`iss-base-dll`) to the **value** oracle
 tables from `isa-base-dlls`, and reads the bit-precise semantics from the two TIE
 providers (`xml-base-dll` / `xml-msem-dll`). The three `*-tie-dll` roles are
 present-but-empty (this config folds TIE into the base). The `*-ref-*` cores are
-the cross-validation reference (Part 15). `[HIGH · OBSERVED]`
-
+the cross-validation reference (Part 15).
 ### 3.1 The 4 image getters nativesim references
 
 The keystone "four image getters" are the four `get_xml_*` provider accessors the
 native sim resolves to pull each phase-serialization (the TIE-DB **image** blobs)
 out of the `xml-base`/`xml-msem` providers. `strings -a nativesim | rg
-'^get_xml_'`: `[HIGH · OBSERVED]`
-
+'^get_xml_'`:
 ```
 get_xml_post_parse        # the just-after-parse snapshot (50-B stub in this build)
 get_xml_post_rewrite      # the folded, fully-elaborated DB — THE one that matters
@@ -391,8 +374,7 @@ declarations (`cstub_loadi_function`, `cstub_set_base_address`,
 driver that holds **all four config halves** (ISS core, value oracle, type codec,
 TIE DB) together. The provider ABI itself (the five-getter `interface_version`/
 `get_xml_*` contract, the +13 cipher on the blobs) is documented on
-[libtie-core + msem](./libtie-core-msem.md). `[HIGH · OBSERVED — the getter and
-role strings read off `nativesim` this pass.]`
+[libtie-core + msem](./libtie-core-msem.md).
 
 > **CORRECTION — there is no symbol-visible IRAM/DRAM/IROM/DROM "image getter"
 > quad.** It is tempting to expect four per-region memory-image getters
@@ -405,16 +387,13 @@ role strings read off `nativesim` this pass.]`
 > (`XTCORE_MEM::peek_phys`/`poke_phys`/`peek_virt`/`poke_virt`, `RAM::peek_u32`/
 > `poke_u32`). The "image getters" the **ISS** lifecycle cares about are the four
 > `get_xml_*` TIE-DB blob getters above; the **program/data** image is loaded by
-> the ELF/peek-poke surface, not a per-region getter set. `[HIGH · OBSERVED — the
-> `get_xml_*` quad in `nativesim`; the ELF/peek-poke surface in `libsimxtcore`'s
-> `.dynsym`.]`
+> the ELF/peek-poke surface, not a per-region getter set.
 
 ### 3.2 The table accessors return `.data.rel.ro` pointers
 
 The harness reads the dispatch + descriptor tables once via the `dll_get_*`
 accessors. Each is a literal `lea <table>(%rip),%rax;ret`; the targets
-(`objdump -d`): `[HIGH · OBSERVED]`
-
+(`objdump -d`):
 | Accessor | Target symbol | VMA |
 |---|---|---|
 | `dll_get_stage_functions` | `slot_semantic_functions` | `0x227ecc0` |
@@ -427,8 +406,7 @@ accessors. Each is a literal `lea <table>(%rip),%rax;ret`; the targets
 The three `slot_*_functions` tables are **47 records × 32 B** in `.data.rel.ro`
 (subtract `0x200000` for `xxd`); the per-record `dispatch_array` field points at
 the per-(format,slot) `{mnemonic, fn}` arrays the harness invokes each cycle. See
-[The cas Timing Model](./cas-timing-model.md) §3 for the record layout. `[HIGH ·
-OBSERVED]`
+[The cas Timing Model](./cas-timing-model.md) §3 for the record layout.
 
 ---
 
@@ -479,8 +457,7 @@ offsets; the inter-region spans are INFERRED.]`
 
 The modeled core's local memories are **config data**, read by the harness from
 `ncore2gp-params`, not baked into the core. The `ISS*RAMInfo` rows give the
-geometry the harness maps into the simulated core: `[HIGH · OBSERVED]`
-
+geometry the harness maps into the simulated core:
 ```ini
 # [ size  base_address  access_width  busy dma cbox rcw parity ecc enable_mask enable_code udma dyn_base ]
 ISSInstRAMInfo  = [ 0x10000 0x00000000 256 0 1 0 0 0 0 0          0 0 0 ]   # IRAM  64 KB @ 0x0,        256-bit
@@ -508,15 +485,13 @@ timing + surface pages.]`
 > region geometry and per-RAM latencies (`InstRAM0Latency 3`, `DataRAM0Latency 4`,
 > `DramLongLatency 0`) live **in the params file**, applied host-side. A
 > reimplementer who needs region-aware DRAM latency reads it from the config and
-> applies it in the host memory model, not from cas. `[HIGH · OBSERVED — config
-> present, core constant absent.]`
+> applies it in the host memory model, not from cas.
 
 ### 4.3 RAM image initialization
 
 The four RAM-init constants in the config are the fill patterns the harness
 writes before loading the program/data images via the ELF/peek-poke surface
-(§3.1): `[HIGH · OBSERVED]`
-
+(§3.1):
 ```ini
 iss_iram_init_value = 0x6c6cb6b6     # IRAM fill (an illegal-op poison pattern)
 iss_dram_init_value = 0x01234567     # DataRAM fill
@@ -532,8 +507,6 @@ ISSSysRamBytes = 0x40000000  ISSSysRamPAddr = 0x00100000   # 1 GB system RAM @ 0
 
 The only trace machinery *inside* `libcas-core` is the **flags byte at
 `state+0x5a8`**, toggled by three accessors and read by `dll_cycle_advance`:
-`[HIGH · OBSERVED]`
-
 | Accessor | Disasm | Effect |
 |---|---|---|
 | `dll_enable_events @0x17b57f0` | `movzbl 0x5a8(%rdi); or %esi; and $~1 ...; mov %sil,0x5a8(%rdi)` | set/clear **bit0** = event trace |
@@ -547,10 +520,8 @@ harness writes the trace record. `libcas-core` itself carries **no disassembler
 and no trace writer**: its only trace symbols are the two undefined imports
 `nx_RSRTraceBus_interface` / `nx_WSRTraceBus_interface` (the SR/ER register-bus
 trace passthrough), which the harness *defines*
-(`CycleCore::RSRTraceBus_interface` / `WSRTraceBus_interface`). `[HIGH · OBSERVED]`
-
+(`CycleCore::RSRTraceBus_interface` / `WSRTraceBus_interface`).
 The full trace/disassembly subsystem lives in the harness `libsimxtcore.so`:
-`[HIGH · OBSERVED — `.dynsym` symbols + strings]`
 
 - **Disassembler** — `XTCORE_MEM::disasm_from_pc`, `disasm_from_fmt_buff`,
   `disasm_from_slot_buff`, and `CycleCore::disasm_from_di` (there is **no**
@@ -565,8 +536,7 @@ The full trace/disassembly subsystem lives in the harness `libsimxtcore.so`:
 
 The trace *port* geometry is config: `ncore2gp-params` carries `TracePort = 1`,
 `TracePortData = 0`, `TracePortMemBytes = 8192`, `TRAX = 1` — i.e. an 8 KB TRAX
-buffer the harness's `TRACER` drives, not the core. `[HIGH · OBSERVED config +
-harness symbols]`
+buffer the harness's `TRACER` drives, not the core.
 
 > **NOTE — `CycleCore` is the *harness* class, not a cas symbol.** The surface
 > page's CORRECTION that there is no `CycleCore` *inside* `libcas-core` stands:
@@ -575,15 +545,11 @@ harness symbols]`
 > harness's wrapper that drives the flat `dll_*` cas core and *defines* the two
 > `nx_*TraceBus_interface` ports the core imports. The dlopen-boundary ABI is
 > still the flat 24-accessor C vocabulary; `CycleCore` is the C++ driver above it.
-> `[HIGH · OBSERVED — `CycleCore::*` are `libsimxtcore` `.dynsym` symbols, absent
-> from `libcas-core`.]`
 
 ### 5.2 The per-stage / issue / stall counters
 
 The "counters" a reimplementer diffs against are the **census of per-op pipeline
-functions** — the distributed schedule, re-grounded from `nm` on the one binary:
-`[HIGH · OBSERVED]`
-
+functions** — the distributed schedule, grounded from `nm` on the one binary:
 | Symbol pattern | `nm libcas-core.so \| rg -c` | Role |
 |---|---|---|
 | `_inst_stage[0-9]+` | **157,775** | per-(format,slot,mnemonic) × stage0..15 semantic latches |
@@ -603,8 +569,7 @@ functions** — the distributed schedule, re-grounded from `nm` on the one binar
 > exposes `perfCounterCount = 8` but **`IsaUsePerfCounters = 0`** — this core
 > ships with the hardware PMU disabled, so the ISS exposes no perf-counter
 > readout; performance is measured by the harness counting ticks against the
-> per-op latency model. `[HIGH · OBSERVED — counts re-grounded; the absent
-> CCOUNT machine + perf-disabled flag verified.]`
+> per-op latency model.
 
 ---
 
@@ -638,7 +603,7 @@ functions** — the distributed schedule, re-grounded from `nm` on the one binar
 - **[MED]** Whether `dll_init_tieport_outputs` / `dll_reset_states` /
   `dll_export_state_stall` have side effects beyond their inferred names — they
   are part of the 24-accessor surface (OBSERVED present) but their bodies were
-  not walked in full this pass.
+  not walked in full.
 - **[LOW]** The exact byte spans of the inter-region gaps in the ≈4.63 MB block —
   the cited offsets are OBSERVED from accessor bodies; the spans between them are
   not exhaustively mapped.
@@ -652,5 +617,5 @@ The unified, re-runnable reference — one driver that emits both the cycle coun
 oracle) for any bundle — is assembled in
 [The ISS as Executable Oracle](./iss-oracle-synthesis.md). The cross-validation
 of this run path against the `libcas-ref-core.so` / `libfiss-ref-base.so`
-reference cores named in `ncore2gp-params` is the subject of the Part 15
-validation material (referenced by title; that Part is not yet written).
+reference cores named in `ncore2gp-params` is on
+[ref-vs-production diff](./ref-vs-production-diff.md).

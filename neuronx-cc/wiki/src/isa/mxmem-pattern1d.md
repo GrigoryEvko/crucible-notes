@@ -52,12 +52,12 @@ The descriptor base `B` is `bundle+0x10` (for `MatmultMx`/`LdWeightMx`) or `bund
 
 | Off | Sz | Field | Encoder write | Validator read | Confidence |
 |---|---|---|---|---|---|
-| `+0x00` | 4 | **DATA ADDR4** — packed x4 data start addr | `assignStartAddr(&B[0], dataAP, a4=0)` | qword0.lo, DTYPE 9 (or 5 & tag `0x10`) | CONFIRMED |
-| `+0x04` | 4 | **SCALE ADDR4** — E8M0 exponent start addr | `assignStartAddr(&B[4], scaleAP, a4=1)` | qword0.hi, DTYPE 3 (E8M0) | CONFIRMED |
-| `+0x08` | 2 | **K-extent** (x4-unpacked element count, u16) | `mov [rcx+8], ax` | qword1.word0, asserted ≠ 0 | CONFIRMED |
-| `+0x0A` | 1 | **step-dir sign** `{0x01, 0xFF}` | `mov [rbx+0xa], al` | byte10 ∈ {+1,-1} asserted | CONFIRMED |
-| `+0x0B` | 1 | **scale base-part** `% PE_count` | `mov [rbx+0xb], dl` | byte11 (≤ `0x0F`, low-2-bits == 0) | CONFIRMED |
-| `+0x0C`..`+0x0F` | 4 | **RESERVED** (zero, static path) | (none) | not read (static path) | CONFIRMED |
+| `+0x00` | 4 | **DATA ADDR4** — packed x4 data start addr | `assignStartAddr(&B[0], dataAP, a4=0)` | qword0.lo, DTYPE 9 (or 5 & tag `0x10`) | CERTAIN |
+| `+0x04` | 4 | **SCALE ADDR4** — E8M0 exponent start addr | `assignStartAddr(&B[4], scaleAP, a4=1)` | qword0.hi, DTYPE 3 (E8M0) | CERTAIN |
+| `+0x08` | 2 | **K-extent** (x4-unpacked element count, u16) | `mov [rcx+8], ax` | qword1.word0, asserted ≠ 0 | CERTAIN |
+| `+0x0A` | 1 | **step-dir sign** `{0x01, 0xFF}` | `mov [rbx+0xa], al` | byte10 ∈ {+1,-1} asserted | CERTAIN |
+| `+0x0B` | 1 | **scale base-part** `% PE_count` | `mov [rbx+0xb], dl` | byte11 (≤ `0x0F`, low-2-bits == 0) | CERTAIN |
+| `+0x0C`..`+0x0F` | 4 | **RESERVED** (zero, static path) | (none) | not read (static path) | CERTAIN |
 
 > **NOTE — the 12-vs-16 reconciliation.** Earlier passes (the MX dual-ADDR4 field layout, the `MatmultMx` bundle map) described a *"12-byte descriptor."* That counted the **meaningful** bytes. The **type** is 16 bytes, proven three ways: (1) `mxmem1d_valid` takes the descriptor by value and the System-V x86-64 ABI passes a 16-byte aggregate in `rdi`+`rsi` (qword0/qword1 — confirmed below); (2) the validator's call-site loads it as one 16-byte XMM, `movdqu xmm4,[rsp+0xe0]` @ `0x14c7ae0`, then `call mxmem1d_valid@plt` @ `0x14c7b1b`; (3) the bundle slot is a 16-byte-aligned region `pxor`-zeroed with the rest of the 64-byte bundle. The encoder writes only `+0x00`..`+0x0B`; `+0x0C`..`+0x0F` are left zero. So both statements are true: **16-byte type, 12 written, 4 reserved.**
 
@@ -81,7 +81,7 @@ The next 4 bytes are a second ADDR4 word, minted with `a4 = 1`, routing the addr
 0x150e563:  e8 …             call assignStartAddr<ADDR4>(&B[4], scaleAP, a4=1)
 ```
 
-> **NOTE — "the scale-stream selector" is `a4`, not a wire field.** The thing that distinguishes the scale word from the data word is the encode-time boolean `a4` that forks the shared ADDR4 emitter to vtbl `+0x28` instead of `+0x20`. There is **no** 4-bit selector nibble in the descriptor. A reimplementer who looks for a selector field in the 16 bytes will not find one; the selection happened in the codegen, before any byte was written. (CORRECTION — CONFIRMED; see §Corrections.)
+> **NOTE — "the scale-stream selector" is `a4`, not a wire field.** The thing that distinguishes the scale word from the data word is the encode-time boolean `a4` that forks the shared ADDR4 emitter to vtbl `+0x28` instead of `+0x20`. There is **no** 4-bit selector nibble in the descriptor. A reimplementer who looks for a selector field in the 16 bytes will not find one; the selection happened in the codegen, before any byte was written.
 
 ### Byte +0x08 — K-extent (u16, x4-unpacked)
 
@@ -250,7 +250,7 @@ The scale ADDR4 is resolved by `CoreV4Hwm::getStartAddressForMXScale` (vtbl `+0x
 
 The OCP-MXFP block size is **32**, hard-required by the upstream legalize-scaled-matmul backend config (*"block_size must be 32"*), with `scale_method = "EMAX"`. The 32-element MX block is 8 partitions × 4 columns. The simulator's `dequantizeMx` indexes the scale stream as one E8M0 byte per 8-partition × 4-element block — `E8M0[(K/4)·(row/8) + (col/4)] − 127` as the `ldexpf` shared exponent.
 
-> **NOTE — the descriptor carries only the scale *base address*, not the block stride.** `block_size = 32`, the `8×4` block tiling, EMAX/RNE, and the per-block scale walk are **not** MXMEM_PATTERN1D wire fields. The descriptor's 5-tuple is `{data addr, scale addr, K, step, scalePart}`. The per-block stride geometry lives in the scale operand's own `AccessPattern` (consumed by silicon) and is enforced by `checkQuantizeMxInstruction` + the operand APs upstream — a reimplementer of the *descriptor* needs the base address and base-partition only. (G-2, STRONG: the `8×4`/`32` geometry is cross-confirmed from the simulator's index formula and the backend's `block_size=32` config, but it is not read out of the 16 descriptor bytes.)
+> **NOTE — the descriptor carries only the scale *base address*, not the block stride.** `block_size = 32`, the `8×4` block tiling, EMAX/RNE, and the per-block scale walk are **not** MXMEM_PATTERN1D wire fields. The descriptor's 5-tuple is `{data addr, scale addr, K, step, scalePart}`. The per-block stride geometry lives in the scale operand's own `AccessPattern` (consumed by silicon) and is enforced by `checkQuantizeMxInstruction` + the operand APs upstream — a reimplementer of the *descriptor* needs the base address and base-partition only. The `8×4`/`32` geometry is cross-checked against the simulator's index formula and the backend's `block_size=32` config, but it is never read out of the 16 descriptor bytes.
 
 ## The CoreV4-only gate
 
@@ -258,16 +258,16 @@ MXMEM_PATTERN1D and its entire machinery exist on gen4 alone. An `nm -DC` sweep 
 
 | Symbol | Owner | Address | Confidence |
 |---|---|---|---|
-| `mxmem1d_valid` | `core_v4` | `0x1447190` | CONFIRMED |
-| `assignAccessForMX<MXMEM_PATTERN1D>` | `CoreV4GenImpl` | `0x150e2f0` | CONFIRMED |
-| `assignIndirectPatternForMX<MXINDIRECT16B>` | `CoreV4GenImpl` | `0x150de90` | CONFIRMED |
-| `visitInstMatmultMx` | `CoreV4GenImpl` | `0x143f410` | CONFIRMED |
-| `visitInstQuantizeMx` | `CoreV4GenImpl` | `0x143dc60` | CONFIRMED |
-| `getStartAddressForMXScale` | `CoreV4Hwm` | `0x185fbe0` | CONFIRMED |
+| `mxmem1d_valid` | `core_v4` | `0x1447190` | CERTAIN |
+| `assignAccessForMX<MXMEM_PATTERN1D>` | `CoreV4GenImpl` | `0x150e2f0` | CERTAIN |
+| `assignIndirectPatternForMX<MXINDIRECT16B>` | `CoreV4GenImpl` | `0x150de90` | CERTAIN |
+| `visitInstMatmultMx` | `CoreV4GenImpl` | `0x143f410` | CERTAIN |
+| `visitInstQuantizeMx` | `CoreV4GenImpl` | `0x143dc60` | CERTAIN |
+| `getStartAddressForMXScale` | `CoreV4Hwm` | `0x185fbe0` | CERTAIN |
 
 There is **no** `core_v2`/`core_v3` `mxmem1d_valid`, no `CoreV2GenImpl`/`CoreV3GenImpl` `assignAccessForMX`, no gen2/gen3 `visitInstMatmultMx`/`visitInstQuantizeMx`, and no gen2/gen3 `getStartAddressForMXScale` — the demangled-symbol sweep tags every MX symbol as `core_v4`/`CoreV4`. (`core_v3` has `tensor3d_valid` and the rest of the rank-*n* validators, but nothing MX.) Arch 40 = `core_v4` internal / *mariana* runtime / Trn3 external (see [Codename Taxonomy](../arch/codename-taxonomy.md), 1.02).
 
-> **GOTCHA — gen2/gen3 do not FATAL on an MX op; they never see one.** `CoreV2GenImpl`/`CoreV3GenImpl` do not override `visitInstMatmultMx`/`visitInstQuantizeMx`, so an `InstMatmultMx`/`InstQuantizeMx` in a gen2/gen3 codegen would fall through to the base `Generator` visitor (its default "not implemented" arm). In practice the MX path is gated **upstream**: the compiler only lowers to the MX custom-ops when targeting gen4 (the FP4 dtype slot exists only on the gen4 PE constructor). The `getStartAddressForMXScale` resolver simply does not exist on the gen2/gen3 Hwm vtables. (CONFIRMED gate; STRONG on the exact gen2/3 fall-through diagnostic — the base visitor was not byte-traced to a FATAL because no gen2/3 MX encoder exists to reach it.)
+> **GOTCHA — gen2/gen3 do not FATAL on an MX op; they never see one.** `CoreV2GenImpl`/`CoreV3GenImpl` do not override `visitInstMatmultMx`/`visitInstQuantizeMx`, so an `InstMatmultMx`/`InstQuantizeMx` in a gen2/gen3 codegen would fall through to the base `Generator` visitor (its default "not implemented" arm). In practice the MX path is gated **upstream**: the compiler only lowers to the MX custom-ops when targeting gen4 (the FP4 dtype slot exists only on the gen4 PE constructor). The `getStartAddressForMXScale` resolver simply does not exist on the gen2/gen3 Hwm vtables. The exact gen2/3 fall-through diagnostic is **[INFERRED]** — the base visitor was not byte-traced to a FATAL, because no gen2/3 MX encoder exists to reach it.
 
 ## The consumers
 
@@ -317,26 +317,26 @@ void encode_mx_descriptor(u8 *B, const AccessPattern &dataAP,
 }
 ```
 
-## Adversarial self-verification — the five strongest claims
+## Evidence summary
 
-1. **16-byte type, 12 bytes written.** *Challenge*: is the type really 16 bytes, or could the trailing 4 be a separate adjacent field? *Re-derive*: the validator takes the descriptor by value — the call-site loads it as one 16-byte XMM (`movdqu xmm4,[rsp+0xe0]` @ `0x14c7ae0`) and the body splits it as `rdi`=qword0 / `rsi`=qword1 (`mov r14,rdi; shr r14,0x18` reads byte+3, `mov r12,rsi` holds qword1). An exhaustive store-enum of `assignAccessForMX` finds MXMEM-slot writes only at `+0x00`/`+0x04` (ADDR4), `[rcx+8]` (`+0x08`), `[rbx+0xa]`, `[rbx+0xb]` — none at `+0x0C`..`+0x0F`. **Holds — CONFIRMED.**
-2. **Dual ADDR4: data (a4=0) + scale (a4=1).** *Challenge*: are `+0x00` and `+0x04` truly two independent ADDR4 words, and is the second the scale? *Re-derive*: `xor ecx,ecx; call assignStartAddr` @ `0x150e544` (a4=0, slot `B`), then `mov ecx,1; lea rsi,[rbx+4]; call assignStartAddr` @ `0x150e554` (a4=1, slot `B+4`). `a4=1` forks the leaf to `call [rax+0x28]` = `getStartAddressForMXScale`, which hard-asserts SBUF. **Holds — CONFIRMED.**
-3. **block_size = 32.** *Challenge*: is 32 a descriptor field, or external? *Re-derive*: the descriptor's 16 bytes carry `{data, scale, K, step, scalePart}` — no `block_size` byte. `block_size = 32` is the OCP-MXFP standard enforced by the upstream backend config (*"block_size must be 32"*) and reflected in the simulator's per-32-element block-index formula; the descriptor only carries the scale base address + base-partition. **Holds — CONFIRMED (value); STRONG (it lives outside the descriptor).**
-4. **CoreV4-only.** *Challenge*: could a gen2/gen3 MX symbol be hiding under a different mangling? *Re-derive*: `nm -DC libwalrus.so | rg 'mxmem1d_valid|assignAccessForMX<…MXMEM|getStartAddressForMXScale|assignIndirectPatternForMX<…MXINDIRECT'` tags every match `core_v4`/`CoreV4` (10 + 3 hits); zero `core_v2`/`core_v3`/`CoreV2`/`CoreV3`. The base `bir::Hwm::getStartAddressForMXScale` is undefined-only (`U`); only `CoreV4Hwm` defines it. **Holds — CONFIRMED.**
-5. **x4-unpack for `{2,8,9}`.** *Challenge*: is the gate really `{2,8,9}` and not `{2,8,9,10}`? *Re-derive*: `cmp edx,0x2; je` (Dtype 2) `or` `sub edx,0x8; cmp edx,0x1` (`(Dtype-8) ≤ 1` ⇒ {8,9}) then `shl eax,0x2` @ `0x150e610`. `(unsigned)(10-8) = 2 > 1`, so Dtype 10 is excluded. The wire-tag table at `0x1dfbad0` confirms only indices 2/8/9 map to packed-x4 tags `0x10`/`0x0E`/`0x0F`. **Holds — CONFIRMED.**
+| Claim | Grounding | Confidence |
+|---|---|---|
+| 16-byte type, 12 bytes written | the validator takes the descriptor by value: the call site loads it as one 16-byte XMM (`movdqu xmm4,[rsp+0xe0]` @ `0x14c7ae0`) and the body splits it `rdi`=qword0 / `rsi`=qword1 (`mov r14,rdi; shr r14,0x18` reads byte+3; `mov r12,rsi` holds qword1). An exhaustive store-enum of `assignAccessForMX` finds MXMEM-slot writes only at `+0x00`/`+0x04` (ADDR4), `[rcx+8]` (`+0x08`), `[rbx+0xa]` and `[rbx+0xb]` — nothing at `+0x0C`..`+0x0F` | CERTAIN |
+| Dual ADDR4: data (`a4=0`) plus scale (`a4=1`) | `xor ecx,ecx; call assignStartAddr` @ `0x150e544` writes slot `B`; `mov ecx,1; lea rsi,[rbx+4]; call assignStartAddr` @ `0x150e554` writes slot `B+4`. `a4=1` forks the leaf to `call [rax+0x28]` = `getStartAddressForMXScale`, which hard-asserts SBUF | CERTAIN |
+| `block_size = 32` | the descriptor's 16 bytes carry `{data, scale, K, step, scalePart}` and no `block_size` byte. The value is the OCP-MXFP standard, enforced by the upstream backend config (*"block_size must be 32"*) and reflected in the simulator's per-32-element block-index formula | CERTAIN (value), HIGH (that it lives outside the descriptor) |
+| CoreV4-only | every matching symbol (`mxmem1d_valid`, `assignAccessForMX<…MXMEM…>`, `getStartAddressForMXScale`, `assignIndirectPatternForMX<…MXINDIRECT…>`) is tagged `core_v4`/`CoreV4` — 10 + 3 hits, zero `core_v2`/`core_v3`. The base `bir::Hwm::getStartAddressForMXScale` is undefined-only (`U`); only `CoreV4Hwm` defines it | CERTAIN |
+| x4-unpack applies to Dtype `{2,8,9}` and not `{2,8,9,10}` | `cmp edx,0x2; je` (Dtype 2) or `sub edx,0x8; cmp edx,0x1` (`(Dtype-8) ≤ 1` ⇒ {8,9}), then `shl eax,0x2` @ `0x150e610`. `(unsigned)(10-8) = 2 > 1`, excluding Dtype 10. The wire-tag table at `0x1dfbad0` maps exactly indices 2/8/9 to the packed-x4 tags `0x10`/`0x0E`/`0x0F` | CERTAIN |
 
-## Corrections
+> **GOTCHA — the trailing 4 bytes hold no field on the static path.** `+0x0C`..`+0x0F` are reserved and zero, and the validator's static path never reads them. The only byte ever read at `+0x0F` belongs to the indirect-marked `MXINDIRECT16B` layout, where it is the `+4`-shifted scale-partition. In particular there is no "region/length @+0xC" and no 4-bit scale-selector nibble @+0xF.
 
-> **CORRECTION (N04-1) — no "region/length @+0xC" field, no "4-bit scale selector @+0xF" in the static descriptor.** An earlier enumeration posited two extra fields in the trailing 4 bytes. The binary does not support them for the static `MXMEM_PATTERN1D`: `+0x0C`..`+0x0F` are reserved/zero and the validator's static path never reads them. The only byte ever read at `+0x0F` is in the indirect-marked `MXINDIRECT16B` layout (= its `+4`-shifted scale-partition). And the "scale-stream selector" is **not** a 4-bit descriptor nibble — it is the `a4 = 1` / `isOut = 1` boolean argument to `assignStartAddr<ADDR4>` that routes the scale word to `getStartAddressForMXScale` (vtbl `+0x28`) instead of `getStartAddress` (vtbl `+0x20`). The selection is encode-time, not a wire field. **CONFIRMED both ways.**
+**"12 bytes" and "16 bytes" are both right, counting different things.** The type's ABI footprint is 16 bytes; 12 of them are written; 4 are reserved. A layout description that says "12-byte descriptor" is counting meaningful bytes, not the footprint.
 
-> **CORRECTION (N04-2) — "12-byte descriptor" is a count of meaningful bytes, not the type footprint.** Prior MX field-layout passes' *"12-byte descriptor"* and this page's *"16-byte type"* are both correct, reconciled as **16-byte type, 12 written, 4 reserved.** Not a contradiction — a clarification of what was being counted.
+### Open questions
 
-## Gaps
-
-- **G-1 (STRONG):** the *silicon* meaning of the step-dir `+0x0A` byte (the ±1 contraction-walk direction) is read from the encoder's sign-extract + the validator's `{+1,-1}` enforcement; the silicon walk direction itself is inferred, not pinned to a string.
-- **G-2 (STRONG):** the E8M0 block-stride geometry (`8×4`/`32`) lives in the scale operand's AccessPattern + silicon, not the descriptor; cross-confirmed from the simulator's `dequantizeMx` index formula and the backend's `block_size=32` config, but not a wire field.
-- **G-3 (residual):** the ADDR4 internal sub-fields (29-bit addr / region `25..28` / mode nibble / register-mode bit) are `assignStartAddr<ADDR4>`'s domain — closed in [ADDR4](addr4.md) (2.2), not re-derived here.
-- **G-4 (GAP):** no `.neff` byte-fixture was diffed. The layout is disassembly-derived (encoder writes and validator reads agree byte-exact), but a real emitted `MXMEM_PATTERN1D` from a compiled `.neff` was not captured.
+- The *silicon* meaning of the step-dir `+0x0A` byte — the ±1 contraction-walk direction — is **[INFERRED]**: the encoder's sign-extract and the validator's `{+1,-1}` enforcement are read directly, but the walk direction itself is not pinned to a string.
+- The E8M0 block-stride geometry (`8×4`/`32`) lives in the scale operand's AccessPattern and in silicon, not in the descriptor; it is cross-checked against the simulator's `dequantizeMx` index formula and the backend's `block_size=32` config, but it is **not** a wire field.
+- The ADDR4 internal sub-fields (29-bit addr / region `25..28` / mode nibble / register-mode bit) are `assignStartAddr<ADDR4>`'s domain, closed in [ADDR4](addr4.md) (2.2) and not re-derived here.
+- No `.neff` byte-fixture was diffed. The layout is disassembly-derived — encoder writes and validator reads agree byte-exact — but a real emitted `MXMEM_PATTERN1D` from a compiled `.neff` was never captured.
 
 ## Cross-References
 

@@ -25,8 +25,7 @@ The entire decode model on this page is read **directly out of the shipped libis
 library** `libisa-core.so` — its `format_decoder`, `length_decoder`, `length_table`, the 46
 `Slot_*_get` bit-gather thunks, the 46 `Slot_*_decode` classifiers, and the 3237
 `Field_*_get` operand extractors are all present as resolvable symbols in a non-stripped
-`.symtab`, and every table cell and predicate quoted below was re-disassembled in-checkout.
-The device-native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) is used only as an
+`.symtab`. The device-native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) is used only as an
 independent *oracle* to cross-validate the result. `[HIGH/OBSERVED]` throughout except where a
 format is flagged INFERRED.
 
@@ -52,7 +51,7 @@ format is flagged INFERRED.
 | 3237 `Field_*_get` | per-`(field,slot)` operand extractor | `nm \| rg -c` = 3237 |
 | Disassembler oracle | `xtensa-elf-objdump`, Binutils 2.34 / Xtensa Tools 14.09 | `XTENSA_CORE=ncore2gp` |
 
-Counts re-grounded this pass with `nm libisa-core.so | rg -c`, not a decompile grep.
+Counts are grounded with `nm libisa-core.so | rg -c`, not a decompile grep.
 
 The two decode entry points are *not* table-driven; the libisa accessors `decode_format_fn`
 and `decode_length_fn` return the hardcoded addresses `0x3b5970` and `0x3b5a50`. A

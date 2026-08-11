@@ -18,15 +18,15 @@ Maverick-vs-Cayman generational delta.
 > **cross-gen** reference (NC-v3), not the same silicon. Every cross-gen difference is
 > flagged in [§9](#9-maverick-vs-cayman-delta--the-headline-generation-change).
 
-All facts below were **re-streamed independently** from the pkl/json for this page — never
-`pickle.load`'d, never grepped from a decompile. Counts are machine-derived from the
+All facts below are streamed from the pkl/json — never `pickle.load`'d. Counts are
+machine-derived from the
 [`RestrictedUnpickler`](pkl-db.md#recipe-b--guarded-unpickler-defense-in-depth-optional) materialization
-(`len == 323,198`, no global ever resolved) and cross-checked against the `.json` mirror via
-`rg`/`jq`. Confidence is tagged `[HIGH|MED|LOW · OBSERVED|INFERRED|CARRIED]`.
+(`len == 323,198`, no global ever resolved) and cross-checked against the `.json` mirror.
+Claims that depart from the page default `HIGH · OBSERVED` carry an explicit tag.
 
 ---
 
-## 0. Where this subtree lives in the 323,198-record DB `[HIGH · OBSERVED]`
+## 0. Where this subtree lives in the 323,198-record DB
 
 The [pkl-db page](pkl-db.md) established the DB invariants this page reuses verbatim:
 record total **323,198**, the **23-field** node schema, and **5 access-domain views**
@@ -61,7 +61,7 @@ ADDRESS_MAP (root)
 
 ---
 
-## 1. Executive summary `[HIGH · OBSERVED]`
+## 1. Executive summary
 
 * **Three host-IF / interconnect surfaces** in this DB:
   1. **PCIe host-interface** — the two dedicated PCIe views. Tiny: **50 records** total
@@ -79,7 +79,7 @@ ADDRESS_MAP (root)
 
 * **The PCIe/UCIE *controller* register files are NOT in this DB.** No `pcie5` /
   `snps_ctrl` / `dwc_pcie` / `mrvl` / `xsr` / `e32mp` / `appaxi` node is bound by `json` or
-  named anywhere in the 323,198 records (re-verified **0 hits** for each; the only `dwc`
+  named anywhere in the 323,198 records (**0 hits** for each; the only `dwc`
   substring hit is `DWC_HBMPHY` (16, the HBM PHY), the only `ring` hits are `ring_io_*`/`otp`,
   and the `bridge` hits are the per-link `s2s_bridge_ch_split`). The host PCIe controller is
   **real** (the `intc_pcie` subsystem carries 125 interrupt causes incl. FLR/SBR/link-down/
@@ -106,7 +106,7 @@ ADDRESS_MAP (root)
 
 PCIe in this DB is **not** under SENG/APB_IO; it is the two dedicated top-level views.
 Each view node is `type=NODE`, holds **8 endpoint NODES**, and each endpoint holds **2
-INDIRECT children**. **50 PCIE-keyword records whole-DB** (re-streamed; `.json` mirror = 50).
+INDIRECT children**. **50 PCIE-keyword records whole-DB** (streamed; `.json` mirror = 50).
 
 ### 2a. `USER_PCIEA` view — the user / application data-plane PCIe space
 
@@ -150,7 +150,7 @@ Management function. 8 endpoints per function. The bases + counts + structure ar
 `[HIGH · OBSERVED]`; the **A = Application / M = Management** naming is name-inferred
 `[MED · INFERRED]`.
 
-### 2d. The on-disk schema binding `[HIGH · OBSERVED]`
+### 2d. The on-disk schema binding
 
 `pciea_address_map.json` is a `RegFile` with `UnitName "PCIEA_ADDRESS_MAP"`, `Type NODE`,
 `InterfaceType APB`, `AddrWidth 64`, `SizeInBytes 0x200000000000000`, and **two `INCL_TYPE
@@ -162,7 +162,7 @@ INDIRECT` includes** both binding `address_map/reserved.json`:
 `pciem_address_map.json` is identical. The pkl PCIe-view nodes are **byte-for-byte** the
 on-disk schemas.
 
-### 2e. Reconciliation vs the host BAR layout `[HIGH · OBSERVED]`
+### 2e. Reconciliation vs the host BAR layout
 
 > **DISTINCTION (CORRECTION-grade).** [pcie-bars.md](pcie-bars.md) documents the **host-driver
 > BAR view** — BAR0 (control) + BAR4 (HBM) + the PEB amzn-function BARs: *where the host pokes
@@ -171,10 +171,10 @@ on-disk schemas.
 > MSIX_DOORBELL + BAR_OFFSET windows here are the SoC-side **targets** of the host BAR's
 > inbound translation; the iATU region registers that perform that translation live in the PCIe
 > controller (`PF0_ATU_CAP`), which this address DB does **not** enumerate
-> (re-verified: 0 `iatu`/`atu` nodes).
+> (0 `iatu`/`atu` nodes).
 
 The Maverick **host** BAR layout is in the shipped `maverick_pcie_bar_mapping.yaml` /
-`pcie_bar_defines.h` (read by SX-ADDR-14): **BAR0** organized per-SENG (4 SENG ×
+`pcie_bar_defines.h`: **BAR0** organized per-SENG (4 SENG ×
 `{APB_IO 512 MiB, TPB_n_SBUF 64 MiB, TPB_n 32 MiB, TPB_n_LOCAL_SUNDA_POOL_RSVD 32 MiB,
 H_DIE_SCRATCHPAD 32 MiB}`, top byte `0xc8000000`); **BAR4** = 4 × `0x2000000000`
 (128 GiB) = **512 GiB**, packed (stride == size). The Maverick BAR0 is per-SENG vs Cayman's
@@ -182,12 +182,12 @@ flat `APB_IO/APB_SE/PREPROC/TPB/TOP_SP/RDM/INTC` window set; BAR4 HBM is doubled
 
 ---
 
-## 3. The d2d (die-to-die) plane = UCIE — link controller layout `[HIGH · OBSERVED]`
+## 3. The d2d (die-to-die) plane = UCIE — link controller layout
 
 The Maverick die-to-die interconnect is **UCIE** (Universal Chiplet Interconnect Express).
 A d2d link = an `AMZN_UCIE_{A|S}_{EW|NS}_n` NODE (`json = ucie_a_wrap.json` or
 `ucie_s_wrap.json`, `size 0x200000` = 2 MiB), living **only** in `SECURE_INT` on the PEB
-plane. Canonical sample (re-streamed):
+plane. Canonical sample:
 
 ```text
 SECURE_INT_SENG_0_C_DIE_PEB_APB_IO_AMZN_UCIE_A_EW_0
@@ -217,19 +217,19 @@ The two sub-wrappers and their contents, **byte-exact** (offsets shown relative 
 | LL_PHY_WRAPPER | `LL_PHY_INTC` @ `+0x16000` | INTC | `0x00100` | `d2d_ll_phy_intc.json` | LL/PHY interrupt ctrl |
 | LL_PHY_WRAPPER | `PHY` @ `+0x20000` | REGFILE | `0x10000` | `d2c_ucie2phy_top_a_2nm_ew.json` | **the 2nm UCIE PHY** |
 
-All 11+ schema JSONs were verified on disk: `ucie_a_wrap NODE 0x200000`,
+All 11+ schema JSONs are present on disk: `ucie_a_wrap NODE 0x200000`,
 `d2d_tl_wrapper REGFILE 0x80000`, `d2d_ll_phy_wrapper NODE 0x100000`, `d2d_tl/d2d_ll REGFILE
 0x2000`, `d2d_phy_wrapper_syn 0x1000`, `d2c_ucie2phy_top_a_2nm_ew 0x10000`,
 `s2s_bridge_ch_split 0x100` — node `type`/`size` == schema `Type`/`SizeInBytes`.
 
-> **GOTCHA — wrapper-relative offsets.** SX-ADDR-14 §3's "off in link" column mixes
-> link-base and wrapper-base offsets (e.g. it lists `ELA +0x12000`, `PHY +0x20000` — those
-> are relative to `D2D_LL_PHY_WRAPPER`, **not** the link base). Absolute address of the PHY
+> **GOTCHA — wrapper-relative offsets.** An "off in link" column that mixes
+> link-base and wrapper-base offsets is ambiguous: `ELA +0x12000` and `PHY +0x20000`
+> are relative to `D2D_LL_PHY_WRAPPER`, **not** the link base. Absolute address of the PHY
 > = `link_base + 0x100000 (LL_PHY_WRAPPER) + 0x20000` = `link_base + 0x120000`. This page
-> states every offset relative to its **immediate parent** (re-streamed `offset` field) so
+> states every offset relative to its **immediate parent** (the `offset` field) so
 > the address arithmetic is unambiguous.
 
-### 3a. UCIE-A vs UCIE-S — only the PHY macro differs `[HIGH · OBSERVED]`
+### 3a. UCIE-A vs UCIE-S — only the PHY macro differs
 
 `AMZN_UCIE_S_EW_0` (`ucie_s_wrap.json`) is **byte-identical** in structure; the only
 difference at the address-map level is the PHY: it binds `d2c_ucie2phy_top_s_2nm_ew.json`
@@ -251,9 +251,9 @@ RAS instrumentation in every `GLOBALS` sub-bundle — mirroring the HBM-datapath
 
 ## 4. UCIE link geometry + cross-die routing `[HIGH · OBSERVED geometry; MED · INFERRED routing]`
 
-### 4a. Link count per package — **39 distinct links** `[HIGH · OBSERVED]`
+### 4a. Link count per package — **39 distinct links**
 
-Re-streamed by matching `short_name == AMZN_UCIE_{A|S}_{EW|NS}_n` where `json` binds
+Matched by `short_name == AMZN_UCIE_{A|S}_{EW|NS}_n` where `json` binds
 `ucie_{a,s}_wrap.json`:
 
 | flavor | dir | distinct link idx | on which die(s) |
@@ -268,7 +268,7 @@ Per-die: **C_DIE = 37 links** (16 A-EW + 8 A-NS + 8 S-EW + 5 S-NS); **H_DIE = 18
 (the 16 shared EW + 2 H_DIE-only EW_16/17). Top-container records: **440** (by die:
 C_DIE 296 + H_DIE 144).
 
-### 4b. Instance multiplicity — decoding the 440 top-containers `[HIGH · OBSERVED]`
+### 4b. Instance multiplicity — decoding the 440 top-containers
 
 Each link top-container is replicated across `{4 SENG} × {dies it lives on} × {PEB_APB_IO
 plain, PEB_APB_IO_BCAST}`:
@@ -280,8 +280,8 @@ plain, PEB_APB_IO_BCAST}`:
 | A-NS_*, S-EW_*, S-NS_* | 4 SENG × 1 die (C only) × 2 apertures | 8 | (8+8+5) × 8 = 168 |
 | | | **TOTAL** | **440** |
 
-The `PEB_APB_IO_BCAST` aperture is **+0x20000000** (bit 29) from `PEB_APB_IO` — re-verified
-on a link pair: plain `AMZN_UCIE_A_EW_0` @ `0x2000008013180000`, bcast @ `0x2000008033180000`,
+The `PEB_APB_IO_BCAST` aperture is **+0x20000000** (bit 29) from `PEB_APB_IO` — on a
+link pair: plain `AMZN_UCIE_A_EW_0` @ `0x2000008013180000`, bcast @ `0x2000008033180000`,
 Δ = `0x20000000`. This is the same dual-aperture broadcast delta the HBM and DMA subtrees
 use ([rdma-cross-die](../../dma/rdma-cross-die.md)).
 
@@ -320,11 +320,11 @@ CAM ("the CAM that consumes `CAYMAN_ID`").
 > a **Cayman** artifact (`cayman_addr_decode_neighbor.h`), but the field layout
 > (`EXIT_SENG[50]`/`EXIT_DIE[51]`/`NEIGHBOR_ROUTE[52]`/`PEB[53]` over a 6-bit chip-id mesh)
 > is the family-general cross-die envelope. Maverick reuses the same `[63:60]` view-nibble +
-> bit-53 PEB scheme (re-verified: every PCIe view, every UCIE CSR, every fabric node lands
+> bit-53 PEB scheme (every PCIe view, every UCIE CSR, every fabric node lands
 > on the predicted nibble/plane). The Maverick die set is **3-die** (C_DIE/H_DIE/IO_DIE) vs
 > Cayman's 2-die `DIE[47]` — that is `[INFERRED]` for the v5 interior wiring.
 
-### 4d. The d2d sideband — QSPI + PLL config plane `[HIGH · OBSERVED]`
+### 4d. The d2d sideband — QSPI + PLL config plane
 
 **432 D2D-only records** (not inside any UCIE link) = the per-die d2d clock+config sideband,
 under `AMZN_PEB`, on **all three dies** (C_DIE/H_DIE/IO_DIE), **144 records each**:
@@ -371,7 +371,7 @@ domain of [rdma-cross-die](../../dma/rdma-cross-die.md), cited here, not re-deri
 
 ---
 
-## 6. The on-chip fabric / NoC subtree `[HIGH · OBSERVED]`
+## 6. The on-chip fabric / NoC subtree
 
 The on-chip interconnect between host-IF, HBM, and the engines is a multi-fabric set, all in
 the secure PEB plane (+ host-visible FIS_* mirrors). Container nodes (re-streamed by `json`
@@ -384,7 +384,7 @@ binding):
 | `peb_fabric_amzn.json` | 24 | `FABRIC` | PEB fabric |
 | `io_fabric_amzn.json` | 8 | `AMZN_IO_FABRIC` | IO-side fabric |
 
-Whole-DB keyword totals (re-streamed; user/secure split via the dual aperture):
+Whole-DB keyword totals (streamed; user/secure split via the dual aperture):
 `TILE_FABRIC` **16,624** / `PEB_FABRIC` **1,932** / `SP_FABRIC` **1,512** / `IO_FABRIC`
 **428** / `XBAR` **4,728**. Host-visible FIS mirrors (`FIS_TILE_FABRIC`, `FIS_PEB_SP_FABRIC`,
 `FIS_PEB_FABRIC`, `FIS_IO_FABRIC`) carry the user-view protection wrappers.
@@ -404,9 +404,9 @@ The tile fabric is a **9-read / 9-write URB** (Unified Request Buffer) interconn
 embedded **`HBM_XBAR_4X2`** crossbar — the NoC stage that routes tile-engine traffic into the
 HBM crossbar plane.
 
-### 6b. The HBM crossbar NoC `[HIGH · OBSERVED]`
+### 6b. The HBM crossbar NoC
 
-`XBAR` = 4,728 records whole-DB. Crossbar schema census (re-streamed `json` tally):
+`XBAR` = 4,728 records whole-DB. Crossbar schema census (`json` tally):
 
 | schema | count | role |
 |--------|:-----:|------|
@@ -423,7 +423,7 @@ HBM crossbar plane.
 tile/user plane) **are** this NoC: `xbar_port_hbm_*` (640) the HBM-side ports,
 `xbar_port_fab_*` (384) the fabric-side ports, `xbar_crc_hash` the channel-interleave
 remapper, `xbar_central_ctrl` the switch controller. **No node carries `NOC`, `RING`
-(other than `ring_io_*`), or a dedicated bridge name** (re-verified 0 `NOC` hits) — the
+(other than `ring_io_*`), or a dedicated bridge name** (0 `NOC` hits) — the
 Maverick on-chip interconnect is expressed as the FABRIC (tile/io/peb/sp) + XBAR families,
 not a named NoC/ring.
 
@@ -433,7 +433,7 @@ not a named NoC/ring.
 
 Closes to the byte; cross-checked against the `.json` mirror.
 
-### 7a. PCIe domain — 50 (re-streamed; mirror = 50)
+### 7a. PCIe domain — 50 (mirror = 50)
 
 ```text
 USER_PCIEA  view : 24 = 8 endpoints × 3 records (PCIEA_n + _BAR_OFFSET + _MSIX_DOORBELL)
@@ -443,7 +443,7 @@ SECURE_PCIEM view: 24 = 8 endpoints × 3 records
 PCIE total = 24 + 24 + 2 = 50   ✓ EXACT
 ```
 
-### 7b. UCIE — 53,720 (re-streamed; mirror = 53,720)
+### 7b. UCIE — 53,720 (mirror = 53,720)
 
 ```text
 UCIE link-wrapper subtrees   40,232   (440 link top-containers; mix of 61- and 154-record links)
@@ -453,7 +453,7 @@ UCIE_TILE_TG traffic-gen      5,148
 UCIE total                   53,720   ✓ EXACT
 ```
 
-### 7c. D2D — 33,432 (re-streamed; mirror = 33,432)
+### 7c. D2D — 33,432 (mirror = 33,432)
 
 ```text
 D2D blocks INSIDE UCIE links (D2D_TL_WRAPPER / D2D_LL_PHY_WRAPPER + descendants)  33,000
@@ -462,7 +462,7 @@ D2D SIDEBAND not in a UCIE link (D2D_QSPIM/QSPIS/PLL_D2D + GLOBS/CTL/violations)
 D2D total                                                                        33,432   ✓ EXACT
 ```
 
-`D2D ∩ UCIE = 33,000` (re-streamed) — the d2d-named protocol blocks live **inside** UCIE
+`D2D ∩ UCIE = 33,000` — the d2d-named protocol blocks live **inside** UCIE
 link wrappers; D2D-only = 432 = the `AMZN_PEB` sideband.
 
 ### 7d. Fabric / NoC keyword totals (clean censuses, not disjoint)
@@ -473,7 +473,7 @@ grand sum is asserted — each is a clean keyword census.
 
 ---
 
-## 8. JSON-sibling equivalence `[HIGH · OBSERVED]`
+## 8. JSON-sibling equivalence
 
 The `.json` mirror was streamed as text (`rg`/`jq`, no pickle risk). Keyword counts are
 byte-identical to the pkl: **PCIE 50 == 50; UCIE 53,720 == 53,720; D2D 33,432 == 33,432;
@@ -517,18 +517,17 @@ schema verified.
 
 ## 10. CORRECTION callouts + reconciliation
 
-* **CORRECTION (offset basis).** SX-ADDR-14 §3's link sub-block table mixes link-base and
-  wrapper-base offsets. Re-streamed `offset` fields prove the listed `ELA +0x12000` /
+* **CORRECTION (offset basis).** A link sub-block table that mixes link-base and
+  wrapper-base offsets is ambiguous. The `offset` fields show `ELA +0x12000` /
   `PHY +0x20000` etc. are **relative to `D2D_LL_PHY_WRAPPER`** (which itself sits at
   `+0x100000` in the link). The PHY absolute offset = `+0x120000`. This page states every
-  offset relative to its immediate parent. (Resolves an ambiguity, not a numeric error in
-  the report.)
+  offset relative to its immediate parent.
 
 * **NOTE (controller-absence substrings).** A naive substring scan for d2d-controller IP
   produces false positives: `dwc`→`DWC_HBMPHY` (16, the HBM PHY), `ring`→`ring_io_*`/`otp`
   (72), `bridge`→`s2s_bridge_ch_split` (440, the legitimate per-link channel splitter). The
   **true** PCIe/UCIE *controller* node count is **0** (`pcie5`/`snps`/`mrvl`/`xsr`/`e32mp`/
-  `appaxi`/`iatu`/`atu`/`noc` all = 0). SX-ADDR-14's "no controller node" claim holds once
+  `appaxi`/`iatu`/`atu`/`noc` all = 0). The "no controller node" claim holds once
   the substring collisions are excluded.
 
 * **Cross-checks consistent.** The d2d/UCIE + fabric CSRs sit on the same
@@ -650,7 +649,7 @@ def neighbor_addr(local_addr, flags):                    # bit-insert per addr-d
 ## 12. Confidence ledger
 
 **HIGH · OBSERVED**
-* Safe-load reproduced (`len == 323,198`, RestrictedUnpickler never resolved a global).
+* Safe load (`len == 323,198`, RestrictedUnpickler never resolved a global).
 * PCIE 50 = `USER_PCIEA` (24) + `SECURE_PCIEM` (24) + 2 view nodes; 8 endpoints/view; bases
   `0x1000…`/`0x3000…` by nibble; each endpoint = NODE (`pciea/pciem_address_map.json`) +
   `BAR_OFFSET` (+0x0) + `MSIX_DOORBELL` (+0x2000000000000, bit 49), both `reserved.json`;
@@ -686,7 +685,7 @@ def neighbor_addr(local_addr, flags):                    # bit-insert per addr-d
 *Source: `al_address_map_db.pkl` / `.json` (MAVERICK, NC-v5) +
 `maverick/vpc-mirror/arch-regs/src/{address_map,csrs/d2d_top}/*.json` +
 `maverick_pcie_bar_mapping.yaml`. Cross-gen reference: Cayman NC-v3 host BAR layout.
-Lawful-interoperability static analysis; counts machine-re-derived for this page.*
+Lawful-interoperability static analysis.*
 
 **See also:** [pkl-db](pkl-db.md) (load primitive + DB invariants) ·
 [addr-decode](addr-decode.md) (the NEIGHBOR decoder) ·

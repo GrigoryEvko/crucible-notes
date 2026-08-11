@@ -16,9 +16,11 @@ Functionally it is two halves welded into one register file:
 The byte-exact register layout, the shaping/arbitration model, the `prio_cap`-equivalent
 priority mechanism, the NTS responder behaviour, and the `.mako` generator that emits the
 file are all reconstructed below directly from the shipped Cayman register schema
-(`csrs/sprot/qos_prot.json`) and its generator template (`qos_prot.json.mako`).
+(`csrs/sprot/qos_prot.json`) and its generator template (`qos_prot.json.mako`). The
+page default is `[HIGH · OBSERVED]`; claims that depart from it carry an explicit
+tag, and the per-claim-class breakdown is the Confidence ledger at the end.
 
-> **Scope / naming clarification `[HIGH · OBSERVED]`.** `qos_prot` does **not** generate
+> **Scope / naming clarification.** `qos_prot` does **not** generate
 > `AxQOS`/`AxPROT[2:0]` sideband, and does **not** do master-ID / VMID / region gating. A
 > full-file scan for `axqos`/`axprot`/`vmid`/`secure`/`privileged`/`master-id`/`region` field
 > names returns **zero** hits (the only matches are the `UnitName` `qos_prot` and the
@@ -35,9 +37,9 @@ is [`nsm.md`](./nsm.md); FIS-level control/error-trigger is [`fis-errtrig-spad.m
 
 ---
 
-## 1. Regfile-level facts `[HIGH · OBSERVED]`
+## 1. Regfile-level facts
 
-Re-derived from `qos_prot.json` this session (`jq`-counted, not decompile-grepped):
+Read from `qos_prot.json`:
 
 | property | value | note |
 |----------|-------|------|
@@ -55,7 +57,7 @@ Re-derived from `qos_prot.json` this session (`jq`-counted, not decompile-greppe
 | `SpecialAccess` | **15 × `PulseOnW`** + 3 × `None` | the 15 LFSR `*_seed` regs reload-on-write; rest absent |
 | `0xb1` reset placeholder | **absent** (`grep -ci 0xb1` = 0) | |
 
-> **GOTCHA — hex-string sizes, no mixed decimal here `[HIGH · OBSERVED]`.** Every size in
+> **GOTCHA — hex-string sizes, no mixed decimal here.** Every size in
 > this file is an explicit `0x`-prefixed **hex string**: `SizeInBytes="0x1000"` and the five
 > `BundleSizeInBytes` (`"0x300"`,`"0x80"`,`"0x80"`,`"0x04"`,`"0x10"`). This file follows the
 > `tdma_model` convention, **not** the `udma_gen` decimal-`BundleSizeInBytes` convention — so
@@ -80,7 +82,7 @@ the FIS `..._SPROT_QOS` base from the address map.
 
 ---
 
-## 2. Bundle map `[HIGH · OBSERVED]`
+## 2. Bundle map
 
 Five arrays, no overlap; `BundleSizeInBytes` are hex strings, spans computed:
 
@@ -130,7 +132,7 @@ channels, gated globally by a master `chicken` bit, plus a fifteen-LFSR probabil
 | 16 | `outstanding_read_limit_enable` | `0x0` | enable §3b read cap |
 | 17 | `outstanding_write_limit_enable` | `0x0` | enable §3b write cap |
 
-> **NOTE — the `chicken` boot semantic `[HIGH · OBSERVED]`.** `chicken` rst=`0x1` means the
+> **NOTE — the `chicken` boot semantic.** `chicken` rst=`0x1` means the
 > entire shaper is *bypassed* out of reset: no limit, no stall, no fairness gate fires until
 > firmware writes `control[0]=0`. A faithful rebuild **must** reset this bit to 1 — the FIS
 > is required to be transparent until explicitly armed, so a missing target on the boot path
@@ -229,7 +231,7 @@ field set, widths and resets are `[HIGH · OBSERVED]`.
 > name**, bit 30 is the **read**-byte enable (it gates `read_byte_limit_in_window_{lo,hi}`);
 > the description is a schema copy-paste artifact, not a wiring error. Trust the field name.
 
-### 3e. The 15 LFSRs — the staller PRNG bank `[HIGH · OBSERVED]`
+### 3e. The 15 LFSRs — the staller PRNG bank
 
 Layout: **5 channels `{ar, r, aw, w, b}` × 3 LFSRs `{prob, delay_1, delay_2}` = 15 LFSRs**,
 each LFSR = **3 registers** at a `+0x4` stride from base `0x200`:
@@ -290,7 +292,7 @@ can be stalled deterministically (`staller_delay`) or probabilistically (LFSR vs
 
 ## 4. The "prot" half — NTS, write-serializer, isolation, spares
 
-### 4a. `nts_amzn` — the No-Target-Slave error responder (the protection core) `[HIGH · OBSERVED]`
+### 4a. `nts_amzn` — the No-Target-Slave error responder (the protection core)
 
 When the downstream slave is absent (powered off / unmapped / flushed), **NTS terminates the
 AXI transaction locally** with a programmable response and a programmable read-data pattern,
@@ -323,7 +325,7 @@ so the fabric never hangs against a missing target. This is the literal "protect
 | `read_data` | `+0x0c` | `val[31:0]` | **`0xDEADBEEF`** | data returned in NTS mode, **replicated across the bus width** |
 | `write_response` | `+0x10` | `val[1:0]` | **`0x2`** | write resp in NTS mode: `00`=OK, `01`=unused, `10`=**SLVERR**, `11`=DECERR |
 
-> **The NTS responder, end to end `[HIGH · OBSERVED]`.** On reset the responder is *armed to
+> **The NTS responder, end to end.** On reset the responder is *armed to
 > fail safely*: both `read_response` and `write_response` default to **`0x2` = SLVERR**, and
 > `read_data` defaults to the **`0xDEADBEEF`** poison pattern (replicated across the bus, so a
 > 256-bit beat reads `DEADBEEF DEADBEEF …`). NTS engages when `control.enable` (or the HW
@@ -336,14 +338,14 @@ so the fabric never hangs against a missing target. This is the literal "protect
 > `nsm` watchdog uses the same `0xDEADBEEF` RDATA poison + SLVERR on a protocol violation
 > (see [`nsm.md`](./nsm.md) and [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md) §4c).
 
-> **NOTE — the remapper DENY path reuses NTS `[HIGH · OBSERVED]`.** Per
+> **NOTE — the remapper DENY path reuses NTS.** Per
 > [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md) §4d, a CAM
 > **miss/DENY** in the FIS address/ID half ([`remapper.md`](./remapper.md)) is terminated by
 > *this same* NTS responder: a denied transaction is steered into the NTS and answered with
 > SLVERR + `0xDEADBEEF`. So `nts_amzn` is both the "missing-slave" path **and** the
 > "access-denied" path — one local AXI terminator serving the whole FIS sprot region.
 
-### 4b. `wr_serializer` — AXI write ordering + protocol check `[HIGH · OBSERVED]`
+### 4b. `wr_serializer` — AXI write ordering + protocol check
 
 Serializes writes and latches an AXI write-channel protocol violation (the WDATA-before-AW
 ordering checker).
@@ -354,7 +356,7 @@ ordering checker).
 | `status` | `+0x04` | `error[0]` | RO | `0x0` | protocol error detected by the serializer |
 | `clear` | `+0x08` | `clear_error[0]` | **WO** | `0x0` | clear the error latch by writing `1` (**the only WO register in the file**) |
 
-### 4c. `nts_isolation` — counter-reset / timeout / slice-reset (Cayman-new) `[HIGH · OBSERVED]`
+### 4c. `nts_isolation` — counter-reset / timeout / slice-reset (Cayman-new)
 
 Isolation/quiescence controls: drain the NTS pending counters, arm the read/write timeout
 counters, and software-reset the AXI register-slices on either side of the NTS so a stuck
@@ -374,7 +376,7 @@ master can be isolated and the FIS re-initialised without a full block reset.
 Note `rd_timeout_en` boots **enabled** (`0x1`): read timeouts are armed at reset so a stuck
 read into a missing slave is bounded even before firmware touches the block.
 
-### 4d. `spare_amzn` — spares `[HIGH · OBSERVED]`
+### 4d. `spare_amzn` — spares
 
 | register | +off | rst |
 |----------|-----:|----:|
@@ -460,14 +462,14 @@ direct consequence of the loop order (LFSRs first, then stallers, all `+0x4` str
 `nts_amzn` / `wr_serializer` / `nts_isolation` / `spare_amzn` bundles are written literally
 (no loop), since they have no per-channel replication.
 
-> **NOTE — `mode` field is literal in the Mako, not looped `[HIGH · OBSERVED]`.** The
+> **NOTE — `mode` field is literal in the Mako, not looped.** The
 > `nts_amzn.control.mode` bit (the NO-TARGET/BLOCK select) and the `nts_isolation` bundle are
 > hand-written in both the `.mako` and the emitted `.json` — they are the **Cayman additions**
 > over the Sunda baseline (§6), bolted onto an otherwise-frozen template.
 
 ---
 
-## 6. Cross-generation divergence (Cayman authoritative) `[HIGH · OBSERVED]`
+## 6. Cross-generation divergence (Cayman authoritative)
 
 Comparing the shipped `csrs/sprot/qos_prot.json` across the five silicon (`sunda`, `cayman`,
 `mariana`, `mariana_plus`, `maverick`). The shaper IP is **frozen from Cayman onward**; what
@@ -479,7 +481,7 @@ changed is at the edges.
 | **cayman** | **5** | **74** | **192** | **this page** — adds `nts_isolation`, NTS `mode`, 9-bit block-ID |
 | mariana / mariana_plus / maverick | 10 | 105 | 251 | adds AXI parity + AXI protocol-checker bundles |
 
-The exact Sunda→Cayman diffs, byte-verified from both shipped JSONs this session:
+The exact Sunda→Cayman diffs, byte-verified from both shipped JSONs:
 
 1. **`fairness_control` widened 7→9-bit Block ID.** Sunda: `block_id [6:0]` / `block_id_mask
    [13:7]` / `interval [19:14]` / enables `[20]/[21]/[22]`. Cayman: `block_id [8:0]` /
@@ -523,7 +525,7 @@ protection that `qos_prot` does **not**. Masters that get a `qos_prot` FIS (from
 address map): SDMA channels, IO_D2D_SUBSYS die-to-die links, IO_PCIE_A/U + PEB_PCIE_M,
 IO_SDMA_H2D / IO_SDMA_D2H, IO_TOP_SP scratchpads, IO_INTC_RDM, PEB.
 
-**Privilege split `[HIGH · OBSERVED]`.** `qos_prot` is instanced only under the **privileged**
+**Privilege split.** `qos_prot` is instanced only under the **privileged**
 `PEB_APB_IO_{0,1}` (+ BCAST) clusters — the secure/internal management view, secure-only (per
 [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md) §4a:
 `qos_prot` = 0 user / 784 secure, `0x1000`). The host-visible `SE_USER` FIS uses a different,

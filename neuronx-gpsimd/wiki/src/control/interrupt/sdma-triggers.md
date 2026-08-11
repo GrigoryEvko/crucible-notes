@@ -28,7 +28,7 @@ here are the artifact's own verbatim text. No external source tree is referenced
 > authored fresh off the shipped `sdma_triggers.yaml` and contains ZERO of that
 > contaminating content.** Provenance was re-grounded by counting entries directly
 > (`yq 'length'` → `254`) and re-deriving every per-group count from the YAML
-> bytes, never from a decompile grep. `[HIGH/OBSERVED]`
+> bytes, never from a decompile grep.
 
 ---
 
@@ -43,7 +43,6 @@ here are the artifact's own verbatim text. No external source tree is referenced
 `cayman` ships **only** inside the nested `cayman-arch-regs_tgz`; no
 `mariana` / `mariana_plus` / `tonga` `sdma_triggers.yaml` ships (`fd`-verified).
 The cayman copy is the byte-exact authority for this page.
-`[HIGH/OBSERVED]`
 
 > **NOTE — v5/MAVERICK status.** The maverick (NC-v5/MAVERICK) `sdma_triggers.yaml`
 > header is **OBSERVED** in full (its 256-entry body parses cleanly), but the
@@ -70,13 +69,15 @@ Key union enumerated directly (`yq '[.[] | keys[]] | unique'`):
   edge_triggered: true
 ```
 
-| Key | Type | Semantics | `[grade]` |
-|-----|------|-----------|-----------|
-| `trigger` | string `bus[bit]` | The INTC trigger-bus identity. **YAML order == bit order**; the 254 entries fill the INTC trigger inputs contiguously (see §6). | `[HIGH/OBSERVED]` |
-| `name` | string | Per-source identity (e.g. `sdma_main_intr_3`, `notific_intr_0`). | `[HIGH/OBSERVED]` |
-| `description` | string \| `null` | Human prose; **4 entries are `null`** (the `sdma_ela_0..3` ELA tap points). | `[HIGH/OBSERVED]` |
-| `needs_cdc` | bool \| `null` | "must this source cross a clock domain into the INTC?" **NEVER `true`** here — `0` true / `101` false / `153` null = **0 CDC crossings**. SDMA blocks do their own CDC internally before the trigger bus. | `[HIGH/OBSERVED]` |
-| `edge_triggered` | bool | `true` = edge (one-shot event/completion/error pulse), `false` = level (sticky status). **223 edge / 31 level.** | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Key | Type | Semantics |
+|-----|------|-----------|
+| `trigger` | string `bus[bit]` | The INTC trigger-bus identity. **YAML order == bit order**; the 254 entries fill the INTC trigger inputs contiguously (see §6). |
+| `name` | string | Per-source identity (e.g. `sdma_main_intr_3`, `notific_intr_0`). |
+| `description` | string \| `null` | Human prose; **4 entries are `null`** (the `sdma_ela_0..3` ELA tap points). |
+| `needs_cdc` | bool \| `null` | "must this source cross a clock domain into the INTC?" **NEVER `true`** here — `0` true / `101` false / `153` null = **0 CDC crossings**. SDMA blocks do their own CDC internally before the trigger bus. |
+| `edge_triggered` | bool | `true` = edge (one-shot event/completion/error pulse), `false` = level (sticky status). **223 edge / 31 level.** |
 
 This is the **MINIMAL-5** schema variant shared by the FAMILY-A leaf tables
 (SDMA + IO-fabric + d2d + the TOP_SP bulk; see [schema atlas](schema-atlas.md)). It
@@ -95,7 +96,7 @@ deliberately **omits** keys carried by richer tables:
 > value (always false), not the presence.** The INTC's own
 > `int_cdc_bypass_grp`/`int_cdc_bypass_active` registers note that *"the CDC syncro
 > is still in the path regardless"* (see [INTC 4-group](../csr/intc-4group.md)), so
-> the leaf can declare no crossing while the INTC still resynchronises. `[HIGH/OBSERVED]`
+> the leaf can declare no crossing while the INTC still resynchronises.
 
 ---
 
@@ -178,7 +179,7 @@ the **per-channel DMA completion set** plus the aggregation summaries:
 
 The **32 per-queue completions** (`[3..34]` = 16 S2M RX + 16 M2S TX) are the
 **"per-channel DMA" completion sources**. The group summaries are
-level-of-aggregation rollups carried as `edge` here. `[HIGH/OBSERVED]`
+level-of-aggregation rollups carried as `edge` here.
 
 **`sdma_secondary_intr[0..79]` (80, edge) — the M2S/S2M error matrix.** Reconciles
 1:1 with the M2S `err_log_mask` ("4 AXI domains × {tout,response,parity} +
@@ -192,7 +193,7 @@ prefetch desc-integrity + completion-serial mismatch") and the S2M error registe
 
 AXI-fault (parity/response/timeout) dominates; the 30+ buffer/fifo-parity members
 are RAS sources; the 7 AXI-generator summaries are level-of-aggregation. `[28]`
-"Reserved" and the V4-tagged `[60]` are OBSERVED verbatim. `[HIGH/OBSERVED]`
+"Reserved" and the V4-tagged `[60]` are OBSERVED verbatim.
 
 ### 3.3 FIS — fabric-interface-shim family (61 entries, edge)
 
@@ -207,13 +208,13 @@ The SoC-fabric concern bolted onto the SDMA block. Three buses:
   (mirror of §3.1); then the amzn_errtrig half `[25..49]`, ending `[45]`
   *"amzn_errtrig notific -- The AXI master received a write response error."* and
   `[49]` *"…Coalescer detected hit to multiple streams-> AXI behavior
-  non-deterministic"*. Kind = notification mirror (edge). `[HIGH/OBSERVED]`
+  non-deterministic"*. Kind = notification mirror (edge).
 * **`sdma_sprot_intr[0..5]` (6)** — the fis_sprot security/QoS-protection vector
   (HW backing in the qos_prot / remapper CSRs — already enumerated here, not
   separate sources): `[0]` amzn_remapper **DENIED** a transaction; `[1]` delta
   monitor R-resp > AR-req; `[2]` **tmu AXI TIMEOUT**; `[3]` delta monitor B-resp >
   AW-req; `[4]` qos PMU interrupt *(OR of all 16 PMU counter "interrrupts" — typo
-  verbatim)*; `[5]` `fis_sprot_spare_0`. `[HIGH/OBSERVED]`
+  verbatim)*; `[5]` `fis_sprot_spare_0`.
 
 ### 3.4 ELA / ERG / DRE / CCE — internal compute/buffer faults (24, **all level**)
 
@@ -291,7 +292,7 @@ fault state is **sticky (level)**; completions/notifications/AXI events are
 > single-channel DMA engine **inside** the Q7/NX GPSIMD core, distinct from the
 > Annapurna **uDMA/SDMA** descriptor engine enumerated above. Its completion/error
 > lines land on the **Q7 core's own 37-line interrupt vector** (`INT0..INT36`),
-> *not* on the SDMA INTC trigger bus. `[HIGH/OBSERVED]`
+> *not* on the SDMA INTC trigger bus.
 
 In the Q7 core's interrupt-level table (all 37 ints at level 1 in this config):
 
@@ -308,7 +309,7 @@ The `libidma*.a` / `src/libidma/idma.c` in the GPSIMD toolchain drive *this*
 on-core iDMA; the firmware's outbound HBM/host DMA instead goes through the **uDMA
 M2S via the DGE**, whose completion/error sources are the 254 triggers above.
 ("`legacy_dma`" strings in the corpus belong to the Synopsys PCIe controller, also
-unrelated.) See [the uDMA HW engine](../../dma/udma-hw-engine.md). `[HIGH/OBSERVED]`
+unrelated.) See [the uDMA HW engine](../../dma/udma-hw-engine.md).
 
 > **GOTCHA.** A reimplementation that wires the SDMA descriptor-engine completions
 > into core INT 35/36 conflates two engines. The 254-source SDMA set fans up through
@@ -370,7 +371,7 @@ All level at the apex (each summary re-latches a downstream sticky image).
 
 > **CORRECTION / HAZARD — apex bit index ≠ SDMA queue number (H1).** The apex SDMA
 > trigger **index counts UP** while the NAME's SDMA queue number **counts DOWN**.
-> Re-verified directly against `peb_intc_triggers.yaml`:
+> Directly from `peb_intc_triggers.yaml`:
 >
 > ```
 > se0_sdma_nmi[0]  -> name "se0_sdma_31_summary"  (SEngine[0] SDMA[31])
@@ -381,7 +382,7 @@ All level at the apex (each summary re-latches a downstream sticky image).
 > `physical_queue = 31 - (apex_idx - 7)` for SE0, `31 - (apex_idx - 42)` for SE1
 > (identical reversal on both SEngines). **A tool that reads the apex bit index as
 > the queue number is wrong — it is the complement.** Always trust the NAME string
-> `se{e}_sdma_{q}_summary`, never the bit index. `[HIGH/OBSERVED]`
+> `se{e}_sdma_{q}_summary`, never the bit index.
 
 ### 6d. Full cascade
 
@@ -432,7 +433,7 @@ All three gens use the **same MINIMAL-5 schema** (key-union identical, `yq`-veri
   causes into the sprot bus; `sprot[0..4]` are the security/QoS causes. DROPS the
   cayman tail extras (the 4 CCE `output_data_converter_state_*`, sow conflict/underrun,
   `access_missing_app_engine`, the 2 spares; `fis_cntrl` absent) — hence the
-  fewer-level count (22 vs 31). `[HIGH/OBSERVED]`
+  fewer-level count (22 vs 31).
 
 **Stable core across all gens:** `sdma_main_intr`(49) + `sdma_secondary_intr`(80) +
 NOTIFIC(33) + the ELA/DRE/CCE compute faults. The deltas are entirely in the

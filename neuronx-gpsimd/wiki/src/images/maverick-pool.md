@@ -18,7 +18,7 @@ reconciliation; those are owned by the [MARIANA baseline](./mariana-pool.md) and
 > opcode table rows, the per-instruction kernel bodies) sit in FLIX-desynced spans or
 > stripped `ET_DYN` SOs and are **INFERRED**, flagged inline. The carved
 > `kernel_info_table`s, the reset bytes, and the PROF blobs **ARE OBSERVED** (parsed /
-> `cmp`-clean this session). `MAVERICK_Q7_CC_TOP` is **FILE-ABSENT**; `arch_id 36` is
+> `cmp`-clean). `MAVERICK_Q7_CC_TOP` is **FILE-ABSENT**; `arch_id 36` is
 > **INFERRED**. [WALL]
 
 Every size, sha256, opcode, reset byte and `kernel_info_table` key below reads directly
@@ -31,7 +31,7 @@ identity-mapped `.rodata`, with the shipped Cadence Vision-Q7 `ncore2gp`
 > **The v5 MX/dtype "expansion" does NOT land on POOL.** All four MAVERICK Q7 EXTISA
 > `kernel_info_table`s (17/1/2/9 entries) carry the **IDENTICAL `(opcode,spec)` KEY SET**
 > as MARIANA_PLUS POOL — **byte-for-key, ZERO rows added, ZERO removed** (`ADDED = []`,
-> `REMOVED = []`, parsed byte-exact this session). The dequant op `0x7b`
+> `REMOVED = []`, parsed byte-exact). The dequant op `0x7b`
 > (→ `proc_4bit_mx_8`) and the whole codec family route **exactly** as on v4; the MX
 > dequant + **both** RNG algos (TIE + LFSR) are **RETAINED byte-for-name**. The genuine
 > v5 MX-expansion opcodes — `QUANTIZE_MX 0xe3`, `MATMUL_MX 0x0A`, `LDWEIGHTS_MX 0x09` —
@@ -113,7 +113,7 @@ byte-for-key.
 Each EXTISA SO embeds a `kernel_info_table` of 8-byte records
 `{ u8 0; u8 0; u8 spec(+2); u8 opcode(+3); u32_le funcVA(+4) }` (the
 [FW-18 / kernel-info-table format](../firmware/pool/kernel-info-table.md)). `readelf -S`
-locates each table; parsed byte-exact this session. The **17-entry EXTISA_0** table (the
+locates each table; parsed byte-exact. The **17-entry EXTISA_0** table (the
 full POOL routing table) reads: [HIGH/OBSERVED]
 
 | idx | opcode | spec | funcVA (rel, ET_DYN) | routing (== MARIANA_PLUS names) |
@@ -141,7 +141,7 @@ The other three tables: **EXTISA_1** = 1 entry (`0x7e`); **EXTISA_2** = 2 (`0x7c
 cptc/MX codec family). `op 0xe4 = CONV_LUT_LOAD` per the shipped maverick enum (present on
 both gens, **not** a dequant). [HIGH/OBSERVED]
 
-> **RESULT — the key-set diff (parsed both gens this session).** For **every** one of the
+> **RESULT — the key-set diff (parsed both gens).** For **every** one of the
 > four tables, the `(opcode,spec)` key set diffed against the MARIANA_PLUS EXTISA SO is
 > `ADDED = []`, `REMOVED = []` → **byte-for-key IDENTICAL**. The union of **all** POOL KIT
 > opcodes is `{0x41, 0x45, 0x46, 0x47, 0x51, 0x52, 0x7b, 0x7c, 0x7d, 0x7e, 0xbe, 0xe4,
@@ -151,7 +151,7 @@ both gens, **not** a dequant). [HIGH/OBSERVED]
 ### 2.2 The v5 MX-expansion opcodes are DVE/PE, NOT POOL
 
 The shipped clean ISA header `neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h`
-defines the v5 MX opcodes — read directly this session: [HIGH/OBSERVED]
+defines the v5 MX opcodes: [HIGH/OBSERVED]
 
 ```c
 NEURON_ISA_TPB_OPCODE_LDWEIGHTS_MX      = 0x09,   // PE  — MX weight load
@@ -162,7 +162,7 @@ NEURON_ISA_TPB_OPCODE_CONV_LUT_LOAD     = 0xe4,   // POOL KIT idx (EXTISA_3) —
 ```
 
 `LDWEIGHTS_MX 0x09`, `MATMUL_MX 0x0A` and `QUANTIZE_MX 0xe3` are **provably absent from all
-four POOL KITs** (checked this session — `False` for each). They are owned by
+four POOL KITs** (`False` for each). They are owned by
 [PE](./maverick-pe.md) (`0x09`/`0x0A`) and [DVE](./maverick-dve.md) (`0xe3`). POOL's only MX
 surface is the **pre-existing** `TENSOR_DEQUANTIZE 0x7b` — the **dequant** direction
 (in-band block-of-8, present since NC-v3), a *different, older* mechanism than the v5
@@ -200,8 +200,8 @@ funcVA parse; the per-instruction kernel bodies are stripped and **INFERRED**]
 The byte-level signature that `NX_POOL` and `Q7_POOL` are **two separate cores**, and the
 v5 finding that **both** cores' resets move — including the Q7 core, which had been
 **unchanged on every prior gen** (CAYMAN/MARIANA/MARIANA_PLUS Q7 all reset `j 0x200`). All
-reset bytes read with `xxd -l16` and decoded with `ncore2gp` `xtensa-elf-objdump` (exit 0)
-this session. [HIGH/OBSERVED]
+reset bytes read with `xxd -l16` and decoded with `ncore2gp` `xtensa-elf-objdump`.
+[HIGH/OBSERVED]
 
 ### 3.1 `NX_POOL` — new `j 0x1d8` (the −0x20 v5 shift)
 
@@ -287,7 +287,7 @@ getters → no `'S:'` handler surface); Q7_POOL **drops DYNAMIC_KERNEL_LOAD (DKL
 > Cross-validation is by the `(img-ptr, size)` getter parse + the sha256 manifest + the
 > gen-boundary contiguity arithmetic (§4.2). [HIGH/OBSERVED]
 
-### 4.1 The carved images (sha256 verified this session)
+### 4.1 The carved images (sha256 verified)
 
 **`NX_POOL` (CLS = NX) — 10 getters (SEQ sequencer; NO DEBUG):**
 
@@ -326,7 +326,7 @@ handler surface lives in DEBUG, which POOL drops on v5.)
 > not IRAM** — a v5-specific residence change (the [image-catalog § 3](./image-catalog-index.md)
 > MAVERICK anomaly). Carve the Q7 code from the **SRAM** getter, not IRAM. [HIGH/OBSERVED]
 
-All 15 spot-carved blobs hashed byte-for-byte against the report manifest this session. The
+All 15 spot-carved blobs hashed byte-for-byte against the published manifest. The
 EXTISA `ET_DYN` form + the SRAM residence + the missing DEBUG/DKL are the v5 build's
 fingerprints. [HIGH/OBSERVED]
 
@@ -335,7 +335,7 @@ fingerprints. [HIGH/OBSERVED]
 The MAVERICK NX block is laid out **variant-major** (all PERF, then TEST). The PERF run is
 `DVE @0x871300 → PE @0x8b3540 → POOL @0x8c12e0 → SP @0x8eeae0`; with **ACT amputated**
 ([the v5 ACT-fold](./maverick-act.md)) the v5 NX roster is **DVE → PE → POOL → SP**, and
-POOL sits 3rd, keeping `engine_idx = 2`. Contiguity is byte-exact (computed this session):
+POOL sits 3rd, keeping `engine_idx = 2`. Contiguity is byte-exact:
 `POOL PERF_IRAM 0x8c12e0 + 0xcf40 = 0x8ce220 == POOL PERF_DRAM`; `+0x25c0 = 0x8d07e0 ==` the
 next cursor; `POOL TEST_DRAM 0x8ec320 + 0x27c0 = 0x8eeae0 == SP PERF`. [HIGH/OBSERVED]
 
@@ -349,7 +349,7 @@ fast-path, v5 *removes* the entire DGE subsystem.
 ### 5.1 DEBUG dropped → no `'S:'` handler surface
 
 MAVERICK NX_POOL ships **PERF/TEST/PROF only** — no DEBUG. Consequently the NX_POOL carves
-carry **0 `'S:'` handler-dispatch strings** (re-grepped this session over all NX carves
+carry **0 `'S:'` handler-dispatch strings** (over all NX carves
 concatenated). The named-handler roster lives in the DEBUG build, which POOL lacks on v5, so
 the [MARIANA_PLUS § 5 handler-name diff](./mariana-plus-pool.md) (run on DEBUG DRAMs) is
 **not directly reproducible**; the handler comparison resolves to the TEST-build
@@ -361,8 +361,8 @@ absence; opcode-table rows **INFERRED** — see §5.3]
 
 POOL was the v4+ DGE fast-path's **home engine** (the SW-DGE backend runs on the Q7/POOL
 cores; [MARIANA_PLUS § 2](./mariana-plus-pool.md) found all four fast-path strings on the
-MARIANA_PLUS NX_POOL). On MAVERICK NX_POOL, **region-wide** (all NX carves concatenated,
-re-grepped this session): [HIGH/OBSERVED]
+MARIANA_PLUS NX_POOL). On MAVERICK NX_POOL, **region-wide** (all NX carves concatenated):
+[HIGH/OBSERVED]
 
 | String | MARIANA_PLUS NX_POOL | MAVERICK NX_POOL | kind |
 |---|:---:|:---:|---|
@@ -398,7 +398,7 @@ HIGH/OBSERVED; opcode count + table rows MED/INFERRED]
 
 NX_POOL carries only `NEURON_ISA_TPB_DTYPE_{UINT32, INT32, FP32}` (×2 each, the
 `move.cpp` assertion) and **0** `FP8`/`INT4`/`SFP8`/`MXTENSOR`/`CPTC`/`QuantizeMx`/
-`proc_4bit` strings (re-grepped this session). The new v5 dtype codes
+`proc_4bit` strings. The new v5 dtype codes
 (`FP8_EXP2 0x10` / `INT4 0x12` / `SFP8_E8 0x13` = E8M0) are **numeric** in the sequencer
 decode path, not named NX strings — the same negative as
 [DVE](./maverick-dve.md)/[PE](./maverick-pe.md)/[ACT](./maverick-act.md). [HIGH/OBSERVED]
@@ -410,7 +410,7 @@ decode path, not named NX strings — the same negative as
 ### 6.1 The MX dequant machinery — RETAINED byte-for-name
 
 The MAVERICK Q7_POOL DEBUG DRAM carries the firmware's own `'P%i:'` dequant self-naming
-strings (re-grepped this session): `proc_4bit_mx_8` (×1), `proc_4bit_non_mx` (×1),
+strings: `proc_4bit_mx_8` (×1), `proc_4bit_non_mx` (×1),
 `proc_6bit_non_mx` (×1), `TensorDequantize` (×2), `cptc_decode` (×2),
 `Unimplemented dequant format` (×1) — the **identical** set to MARIANA_PLUS Q7 DEBUG DRAM.
 The dequant-side MX (`op 0x7b → proc_4bit_mx_8`, grp8 block-of-8, 8:5, in-band scale; the
@@ -421,7 +421,7 @@ INFERRED]
 
 ### 6.2 The RNG body — UNCHANGED (TIE + LFSR retained)
 
-The Q7_POOL DEBUG DRAM `'P%i:'` RNG token set (re-grepped this session): `Xorwow` (×4),
+The Q7_POOL DEBUG DRAM `'P%i:'` RNG token set: `Xorwow` (×4),
 `XorwowRng` (×1), `LfsrSetSeeds` (×1), `LfsrGetSeeds` (×1), `rand_algo` (×2),
 `RandGetState` (×3), `RandSetState` (×3), `Xorwow(SW)` (×**0**) — the **same** TIE+LFSR
 dual-algo set MARIANA (v4) introduced and MARIANA_PLUS retained. The `Xorwow(SW) → TIE+LFSR`
@@ -432,7 +432,7 @@ HW-vs-SW distinction is not byte-recoverable from the string layer.) See
 
 ### 6.3 The Q7-side v5 delta — rdma descriptor-gen logging DROPPED
 
-The MAVERICK-vs-MARIANA_PLUS Q7 DEBUG DRAM string set-diff (this session): **28 strings
+The MAVERICK-vs-MARIANA_PLUS Q7 DEBUG DRAM string set-diff: **28 strings
 dropped** on MAVERICK (none added beyond binary noise), of which **25 are the
 `rdma_desc_gen` / `rdma_desc_start`** (remote-DMA descriptor generation) subsystem +
 `remote_copy.cpp` / `xt_addrs` / `shuffled_sbuf_swizzle`. **Zero** dequant/MX/proc/RNG/cptc
@@ -443,8 +443,8 @@ re-architecture" reading INFERRED]
 
 ### 6.4 Q7 is a genuine compute core
 
-The Q7 PERF_SRAM blob decodes (`ncore2gp`, exit 0) to a real windowed-ABI sequencer:
-**154 `entry` / 174 `retw` / 340 `call8`** prologues this session — the vector IVP datapath
+The Q7 PERF_SRAM blob decodes (`ncore2gp`) to a real windowed-ABI sequencer:
+**154 `entry` / 174 `retw` / 340 `call8`** prologues — the vector IVP datapath
 partly FLIX-desynced by the linear sweep, but unmistakably a real compute core, not a stub.
 [HIGH/OBSERVED for the counts; the desynced vector spans INFERRED]
 
@@ -467,8 +467,8 @@ HIGH/OBSERVED; SEQ slot MED/INFERRED gap]
 
 ## 8. PROF — REUSED VERBATIM (the POOL-vs-DVE contrast)
 
-Both NX_POOL profiling blobs are `cmp -s` clean against the MARIANA_PLUS POOL tables this
-session: [HIGH/OBSERVED]
+Both NX_POOL profiling blobs are `cmp -s` clean against the MARIANA_PLUS POOL tables:
+[HIGH/OBSERVED]
 
 - **PROF_CAM** `0951b326f4a40ccd` (`0x400`) — **byte-identical** to MARIANA_PLUS (and
   MARIANA) POOL. The blob carries a **single** nonzero 4-byte word (at offset `0x8`) in
@@ -521,7 +521,7 @@ property of v4/v4+ **does not carry to v5**. [HIGH/OBSERVED]
 ## 10. engine_idx = 2 + the dual-core model (CONFIRMED)
 
 The shipped clean ISA header `neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h`
-fixes the engine enum (read directly this session): [HIGH/OBSERVED]
+fixes the engine enum: [HIGH/OBSERVED]
 
 ```c
 typedef enum NEURON_ISA_TPB_NEURON_ENGINE {
@@ -548,33 +548,33 @@ DEBUG DRAM carries `P%i: Starting pooling engine: %i` / `Stopping pooling engine
 
 ## 11. Adversarial self-verification
 
-Five strongest claims, re-challenged against the binary this session:
+The five strongest claims, challenged against the binary:
 
 1. **The KIT key-set identity / NO new rows (the headline).** *Challenge:* could a v5 MX op
    have been added as a new `kernel_info_table` row, or a routing silently re-pointed?
-   *Re-verify:* all four EXTISA KITs parsed byte-exact (17/1/2/9) — the `(opcode,spec)` key
+   *Evidence:* all four EXTISA KITs parsed byte-exact (17/1/2/9) — the `(opcode,spec)` key
    set diffed vs MARIANA_PLUS is `ADDED = []`, `REMOVED = []` for **every** table; the union
    of all POOL KIT opcodes is `{0x41,0x45,0x46,0x47,0x51,0x52,0x7b,0x7c,0x7d,0x7e,0xbe,0xe4,
    0xf0,0xf2}`; `op 0x7b` dequant present at idx16 (funcVA `0x50ec`). **HOLDS.** [HIGH/
    OBSERVED]
 2. **The v5 MX opcodes are NOT on POOL.** *Challenge:* are `0x09`/`0x0A`/`0xe3` hiding in a
-   table I didn't parse? *Re-verify:* the shipped maverick enum defines `LDWEIGHTS_MX 0x09`,
+   table not parsed? *Evidence:* the shipped maverick enum defines `LDWEIGHTS_MX 0x09`,
    `MATMUL_MX 0x0A`, `QUANTIZE_MX 0xe3`; each checked against the union of **all four** POOL
    KITs → `present? False` for each. They are PE (`0x09`/`0x0A`) / DVE (`0xe3`) opcodes.
    **HOLDS.** [HIGH/OBSERVED]
 3. **The new `j 0x1d8` / `j 0x1e4` reset geometry.** *Challenge:* could a later variant hide
-   a different shift, or is this the v4 `+0x1c`? *Re-verify:* NX head `06 75 00` → `j 0x1d8`
+   a different shift, or is this the v4 `+0x1c`? *Evidence:* NX head `06 75 00` → `j 0x1d8`
    / `86 76 00` → `j 0x1e4`, trampoline `const16 a0,0x94 ; jx a0` → `enter_run @0x94` (the
    −0x20 v5 shift, == DVE, NOT the v4 +0x1c); Q7 SRAM head `06 78 00` → `j 0x1e4` (the −0x1c
-   Q7 shift — the Q7 core moves for the first time); both decoded `ncore2gp` exit 0; first NX
+   Q7 shift — the Q7 core moves for the first time); both decoded `ncore2gp`; first NX
    divergence at byte 0x1. **HOLDS.** [HIGH/OBSERVED]
 4. **The RNG / dequant retention.** *Challenge:* did v5 swap the RNG algo or drop the MX
-   dequant? *Re-verify:* Q7 DEBUG DRAM `proc_4bit_mx_8`/`proc_6bit_non_mx`/`cptc_decode`/
+   dequant? *Evidence:* Q7 DEBUG DRAM `proc_4bit_mx_8`/`proc_6bit_non_mx`/`cptc_decode`/
    `TensorDequantize` present (== MARIANA_PLUS); `XorwowRng`/`LfsrSetSeeds`/`rand_algo`/
    `Rand{Get,Set}State` present, `Xorwow(SW)` = 0 — byte-for-name unchanged; `op 0x7b` KIT
    row present. **HOLDS.** [HIGH/OBSERVED]
 5. **The structural re-build (independent v5 build).** *Challenge:* is this a recompile of
-   MARIANA_PLUS, not a new generation? *Re-verify:* every image smaller (NX `−0xac80`, Q7
+   MARIANA_PLUS, not a new generation? *Evidence:* every image smaller (NX `−0xac80`, Q7
    `−0x2060`, EXTISA `−0x22b0`); NX block-similarity 7.0 %, Q7 4.5 %; EXTISA `ET_DYN`
    stripped vs `ET_EXEC`; DGE subsystem 0 region-wide; DEBUG/DKL dropped; Q7 in SRAM; 0 `.a`
    members. **HOLDS** (an independent v5 build, not a recompile). [HIGH/OBSERVED]
@@ -583,12 +583,12 @@ Five strongest claims, re-challenged against the binary this session:
 
 ## 12. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):** container sha `b7c67e89…632fc329b`; 30
+**HIGH / OBSERVED:** container sha `b7c67e89…632fc329b`; 30
 getters (10 NX + 20 Q7), every `(img-ptr,size)` instruction-exact, == catalog 509–546; 0
 MAVERICK `.a` members. 15 carve hashes match the manifest (NX PERF_IRAM `150437ba`, Q7 code
 SRAM `bb5b3af2`, EXTISA_0 `a92c8ba0`). NX reset `06 75 00` → `j 0x1d8` / `j 0x1e4` →
 `enter_run @0x94` (base `0x1330`); Q7 SRAM reset `06 78 00` → `j 0x1e4` / `j 0x1f0`; both
-`ncore2gp` exit 0; DRAM magic `0x6099cb34`. **All four EXTISA KITs parsed byte-exact
+decoded `ncore2gp`; DRAM magic `0x6099cb34`. **All four EXTISA KITs parsed byte-exact
 (17/1/2/9), key set byte-for-key == MARIANA_PLUS (`ADDED=[]`/`REMOVED=[]` each); `op 0x7b`
 idx16 funcVA `0x50ec`; v5 MX `0x09`/`0x0A`/`0xe3` absent from all POOL KITs.** EXTISA stripped
 `ET_DYN` (no `.xt.prop`/symtab) vs MPLUS `ET_EXEC`; funcVA deltas variable

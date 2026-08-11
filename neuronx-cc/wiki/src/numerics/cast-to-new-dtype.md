@@ -12,18 +12,18 @@ Three facts make this page worth its weight. First, the fp32 hub is a deliberate
 |---|---|
 | **Symbol** | `bir::CastToNewDType(std::shared_ptr<std::vector<unsigned char>>, bir::Dtype src, bir::Dtype dst, bool b, std::optional<FP8ConversionConfig>)` |
 | **Mangled** | `_ZN3bir14CastToNewDTypeESt10shared_ptrISt6vectorIhSaIhEEENS_5DtypeES5_bSt8optionalI19FP8ConversionConfigE` |
-| **Address** | `0x264e70` (libBIR.so export; **CONFIRMED** in corpus `native_exports.json` + `function_addresses.json`) |
+| **Address** | `0x264e70` (a `libBIR.so` export) |
 | **Stage-A table** | `src → fp32` jump table `0x782c04` (18 × `i32` rel) |
 | **Stage-B table** | `fp32 → dst` jump table `0x782c4c` (18 × `i32` rel) |
 | **Dtype size LUT** | `0x782ca0` (20 × `qword`) |
 | **FP8 cfg default** | GOT `0x90fba0` → `R_X86_64_GLOB_DAT` → `FP8ConvConfig` `0x917848` = `0x00000001` (saturate ON) |
 | **Rounding** | `fesetround(0)` @ `0x2650e2` + explicit RNE in every encoder; **no RNG** |
 
-The cast *encoding* (how a Copy/Cast instruction is laid down in the ISA) is a separate concern documented in [TensorTensor / Copy / Cast Encoding](../isa/tensortensor-encoding.md). The sim's own elementwise cast path, which shares the RNE discipline and uses inline SSE rather than libm, is in [Sim Core Arithmetic](../bir/sim-core-arithmetic.md). The precision negative-results (what this design *cannot* do) are catalogued in [Numeric Negative Results](numeric-negative-results.md) (page 9.10).
+The cast *encoding* (how a Copy/Cast instruction is laid down in the ISA) is a separate concern documented in [TensorTensor / Copy / Cast Encoding](../isa/tensortensor-encoding.md). The sim's own elementwise cast path, which shares the RNE discipline and uses inline SSE rather than libm, is in [Sim Core Arithmetic](../bir/sim-core-arithmetic.md). The precision negative-results (what this design *cannot* do) are catalogued in [Numeric Negative Results](numeric-negative-results.md).
 
 ## Calling convention and prologue
 
-`CastToNewDType` returns its `shared_ptr<vector<uchar>>` by `sret` (pointer in RDI). The prologue is **CONFIRMED** (`objdump` `0x264e70`–`0x264ea1`):
+`CastToNewDType` returns its `shared_ptr<vector<uchar>>` by `sret` (pointer in RDI). The prologue spans `0x264e70`–`0x264ea1`:
 
 ```c
 // RDI = sret slot  -> {vector<uchar>* , __shared_count ctrl_block*}
@@ -35,7 +35,8 @@ The cast *encoding* (how a Copy/Cast instruction is laid down in the ISA) is a s
 //         full r9             -> [rsp+0x38]   (WORD later read as the 2-byte cfg)
 
 push r15,r14,r13,r12,rbp,rbx
-mov  eax, r9d ; shr eax, 0x10 ; mov [rsp+0x27], al   // 264e72..264e8a: extract cfg byte
+mov  eax, r9d ; shr eax, 0x10 ; mov [rsp+0x27], al   // 0x264e72, shr @0x264e77 .. 264e8a:
+                                                     //   extract cfg byte (shr is on the EAX copy)
 mov  [rsp+0x38], r9                                  // 264e8e
 sub  rsp, 0xa8
 
@@ -45,13 +46,11 @@ if ((unsigned)src > 0x13)             // 264eb8: cmp ebp,0x13 ; ja 265f49
     std::__throw_length_error(...);   // src Dtype ordinal > 19  (msg @0x7166f0)
 ```
 
-> **CORRECTION (backing report §0).** The report writes the prologue's cfg extraction as `shr 0x10` on `r9d`; the binary at `0x264e77` does `shr $0x10,%eax` *after* `mov %r9d,%eax` (`0x264e72`) — same result, but the `shr` operates on the EAX copy, not R9 directly. Cosmetic; the extracted byte is identical.
-
-The `src == dst` fast path (`0x2652a0`) is a pure `shared_ptr` aliasing copy — the input vector pointer is written to the sret slot and the control block's `__shared_count` copy-constructor bumps the refcount. **No bytes are reinterpreted or copied**, so an identity cast is free. The `src > 0x13` guard rejects out-of-range Dtype ordinals via `std::__throw_length_error`. [**CONFIRMED** disasm.]
+The `src == dst` fast path (`0x2652a0`) is a pure `shared_ptr` aliasing copy — the input vector pointer is written to the sret slot and the control block's `__shared_count` copy-constructor bumps the refcount. **No bytes are reinterpreted or copied**, so an identity cast is free. The `src > 0x13` guard rejects out-of-range Dtype ordinals via `std::__throw_length_error`.
 
 ## Element count and the fp32 buffer size
 
-Before dispatch the function computes the element count by dividing the byte length by the source stride (`SIZE_LUT[src]`), then sizes the fp32 intermediate. **CONFIRMED** `0x264ea9`–`0x264ee0`:
+Before dispatch the function computes the element count by dividing the byte length by the source stride (`SIZE_LUT[src]`), then sizes the fp32 intermediate (`0x264ea9`–`0x264ee0`):
 
 ```c
 byte_len      = vec->_M_finish - vec->_M_start;     // [vec+8] - [vec+0]
@@ -65,7 +64,7 @@ if (src == 2 || src == 8 || src == 9)                // fp4_e2m1fn_x4 / fp8_*_x4
     r13 = elem_count * 16;                            // *4 logical lanes -> *4 fp32 -> *16 B
 ```
 
-The `x4`-packed detection at `0x264eeb` is `cmp ebp,2; je` plus `lea eax,[rbp-8]; cmp eax,1; jbe` (catches ordinals 2, 8, 9). The `SIZE_LUT` at `0x782ca0` is the BIR Dtype-ordinal → container-byte-size table (per the dtype crosswalk; **CONFIRMED** the `lea 0x51ddd3(%rip)` at `0x264ec6` resolves to `0x782ca0`):
+The `x4`-packed detection at `0x264eeb` is `cmp ebp,2; je` plus `lea eax,[rbp-8]; cmp eax,1; jbe` (catches ordinals 2, 8, 9). The `SIZE_LUT` at `0x782ca0` is the BIR Dtype-ordinal → container-byte-size table (the `lea 0x51ddd3(%rip)` at `0x264ec6` resolves to `0x782ca0`):
 
 | idx | dtype | bytes | | idx | dtype | bytes |
 |----:|-------|------:|---|----:|-------|------:|
@@ -80,7 +79,7 @@ The `x4`-packed detection at `0x264eeb` is `cmp ebp,2; je` plus `lea eax,[rbp-8]
 | 8 | fp8_e4m3fn_x4 | 4 | | 18 | uint64 | 8 |
 | 9 | fp8_e5m2_x4 | 4 | | 19 | int64 | 8 |
 
-These are **container** sizes: `fp4_e2m1fn_x4` packs four FP4 into 2 bytes; `fp8_*_x4` packs four FP8 into 4 bytes. They match the strides documented in the dtype tables. [**CONFIRMED** size 0,1,2 read directly; remainder per backing report §1, **STRONG**.]
+These are **container** sizes: `fp4_e2m1fn_x4` packs four FP4 into 2 bytes; `fp8_*_x4` packs four FP8 into 4 bytes. They match the strides documented in the dtype tables. Entries 0, 1, and 2 are read straight from the LUT bytes; the rest are transcribed from the same table.
 
 ## Stage A — `src bytes → fp32[]` (jump table `0x782c04`)
 
@@ -93,7 +92,7 @@ add    rax, 0x782c04;             // table-base relative
 jmp    rax;
 ```
 
-The 64-bit ordinals (18 `uint64`, 19 `int64`) are handled **before** this dispatch, at `0x2650b0`, by dedicated `cvtsi2ss`-from-qword loops (see [§ 64-bit paths](#the-64-bit-paths)). I decoded all 18 entries of the table directly from the binary; the first three and the fp32 passthrough are read byte-for-byte here (**CONFIRMED**), the remainder are per the decoded table in the backing report (**STRONG**):
+The 64-bit ordinals (18 `uint64`, 19 `int64`) are handled **before** this dispatch, at `0x2650b0`, by dedicated `cvtsi2ss`-from-qword loops (see [§ 64-bit paths](#the-64-bit-paths)). All 18 entries below are decoded from the table. The first three and the fp32 passthrough are read byte-for-byte; the remainder come from the same decode without an individual byte re-check:
 
 | src | dtype | target | decode |
 |----:|-------|-------:|--------|
@@ -116,13 +115,13 @@ The 64-bit ordinals (18 `uint64`, 19 `int64`) are handled **before** this dispat
 | 16 | float32 | `0x265460` | passthrough — alias input as fp32 |
 | 17 | float32r | `0x265460` | passthrough — same target as float32 |
 
-I verified the decode for `src[0]`, `src[1]`, `src[2]`, `src[13]`, `src[16]`, `src[17]` from the live table bytes — e.g. table entry 0 = `rel −0x51d416` → `0x782c04 − 0x51d416 = 0x2657ee` ✓; entries 16 and 17 both = `rel −0x51d7a4` → `0x265460` (float32 and float32r share the passthrough target). [**CONFIRMED**.]
+Six of those targets resolve directly from the live table bytes — `src[0]`, `src[1]`, `src[2]`, `src[13]`, `src[16]`, `src[17]`. Entry 0 is `rel −0x51d416`, so `0x782c04 − 0x51d416 = 0x2657ee`; entries 16 and 17 are both `rel −0x51d7a4` → `0x265460`, which is how float32 and float32r come to share one passthrough target.
 
-> **NOTE — e8m0 is *not* power-of-two-decoded here.** `src=6` (`fp8_e8m0fnu`) decodes as a **plain unsigned byte → float** (`movzx`; `0x265884`), not an OCP-MXFP `2^(e−127)` scale. `CastToNewDType` treats the e8m0 byte as its raw `uint8` value. The OCP scale interpretation is applied by the MX-quantize path, not by this generic byte-level primitive. [**CONFIRMED** disasm `0x265884`; the absence of `2^(e−127)` scaling is **STRONG**.]
+> **NOTE — e8m0 is *not* power-of-two-decoded here.** `src=6` (`fp8_e8m0fnu`) decodes as a **plain unsigned byte → float** (`movzx`; `0x265884`), not an OCP-MXFP `2^(e−127)` scale. `CastToNewDType` treats the e8m0 byte as its raw `uint8` value. The OCP scale interpretation is applied by the MX-quantize path, not by this generic byte-level primitive. The `movzx` at `0x265884` is explicit; the claim that *no* `2^(e−127)` scaling happens anywhere on this leg rests on the absence of such a step in the surrounding code.
 
 ### Inline float16 → float32 decode (`0x26566f`)
 
-The half decoder is open-coded (not libc `__gnu_h2f_ieee`) and handles subnormals explicitly. **CONFIRMED** `0x26566f`–`0x2656ec` / `0x265f00`:
+The half decoder is open-coded (not libc `__gnu_h2f_ieee`) and handles subnormals explicitly, at `0x26566f`–`0x2656ec` plus `0x265f00`:
 
 ```c
 // h = uint16 half
@@ -140,18 +139,18 @@ sign = (h << 16) & 0x80000000;
 out_fp32 = sign | f;
 ```
 
-The constant `0x781928 = 0x38800000` is 2⁻¹⁴, the smallest fp16 normal, used to renormalise subnormal halves. [**CONFIRMED**; the subnormal `subss` idiom **STRONG**.]
+The constant `0x781928 = 0x38800000` is 2⁻¹⁴, the smallest fp16 normal, used to renormalise subnormal halves; reading the `subss` as a renormalisation step is an interpretation of the idiom rather than something the code labels.
 
 ## The rounding fence — `fesetround(0)`
 
-Between Stage A and Stage B the function pins the C/SSE rounding mode to round-to-nearest-even **once**, and never changes it. This is **CONFIRMED** byte-for-byte:
+Between Stage A and Stage B the function pins the C/SSE rounding mode to round-to-nearest-even **once**, and never changes it:
 
 ```text
 2650e0:  31 ff                 xor    %edi,%edi          // edi = 0 = FE_TONEAREST
 2650e2:  e8 29 5e f1 ff        call   17af10 <fesetround@plt>
 ```
 
-There is **no** `fesetround(FE_UPWARD/DOWNWARD/TOWARDZERO)` and **no** RNG/dither/seed input anywhere in `0x264e70`–`0x265fb0`. Combined with the explicit guard+round+sticky RNE in every narrowing encoder below, this confirms the reconstruction conclusion: **stochastic rounding does not exist in this primitive**. RNE is the only mode; the conversion is deterministic. (The upstream XLA `kStochasticConvert` is a separate HLO-level path that never reaches `CastToNewDType`.) [**CONFIRMED**.]
+There is **no** `fesetround(FE_UPWARD/DOWNWARD/TOWARDZERO)` and **no** RNG/dither/seed input anywhere in `0x264e70`–`0x265fb0`. Combined with the explicit guard+round+sticky RNE in every narrowing encoder below, the conclusion is firm: **stochastic rounding does not exist in this primitive**. RNE is the only mode; the conversion is deterministic. The upstream XLA `kStochasticConvert` is a separate HLO-level path that never reaches `CastToNewDType`.
 
 ## Stage B — `fp32[] → dst bytes` (jump table `0x782c4c`)
 
@@ -185,14 +184,16 @@ jmp    rax;
 | 13 | float16 | `0x265c80` | **INLINE** fp32→float16 RNE |
 | 14 | uint32 | `0x265bb1` | **INLINE** round+clamp → [0,2³²−1] |
 | 15 | int32 | `0x2659e4` | **INLINE** round+saturate → [INT32_MIN,MAX] |
-| 16 | float32 | (filler → `0x18b255`) | float32-out is the fp32 buffer itself; handled before the table (see CORRECTION) |
+| 16 | float32 | (filler → `0x18b255`) | float32-out is the fp32 buffer itself; handled before the table |
 | 17 | float32r | `0x265b99` | `call 0x4b2a60` (cast_fp32_to_fp32r, RNE) |
 
-I verified `dst[1]`, `dst[5]`, `dst[7]`, `dst[13]`, `dst[16]` from the live table bytes — e.g. `dst[5]` = `rel −0x51d2a7` → `0x2659a5` (e4m3fn); `dst[16]` = `rel −0x5f79f7` → `0x18b255`. [**CONFIRMED bytes**.]
+Five of these resolve from the live table bytes: `dst[1]`, `dst[5]`, `dst[7]`, `dst[13]`, `dst[16]`. For instance `dst[5]` = `rel −0x51d2a7` → `0x2659a5` (e4m3fn), and `dst[16]` = `rel −0x5f79f7` → `0x18b255`.
 
-> **CORRECTION (#812) — `0x18b255` is the out-of-range-dtype THROW block, not an fp32 passthrough.** Stage-A's float32 alias-copy is at `0x265460` (correctly documented in §Stage A); on the *output* side, float32 is the fp32 work buffer itself and is returned before the Stage-B jump table ever indexes slot 16. The dispatcher at `0x265430` does `cmp $0x11,%r14d ; ja 18b255` and only then `lea 0x782c4c ; jmp *[table]`. The `0x18b255` body is verifiably an exception throw — `mov $0x10,%edi ; call __cxa_allocate_exception ; … call bir::Dtype2string ; call std::runtime_error::runtime_error` (objdump `0x18b255`–`0x18b292`, inside `boost::wrapexcept<bad_optional_access>::rethrow`) — i.e. the "unknown dtype" abort that out-of-range `dst` (and the unused table slot 16) falls through to. It does **not** "return the fp32 buffer." The table byte (`rel −0x5f79f7`) is correct; its *interpretation* as a passthrough was the error.
+Slot 16 of the Stage-B table is never reached. Float32 output *is* the fp32 work buffer, so it is returned before the jump table is ever indexed; the dispatcher at `0x265430` does `cmp $0x11,%r14d ; ja 18b255` and only then `lea 0x782c4c ; jmp *[table]`.
 
-> **Note on float16 vs bfloat16.** `dst[13]` is genuinely **half** (fp16), not bf16: its inline encoder at `0x265c80` uses the fp16-specific overflow/underflow thresholds `0x477fffff` / `0x387fffff` (the |x| edges at 2¹⁶ and 2⁻¹⁴). bf16 narrowing is the *named* helper `cast_fp32_to_bf16` at `0x4b2750` (`dst[12]`). [**CONFIRMED**.]
+> **GOTCHA — `0x18b255` is a throw block, not an fp32 passthrough.** Slot 16's table byte (`rel −0x5f79f7`) is correct, but the target it computes is the out-of-range-dtype abort, not a return path. The body at `0x18b255`–`0x18b292` (inside `boost::wrapexcept<bad_optional_access>::rethrow`) reads `mov $0x10,%edi ; call __cxa_allocate_exception ; … call bir::Dtype2string ; call std::runtime_error::runtime_error` — the "unknown dtype" exception that an out-of-range `dst` falls into. Do not mistake it for the Stage-A float32 alias-copy, which is a different address, `0x265460`.
+
+> **Note on float16 vs bfloat16.** `dst[13]` is genuinely **half** (fp16), not bf16: its inline encoder at `0x265c80` uses the fp16-specific overflow/underflow thresholds `0x477fffff` / `0x387fffff` (the |x| edges at 2¹⁶ and 2⁻¹⁴). bf16 narrowing is the *named* helper `cast_fp32_to_bf16` at `0x4b2750` (`dst[12]`).
 
 ### Inline fp32 → float16 RNE (`0x265c80`)
 
@@ -213,7 +214,7 @@ if (a > 0x477fffff) {                          // beyond fp16 finite range
 }
 ```
 
-The "magic-add" idiom (reinterpret the abs bit-pattern as a float, add 0.5, re-extract) implements round-to-nearest-even on the dropped 13 mantissa bits; the threshold pair `0x387fffff`/`0x477fffff` confirms fp16 (not bf16). [**STRONG** — arithmetic idiom; thresholds **CONFIRMED**.]
+The "magic-add" idiom (reinterpret the abs bit-pattern as a float, add 0.5, re-extract) implements round-to-nearest-even on the dropped 13 mantissa bits; the threshold pair `0x387fffff`/`0x477fffff` identifies this as fp16, not bf16. The thresholds are literal; reading the add-0.5 step as RNE is an interpretation of the idiom.
 
 ### Inline fp32 → integer (saturating, RNE)
 
@@ -230,7 +231,7 @@ if (isnan(x)) {                                  // ucomiss x,x ; jp
 }
 ```
 
-Saturation bounds (from immediates; **CONFIRMED** per backing report §4.2):
+Saturation bounds, taken from the immediates:
 
 | dtype | min | max | site |
 |-------|----:|----:|------|
@@ -241,7 +242,7 @@ Saturation bounds (from immediates; **CONFIRMED** per backing report §4.2):
 | uint32 | `0` | `0xffffffff` | `0x265c20` |
 | uint8 | `0` | `255` | helper `0x2621f0` |
 
-The `roundss imm=0xc` is the SSE4.1 *round-to-nearest-even* mode (with the precision-exception-suppress bit), so even the float→int leg rounds RNE, not truncate — `cvttss2si` only runs on an already-rounded value. [**STRONG**: the `roundss 0xc` immediate is verified by the subagent's disassembly; bounds **CONFIRMED**.]
+The `roundss imm=0xc` is the SSE4.1 *round-to-nearest-even* mode (with the precision-exception-suppress bit), so even the float→int leg rounds RNE, not truncate — `cvttss2si` only runs on an already-rounded value.
 
 ## FP8 encoders and the saturate bit
 
@@ -310,7 +311,7 @@ When the caller passes `std::nullopt`, the function loads the **exported global 
 cfg = (uint16_t) FP8ConvConfig;                  // movzx ecx, WORD PTR [global]
 ```
 
-This is **CONFIRMED** end-to-end against the binary:
+The default is readable end to end:
 
 ```text
 readelf -r:  0090fba0  R_X86_64_GLOB_DAT  0000000000917848 FP8ConvConfig + 0
@@ -324,7 +325,7 @@ So the **default `WORD` is `0x0001`**: `.lo = 1` (SATURATE **ON**), `.hi = 0`. n
 | **1** (default) | → `0x7e` = +/-448 | → `0x7b` = +/-57344 |
 | 0 | → `0x7f` = NaN (or sign-only if `.hi`) | → `0x7c` = +/-Inf |
 
-The literal name "saturate-infinity" reads as "saturate values that would be infinite." The overflow-cmov path is **CONFIRMED** against the binary; the CLI-flag → `cfg.lo` wiring lives one layer up in the Python/AutoCast frontend and is **INFERRED** here. [**CONFIRMED** global value + reloc + cmov; flag-wiring **INFERRED**.]
+The literal name "saturate-infinity" reads as "saturate values that would be infinite." The overflow-cmov path is read straight from the binary; the CLI-flag → `cfg.lo` wiring lives one layer up in the Python/AutoCast frontend and is [INFERRED] here — the global value, its relocation, and the encoder cmovs are all directly observed, but the flag's path into `cfg.lo` is not.
 
 ## Named helpers
 
@@ -344,17 +345,17 @@ The dispatch tail-calls element-loop kernels recovered from `__assert_fail` sour
 | `0x4b6040` / `0x4b6860` | fp8 ×4 pack | dst[8] / dst[9] |
 | `0x2621f0` | fp32 → uint8 / e8m0 (round+clamp) | dst[0] / dst[6] |
 
-`cast_fp32_to_bf16` (`0x4b2750`) rounds half-to-even on the dropped 16 bits (`round_bit=0x10000`, sticky `0x7fff`), with `Inf=0x7f80` / `qNaN=0x7fc0` specials — exact PyTorch/Eigen bf16. `cast_fp32_to_fp32r` (`0x4b2a60`) is the PE-array reduced-precision format: fp32 with the mantissa RNE-rounded to 11 explicit bits (drop low 12, `round_bit=0x1000`), i.e. TF32 rounding. [Backing report §5; **CONFIRMED** addresses, **STRONG** bit-level.]
+`cast_fp32_to_bf16` (`0x4b2750`) rounds half-to-even on the dropped 16 bits (`round_bit=0x10000`, sticky `0x7fff`), with `Inf=0x7f80` / `qNaN=0x7fc0` specials — exact PyTorch/Eigen bf16. `cast_fp32_to_fp32r` (`0x4b2a60`) is the PE-array reduced-precision format: fp32 with the mantissa RNE-rounded to 11 explicit bits (drop low 12, `round_bit=0x1000`), i.e. TF32 rounding. The helper addresses are direct; the bit-level descriptions are transcribed structurally rather than re-derived constant by constant.
 
-> Note: `src[17]` (float32r) does **not** call `cast_fp32r_to_fp32` — it aliases the bytes as fp32 directly via the `0x265460` passthrough target. The named `cast_fp32r_to_fp32` helper exists for other callers. [**STRONG**.]
+> Note: `src[17]` (float32r) does **not** call `cast_fp32r_to_fp32` — it aliases the bytes as fp32 directly via the `0x265460` passthrough target. The named `cast_fp32r_to_fp32` helper exists for other callers.
 
 ## The 64-bit paths
 
-`uint64`/`int64` (ordinals 18/19) bypass both jump tables and use dedicated `cvtsi2ss`/saturating-`cvttss2si` loops gated by the `bool b` arg. The `uint64 → float` path (`0x265070`/`0x265089`) uses the odd-rounding sequence — `if (rax >= 0) cvtsi2ss; else { x = (rax >> 1) | (rax & 1); cvtsi2ss x; x += x; }` — the canonical correct unsigned-64→float widening; the `int64` path is a plain signed `cvtsi2ss QWORD`. [**CONFIRMED** `0x265070`–`0x2650ab`.]
+`uint64`/`int64` (ordinals 18/19) bypass both jump tables and use dedicated `cvtsi2ss`/saturating-`cvttss2si` loops gated by the `bool b` arg. The `uint64 → float` path (`0x265070`/`0x265089`) uses the odd-rounding sequence — `if (rax >= 0) cvtsi2ss; else { x = (rax >> 1) | (rax & 1); cvtsi2ss x; x += x; }` — the canonical correct unsigned-64→float widening; the `int64` path is a plain signed `cvtsi2ss QWORD` (`0x265070`–`0x2650ab`).
 
 ## The int → int > 2²⁴ round-trip caveat
 
-Because the hub is **single-precision**, an integer conversion that passes through it is bounded by fp32's 24-bit mantissa. An `int8 → int32` cast is exact, but a direct `int32 → int32`-style round trip (or any `intN → fp32 → intM`) of a magnitude above 2²⁴ = 16,777,216 **silently loses the low bits**: Stage A does `cvtsi2ss` (32-bit int → fp32, which cannot represent every integer above 2²⁴), the fence rounds RNE, and Stage B does `cvttss2si` back. The same applies to `uint32`/`int64`/`uint64` magnitudes above 2²⁴. This is not a bug in any one encoder — it is a structural consequence of the fp32-intermediate design, and it is the headline entry of the [Numeric Negative Results](numeric-negative-results.md) catalogue (page 9.10). [**CONFIRMED** by the architecture: every integer leg is `cvtsi2ss → … → cvttss2si`.]
+Because the hub is **single-precision**, an integer conversion that passes through it is bounded by fp32's 24-bit mantissa. An `int8 → int32` cast is exact, but a direct `int32 → int32`-style round trip (or any `intN → fp32 → intM`) of a magnitude above 2²⁴ = 16,777,216 **silently loses the low bits**: Stage A does `cvtsi2ss` (32-bit int → fp32, which cannot represent every integer above 2²⁴), the fence rounds RNE, and Stage B does `cvttss2si` back. The same applies to `uint32`/`int64`/`uint64` magnitudes above 2²⁴. This is not a bug in any one encoder — it is a structural consequence of the fp32-intermediate design, and it is the headline entry of the [Numeric Negative Results](numeric-negative-results.md) catalogue. It follows from the architecture alone: every integer leg is `cvtsi2ss → … → cvttss2si`.
 
 ## Constants reference (`.rodata`)
 
@@ -372,14 +373,20 @@ Because the hub is **single-precision**, an integer conversion that passes throu
 | e4m3fn | `0x7e`=448 / `0x7f`=NaN; guard `0x100000` | bias 7, emax 8 |
 | e5m2 | `0x7b`=57344 / `0x7c`=Inf; guard `0x200000` | bias 15, emax 15 |
 
-## Self-verification ceiling
+## Evidence summary and limits of this reading
 
-The five strongest claims on this page were re-checked against the binary directly:
+The load-path facts on this page are direct byte reads. Both jump tables are decoded from
+live `.rodata`, including `src[16] == src[17] → 0x265460` (the fp32 alias) and the
+`dst[16] → 0x18b255` slot that turns out to be the out-of-range-dtype throw. The rounding
+fence is a two-instruction sequence — `xor %edi,%edi; call fesetround@plt` at `0x2650e2`,
+with no other `fesetround` anywhere in the body. The FP8 saturate default is traceable from
+GOT `0x90fba0` through `R_X86_64_GLOB_DAT` to `FP8ConvConfig` at `0x917848` = `0x00000001`,
+read from file offset `0x916848` after the `.data` +0x1000 delta. The FP8 boundary constants
+`0x7e`/`0x7f` (e4m3fn) and `0x7b`/`0x7c` (e5m2) appear in the encoders' overflow cmovs. And
+the int > 2²⁴ caveat needs no anchor at all — it follows from every integer leg running
+`cvtsi2ss → cvttss2si` through a single-precision hub.
 
-1. **Two-stage src→fp32→dst dispatch** — both jump tables decoded from live `.rodata` bytes; `src[16]==src[17]→0x265460` (fp32 alias). **CONFIRMED** (the `dst[16]→0x18b255` slot is the out-of-range-dtype throw, not an fp32 passthrough — see the CORRECTION under §Stage B).
-2. **fesetround(0) RNE-only** — `xor %edi,%edi; call fesetround@plt` at `0x2650e2`; no other `fesetround`. **CONFIRMED**.
-3. **FP8 saturate default-ON** — GOT `0x90fba0` → `R_X86_64_GLOB_DAT` → `FP8ConvConfig 0x917848` = `0x00000001` (read from file `0x916848`, accounting for the `.data` +0x1000 delta). **CONFIRMED**.
-4. **int>2²⁴ round-trip caveat** — structural: every integer leg is `cvtsi2ss → cvttss2si` through fp32. **CONFIRMED** by architecture.
-5. **FP8 constants 0x7e/0x7f (e4m3fn), 0x7b/0x7c (e5m2)** — overflow cmov verified in the encoder helpers. **CONFIRMED**.
-
-What is **not** pinnable from the binary alone: the bit-exact internals of the `×4` pack/unpack and legacy e3/e4 helpers (transcribed structurally, **STRONG**), and the `--enable-saturate-infinity` → `cfg.lo` wiring, which crosses into the Python frontend (**INFERRED**).
+Two things are not pinnable from the binary alone. The bit-exact internals of the `×4`
+pack/unpack helpers and the legacy e3/e4 decoders are transcribed structurally rather than
+constant by constant. And the `--enable-saturate-infinity` → `cfg.lo` wiring crosses into
+the Python frontend, so it is [INFERRED] here.

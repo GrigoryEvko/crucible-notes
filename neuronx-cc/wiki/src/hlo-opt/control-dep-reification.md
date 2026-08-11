@@ -8,7 +8,7 @@ A *control dependency* in XLA HLO is an ordering edge with no data flow: `B` mus
 
 `PreserveControlDeps` (pass `#61`, registered name `preserve-control-deps`, `Run` @ `0x1f5c110`) solves this by **reifying** each control edge into a real SSA operand. For a successor `S` it builds a side-effecting `AwsNeuronControlDep` custom-call that takes the control-predecessors as leading operands and `S`'s original `operand(0)` as the trailing operand, then rewires `S.operand(0)` to consume that call. The edge is now part of the data-dependence graph, so it survives MHLO import, MLIR canonicalization, fusion, and scheduling — exactly the passes that would otherwise lose it. The custom-call's side-effect bit (`[cc+0x2B8]=1`) keeps DCE and the scheduler from deleting or freely reordering it.
 
-This page traces the full seam. Section 2 is the on-wire op and its operand convention. Section 3 is the three-phase `Run` algorithm on the HLO side. Section 4 is the MHLO/StableHLO handoff: `NeuronControlDepTupleSimplifier` (`flatten-control-dep-tuple-operands`, `runOnOperation` @ `0x20f6a40`) un-bundles the `mhlo.tuple` the importer wraps the predecessor operands in, and `MhloToPythonPrinter::printControlDeps` (@ `0x20b8480`) finally emits a Penguin `.add_dep_edge(` call. The recurring trap — answered up front in [§2.3](#23-the-tuple-is-an-importer-artifact-not-an-hlo-construct) — is that the HLO pass emits **flat variadic** operands; the "tuple" in the simplifier's name is an MHLO-import artifact, not something the HLO pass produces.
+This page traces the full seam. Section 2 is the on-wire op and its operand convention. Section 3 is the three-phase `Run` algorithm on the HLO side. Section 4 is the MHLO/StableHLO handoff: `NeuronControlDepTupleSimplifier` (`flatten-control-dep-tuple-operands`, `runOnOperation` @ `0x20f6a40`) un-bundles the `mhlo.tuple` the importer wraps the predecessor operands in, and `MhloToPythonPrinter::printControlDeps` (@ `0x20b8480`) finally emits a Penguin `.add_dep_edge(` call. The recurring trap — answered up front in [§2.3](#the-tuple-is-an-importer-artifact-not-an-hlo-construct) — is that the HLO pass emits **flat variadic** operands; the "tuple" in the simplifier's name is an MHLO-import artifact, not something the HLO pass produces.
 
 For reimplementation, the contract is:
 
@@ -34,19 +34,19 @@ For reimplementation, the contract is:
 
 ### The on-wire op: `AwsNeuronControlDep`
 
-The reified edge is an XLA custom-call whose target name is the literal `AwsNeuronControlDep` (hlo-opt rodata @ `0x26e82c`, length 19; hlo2penguin @ `0x272822`). The name is loaded into `HloInstruction::CreateCustomCall` with an explicit length of `0x13`=19 — disasm `0x1f5c5ec: mov r8d, 13h` immediately before the call site at `0x1f5c602`. (CONFIRMED — disasm-anchored.)
+The reified edge is an XLA custom-call whose target name is the literal `AwsNeuronControlDep` (hlo-opt rodata @ `0x26e82c`, length 19; hlo2penguin @ `0x272822`). The name is loaded into `HloInstruction::CreateCustomCall` with an explicit length of `0x13`=19 — disasm `0x1f5c5ec: mov r8d, 13h` immediately before the call site at `0x1f5c602`.
 
 | Field | Value | Evidence | Confidence |
 |---|---|---|---|
-| `custom_call_target` | `"AwsNeuronControlDep"` | str `0x26e82c`; `mov r8d, 13h` @ `0x1f5c5ec` | CONFIRMED |
+| `custom_call_target` | `"AwsNeuronControlDep"` | str `0x26e82c`; `mov r8d, 13h` @ `0x1f5c5ec` | CERTAIN |
 | `opaque` / `backend_config` | `""` (empty) | empty-string arg into `CreateCustomCall`; edge is structural | HIGH |
 | `api_version` | `1` | `push 1` @ `0x1f5c5e6` (last `CreateCustomCall` arg) | HIGH |
-| side-effect flag | `1` | `mov byte ptr [rax+2B8h], 1` @ `0x1f5c68a` after `Cast<HloCustomCallInstruction>` | CONFIRMED (offset); MED (flag name) |
+| side-effect flag | `1` | `mov byte ptr [rax+2B8h], 1` @ `0x1f5c68a` after `Cast<HloCustomCallInstruction>` | CERTAIN (offset); MEDIUM (flag name) |
 | result shape | `operand(0).shape()` | `shape()` feeds the `CreateCustomCall` shape arg | HIGH |
 
 The instruction is **transparent**: it returns the same shape it forwards (the data value's shape), so substituting it for `S.operand(0)` is type-preserving. The side-effect bit at `HloCustomCallInstruction+0x2B8` is the mechanism that makes the reification stick — see [§5](#scheduling-and-ordering-interaction).
 
-> **GOTCHA — the side-effect flag is the whole point, and it is set inline.** There is no named setter symbol; the body `Cast<HloCustomCallInstruction>`s the freshly-built call (@ `0x1f5c685`) and writes the boolean directly: `0x1f5c68a: mov byte ptr [rax+2B8h], 1`. A reimplementation that builds an *un-flagged* `AwsNeuronControlDep` call will see HloDCE delete it (no users care about an effect-free, single-use forwarder) and lose every control edge it was meant to pin. Offset `+0x2B8` is CONFIRMED; the field name `custom_call_has_side_effect_` is inferred (MED) from the single inline boolean write.
+> **GOTCHA — the side-effect flag is the whole point, and it is set inline.** There is no named setter symbol; the body `Cast<HloCustomCallInstruction>`s the freshly-built call (@ `0x1f5c685`) and writes the boolean directly: `0x1f5c68a: mov byte ptr [rax+2B8h], 1`. A reimplementation that builds an *un-flagged* `AwsNeuronControlDep` call will see HloDCE delete it (no users care about an effect-free, single-use forwarder) and lose every control edge it was meant to pin. The offset `+0x2B8` is read from the disassembly; the field *name* `custom_call_has_side_effect_` is **[INFERRED]** from the single inline boolean write.
 
 ### Operand convention
 
@@ -57,7 +57,7 @@ AwsNeuronControlDep( p0, p1, …, p_{k-1}, S.operand(0) )
                      └────── k preds ──────┘  └─ data, index k (LAST) ─┘
 ```
 
-Disasm evidence (all CONFIRMED):
+Disasm evidence:
 
 - The `k`-predecessor pointers are `memcpy`'d into the operand `SmallVector` when the predecessor count `ebx != 0`; the count dword is written from `ebx`. The `>6` path widens the inline storage via `SmallVectorBase::grow_pod`.
 - The data value is appended last: `mutable_operand(0)` is read (@ `0x1f5c569`) and pushed at index `[size]`, giving total size `k+1` (`lea r12d,[rax+1]` @ `0x1f5c5b7`). So the data operand sits at index `k`.
@@ -74,7 +74,7 @@ AFTER:   cc = AwsNeuronControlDep[side_effect=1](p0, …, p_{k-1}, D)
 
 ### The "tuple" is an importer artifact, not an HLO construct
 
-The HLO pass emits a flat `Span<HloInstruction* const>`; there is **no** `CreateTuple` call anywhere in `Run`. (CONFIRMED — the only constructor on the path is `CreateCustomCall`.) The word *tuple* in the downstream pass name `flatten-control-dep-tuple-operands` refers to the `mhlo.tuple` that the **HLO→MHLO importer** wraps the variadic predecessor bundle into ([§4](#hlomlir-handoff--neuroncontroldeptuplesimplifier)). The simplifier flattens *that*, not anything this pass built.
+The HLO pass emits a flat `Span<HloInstruction* const>`; there is **no** `CreateTuple` call anywhere in `Run` — the only constructor on the path is `CreateCustomCall`. The word *tuple* in the downstream pass name `flatten-control-dep-tuple-operands` refers to the `mhlo.tuple` that the **HLO→MHLO importer** wraps the variadic predecessor bundle into ([§4](#hlomlir-handoff--neuroncontroldeptuplesimplifier)). The simplifier flattens *that*, not anything this pass built.
 
 > **QUIRK —** a reader who sees `flatten-control-dep-tuple-operands` and assumes `PreserveControlDeps` emits a `kTuple` operand will look for a `CreateTuple` that does not exist and mis-model the HLO operand list. The HLO list is flat; the tuple appears only after MHLO import, and only sometimes (the importer's tuple-wrapping is not statically provable to fire for every predecessor count). The simplifier handles both the tuple-wrapped and the already-flat shapes defensively.
 
@@ -84,7 +84,7 @@ The HLO pass emits a flat `Span<HloInstruction* const>`; there is **no** `Create
 
 `Run` (@ `0x1f5c110`, 7290 bytes, 282 basic blocks, 36 callees) is a stateless `HloModulePass`: the factory `new(8)`s an object holding only a vtable pointer (`off_410110`), with no tunable flags. It operates over **all** computations of the module — not just the entry computation. The body is three phases; each is anchored by a verbatim `NeuronLogger` DEBUG string tagged to the source file `hilo/hlo_passes/PreserveControlDeps.cc` (@ `0x2b8088`).
 
-> **NOTE —** `Run` was extracted without Hex-Rays decompilation; the phases below are reconstructed from disassembly plus the verbatim rodata strings and callee sidecars. Operand order and the side-effect flag are CONFIRMED (disasm-anchored). The exact semantic of the phase-1 skip flag is MED, as noted in place.
+> **NOTE —** `Run` was extracted without Hex-Rays decompilation; the phases below are reconstructed from disassembly plus the verbatim rodata strings and callee sidecars. Operand order and the side-effect flag are read directly off instructions; the semantic of the phase-1 skip flag is **[INFERRED]**, as noted in place.
 
 ### Phase 1 — build the predecessor map
 
@@ -94,7 +94,7 @@ function BuildPredMap(module):                          // [module@rdx] computat
     predMap = MapVector<HloInstruction*, SmallVector<HloInstruction*,6>>()   // operator[] @0x1f5b6d0
     for comp in module.computations():                  // stride 0x10
         for inst in comp.instructions():                // node->inst at +8
-            if inst.flags[0x15] & 0x8:  continue        // test byte ptr[rdx+15h],8 @0x1f5c1df — skip (MED)
+            if inst.flags[0x15] & 0x8:  continue        // test byte ptr[rdx+15h],8 @0x1f5c1df — skip [INFERRED]
             preds = inst.rare[0x30].control_predecessors()   // kEmptyRare sentinel if null
             filtered = []
             for p in preds:
@@ -103,8 +103,8 @@ function BuildPredMap(module):                          // [module@rdx] computat
             predMap[inst] = filtered                    // insertion-ordered → deterministic worklist
 ```
 
-- The opcode lives at `HloInstruction+0x14` (low byte); `0x4C` is `kParameter`. The compare `cmp byte ptr [r14+14h], 4Ch ; 'L'` @ `0x1f5c284` is CONFIRMED. **Parameter predecessors are never reified** — a control edge from a graph input is meaningless, since inputs are available before any compute begins ([§5](#scheduling-and-ordering-interaction)).
-- `[inst+0x15] & 8` is a fast-path skip (`test byte ptr [rdx+15h], 8` @ `0x1f5c1df`). It gates whether an instruction is considered at all (HIGH); the precise meaning is MED — most consistent with "carries no rare control metadata" or a dead/removed marker.
+- The opcode lives at `HloInstruction+0x14` (low byte); `0x4C` is `kParameter`. The compare is `cmp byte ptr [r14+14h], 4Ch ; 'L'` @ `0x1f5c284`. **Parameter predecessors are never reified** — a control edge from a graph input is meaningless, since inputs are available before any compute begins ([§5](#scheduling-and-ordering-interaction)).
+- `[inst+0x15] & 8` is a fast-path skip (`test byte ptr [rdx+15h], 8` @ `0x1f5c1df`). It gates whether an instruction is considered at all; the precise meaning is **[INFERRED]** — most consistent with "carries no rare control metadata" or a dead/removed marker.
 - The container is `llvm::MapVector` (operator[] @ `0x1f5b6d0`, 1136 bytes), which is **insertion-ordered**. That makes the phase-2 worklist deterministic in computation/instruction order — important for reproducible builds.
 
 ### Phase 2 — reify each map entry into a custom-call
@@ -143,14 +143,14 @@ function StampModule(module, anyReified):
     if not anyReified:  return false                       // fast exit @0x1f5dce5, result byte = 0
     FrontendAttributes fa                                  // ctor @0x1f5dac1
     fa.mutable_map()["has_control_deps"] = "1"             // key = 16-byte xmmword @0x406140 (movdqa @0x1f5db15); value 0x31
-                                                           //   key NAME inferred (B29-1); load + value CONFIRMED
+                                                           //   key NAME [INFERRED]; the load and the value are read from disasm
     module.frontend_attributes()[0xBA0].MergeFrom(fa)      // CopyFrom @0x1f5dcc3 / InternalSwap @0x1f5dcff
     return true                                            // changed
 ```
 
 After all computations are processed, if **any** edge was reified the pass records a module-level frontend attribute whose 16-byte key is loaded from the rodata constant @ `0x406140` (`movdqa xmm0, cs:xmmword_406140` @ `0x1f5db15`, size `0x10`); the value is the single character `"1"` (`0x31`, length 1). It is merged into `HloModule` frontend attributes at offset `+0xBA0` via a tagged-pointer `CopyFrom`-vs-`InternalSwap` fast path.
 
-> **CORRECTION (B29-1) —** the key string is identified as `"has_control_deps"` from the source-derived backing analysis, but it is **not** isolable in the binary's string table: it is embedded as a 16-byte `xmmword` constant loaded via `movdqa`, so a string-table extractor never surfaces it as a standalone entry. The 16-byte `movdqa` load at `0x1f5db15` and its merge into module frontend attributes at `+0xBA0` are CONFIRMED; the literal text `"has_control_deps"` is INFERRED (string length 16 matches `xmmword`, and it is the attribute key conventionally read by downstream fusion gates). Treat the key *name* as INFERRED, the *mechanism* as CONFIRMED. Downstream readers are MED — see [§5](#scheduling-and-ordering-interaction).
+> **GOTCHA — the attribute key is not in the string table.** Because it is exactly 16 bytes, the key is embedded as an `xmmword` constant and loaded with a single `movdqa` @ `0x1f5db15`, so a `strings`-style extractor never surfaces it as a standalone entry. The load and the merge into module frontend attributes at `+0xBA0` are read from the disassembly; the literal text `"has_control_deps"` is **[INFERRED]** — the 16-byte length matches the `xmmword`, and it is the attribute key downstream fusion gates read. Which passes read it is [UNRESOLVED] — see [§5](#scheduling-and-ordering-interaction).
 
 The bool `Run` returns is `changed = (≥1 cc inserted)`. An empty module, or one with no non-parameter control edges, takes the fast exit at `0x1f5dce5` and returns `false` ("no change").
 
@@ -171,7 +171,7 @@ The pass exists in two byte-twin forms differing only in `mhlo::` ↔ `stablehlo
 | factory | `mlir::createNeuronControlDepTupleSimplifierPass` @ `0x20f68a0` | `mlir::createStableHLONeuronControlDepTupleSimplifierPass` @ `0x21327e0` |
 | Penguin printer | `MhloToPythonPrinter::printControlDeps` @ `0x20b8480` | `StableHLOToPythonPrinter::printControlDeps` @ `0x2153360` |
 
-All addresses CONFIRMED against `hlo2penguin` `function_addresses.json` (mangled symbols `_ZN4hilo31NeuronControlDepTupleSimplifier…` and the `StableHLO`-prefixed twin).
+All addresses resolve in `hlo2penguin`'s `function_addresses.json` (mangled symbols `_ZN4hilo31NeuronControlDepTupleSimplifier…` and the `StableHLO`-prefixed twin).
 
 ### `runOnOperation` — collect the control-dep calls
 
@@ -184,7 +184,7 @@ function NeuronControlDepTupleSimplifier::runOnOperation():     // @0x20f6a40
     replaceTuples(hits)                                         // @0x20f5d40
 ```
 
-`hilo::isControlDep(Operation*)` (@ `0x21c0370`, 399 bytes) is the **shared** control-dep recognizer: it returns true iff the op's `call_target_name` attribute equals `"AwsNeuronControlDep"` (str @ `0x425360`). It is the single source of truth for "is this a control edge" — called by both tuple-simplifier walk lambdas and by the Penguin printers (`printControlDeps`, `printControlDepCustomCall`, and the operand/source printers). A reimplementation must use the exact target-name match; nothing else distinguishes the op. (CONFIRMED.)
+`hilo::isControlDep(Operation*)` (@ `0x21c0370`, 399 bytes) is the **shared** control-dep recognizer: it returns true iff the op's `call_target_name` attribute equals `"AwsNeuronControlDep"` (str @ `0x425360`). It is the single source of truth for "is this a control edge" — called by both tuple-simplifier walk lambdas and by the Penguin printers (`printControlDeps`, `printControlDepCustomCall`, and the operand/source printers). A reimplementation must use the exact target-name match; nothing else distinguishes the op.
 
 ### `replaceTuples` — the actual flattening
 
@@ -241,7 +241,7 @@ penguin.ir.Dependency : successor.add_dep_edge(predecessor)
 BIR ordering constraint
 ```
 
-(Penguin emission: HIGH — anchored to the `.add_dep_edge(` string and the `printControlDeps` symbol; the precise Python argument order is not individually traced.)
+The Penguin emission step is anchored to the `.add_dep_edge(` string and the `printControlDeps` symbol; the precise Python argument order is **[UNRESOLVED]** — it was not traced.
 
 ---
 
@@ -252,7 +252,7 @@ Why reification preserves order, mechanism by mechanism:
 - **Side-effect bit is the anti-DCE pin.** `[cc+0x2B8]=1` ([§2.1](#the-on-wire-op-awsneuroncontroldep)) marks the call side-effecting, so HloDCE will not delete it (even though it is a single-use, effect-free-looking forwarder) and layout/schedule passes treat it as a node whose operands must stay live and whose position must be honored.
 - **Edges become data edges.** Because the predecessors are real operands of a node feeding `S.operand(0)`, the former control edges now live *inside* the data-dependence graph. Any topological scheduler — HLO, MLIR, or Penguin — honors them automatically; no separate control-edge tracking is needed downstream. This is the whole reason for the reification: it converts an MLIR-invisible side table into an MLIR-native operand chain.
 - **Parameter edges are pruned.** A control edge `p → S` where `p` is a graph input is dropped in phase 1 ([§3.1](#phase-1--build-the-predecessor-map)); inputs are available before any compute, so no ordering pin is needed and reifying one would create a spurious dependency on a parameter.
-- **Module attribute is a cheap signal.** `has_control_deps="1"` ([§3.3](#phase-3--stamp-the-module-has_control_deps-attribute)) lets later stages detect "this module reified control edges" without re-scanning instructions. The blob @ `0x406140` is rodata-adjacent to a `"Don't fuse instr…"` string, suggesting a fusion gate reads it, but the read site is not individually traced (MED).
+- **Module attribute is a cheap signal.** `has_control_deps="1"` ([§3.3](#phase-3--stamp-the-module-has_control_deps-attribute)) lets later stages detect "this module reified control edges" without re-scanning instructions. The blob @ `0x406140` is rodata-adjacent to a `"Don't fuse instr…"` string, suggesting a fusion gate reads it, but the read site is **[UNRESOLVED]** — it was not traced.
 - **Placement is deliberate.** `#61` sits immediately before `NeuronHloInstCombine` (`#62`) and the fusion cluster, just after `#60 UpcastAllToFP`. Pinning the edges into operands *before* any peephole/fusion pass runs is what prevents those passes from dropping or reordering the edges. (Registry order from the `--passes` table — see [Pass Registry](pass-registry.md).)
 
 ---
@@ -268,12 +268,12 @@ class xla::hilo::PreserveControlDeps : public xla::HloModulePass {   // vtable 0
 };
 // factory: RegisterPreserveControlDeps()::lambda → operator new(8){ vptr = off_410110 }   // 0x1e70910
 
-// HloInstruction field offsets used (CONFIRMED unless noted):
+// HloInstruction field offsets used (read from disasm unless noted):
 //   +0x14  uint16 opcode (low byte);  0x4C = kParameter
-//   +0x15  flags byte (bit 0x8 = phase-1 skip; MED semantic)
+//   +0x15  flags byte (bit 0x8 = phase-1 skip; semantic [INFERRED])
 //   +0x30  rare-metadata ptr → control_predecessors() vector  (kEmptyRare sentinel if null)
 // HloCustomCallInstruction:
-//   +0x2B8 byte custom_call_has_side_effect_  (set 1 on the reified op)   // offset CONFIRMED, name MED
+//   +0x2B8 byte custom_call_has_side_effect_  (set 1 on the reified op)   // offset read; name [INFERRED]
 // HloModule:
 //   +0xBA0 FrontendAttributes  (recipient of has_control_deps="1")
 
@@ -298,18 +298,18 @@ mhlo::CustomCallOp::build(OpBuilder&, OperationState&, TypeRange, ValueRange,
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `xla::hilo::PreserveControlDeps::Run` | `0x1f5c110` | HLO pass body — reify control edges | CONFIRMED |
-| `…::Run` `.cold` clone | `0x1f5bf62` | exception/unwind tail | CONFIRMED |
-| `xla::hilo::PreserveControlDeps::name` | `0x1f5b0d0` | returns `"preserve-control-deps"` (len 0x15) | CONFIRMED |
-| `RegisterPreserveControlDeps()::lambda` `_M_invoke` | `0x1e70910` | factory; `new(8)`, vptr `off_410110` | CONFIRMED |
-| `MapVector<…>::operator[]` | `0x1f5b6d0` | per-instruction predecessor bucket | CONFIRMED |
-| `hilo::NeuronControlDepTupleSimplifier::runOnOperation` | `0x20f6a40` | walk + collect control-dep calls | CONFIRMED |
-| `…::replaceTuples` | `0x20f5d40` | flatten `mhlo.tuple`/GTE; rebuild; erase | CONFIRMED |
-| walk callback lambda | `0x20f59c0` | `isControlDep` filter into `SmallVector` | CONFIRMED |
-| `…::getArgument` | `0x20f5620` | `"flatten-control-dep-tuple-operands"` | CONFIRMED |
-| `mlir::createNeuronControlDepTupleSimplifierPass` | `0x20f68a0` | pass factory | CONFIRMED |
-| `hilo::isControlDep` | `0x21c0370` | `call_target_name == "AwsNeuronControlDep"` | CONFIRMED |
-| StableHLO twin `runOnOperation` / `replaceTuples` / `getArgument` | `0x2132980` / `0x2131c80` / `0x2131560` | `stablehlo-` arg twins | CONFIRMED |
+| `xla::hilo::PreserveControlDeps::Run` | `0x1f5c110` | HLO pass body — reify control edges | CERTAIN |
+| `…::Run` `.cold` clone | `0x1f5bf62` | exception/unwind tail | CERTAIN |
+| `xla::hilo::PreserveControlDeps::name` | `0x1f5b0d0` | returns `"preserve-control-deps"` (len 0x15) | CERTAIN |
+| `RegisterPreserveControlDeps()::lambda` `_M_invoke` | `0x1e70910` | factory; `new(8)`, vptr `off_410110` | CERTAIN |
+| `MapVector<…>::operator[]` | `0x1f5b6d0` | per-instruction predecessor bucket | CERTAIN |
+| `hilo::NeuronControlDepTupleSimplifier::runOnOperation` | `0x20f6a40` | walk + collect control-dep calls | CERTAIN |
+| `…::replaceTuples` | `0x20f5d40` | flatten `mhlo.tuple`/GTE; rebuild; erase | CERTAIN |
+| walk callback lambda | `0x20f59c0` | `isControlDep` filter into `SmallVector` | CERTAIN |
+| `…::getArgument` | `0x20f5620` | `"flatten-control-dep-tuple-operands"` | CERTAIN |
+| `mlir::createNeuronControlDepTupleSimplifierPass` | `0x20f68a0` | pass factory | CERTAIN |
+| `hilo::isControlDep` | `0x21c0370` | `call_target_name == "AwsNeuronControlDep"` | CERTAIN |
+| StableHLO twin `runOnOperation` / `replaceTuples` / `getArgument` | `0x2132980` / `0x2131c80` / `0x2131560` | `stablehlo-` arg twins | CERTAIN |
 | `mlir::MhloToPythonPrinter::printControlDeps` | `0x20b8480` | emit Penguin `.add_dep_edge(` | HIGH |
 | `mlir::StableHLOToPythonPrinter::printControlDeps` | `0x2153360` | StableHLO emitter twin | HIGH |
 
@@ -333,4 +333,4 @@ mhlo::CustomCallOp::build(OpBuilder&, OperationState&, TypeRange, ValueRange,
 - [HLO/mhlo/stablehlo Ingestion Boundary](hlo-ingestion-boundary.md) — the `xla::hilo::` (HLO) vs lowercase `hilo::` (MLIR) split that puts these passes in different binaries
 - [Collectives → Custom-Call Forward Conversion](collectives-to-customcall.md) — the sibling `AwsNeuron*` custom-call family this op belongs to
 - [Penguin Dependency Model — DependencyEdge & EdgeKind](../penguin/dependency-model.md) — Part 5; the `DependencyEdge`/`EdgeKind` model behind `neuronxcc.starfish.penguin.ir.Dependency` and the `.add_dep_edge(` calls the printer emits on the Penguin side
-- [BIR EdgeKind](../bir/edge-kinds.md) — Part 7; the BIR-level ordering edge the reified control dependency ultimately becomes
+- [BIR EdgeKind](../bir/op-family-enums.md) — Part 7; the BIR-level ordering edge the reified control dependency ultimately becomes

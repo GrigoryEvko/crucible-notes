@@ -20,14 +20,14 @@ tables** a reimplementer must model to *type*, *enable*, *schedule*, and *time* 
   accessors return `0`). The forwarding network is *not* a table here; the authoritative timing
   model is the **per-operand `use_stage` / `def_stage`** fields embedded in `opcodes[]`.
 
-Every count, base VMA, stride, field offset, and decoded string below was **re-read from the
-shipped `libisa-core.so` this session** — `objdump -d` on the accessor bodies (count immediates,
-RIP-relative `lea` table bases, struct field offsets and load widths), `nm -S` for symbol
-geometry, and a `mmap`/`struct.unpack` parse of the raw `.data.rel.ro` table bytes with the name
-pointers resolved into `.rodata`. The host-side C-stub *implementation* of the ctype get/set/move/
-convert accessors lives in a separate binary, `libctype.so`, re-read the same way; its deep
-treatment is the cross-linked [libctype CSTUB page](../../iss/libctype-cstub.md). No external or
-vendor source tree was consulted — this is binary-derived prose only, lawful-interoperability RE.
+Every count, base VMA, stride, field offset, and decoded string below is read **from the
+shipped `libisa-core.so`** — the accessor bodies (count immediates, RIP-relative `lea` table
+bases, struct field offsets and load widths), `nm -S` symbol geometry, and a `struct.unpack`
+parse of the raw `.data.rel.ro` table bytes with the name pointers resolved into `.rodata`. The
+host-side C-stub *implementation* of the ctype get/set/move/convert accessors lives in a
+separate binary, `libctype.so`; its deep treatment is the cross-linked
+[libctype CSTUB page](../../iss/libctype-cstub.md). No external or vendor source tree was
+consulted — this is binary-derived prose only, lawful-interoperability RE.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `OBSERVED` = a byte/string/immediate read from a shipped artifact; `INFERRED` = reasoned over
@@ -41,7 +41,7 @@ OBSERVED facts; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-in
 > `.rodata`, which is **VMA == file offset** (delta `0`). Before `xxd`/`objdump -s`-ing a table
 > struct, subtract `0x200000`; resolving a name pointer out of it needs **no** adjustment. The
 > delta is **per-binary** — `libctype.so` happens to share `0x200000` for its `.data`/`.bss`, but
-> never generalize a delta across binaries. `[HIGH/OBSERVED]`
+> never generalize a delta across binaries.
 
 This page deliberately does **not** restate the table-ABI export list or the `(opcode × slot)`
 encode matrix — those are [the libisa Table Schema](libisa-table-schema.md) — nor the headline
@@ -52,30 +52,31 @@ It owns the **interior** of these four tables.
 
 ## 1. Key facts
 
-The five count accessors and the four table geometries, each re-read this session. Every count is
-a literal `mov $imm,%eax; ret` (or `xor %eax,%eax; ret` for the three empty bypass accessors); the
-table symbol **sizes** (`nm -S`) confirm `count × stride` byte-exact.
+The five count accessors and the four table geometries: every count is
+a literal `mov $imm,%eax; ret` (or `xor %eax,%eax; ret` for the three empty bypass accessors), and
+the table symbol **sizes** (`nm -S`) confirm `count × stride` byte-exact. Every row is
+`[HIGH/OBSERVED]`.
 
-| Table / accessor | Value | Source (re-read this session) | Tag |
-|---|---|---|---|
-| `num_ctypes` | **64** (`0x40`) | `@ 0x3b67d0` → `b8 40 00 00 00` (`mov $0x40,%eax`) | HIGH/OBS |
-| `ctypes[]` table | base VMA `0x6cbb00`, **stride 64**, 64 entries | `ctype_name @ 0x3b67e0` `lea …<ctypes>; shl $6` | HIGH/OBS |
-| `ctypes` symbol size | `0x1000` = `64 × 0x40` | `nm -S libisa-core.so` | HIGH/OBS |
-| `num_ctype_protos` | **651** (`0x28b`) | `@ 0x3b6d30` → `mov $0x28b,%eax` | HIGH/OBS |
-| `ctype_protos[]` table | base VMA `0x67bb40`, **stride 32**, 651 entries | `ctype_proto_name @ 0x3b6d40` `lea …; shl $5` | HIGH/OBS |
-| `ctype_protos` symbol size | `0x5160` = `651 × 0x20` | `nm -S` | HIGH/OBS |
-| `num_coprocs` | **1** | `@ 0x3b6dc0` → `mov $0x1,%eax` | HIGH/OBS |
-| `coprocs[]` table | base VMA `0x67bb00`, **stride 16**, 1 entry | `coproc_name @ 0x3b6dd0` `lea …<coprocs>; shl $4` | HIGH/OBS |
-| `coprocs` symbol size | `0x10` = `1 × 0x10` | `nm -S` | HIGH/OBS |
-| `num_funcUnits` | **1** | `@ 0x3b5bd0` → `mov $0x1,%eax` | HIGH/OBS |
-| `funcUnits[]` table | base VMA `0x74a9c0`, **stride 16**, 1 entry | `funcUnit_name @ 0x3b5be0` `lea …<funcUnits>; shl $4` | HIGH/OBS |
-| `funcUnits` symbol size | `0x10` = `1 × 0x10` | `nm -S` | HIGH/OBS |
-| `num_bypass_groups` | **0** | `@ 0x3b61a0` → `31 c0` (`xor %eax,%eax`) | HIGH/OBS |
-| `num_bypass_group_chunks` | **0** | `@ 0x3b61b0` → `xor %eax,%eax` | HIGH/OBS |
-| `bypass_entry` | **0** (const-0 stub) | `@ 0x3b61c0` → `xor %eax,%eax` | HIGH/OBS |
-| `num_opcodes` (timing carrier) | **1534** (`0x5fe`) | `@ 0x3b61d0` → `mov $0x5fe,%eax` | HIGH/OBS |
+| Table / accessor | Value | Source |
+|---|---|---|
+| `num_ctypes` | **64** (`0x40`) | `@ 0x3b67d0` → `b8 40 00 00 00` (`mov $0x40,%eax`) |
+| `ctypes[]` table | base VMA `0x6cbb00`, **stride 64**, 64 entries | `ctype_name @ 0x3b67e0` `lea …<ctypes>; shl $6` |
+| `ctypes` symbol size | `0x1000` = `64 × 0x40` | `nm -S libisa-core.so` |
+| `num_ctype_protos` | **651** (`0x28b`) | `@ 0x3b6d30` → `mov $0x28b,%eax` |
+| `ctype_protos[]` table | base VMA `0x67bb40`, **stride 32**, 651 entries | `ctype_proto_name @ 0x3b6d40` `lea …; shl $5` |
+| `ctype_protos` symbol size | `0x5160` = `651 × 0x20` | `nm -S` |
+| `num_coprocs` | **1** | `@ 0x3b6dc0` → `mov $0x1,%eax` |
+| `coprocs[]` table | base VMA `0x67bb00`, **stride 16**, 1 entry | `coproc_name @ 0x3b6dd0` `lea …<coprocs>; shl $4` |
+| `coprocs` symbol size | `0x10` = `1 × 0x10` | `nm -S` |
+| `num_funcUnits` | **1** | `@ 0x3b5bd0` → `mov $0x1,%eax` |
+| `funcUnits[]` table | base VMA `0x74a9c0`, **stride 16**, 1 entry | `funcUnit_name @ 0x3b5be0` `lea …<funcUnits>; shl $4` |
+| `funcUnits` symbol size | `0x10` = `1 × 0x10` | `nm -S` |
+| `num_bypass_groups` | **0** | `@ 0x3b61a0` → `31 c0` (`xor %eax,%eax`) |
+| `num_bypass_group_chunks` | **0** | `@ 0x3b61b0` → `xor %eax,%eax` |
+| `bypass_entry` | **0** (const-0 stub) | `@ 0x3b61c0` → `xor %eax,%eax` |
+| `num_opcodes` (timing carrier) | **1534** (`0x5fe`) | `@ 0x3b61d0` → `mov $0x5fe,%eax` |
 
-`[HIGH/OBSERVED]` on every row. The `coprocs[]` base (`0x67bb00`) and `ctype_protos[]` base
+The `coprocs[]` base (`0x67bb00`) and `ctype_protos[]` base
 (`0x67bb40`) are adjacent — `coprocs` is the single 16-byte record that opens `.data.rel.ro`,
 `ctype_protos` follows immediately at `+0x40`.
 
@@ -121,7 +122,7 @@ struct xtensa_ctype_internal {     // 64 bytes (stride 0x40), 64 entries
 };  // symbol size 0x1000 = 64*0x40 confirms exactly 64 entries, no 65th.
 ```
 
-The field accessors (all OBSERVED this session, addresses in `libisa-core.so`):
+The field accessors (addresses in `libisa-core.so`):
 
 | Accessor | VMA | Field | Offset / width |
 |---|---|---|---|
@@ -138,10 +139,10 @@ The field accessors (all OBSERVED this session, addresses in `libisa-core.so`):
 
 ### 2.2 The full 64-ctype roster
 
-Byte-exact `mmap` parse of file `0x4cbb00`, name/package/regfile pointers resolved into `.rodata`,
-this session. The four packages partition cleanly: **13** core scalar C-types (`flags=0x0001`,
+Byte-exact `mmap` parse of file `0x4cbb00`, name/package/regfile pointers resolved into
+`.rodata`. The four packages partition cleanly: **13** core scalar C-types (`flags=0x0001`,
 regfile `AR`), **5** core booleans (regfile `BR`), and **46** Vision IVP32 SIMD value types
-(`flags=0x0000`, the six SIMD regfiles). `[HIGH/OBSERVED]`
+(`flags=0x0000`, the six SIMD regfiles).
 
 | idx | name | pkg | bits | align | regfile | view | num_regs | flags | fields |
 |---:|---|---|---:|---:|---|---|---:|---|:--:|
@@ -225,13 +226,13 @@ This is the **reverse `ctype → regfile` map** the register-files page cross-li
 > ctypes (idx 26, 33, 34, 35, 38, 39, 40, 63) and `int24`/`int48`, where `alignment` is a coarser
 > grain than the value width: `wvecspill` is `num_bits=1536` but `alignment=512` (the 512-bit
 > machine register the 1536-bit accumulator spills through). A reimplementer aligns wide
-> accumulator spills to **512 bits**, not 1536. `[HIGH/OBSERVED]`
+> accumulator spills to **512 bits**, not 1536.
 
 ### 2.3 Composite ctypes — the `field_types` / `field_names` decomposition
 
 Only **6** of the 64 ctypes carry non-NULL field arrays — the *decomposable* aggregate types. The
 array lengths are confirmed by the `Ctype__TIE_*_fieldNames` / `_fieldTypes` symbol **sizes**
-(`nm -S`, this session): each pointer is 8 bytes, so size `÷ 8` is the field count.
+(`nm -S`): each pointer is 8 bytes, so size `÷ 8` is the field count.
 
 | ctype | sym size | field count | `field_names` | `field_types` |
 |---|---:|---:|---|---|
@@ -246,7 +247,6 @@ The 64-bit `AR` types decompose into `{hi, lo}` 32-bit halves — matching `num_
 two-`AR` pair — and the boolean packs decompose into their N `xtbool` bits. The other **58** ctypes
 are atomic (both arrays NULL). A reimplemented C/TIE front-end uses this aggregate descriptor to
 spill/reload a `uint64` as two `AR` words and to address an individual boolean inside a pack.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -278,11 +278,11 @@ struct xtensa_ctype_proto_internal {   // 32 bytes (stride 0x20), 651 entries
 > `ctype_proto_kind` accessor (`0x3b6d80`) does `mov 0x10(...),%rax` — a **full 8-byte pointer**
 > load. Reading the field as `int32` yields garbage (the low 32 bits of a `.rodata` pointer). The
 > kind is one of the twelve strings `{rtor, mtor, rtom, loadi, storei, move, loadip, storeip,
-> loadx, storex, loadxp, storexp}`. `[HIGH/OBSERVED]`
+> loadx, storex, loadxp, storexp}`.
 
 ### 3.2 The kind census
 
-`mmap` parse of all 651 records this session (`kind` and `other_type` resolved into `.rodata`):
+`mmap` parse of all 651 records (`kind` and `other_type` resolved into `.rodata`):
 
 | count | kind | meaning |
 |---:|---|---|
@@ -302,8 +302,8 @@ struct xtensa_ctype_proto_internal {   // 32 bytes (stride 0x20), 651 entries
 
 **340** of the 651 protos carry a non-empty `other_type` (the convert protos — `rtor`/`mtor`/`rtom`
 between two ctypes, e.g. `vbool1_rtor_uint32`, `vecNx32U_mtor_xb_vecNx48`, `vec2Nx24_rtom_xb_wvecspill`);
-the remaining **311** are the same-type access protos (load/store/move). `[count HIGH/OBSERVED;
-the convert-direction reading is MED/INFERRED from the name + `other_type`.]`
+the remaining **311** are the same-type access protos (load/store/move).
+`[HIGH/OBSERVED counts; MED/INFERRED convert direction]`
 
 The `rtor 205 / loadi 47 / storei 47` triple is the **authoritative link** to the host C-stub
 library: `libctype.so` implements *exactly* these three kinds as 299 `Function_TIE_*` stubs (the
@@ -325,7 +325,7 @@ struct xtensa_coproc_internal {    // 16 bytes (stride 0x10), 1 entry
 };  // symbol size 0x10 = 1*0x10 confirms exactly ONE coproc.
 ```
 
-Raw bytes `coprocs @ VMA 0x67bb00` (file `0x47bb00`), this session:
+Raw bytes `coprocs @ VMA 0x67bb00` (file `0x47bb00`):
 
 ```
 0047bb00:  0b b8 3b 00 00 00 00 00   01 00 00 00 00 00 00 00
@@ -337,7 +337,7 @@ Raw bytes `coprocs @ VMA 0x67bb00` (file `0x47bb00`), this session:
 coprocs[0] = { name = "Vision", number = 1 }    (CP1)
 ```
 
-`[HIGH/OBSERVED]`. `Vision` is the IVP32 SIMD coprocessor. It is the `coproc` tag carried on **all
+`Vision` is the IVP32 SIMD coprocessor. It is the `coproc` tag carried on **all
 six** SIMD register files (`vec`, `vbool`, `valign`, `wvec`, `b32_pr`, `gvr` — see
 [register-files §3](register-files.md#3-the-eight-register-files--the-authoritative-roster)) and on
 the 19 IVP32 floating-point control/status states (`RoundMode`, the sticky flags + enables, the
@@ -362,13 +362,13 @@ unallocated/reserved (no named coproc, no state, no regfile).
 
 So a reimplemented `CPENABLE` model needs exactly **one meaningful enable bit (CP1)**: a vector op
 faults or stalls if `CPENABLE` bit 1 (Vision) is clear. (`coproc 0` is conventionally the
-core/no-coproc slot; `Vision` is `number = 1`.) `[name/number HIGH/OBSERVED; the exact bit index
-1 ↔ Vision is MED/INFERRED from `number = 1` + the 7-bit width + the single populated entry.]`
+core/no-coproc slot; `Vision` is `number = 1`.)
+`[HIGH/OBSERVED name/number; MED/INFERRED bit index 1 ↔ Vision]`
 
 > **GOTCHA — do not infer seven coprocessors from `XCHAL_CP_MAXCFG = 7`.** Six of the seven
 > `CPENABLE` slots are empty in this config. The shipped `coprocs[]` table has one entry, and
 > `num_coprocs` is the arbiter: model **one** coprocessor. The seven is the *enable-register
-> width*, not the coprocessor *count*. `[HIGH/OBSERVED]`
+> width*, not the coprocessor *count*.
 
 ---
 
@@ -385,7 +385,7 @@ struct xtensa_funcUnit_internal {  // 16 bytes (stride 0x10), 1 entry
 };  // symbol size 0x10 = 1*0x10 confirms exactly ONE funcUnit.
 ```
 
-Raw bytes `funcUnits @ VMA 0x74a9c0` (file `0x54a9c0`), this session:
+Raw bytes `funcUnits @ VMA 0x74a9c0` (file `0x54a9c0`):
 
 ```
 0054a9c0:  d3 d0 3c 00 00 00 00 00   02 00 00 00 00 00 00 00
@@ -397,7 +397,7 @@ Raw bytes `funcUnits @ VMA 0x74a9c0` (file `0x54a9c0`), this session:
 funcUnits[0] = { name = "XT_LOADSTORE_UNIT", num_copies = 2 }
 ```
 
-`[HIGH/OBSERVED]`. The **only** structural functional-unit hazard the ISA models is the load/store
+The **only** structural functional-unit hazard the ISA models is the load/store
 unit, with **two copies** — the two parallel memory pipes (the `_0`/`_1` dual LSU). There is **no**
 separate ALU / Mul / Ld funcUnit object: ALU, Mul, Ld, LdSt are FLIX *issue slots*
 ([flix-encoding](flix-encoding.md)), not funcUnit hazard records. The `num_copies = 2` is the
@@ -407,7 +407,7 @@ silicon basis for the `1 + 1` co-issue bound (§7).
 
 Each opcode in `opcodes[]` (base `0x6ce6c0`, stride 72) carries a `num_funcUnit_uses` count
 (`+0x30`) and a `funcUnit_use[]` array (`+0x38`), each use a `{const char* unit; int32 stage}`
-record of stride 16. Sweeping all **1534** opcodes this session:
+record of stride 16. Sweeping all **1534** opcodes:
 
 | `num_funcUnit_uses` | opcode count |
 |---:|---:|
@@ -430,7 +430,7 @@ one at **stage 0**. So:
   ```
 
 A reimplemented hazard model treats the funcUnit as **pure load/store-port occupancy on the 2-copy
-LSU**: a single load/store takes one copy; the five dual loads need *both* copies free. `[HIGH/OBSERVED]`
+LSU**: a single load/store takes one copy; the five dual loads need *both* copies free.
 
 ---
 
@@ -453,8 +453,8 @@ absent in this config — the same dead-stub pattern as the (empty) interface ta
 > a scheduler would read (the `MODULE_SCHEDULE` data) is **not populated** in this corpus. With
 > the reservation data absent, the per-cycle co-issue ceiling is **not recoverable** beyond the
 > structural bound the format roster + the 2 LSU copies give (§7). The `1 + 1` co-issue is the
-> **sound, non-speculative** bound. This is the empty-`MODULE_SCHEDULE` wall. `[HIGH/OBSERVED on
-> the empty table; the absence of a tighter per-port model is OBSERVED-negative.]`
+> **sound, non-speculative** bound. This is the empty-`MODULE_SCHEDULE` wall.
+> `[HIGH/OBSERVED empty table; OBSERVED-negative per-port model]`
 
 ### 6.2 The authoritative timing is the per-operand `use_stage` / `def_stage`
 
@@ -469,7 +469,7 @@ struct operand_use {     // 6 bytes per operand
 };
 ```
 
-Accessors (this session): `opcode_operand_use_stage @ 0x3b6260` (`movzbl (.)`),
+Accessors: `opcode_operand_use_stage @ 0x3b6260` (`movzbl (.)`),
 `opcode_operand_def_stage @ 0x3b6290` (`movzbl 0x1(.)`), `opcode_bypass_use_group_idx @ 0x3b6490`
 (`movzwl 0x2(.)`), `opcode_bypass_def_group_idx @ 0x3b6460` (`movzwl 0x4(.)`). State-operand uses
 (`opc+0x28`, stride 3) carry `use_stage / def_stage / allow_reorder`.
@@ -478,7 +478,7 @@ Accessors (this session): `opcode_operand_use_stage @ 0x3b6260` (`movzbl (.)`),
 a def"; `byp_use_grp == byp_def_grp == 0xFFFF` means "no bypass group" — every operand carries the
 null `0xFFFF` index because there are **zero** groups to index into.
 
-**Worked example — `add.n` (opcode idx 4), the three operand-use records, re-read this session:**
+**Worked example — `add.n` (opcode idx 4), the three operand-use records:**
 
 ```
 op0 (dst):  use_stage=0xFF  def_stage=4     byp=0xFFFF/0xFFFF   -> AR result ready @ STAGE 4
@@ -490,11 +490,11 @@ The **`def_stage` of the destination operand is the producer result latency**, a
 **`use_stage` of a source operand is the consumer read latency**. The forwarding rule a reimplemented
 scoreboard applies is purely stage arithmetic: *a value is forwardable from its `def_stage`
 onward; a consumer at `use_stage` stalls iff `(def_stage − elapsed) > use_stage`.* No group/chunk
-indirection is used. `[HIGH/OBSERVED]`
+indirection is used.
 
 ### 6.3 The per-unit latency table (operand-0 `def_stage` distribution)
 
-Sweeping the destination-operand `def_stage` over all opcodes this session yields the authoritative
+Sweeping the destination-operand `def_stage` over all opcodes yields the authoritative
 per-class result latency:
 
 | `def_stage` | opcode count | class |
@@ -510,7 +510,7 @@ per-class result latency:
 | **12** | 485 | **MUL / MAC (`wvec`) / DSEL** — the deepest common vector retire |
 | **13** | 115 | **FP-vector add / MAC** — one stage deeper than the integer pipe |
 
-Representative ops, `(use, def)` of the destination operand, re-read this session:
+Representative ops, `(use, def)` of the destination operand:
 
 | op | dst `(use, def)` | latency class |
 |---|---|---|
@@ -527,8 +527,8 @@ The recurring source `use_stage = 10` across the SIMD ops is the execute stage w
 value is read; the recurring `def_stage = 4` for scalar `AR` is the early scalar result. These
 per-operand stages are the **authoritative** source the cycle-accurate ISS turns into interlocks —
 see the [cas timing-model page](../../iss/cas-timing-model.md) for the reconstructed scoreboard;
-this page is the table it reconstructs *from*. `[stage numbers HIGH/OBSERVED; the 1/3 auxiliary
-operand role-labels MED/INFERRED.]`
+this page is the table it reconstructs *from*.
+`[HIGH/OBSERVED stages; MED/INFERRED 1/3 role-labels]`
 
 ---
 
@@ -544,7 +544,7 @@ loads consume *both* copies, so they cannot co-issue with another memory op. Do 
 tighter per-cycle throughput than the format roster + the 2 LSU copies allow; the empty
 `MODULE_SCHEDULE` makes a per-port hazard model unrecoverable from this corpus. This bound is
 shared with the [Config Reference Sheet §4.1](config-reference-sheet.md#41-the-co-issue-ceiling--1--1-is-the-sound-bound).
-`[HIGH/OBSERVED on the slot rosters and the 2 LSU copies; the absent tighter model is OBSERVED-negative.]`
+`[HIGH/OBSERVED rosters; OBSERVED-negative per-port model]`
 
 ---
 
@@ -563,17 +563,17 @@ page's tables:
   **205 `_rtor`** + **47 `_loadi`** + **47 `_storei`** — *exactly* the `rtor 205 / loadi 47 /
   storei 47` counts of §3.2. The other 9 ISA-06 kinds (`mtor`, `rtom`, `move`, `loadip`/`storeip`,
   `loadx`/`storex`/`loadxp`/`storexp`) have **zero** host stubs — they are table-only, synthesized
-  caller-side from `base_addr` arithmetic. `[HIGH/OBSERVED]`
+  caller-side from `base_addr` arithmetic.
 * **The dispatch tables are ctype-id-indexed.** Three `.bss` ftables, each `0x200 = 64 × 8`
   (`cstub_loadi_ftable @ 0x2562c0`, `cstub_storei_ftable @ 0x2564c0`, `cstub_rtor_ftable @
   0x256700`), indexed by **ctype id 0..63** — the same 64-row index space as `ctypes[]`. The
   populated `loadi` entries decode byte-exact to the §2.2 indices (`idx4 = uint32`, `idx18 =
   valign`, `idx21 = vec2Nx8`, `idx49 = vbool1`, `idx58 = int64`, `idx60/61 = int32pr/int64pr`,
-  `idx62 = gsr`, `idx63 = wvecspill`). `[HIGH/OBSERVED]`
+  `idx62 = gsr`, `idx63 = wvecspill`).
 * **The single-vs-multi-word flag.** `cstub_ctype_multi_word[64]` (`.data @ 0x256080`, 64 bytes)
   marks `idx {6, 7} ∪ {18..63}` (48 entries) as multi-word — exactly the `AR uint64/int64` pair
-  (`num_regs = 2`, §2.3) and every Vision SIMD type (all `> 32` bits). Re-read this session: a
-  byte-exact `01` at those indices, `00` elsewhere. `[HIGH/OBSERVED]`
+  (`num_regs = 2`, §2.3) and every Vision SIMD type (all `> 32` bits): a
+  byte-exact `01` at those indices, `00` elsewhere.
 
 The pseudocode for the host get/set/convert dispatch, naming the real symbols:
 
@@ -629,13 +629,13 @@ void cstub_ctypes_init(...);                        // @0x438d0
 > `rtor` or a `loadi`/`storei` round-trip / flat struct copy — the native sim needs no dedicated
 > function. The 9 table-only kinds (move, mtor, rtom, and the indexed/post-inc load/store modes)
 > are computed by the caller from `base_addr` arithmetic before calling `loadi`/`storei`.
-> `[count HIGH/OBSERVED; the caller-synthesis mechanism MED/INFERRED.]`
+> `[HIGH/OBSERVED counts; MED/INFERRED caller synthesis]`
 
 ---
 
 ## 9. Provenance & confidence ledger
 
-| Claim | Tag | Witness (re-read this session) |
+| Claim | Tag | Witness |
 |---|---|---|
 | `num_ctypes = 64`; `ctypes` sym size `0x1000`; stride 64 | HIGH/OBS | `0x3b67d0` `mov $0x40`; `nm -S`; `ctype_name` `shl $6` |
 | The 64-ctype roster + regfile census `vec27/AR13/wvec11/BR5/vbool4/b32_pr2/valign1/gvr1` | HIGH/OBS | `mmap` parse of `0x4cbb00`, names into `.rodata` |
@@ -685,8 +685,8 @@ bound; a tighter per-port reservation model is not recoverable from this corpus.
 
 *Provenance: the `ctypes[]` (`0x6cbb00`), `ctype_protos[]` (`0x67bb40`), `coprocs[]` (`0x67bb00`),
 `funcUnits[]` (`0x74a9c0`) tables, the count accessors, the `opcodes[]` operand-stage and
-funcUnit-use sub-arrays, and the empty bypass accessors were re-disassembled, `nm -S`-sized, and
-`mmap`-parsed in-checkout from the shipped `libisa-core.so` (`.data.rel.ro` delta `0x200000`;
-`.rodata` delta `0`). The `libctype.so` cross-reference (§8) was re-read the same way. All facts
-read as derived from shipped-artifact static analysis (lawful interoperability RE); no external or
-vendor source tree was consulted.*
+funcUnit-use sub-arrays, and the empty bypass accessors were disassembled, `nm -S`-sized, and
+`mmap`-parsed from the shipped `libisa-core.so` (`.data.rel.ro` delta `0x200000`;
+`.rodata` delta `0`). The `libctype.so` cross-reference (§8) comes from the same kind of read.
+All facts are derived from shipped-artifact static analysis (lawful interoperability RE); no
+external or vendor source tree was consulted.*

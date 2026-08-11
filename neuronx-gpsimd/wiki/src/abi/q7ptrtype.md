@@ -25,9 +25,9 @@ the same compiler that *defines* this ABI (`DW_AT_producer`:
 `XtensaTools-14.09 clang version 10.0.1`). The objects are **ELF 32-bit LSB,
 Tensilica Xtensa, not stripped**.
 
-> NOTE — Native disassembly **was available** for this analysis. The Xtensa
-> binutils ship in-tree under `tools/XtensaTools/bin/xtensa-elf-objdump`; the
-> objdump only needs its core registered:
+> NOTE — Native disassembly is **available in-tree**. The Xtensa binutils ship
+> under `tools/XtensaTools/bin/xtensa-elf-objdump`; the objdump only needs its
+> core registered:
 > ```
 > export XTENSA_SYSTEM=.../gpsimd_tools/tools/ncore2gp/config
 > export XTENSA_CORE=ncore2gp
@@ -296,7 +296,7 @@ arithmetic* (`hbm_addr + sizeof(T)*n`) but **stops there** — it never calls
 `Q7PtrType` that *describes* the advanced location. You must use `operator[]`
 (or `*` on a `unique_ptr`, which forwards to `[0]`) to actually touch memory.
 
-> CORRECTION / clarification to SX-ABI-01 §3b confidence — the report tags
+> CORRECTION / clarification to ABI-01 §3b confidence — the report tags
 > `operator+` semantics MED "(no binary echo)". That is correct *and verifiable*:
 > a native search confirms **zero** `operator+` text symbols
 > (`nm | rg -c 'Q7PtrTypeplE'` → 0) **and zero** `operator+` DWARF DIEs in any
@@ -379,7 +379,7 @@ pointer-comparison sense but by the free `operator==(Q7PtrType, nullptr_t)` (§3
 → `is_nullptr`. This is exactly why `is_nullptr@0x0c` must exist: a 32-bit native
 null-pointer test would be meaningless against a 16-byte device-address value.
 
-> CORRECTION to SX-ABI-01 §4 — the report states the deleter element is
+> CORRECTION to ABI-01 §4 — the report states the deleter element is
 > `__compressed_pair_elem<Q7Deleter, 1, **true**>` (empty-base-optimised) and
 > calls the 24th-byte region "tail-padded for 8-byte alignment". The DWARF
 > disagrees on the EBO flag: the element is

@@ -41,19 +41,18 @@ shipped host customop-lib **ISA C headers**. No source was consulted.
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — the FW-26/27/28/41 anchor, re-verified in-task |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — the FW-26/27/28/41 anchor |
 | Disassembler | `gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
 | MARIANA `NX_DVE` DEBUG IRAM | host VA `0x408fc0`, size `0x1c560` (`.data` VA == device file offset) |
 | MARIANA `NX_DVE` DEBUG DRAM | host VA `0x425520`, size `0x7000` |
 | MARIANA `Q7_POOL` DEBUG IRAM/DRAM | sha256 `47f76629…` / `02cacff0…` (reproduces FW-28 EXACTLY — the RNG **producer** images) |
 
-> **NOTE (carve anchor for this page).** This page's DVE carve was re-derived in-task by
-> `dd`-slicing the container at the host-symtab VAs and disassembling the binary slice.
-> The MARIANA `NX_DVE` DEBUG IRAM slice disassembles to **46,162 lines, empty stderr**.
-> The task's stated DEBUG-image anchors (`CAYMAN_NX_POOL_DEBUG` IRAM 116768 B sha
+> **NOTE (carve anchor for this page).** The DVE carve is a `dd` slice of the container at
+> the host-symtab VAs; the MARIANA `NX_DVE` DEBUG IRAM slice disassembles to **46,162
+> lines, empty stderr**. The `CAYMAN_NX_POOL_DEBUG` images (IRAM 116768 B sha
 > `8e4412b9` / DRAM 28448 B sha `7bdf6ed7`) belong to the **CAYMAN POOL** producer side;
 > the Rand2 consumer lives in the **DVE** image, which is where every Rand2 byte below was
-> read. [carve methodology HIGH/OBSERVED]
+> read. [HIGH/OBSERVED]
 
 The authoritative struct/enum source is the shipped public ISA headers (same package):
 
@@ -67,7 +66,7 @@ The authoritative struct/enum source is the shipped public ISA headers (same pac
 
 > **QUIRK.** `cayman/` and `sunda/` arch-isa dirs ship `d4_rand.h` and `s1_rand.h` but
 > **NOT** `d3_rand.h` (verified by directory listing). The header tree alone tells you
-> Rand2 is a MARIANA-and-later op before you read a single firmware byte. [HIGH/OBSERVED]
+> Rand2 is a MARIANA-and-later op before you read a single firmware byte.
 
 ---
 
@@ -85,9 +84,9 @@ NEURON_ISA_TPB_OPCODE_RAND2           = 0xe2,  // Y
 ```
 
 - `Rand` (`0x76`) is the **deprecated** legacy op — its own header (`d4_rand.h:18`)
-  literally opens `// TODO: deprecate Rand`. [HIGH/OBSERVED]
-- `Rand2` (`0xe2`) is the **maintained** replacement (the user-facing op). [HIGH/OBSERVED]
-- The two seed-state ops `0x77`/`0x78` are shared (see [`rng-seed-state-ops.md`](./rng-seed-state-ops.md)). [HIGH/OBSERVED]
+  literally opens `// TODO: deprecate Rand`.
+- `Rand2` (`0xe2`) is the **maintained** replacement (the user-facing op).
+- The two seed-state ops `0x77`/`0x78` are shared (see [`rng-seed-state-ops.md`](./rng-seed-state-ops.md)).
 
 > **CORRECTION (vs a naïve reading).** Rand2 ≠ "Rand with a bigger version number on the
 > same engine." Rand2 is a **different struct on a different engine with a strictly
@@ -119,7 +118,7 @@ NEURON_ISA_TPB_OPCODE_RAND2           = 0xe2,  // Y
 | 48 | 16 | `dst_mem_pattern` | `TENSOR3D` | ADDR4 + 3×int16 step + 3×uint16 num_elem |
 
 **Compile verification** (a self-contained harness mirroring the header field-for-field,
-`gcc -O0`, this task):
+`gcc -O0`):
 
 ```
 sizeof = 64
@@ -127,8 +126,7 @@ offsets: rand_algorithm=12 post_process=14 dtype=32 num_active_channels=34
          min_src=38 max_src=39 min=40 max=44 dst_mem_pattern=48
 ```
 
-Every offset matches the header's own `// (NN)` column. [HIGH/OBSERVED — header text +
-`ISA_STATIC_ASSERT==64` + independent `gcc` `sizeof`/`offsetof`]
+Every offset matches the header's own `// (NN)` column. [HIGH/OBSERVED]
 
 ### 4a. The `IMM_SRC` enum (min_src / max_src semantics)
 
@@ -147,7 +145,7 @@ a Rand2 addition (§6). [HIGH/OBSERVED `common.h:1352`]
 > (`N_POINTER_IMMEDIATE=0`, `N_INSTRUCTION_IMMEDIATE=1`). `d3_rand`'s `min_src`/`max_src`
 > are typed `NEURON_ISA_TPB_IMM_SRC` — the **non-`_N`** variant — so for Rand2 the
 > mapping is `0=instruction, 1=pointer, 2=reg`. A reimplementer copying the `_N` table
-> by mistake will invert min/max bound sourcing. [HIGH/OBSERVED — both enums read]
+> by mistake will invert min/max bound sourcing. [HIGH/OBSERVED]
 
 ### 4b. The `min`/`max` value field
 
@@ -200,7 +198,7 @@ l32r a2,<descr> ; call8 0x9920`. `call8 0x9920` = the kernel-register routine; `
 = the `kernel_info` funcVA slot. [stub edges HIGH/OBSERVED]
 
 The handler→name pinning (the decisive identity proof): handler `0xf2cc` loads
-`const16 a10,0x3068` at `0xf650`, and DRAM `@0x3068` reads (xxd-verified this task):
+`const16 a10,0x3068` at `0xf650`, and DRAM `@0x3068` reads:
 
 ```
 00003068: 53 3a 20 52 61 6e 64 32 0a 00 53 3a 20 45 78 70   S: Rand2..S: Exp
@@ -275,15 +273,14 @@ static void dve_rand2_handler(dve_ctx_t *ctx /* a1 frame */)
 
 The handler spans `0xf2cc..0xf694` (~`0x3c8` bytes): **setup → vector-context program →
 self-name → compute `num_tensor_elements` → hand off to the DVE worker → return**. It
-carries **no multi-word RNG state machine**. [entry, the log, the `mull` element-count
-chain, the `retw.n` boundary all HIGH/OBSERVED]
+carries **no multi-word RNG state machine**. [HIGH/OBSERVED]
 
 > **GOTCHA (FLIX desync).** The flat DEBUG image has no `.xt.prop` FLIX property table, so
 > a linear `objdump` sweep desyncs the VLIW bundles in the vector-context block
 > (`0xf2e6..0xf64d`) — the per-lane register-window programming. The entry, the `call8`
 > edges, the self-name, the `mull` element-count chain, and the `retw.n` boundary are all
 > single/short-format instructions that resync cleanly and **are** byte-pinned; the
-> interior bundle operands are MED. This is the SX-FW-00 limitation shared by FW-26/27/41.
+> interior bundle operands are MED. This is the same limitation flagged for FW-26/27/41.
 
 ### 5c. Operand-field reads
 
@@ -342,7 +339,7 @@ RAND_POST_PROC:  RAW_U32=0, UNIFORM_IN_RANGE=1, NORMAL=2  // "Not supported yet"
 | `post_process` | `UNIFORM_IN_RANGE (1)` only | `RAW_U32 (0)`, `NORMAL (2)` — both fail `has_valid_rand2_post_processing` |
 | `dtype` | FP (`FP32`, `FP32R`, `BF16`, `FP16`) | any integer dtype (`is_valid_dtype(.., FP32R::True)` admits FP only) |
 
-[HIGH/OBSERVED — three equality predicates + the two enum domains]
+[HIGH/OBSERVED]
 
 > **QUIRK (the disabled LFSR alternative).** `d3_rand.h:106` carries a **commented-out**
 > alternative inside the restriction block:
@@ -353,7 +350,7 @@ RAND_POST_PROC:  RAW_U32=0, UNIFORM_IN_RANGE=1, NORMAL=2  // "Not supported yet"
 >
 > i.e. an `(LFSR || XORWOW)` form was contemplated and then **disabled**, leaving the
 > single live clause `rand_algorithm == XORWOW`. LFSR was deliberately excluded from
-> Rand2. [HIGH/OBSERVED]
+> Rand2.
 
 ### 6a. The generate → post-process pipeline
 
@@ -402,13 +399,13 @@ to offset by `min`.
 
 - **RAW_U32** (`post_process==0`) — the FW-41 Dropout / old-Rand uint32 pass-through — is
   **rejected** by `has_valid_rand2_post_processing` (UNIFORM only). Rand2 never emits raw
-  u32. [HIGH/OBSERVED]
+  u32.
 - **NORMAL** (`post_process==2`) is enum-defined but `// Not supported yet` across
   **all** of Rand/Rand2. There is **no** Box-Muller / inverse-CDF / gaussian math in any
   POOL or DVE image (no `log`/`sqrt`/`2π` constants tied to RNG). A normal distribution
   must be composed host-side from UniformInRange draws. The Rand2 ecosystem's only
   non-uniform **on-device** distribution is the **separate** Exponential op (`0x30`), not a
-  Rand2 post-proc. [HIGH/OBSERVED — enum value + absence of gaussian math]
+  Rand2 post-proc. [HIGH/OBSERVED]
 
 ---
 
@@ -433,15 +430,15 @@ to offset by `min`.
 
 - **DROPPED `rand_num_steps`** — Rand2 is XORWOW-only; `num_steps` was the LFSR-only
   multi-step knob (`d4_rand.h:32`: `// If LFSR, rand_num_steps >= 1`), irrelevant once
-  LFSR is excluded. [HIGH]
+  LFSR is excluded.
 - **DROPPED `rand_generator`** — Rand2 has a single fixed source (XORWOW); no per-instruction
-  generator selector. [HIGH]
+  generator selector.
 - **DROPPED `params[4]` (16 B)** — replaced by the explicit `min`/`max` + `min_src`/`max_src`
   quartet. Rand carried `min_fp32`/`max_fp32` in `params[0]`/`params[1]` (`d4_rand.h:42`);
-  Rand2 promotes them to first-class fields. [HIGH]
+  Rand2 promotes them to first-class fields.
 - **ADDED `min_src`@38 / `max_src`@39** — the per-bound source selector Rand lacked (Rand's
-  params were always instruction-immediate). [HIGH]
-- **CHANGED dst** from `TENSOR4D` (4-D, Rand) to `TENSOR3D` (3-D, Rand2). [HIGH]
+  params were always instruction-immediate).
+- **CHANGED dst** from `TENSOR4D` (4-D, Rand) to `TENSOR3D` (3-D, Rand2).
 
 > **NOTE (the deprecated op is unwired).** There is **no** standalone `"S: Rand"` (without
 > the `2`) handler string anywhere in the firmware (exhaustive grep: zero hits — the only
@@ -496,7 +493,7 @@ a **floating-point** dtype (FP32R allowed). FP dtype codes (from `common.h`):
 | any other integer dtype | — | **NO** |
 
 Contrast: the **old Rand** allowed int dtypes (RawU32) OR fp dtypes (UniformInRange)
-(`d4_rand.h:45`). `RandGetState` forces `dtype == UINT32` (the state read-back). [HIGH/OBSERVED]
+(`d4_rand.h:45`). `RandGetState` forces `dtype == UINT32` (the state read-back).
 
 ---
 

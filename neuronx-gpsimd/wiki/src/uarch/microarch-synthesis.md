@@ -31,7 +31,7 @@ reads as derived from binary/static analysis alone (lawful interoperability RE, 
 > **GOTCHA — section deltas, vtable base, and gitignore (carried into every spot-check on this
 > page).** For these `ncore2gp` DLLs `.text`/`.rodata` are `VMA == file offset`; `.data` /
 > `.data.rel.ro` carry `VMA − fileoffset = 0x200000` (NOT libtpu's `0x400000`), confirmed
-> per-section this pass: `libcas-core.so` `.data.rel.ro` VMA `0x2070900` / file `0x1e70900`;
+> per-section: `libcas-core.so` `.data.rel.ro` VMA `0x2070900` / file `0x1e70900`;
 > `.data` VMA `0x2280ed8` / file `0x2080ed8` (`readelf -SW`). `extracted/` is gitignored — reach it
 > with an absolute path or `fd --no-ignore`. Ground every count with `nm <lib> | rg -c`, never a
 > decompile (which inflates 2–12×) and never an opcode-*name* grep (co-issue legality is a
@@ -122,7 +122,7 @@ The ISA is **stock Cadence**: `num_opcodes = 1534` (`0x5fe @ 0x3b61d0`), `num_ic
 opcodes — the GPSIMD-custom layer is firmware + host routing, not new silicon opcodes.
 
 > **NOTE — `num_states`: 81 (libisa runtime DB) vs 87 (binutils module).** The libisa runtime getter
-> reads `num_states = 0x51 = 81` (`@0x3b6670`, re-disassembled this pass); the shipped binutils/gdb
+> reads `num_states = 0x51 = 81` (`@0x3b6670`); the shipped binutils/gdb
 > `xtensa-modules.c` carries `#define n 87`. These are **different denominators** (the runtime ISA
 > DB count vs the disassembler module's state array including non-DB entries). The FCR/FSR field set
 > §3.2 reasons over the per-state structs regardless of either total; cite **81** for the libisa DB.
@@ -211,7 +211,7 @@ independent decoders in `libisa-core.so` and a device-bundle cross-check.
 Two table-driven decoders run on each word: `format_decoder @0x3b5970` (a flat mask-and-match ladder
 keyed on `op0 = byte0[3:0]` + the `byte3` selector → format `0..13` or `−1`) and `length_decoder
 @0x3b5a50` (`idx = ((byte3 & 0xF) << 4) | (byte0 & 0xF)` → `length_table[256] @0x3d4100` → byte length
-`{2, 3, 8, 16}` or illegal). They are **mutually exact** (0 mismatches / 4096 combos). The 7 DX-named
+`{2, 3, 8, 16}` or illegal). They are **mutually exact** (0 mismatches / 4096 combos). The 7
 length classes (`l24 / l16a / l16b / l128a / l128b / l128c / l64a`) map onto the four byte sizes;
 `l128a` = F3/F11 (16 B, `op0=0xE`), `l128b` = F0/F4, `l128c` = F1/F2/F6/F7, `l64a` = N0/N1/N2.
 
@@ -235,25 +235,25 @@ length classes (`l24 / l16a / l16b / l128a / l128b / l128c / l64a`) map onto the
 Slot-count census: `1+1+1 + 4+5+4+4+5+4+4+4 + 3+2+4 = 46 = num_slots` (EXACT). `F5/F8/F9/F10` do not
 exist (sparse numbering). **Peak issue width = 5** (F3/F11). The three `None` slots (`N0_S1`,
 `N0_S2`, `N1_S1`) host exactly one op — `nop` — NOP-only filler, not real issue ports. The per-slot
-opcode census sums to **12569** `Opcode_*_Slot_*` placements; `F4_S2_Mul = 61` (re-counted this pass,
-not the older 60/65). Device cross-check: **1479/1479** real FLIX bundles in `libneuroncustomop.a`
+opcode census sums to **12569** `Opcode_*_Slot_*` placements; `F4_S2_Mul = 61` (not the older
+60/65). Device cross-check: **1479/1479** real FLIX bundles in `libneuroncustomop.a`
 decoded with `xtensa-elf-objdump` (0 miss; this management library tops out at 4-op bundles — the
 5-issue F3/F11 vision bundles are validated by structure, not by this scalar-dominated sample).
 
 ### 2.2 Per-slot datapath binding — the class-exclusive lanes `[HIGH × OBSERVED]`
 
 Beneath the *permissive* `SLOT_OPCODES` supersets (Tensilica lists nearly every op as slot-legal),
-the **semantic class** binding is the schedulable fact, re-derived from the slot/unit and
-adversarially re-challenged against the opcode-name superset ([co-issue-matrix §2], [regfile-ports
+the **semantic class** binding is the schedulable fact, derived from the slot/unit and
+cross-checked against the opcode-name superset ([co-issue-matrix §2], [regfile-ports
 §3], [simd-datapath §3.6/§4.3]):
 
 * **MEMORY** (`ivp_sem_ld_st` + scatter/gather): **S0** (`LdSt`/`LdStALU` = full load+store + the
   richest gather lane) and **S1** (`Ld` = load-only). The 2-LSU unified config exposes exactly two
   memory-port interfaces — `nx_Load_0_interface`, `nx_Load_1_interface`, `nx_Store_0_interface`
-  (**no** `nx_Store_1_interface`, verified this pass) — so a bundle issues **≤ 2 memory ops, of
+  (**no** `nx_Store_1_interface`) — so a bundle issues **≤ 2 memory ops, of
   which ≤ 1 STORE** (stores live only in S0). `F4` = 2 loads (no vector store).
 * **INTEGER QUAD-MAC** (`ivp_mulqa*`): **EXCLUSIVELY `S2_Mul`**, one per format — at most **one**
-  integer quad-MAC per bundle. Confirmed this pass: `Opcode_ivp_mulqa*` outside `*_s2_mul` = **∅**;
+  integer quad-MAC per bundle. Confirmed: `Opcode_ivp_mulqa*` outside `*_s2_mul` = **∅**;
   `HAVE_MAC16 = 0` (no replicated multiplier).
 * **FP FUSED MULTIPLY-ADD** (`madd/msub.{s,h}`, `ivp_mulan/mulsn_2xf32`, FP-divide-step `divn`):
   primarily **`S3_ALU`**, but **NOT S3-exclusive** — see the CORRECTION below.
@@ -262,7 +262,7 @@ adversarially re-challenged against the opcode-name superset ([co-issue-matrix �
 
 > **CORRECTION (divergence #4) — FP-FMA is NOT `S3_ALU`-exclusive; the bound is slot-count
 > `1×S2 + 1×S3`, not slot identity.** A prior framing asserted "`MADD`/`MSUB` live in S3_ALU, S2_Mul
-> has zero MADD." The binary refutes it, re-verified this pass: `nm libisa-core.so | rg
+> has zero MADD." The binary refutes it: `nm libisa-core.so | rg
 > 'Opcode_madd_s_Slot'` lists **`s2_mul` ×3** alongside `s3_alu` ×4 (and `msub_s` identically); on
 > **N1** — which has no S3_ALU slot — the only FP-FMA placement *is* in `S2_Mul`. In `libcas-core.so`,
 > `my_vec_2_opnd_ivp_sem_spfma_{vr,vs,vt}_use` **and** `my_vec_3_opnd_ivp_sem_spfma_*` both resolve.
@@ -349,7 +349,7 @@ that forward. `[HIGH × OBSERVED gaps; INFERRED network]`
 >   no schedule, the **cycle model `libcas-core.so` ships the reservation FULLY POPULATED** as
 >   function bodies.
 >
-> **Binary arbiter (re-counted this pass, `nm libcas-core.so | rg -c`):** `_issue` = **2149**,
+> **Binary arbiter (`nm libcas-core.so | rg -c`):** `_issue` = **2149**,
 > `_stall` = **1746**, `_stage<N>` = **~160 k** (stages 0–15, ~159 937 by this regex). The empty
 > `MODULE_SCHEDULE` is the *TIE-DB* table; the populated per-stage `_issue` bodies **ARE** the
 > scoreboard/reservation model. **Unified model:** the realizable structural-hazard substrate is
@@ -366,12 +366,12 @@ that forward. `[HIGH × OBSERVED gaps; INFERRED network]`
 > **NOTE — the stall-count divergence is resolved to 1746.** [pipeline-timing §6/§7] and
 > [regfile-ports §7] previously cited **1651** `_stall` functions (and [lsu-memory §8] cited a
 > third stale variant, **1795**); [co-issue-matrix §4] cited **1746**. The binary
-> (`nm libcas-core.so | rg -c '_stall$'`) returns **1746** this pass — the co-issue-matrix figure
+> (`nm libcas-core.so | rg -c '_stall$'`) returns **1746** — the co-issue-matrix figure
 > is correct, and the source pages now carry an in-place CORRECTION to **1746**. `[HIGH × OBSERVED]`
 
 > **NOTE — `libcas-core.so` has NO DWARF; symtab is 179 079, no debug sections (divergence #6).**
 > `readelf -SW` shows **zero** `.debug_*` sections; "unstripped" here means a full `.symtab` only
-> (179 079 symbols total this pass; sibling pages cite 177 936 / 178 959 — text-only or filtered
+> (179 079 symbols total; sibling pages cite 177 936 / 178 959 — text-only or filtered
 > counts). All co-issue / stage / port facts are read from **symbol names + PLT relocations**, not
 > DWARF type/line info. `[HIGH × OBSERVED]`
 
@@ -462,7 +462,7 @@ narrow `vt` RMW) @10 **plus** the wide `wvt`/`wvu` `wvec` RMW @12.
 
 > **THE 2-CYCLE RECURRENCE (the inner-loop critical path).** The wide accumulator is addressed as a
 > low half `wvt` and a high half `wvu`, **both** read AND written at stage 12 — a same-stage
-> `(12,12)` read-modify-write (re-verified this pass: `my_wvec_2_opnd_ivp_sem_multiply_{wvt,wvu}_{use,
+> `(12,12)` read-modify-write (`my_wvec_2_opnd_ivp_sem_multiply_{wvt,wvu}_{use,
 > def}` all resolve). `write@12 → next-MAC read@12` is the SAME stage ⇒ single-cycle accumulator
 > forward ⇒ the MAC chain **issues every cycle (`II = 1`)** with a **2-cycle result latency**
 > (taps@10 → acc@12). Only **4** `wvec` entries ⇒ at most **4 independent MAC chains** live (a
@@ -541,7 +541,7 @@ validity into the `gvr` "gsr" staging file; D-phase (`GATHERD*`, S1) muxes the c
 > **CORRECTION — `gvr` carries real scatter/gather data operands; it is not "RUR-only / no-operand".**
 > `my_gvr_0_opnd_ivp_sem_vec_scatter_gather_gt_def` (target index vector, A-phase, slot 0) and
 > `my_gvr_1_opnd_ivp_sem_vec_scatter_gather_gs_use` (source index vector, D-phase, slot 1) both
-> resolve (re-verified this pass). `gvr` is **dual-role**: gather-staging data path **and** VFPU
+> resolve. `gvr` is **dual-role**: gather-staging data path **and** VFPU
 > FCR/FSR CSR (`RUR`/`WUR`) — both real. `[HIGH × OBSERVED]` ([regfile-ports §2], [simd-datapath §5.2])
 
 **The PERMUTE crossbar** (`vec_select`+`seli`, 2-cyc @12): `SEL` (`2N→N` full crossbar), `SHFL`
@@ -802,10 +802,10 @@ states the unified claim, the two source framings, and the binary arbiter.
 
 | # | unified claim | framing A | framing B | binary arbiter / verdict |
 |---:|---|---|---|---|
-| 1 | **Reservation model = scoreboard (operand availability) + mem-port + slot-count; bodies PRESENT, finer stall counts MED** | [pipeline-timing §6]: "empty wall, MODULE_SCHEDULE empty, ceiling unprovable" | [co-issue-matrix §4]: "present — 2149 issue + ~160k stage + 1746 stall" | `nm` this pass: 2149 issue / 1746 stall / ~160k stage. The empty `MODULE_SCHEDULE` is the *TIE-DB* table; the populated `_issue` stage bodies in `libcas-core.so` ARE the reservation. **UNIFIED** — realizable model = availability + mem-port + slot-count; exact cycle counts `[MED]`. |
+| 1 | **Reservation model = scoreboard (operand availability) + mem-port + slot-count; bodies PRESENT, finer stall counts MED** | [pipeline-timing §6]: "empty wall, MODULE_SCHEDULE empty, ceiling unprovable" | [co-issue-matrix §4]: "present — 2149 issue + ~160k stage + 1746 stall" | `nm`: 2149 issue / 1746 stall / ~160k stage. The empty `MODULE_SCHEDULE` is the *TIE-DB* table; the populated `_issue` stage bodies in `libcas-core.so` ARE the reservation. **UNIFIED** — realizable model = availability + mem-port + slot-count; exact cycle counts `[MED]`. |
 | 2 | **Stage convention `A1/B3/E4/M5/W6` (ISS); subtract 1 on E/M for TIE** | ISS config `A1/B3/E4/M5/W6/D9` | TIE-root `r0/e3/m4/w6` | W=6 agreed; ISS E/M = TIE E/M + 1. **UNIFIED** — this page uses ISS stamps (the convention the latency stamps actually use). |
 | 3 | **Pipe stages: int-MAC @12, FMA @13, TRUNC @12, vec read @10, store commit @11, load valign @9 (hazard) / @10/@12 (file-port), vec-ALU/vbool @11** | hazard model (valign @9) | file-port model (valign @10/@12) | both OBSERVED; @9 = forwarding-availability one stage ahead of the @10 file read. **UNIFIED** — both stage views cited, reconciled. |
-| 4 | **FP-FMA is NOT S3-exclusive; bound = `1×S2 + 1×S3`** | prior "MADD only S3, S2 zero MADD" | corrected "madd.s also rides S2 (F2/F7/N1)" | `nm 'Opcode_madd_s_Slot'` this pass = s2_mul ×3 + s3_alu ×4. **UNIFIED** — distinct ports, overlapping eligibility; S2-FMA excludes a same-bundle int-MAC. |
+| 4 | **FP-FMA is NOT S3-exclusive; bound = `1×S2 + 1×S3`** | prior "MADD only S3, S2 zero MADD" | corrected "madd.s also rides S2 (F2/F7/N1)" | `nm 'Opcode_madd_s_Slot'` = s2_mul ×3 + s3_alu ×4. **UNIFIED** — distinct ports, overlapping eligibility; S2-FMA excludes a same-bundle int-MAC. |
 | 5 | **Integer MAC roster = 188 = 65 signed + 123 mixed; 24 FP → B17/B18** | loose "212 = 71 + 141" | corrected "188 integer (65+123) + 24 FP reclaimed" | [B04]/[B05] classifier over `nm Opcode_ivp_mul*`. **UNIFIED** — 188 integer / 24 FP; the old 71/141/212 left the 24 FP inside the integer count. |
 | 6 | **`libcas-core.so` not stripped, full `.symtab`, NO DWARF — symbol-table model** | "unstripped" | "no DWARF, 177 936 / 178 959 symtab" | `readelf -SW` = 0 `.debug_*`; `nm` total = 179 079 (text/filtered counts give the lower figures). **UNIFIED** — symbol-table model; cite 179 079 total. |
 
@@ -819,23 +819,23 @@ flagged inline (`*` in §5.3), never invented.
 ## 9. Adversarial self-verification — the 5 strongest synthesis claims
 
 Each strongest claim, its committed source page(s), and the binary spot-check where a divergence was
-re-grounded this pass.
+re-grounded.
 
 1. **The vector pipe reads @10 and writes 11/12/13 by latency class; dep-lat = `result@ − 10`
    exactly; the `wvec` accumulator is a same-stage `(12,12)` RMW sustaining `II=1`.** Sources:
    [pipeline-timing §2.2/§3], [regfile-ports §5], [simd-datapath §3.5]. Spot-check:
-   `my_wvec_2_opnd_ivp_sem_multiply_{wvt,wvu}_{use,def}` all resolve (`nm` this pass). **VERDICT:
+   `my_wvec_2_opnd_ivp_sem_multiply_{wvt,wvu}_{use,def}` all resolve (`nm`). **VERDICT:
    STANDS `[HIGH × OBSERVED]`.**
 
 2. **FP-FMA rides `S2_Mul` OR `S3_ALU` (not S3-exclusive); co-issue ceiling = `1 int-MAC (S2) + 1
    FP-FMA (S3)`; integer quad-MAC is S2-exclusive.** Sources: [co-issue-matrix §2.3], [regfile-ports
-   §3], [vfpu-ieee §5], [simd-datapath §4.3]. Spot-check this pass: `Opcode_madd_s_Slot` = s2_mul ×3 +
+   §3], [vfpu-ieee §5], [simd-datapath §4.3]. Spot-check: `Opcode_madd_s_Slot` = s2_mul ×3 +
    s3_alu ×4; `Opcode_ivp_mulqa*` outside s2_mul = ∅; `F4_S2_Mul = 61`. **VERDICT: STANDS — corrects
    the prior S3-exclusive framing `[HIGH × OBSERVED]`.**
 
 3. **The reservation/timing model is PRESENT in `libcas-core.so` (2149 issue / 1746 stall / ~160k
    stage), not an empty wall; the realizable structural bound is availability + 2 mem-ports +
-   slot-count.** Sources: [co-issue-matrix §4] (corrects [pipeline-timing §6]). Spot-check this pass:
+   slot-count.** Sources: [co-issue-matrix §4] (corrects [pipeline-timing §6]). Spot-check:
    `nm -c` → issue 2149, stall 1746, stage ~159 937; `nx_{Load_0,Load_1,Store_0}_interface` present,
    no `Store_1`. **VERDICT: STANDS — resolves divergence #1; stall = 1746, not 1651 `[HIGH ×
    OBSERVED]`.**
@@ -853,7 +853,7 @@ re-grounded this pass.
    `[HIGH × OBSERVED config; MED × the off-core arbiter cycle add]`.**
 
 All five cite a committed source page; #2, #3, #4 were additionally re-grounded against the binary
-this pass (the three divergences where two sibling pages disagreed). No unsupported claim remains.
+(the three divergences where two sibling pages disagreed). No unsupported claim remains.
 
 ---
 
@@ -907,7 +907,7 @@ interior (the FW-42 wall, §3.4).
 *Provenance: this chapter consolidates the twelve Part-4 microarchitecture pages plus the committed
 Part-2 core pages into ONE cycle-approximate model. Every fact is CARRIED from a committed source
 page (cited inline); the six cross-page divergences (§8) were re-grounded against the binary
-(`libcas-core.so` / `libisa-core.so` `nm`/`readelf`/`objdump`) this pass, with the binary as arbiter.
+(`libcas-core.so` / `libisa-core.so` `nm`/`readelf`/`objdump`), with the binary as arbiter.
 The shipped artifacts are the `ncore2gp` config headers, the de-ciphered TIE-XML / TIE-generated ISA
 DB, the cycle ISS schedule model, the host value oracle, and the device assembler/disassembler
 (`XTENSA_CORE=ncore2gp`). The RTL is NOT in the corpus; all block topology is INFERRED from OBSERVED

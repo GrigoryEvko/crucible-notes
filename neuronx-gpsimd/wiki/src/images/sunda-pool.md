@@ -27,8 +27,7 @@ EXTISA container `libnrtucode_extisa.so`, or the static `libnrtucode.a`, and dec
 > superset, used for the seq/pool module enumeration). Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump` (GNU Binutils
 > 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo, Xtensa24, RI-2022.9,
-> `NX1.1.4`, FLIX/VLIW 32B). All carve sha256, both reset vectors, the 18-entry `kernel_info_table`,
-> the absence scans, and the disassembly health were reproduced this session (exit 0). `[HIGH/OBSERVED]`
+> `NX1.1.4`, FLIX/VLIW 32B).
 
 ---
 
@@ -53,7 +52,7 @@ the v2 baseline, each byte-anchored:
    ConvLutLoad**, **NO gather/2D-transpose** (`0xf1`/`0xbd`). `[HIGH/OBSERVED]`
 6. **The handler-observability floor:** the SUNDA `NX_POOL` DEBUG DRAM carries **zero** `'S:'`
    handler-name logs (vs CAYMAN's 187 / 41 distinct handlers) and the Q7 DEBUG DRAM carries **zero**
-   `'P%i:'` kernel logs (vs CAYMAN's 156). The per-handler self-naming the SX-IMG-06/11 method
+   `'P%i:'` kernel logs (vs CAYMAN's 156). The per-handler self-naming the name-set method
    relies on was **not yet present** at v2. `[HIGH/OBSERVED]`
 7. **RELEASE-only packaging:** `internal.so` surfaces **8** SUNDA POOL getters — **no**
    DEBUG/PERF/TEST split, **no** PROF (CAM/TABLE), **no** DKL variant, **no** in-library EXTISA. The
@@ -121,14 +120,14 @@ that container (§5). Contrast CAYMAN, which ships **4** in-library EXTISA SO/JS
 > **QUIRK — the sole non-zero EXTRAM in the 386-getter catalog.** `SUNDA_Q7_POOL_RELEASE_EXTRAM` is
 > the **only** EXTRAM region in the entire image catalog that carries real bytes (`0x1b40`). Its head
 > is `36 61 00` = `entry a1, 48` (a **function prologue**, not a reset vector) and it decodes as real
-> windowed-ABI FLIX code (19 `entry` / 55 `retw`, exit 0) — a SUNDA-unique EXTRAM-resident auxiliary
+> windowed-ABI FLIX code (19 `entry` / 55 `retw`) — a SUNDA-unique EXTRAM-resident auxiliary
 > code band, consistent with the external-lib loader stub set on the Q7 DRAM (§5c). `[HIGH/OBSERVED
 > bytes+decode; the loader-stub ROLE INFERRED-HIGH from the loader strings + the entry prologue]`
 
 ### 2d. Carve provenance + 2-source byte-identity
 
 Carve rule (identity map): `blob = internal.so[IMG-PTR : IMG-PTR+SIZE]`. The 5 real images carved +
-sha256'd this session, each then reconciled byte-identical (`cmp`, sha256 EQUAL) against the matching
+sha256'd, each then reconciled byte-identical (`cmp`, sha256 EQUAL) against the matching
 `libnrtucode.a` member `.rodata` (`objcopy -O binary --only-section=.rodata`):
 
 | IMAGE | SIZE | sha256 |
@@ -201,7 +200,7 @@ window floor, distinct from the CAYMAN-family `0x04000000`. `[HIGH/OBSERVED]`
 > @0x90` onto SUNDA is wrong by 4 bytes: `0x1df`/`0x223` read `const16 a0, 148` (`0x94`), not `144`
 > (`0x90`). Both SUNDA cores share the `+0x4` entry shift. `[HIGH/OBSERVED]`
 
-**Disassembly health** (shipped `ncore2gp` objdump, exit 0): `NX_POOL` IRAM = 336 `entry` / 106 `retw`;
+**Disassembly health** (shipped `ncore2gp` objdump): `NX_POOL` IRAM = 336 `entry` / 106 `retw`;
 `Q7_POOL` IRAM = 115 `entry` / 266 `retw`; the EXTRAM band = 19 `entry` / 55 `retw`. Both cores plus
 the EXTRAM band carry real windowed-ABI / FLIX-vector code. `[HIGH/OBSERVED]`
 
@@ -210,7 +209,7 @@ the EXTRAM band carry real windowed-ABI / FLIX-vector code. `[HIGH/OBSERVED]`
 ## 4. The `NX_POOL` SEQ core — raw-compare dispatch, no normalized table
 
 The SUNDA `NX_POOL` front-end uses a **raw-compare** dispatch chain, **not** the `addi`-`0x41`-
-normalized indexed table CAYMAN's `NX_POOL` uses. Decoded in the SUNDA NX RELEASE IRAM this session:
+normalized indexed table CAYMAN's `NX_POOL` uses. Decoded in the SUNDA NX RELEASE IRAM:
 
 - There is **no** `addi a2,a2,-65` (the `'A'`-base normalization) anywhere in the SUNDA NX IRAM (0
   hits). CAYMAN's `NX_POOL` carries `addi a2,a2,-65 ; movi a3,177 ; bgeu` (the indexed 178-slot/55-real
@@ -220,7 +219,7 @@ normalized indexed table CAYMAN's `NX_POOL` uses. Decoded in the SUNDA NX RELEAS
   `kernel_info_table` (§5). This is the raw-compare-chain style (the form CAYMAN's PE engine uses),
   not the normalized indexed jump. `[HIGH/OBSERVED for the addi-absence + the raw-compare immediate;
   MED for "no indexed sub-table anywhere" — the FLIX-desynced linear sweep cannot 100% exclude a small
-  hidden indexed table, the documented SX-FW-00 limitation]`
+  hidden indexed table, the documented FLIX-desync limitation]`
 
 The SUNDA NX SEQ **module set** (recovered from the DEBUG DRAM assertion source paths — the only
 handler evidence available, since the `'S:'` logs are absent) is **19 modules** under
@@ -266,11 +265,11 @@ EXTISA getters are weak-undefined in `internal.so`.
 
 ### 5a. The container ELF
 
-Carved this session from `libnrtucode_extisa.so`:
+Carved from `libnrtucode_extisa.so`:
 
 ```text
 SUNDA EXTISA_0  foff 0x921660  sz 0xd308  EM_XTENSA(94) ET_EXEC  entry 0x010000c8
-  sha256 444497066f5e1738e24d2db6a373f64e13da5625180a1bfcdf97f82f58ab84c0   (== SX-IMG-01 anchor)
+  sha256 444497066f5e1738e24d2db6a373f64e13da5625180a1bfcdf97f82f58ab84c0   (== the published anchor)
 + JSON  foff 0x920fa0  sz 0x6c0  sha256 d282bd4f…  (library "all.stripped.so",
         ulib_to_ucode_version 1.21.1.0, 17 functions)
 readelf -SW (ncore2gp):
@@ -378,13 +377,13 @@ STACK OVERFLOW / DIVIDE BY ZERO / GENERIC GPSIMD EXCEPTION). Source tree
 > vs CAYMAN's `99` (SUNDA lacks the 12 CAYMAN-added structs: `S3D3_COLLECTIVE` (SB2SB `0xBF`),
 > `S3D3_NONZERO_WITH_COUNT`/`S3D3_SEQ_BOUNDS` (`0xf2`), `S3D3_TENS_DEQUANT` (`0x7b`), `S2_CONVLUT`,
 > `DMA_GATHER_XPOSE` (`0xf1`), `DMA_DIRECT2D_XPOSE` (`0xbd`), `S4D3_MM`, …). `[HIGH/OBSERVED for the
-> absences; the struct-count delta CARRIED from SX-GEN-05]`
+> absences; the struct-count delta CARRIED]`
 
 > **NOTE — the lone SUNDA-only structs CAYMAN DROPPED.** `CUSTOM_OP_HEADER` and `CUSTOM_OP_PAYLOAD`
 > (the static custom-op header/payload pair) are the **only** struct *removals* in the whole
 > SUNDA→…→MAVERICK chain — CAYMAN replaced them with the `kernel_info_table`/EXTISA mechanism. So the
 > SUNDA↔CAYMAN delta is **almost** purely additive (CAYMAN adds 12), with exactly these 2 dropped.
-> `[HIGH/CARRIED from SX-GEN-05]`
+> `[HIGH/CARRIED]`
 
 ### 6b. `Q7_POOL` compute core delta
 
@@ -409,7 +408,7 @@ The SUNDA-side **base** compute (TensorTensor / TensorScalar / Copy / Cast / Iot
 Gather / EmbeddingUpdate / Memset / IndirectCopy / DmaMemcopy) is **present** but at the SUNDA v2
 opcode numbers (`0x41`/`0x43`/`0x44`/`0x49`…), which differ from CAYMAN's (`0x45`/`0x51`/`0x52`…) — the
 v2→v3 opcode renumbering. `[HIGH/OBSERVED for the SUNDA table bytes; the "same kernel, renumbered
-opcode" mapping INFERRED-HIGH from the JSON names + SX-GEN-05]`
+opcode" mapping INFERRED-HIGH from the JSON names]`
 
 ---
 
@@ -429,7 +428,7 @@ external-lib loader / direct-opcode path. `[HIGH/OBSERVED]`
 
 No `0x7b` (dequant), `0xe4` (cptc), `0xf2` (seq-bounds/nonzero), `0xbe`, or `0xbf` (SB2SB) row;
 `dequant`/`cptc`/`proc_*bit`/`mx`/`sb2sb`/`collective`/`sequence_bound`/`nonzero`/`gather_xpose`/`sort`
-all = 0 hits. SUNDA = the compute floor; these arrive at CAYMAN (SB2SB/transposes per SX-GEN-08).
+all = 0 hits. SUNDA = the compute floor; these arrive at CAYMAN (SB2SB/transposes).
 `[HIGH/OBSERVED]`
 
 ### 7c. dtype / PROF / EXTRAM
@@ -517,7 +516,7 @@ constituent fact OBSERVED]`
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):**
+**HIGH / OBSERVED:**
 
 - 8 SUNDA POOL getters parsed instruction-exact (5 real + 3 zero-size cursors) + 2 weak-undef EXTISA;
   RELEASE-only (`nm`-confirmed: no DEBUG/PERF/TEST/PROF/DKL getter).
@@ -540,11 +539,11 @@ constituent fact OBSERVED]`
 **MED / INFERRED:**
 
 - "No indexed SEQ table anywhere on SUNDA NX" — the `addi`-absence + raw-compares are OBSERVED; a small
-  hidden indexed sub-table cannot be 100% excluded by the FLIX-desynced linear sweep (SX-FW-00).
+  hidden indexed sub-table cannot be 100% excluded by the FLIX-desynced linear sweep.
 - The `0x1b40` Q7 EXTRAM segment's exact ROLE (loader stub vs aux kernel) — bytes/decode OBSERVED, role
   INFERRED-HIGH from the loader strings + the `entry` prologue.
 - The v2→v3 opcode **renumbering** mapping (SUNDA `0x41`/`0x43`/… vs CAYMAN `0x45`/`0x51`/…) — both
-  tables OBSERVED; the "same kernel, renumbered" reading INFERRED-HIGH from JSON names + SX-GEN-05.
+  tables OBSERVED; the "same kernel, renumbered" reading INFERRED-HIGH from JSON names.
 - The external-lib runtime-load semantics — INFERRED-HIGH from the loader symbol set + the 17 KB IRAM +
   the weak-undef EXTISA.
 

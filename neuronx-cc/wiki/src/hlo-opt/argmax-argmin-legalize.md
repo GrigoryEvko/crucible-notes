@@ -6,7 +6,7 @@
 
 Neuron lowers an HLO `arg-min`/`arg-max` not as a single primitive but as a **two-pass bracket** around the rest of the `hlo-opt` pipeline. A frontend emits the reduction as an `AwsNeuronArgMax` or `AwsNeuronArgMin` custom-call carrying the reduction axis in its `backend_config`. Pass #6 `legalize-aws-neuron-arg-max` (`xla::LegalizeAwsNeuronArgMax::Run` @ `0x1eecd30`) **normalizes** that custom-call — parses the axis, attaches an int64 iota constant operand, checks the element dtype against a fixed seven-type set, and re-emits a canonical custom-call. Pass #19 `lower-argminmax-custom-call` (`xla::LowerArgMinMaxCustomCall::Run` @ `0x1f06c60`) later **expands** that canonical custom-call into a pure-HLO subgraph of `iota` + `reduce` + `compare` + arithmetic index selection, then replaces all uses. The expansion engine `handleArgMinMaxCustomCall` @ `0x1f05590` does the real work; the `Run` is a matcher/dispatcher.
 
-The interesting part is the expansion. There is **no `select` op** in the lowered graph. Instead, Neuron uses the *weighted-iota argmax idiom*: a value-reduce finds the extremum, an equality `compare` builds an "is-extremum" PRED mask, an `iota` along the axis is shifted by a large sentinel, the mask multiplies it so matching lanes dominate, and a **second** min/max-reduce selects the matching index — which a final `subtract` un-shifts. Both reduces share a trivial scalar `maximum`/`minimum` comparator computation named `reduction_subcomp`. This arithmetic shape is exactly what maps cleanly onto the DVE search primitives (`Max8`/`FindIndex8`) in [Part 2.16](../arch/dve-search-primitives.md) and the codegen max-index path in [Part 7](../codegen/max-index.md): a reduce that finds the value and a second reduce that finds the index, with no data-dependent control flow.
+The interesting part is the expansion. There is **no `select` op** in the lowered graph. Instead, Neuron uses the *weighted-iota argmax idiom*: a value-reduce finds the extremum, an equality `compare` builds an "is-extremum" PRED mask, an `iota` along the axis is shifted by a large sentinel, the mask multiplies it so matching lanes dominate, and a **second** min/max-reduce selects the matching index — which a final `subtract` un-shifts. Both reduces share a trivial scalar `maximum`/`minimum` comparator computation named `reduction_subcomp`. This arithmetic shape is exactly what maps cleanly onto the DVE search primitives (`Max8`/`FindIndex8`) in [Part 2.16](../isa/dve-search-encoding.md) and the codegen max-index path in [Part 7](../bir/codegen-dve-rng-control.md): a reduce that finds the value and a second reduce that finds the index, with no data-dependent control flow.
 
 For reimplementation, the contract is:
 
@@ -54,7 +54,15 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
         elif cc.custom_call_target == "AwsNeuronArgMin":    // str 0x23bf74; cmp 0x1eed900
             kind = ARGMIN
         else: continue
-        CHECK(inst.shape().element_type() == TUPLE/*16*/)   // cmp eax,0x10 @ 0x1eece42
+
+        // --- dtype gate on operand(0): range bound + 17-bit reject mask ---
+        et = inst.operand(0).shape().element_type()          // operands[0] @ 0x1eece24..0x1eece32
+                                                             //   (inlined-vector: test [inst+0x18],1 / cmovne)
+                                                             // Shape::element_type = [Shape+0] @ 0x1eece3a
+        if et > 0x10:                              continue  // cmp eax,0x10 ; ja  @ 0x1eece42/45
+        if (0xfffffffffffef0cf >> et) & 1:         continue  // bt rcx,rax ; jb    @ 0x1eece52/56
+        // bits CLEAR in the mask over 0..0x10 ⇒ accepted:
+        //   {4,5,8,9,10,11,16} = {S32, S64, U32, U64, F16, F32, BF16}
 
         // --- build the int64 iota index constant ---
         n   = inst.operand(0).shape().dimensions()[axis]    // array_state @ 0x1eece75
@@ -69,11 +77,11 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
             return InvalidArgumentError(StrFormat(
                 "LegalizeAwsNeuronArgMax: invalid backend_config: %s", raw))  // str 0x2fba90
 
-        // --- dtype gate: elem_type must be a retNames key ---
-        if elem_type not in retNames:
-            msg = hilo::formatErrorMessage<PrimitiveType,PrimitiveType>(  // 0x1eed7da
-                      ErrorCode::EUDT001, elem_type, elem_type)
-            emit "[ERROR] [" "NCC_EUDT001" "] " msg          // banner 0x27a6d3, code 0x214b51 @ 0x1eedc6d
+        // --- diagnostic arm: NCC_EUDT001, reached from the cold blocks at 0x1eed75e.. ---
+        //     (formatErrorMessage 0x1eed7da; banner 0x27a6d3; code str 0x214b51 @ 0x1eedc6d)
+        msg = hilo::formatErrorMessage<PrimitiveType,PrimitiveType>(
+                  ErrorCode::EUDT001, elem_type, elem_type)
+        emit "[ERROR] [" "NCC_EUDT001" "] " msg
 
         iota    = HloInstruction::CreateConstant(lit)        // 0x1eed175 / 0x9668610
         newInst = HloInstruction::CreateCustomCall(          // 0x1eed4bf / 0x964eac0
@@ -85,11 +93,22 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
     return changed
 ```
 
-> **QUIRK —** the result shape's element type is asserted to be `TUPLE` (16) at `0x1eece42`, not the scalar index type. The `AwsNeuron*` arg-min/max custom-call returns a tuple, so the legalizer's dtype check (below) is on `operand(0)`'s element type (the *value* tensor), not the result.
+The gate is on **`operand(0)`** — the *value* tensor — not on the custom-call's own (tuple) result shape. Both arms reach it: the `AwsNeuronArgMin` string compare at `0x1eed900` jumps back to `0x1eece24`, the head of the same operand-fetch/gate block, so ArgMax and ArgMin share one dtype filter.
+
+The accepted set is decoded from the two-instruction idiom the compiler emitted for a seven-way `PrimitiveType` membership test:
+
+| Step | Instruction | Address | Effect |
+|---|---|---|---|
+| range bound | `cmp eax,0x10` / `ja` | `0x1eece42` | reject every code above `0x10` (BF16, the numerically largest accepted type) |
+| reject mask | `mov rcx,0xfffffffffffef0cf` / `bt rcx,rax` / `jb` | `0x1eece4b`–`0x1eece56` | reject every code whose mask bit is **set** |
+
+Bits `{4,5,8,9,10,11,16}` are the only ones clear in `0xfffffffffffef0cf` at or below `0x10`, giving exactly `{S32, S64, U32, U64, F16, F32, BF16}` — the same seven codes the `retNames` map is keyed on. A rejected dtype takes the `continue` edge to `0x1eecdc0` (the post-order loop's increment): the custom-call is left untouched rather than diagnosed at this site.
+
+> **GOTCHA — `cmp eax,0x10` at `0x1eece42` is a range bound, not a `TUPLE` compare.** `0x10` is 16 = `BF16`, the largest accepted `PrimitiveType`, and the instruction only decides "is this code inside the table's span" before the `bt` mask does the real membership test. `TUPLE` is `0x0D` (13) throughout XLA and throughout this binary — see the direct `cmp DWORD PTR [rax],0xd` tuple tests at `0x1e9f81e` (`DecomposeCCOps`) and `0x1f852e3` (`EnsureDescendingLayoutInRoot`). Reading `0x10` as a `TUPLE` sentinel both invents a 16-valued `TUPLE` and hides the dtype whitelist that is actually being applied.
 
 ### The Two dtype DenseMaps
 
-Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built once by the init-list ctor at `0x1eec220`. Keys are `PrimitiveType` enum integers (XLA `xla_data.proto`: `S32=4`, `S64=5`, `U32=8`, `U64=9`, `F16=10`, `F32=11`, `BF16=16`). The values are decoded directly from the little-endian immediate stores in the `Run` body and are **CERTAIN** (every store address verified).
+Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built once by the init-list ctor at `0x1eec220`. Keys are `PrimitiveType` enum integers (XLA `xla_data.proto`: `S32=4`, `S64=5`, `U32=8`, `U64=9`, `F16=10`, `F32=11`, `BF16=16`). The values are decoded from the little-endian immediate stores in the `Run` body; every store address is cited in the tables below.
 
 `fnames` — 4 entries, single-char index-width code, **integer types only**:
 
@@ -112,7 +131,7 @@ Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built
 | 9 | U64 | `"_u64"` | `0x3436755f` | `0x1eede8b` |
 | 8 | U32 | `"_u32"` | `0x3233755f` | `0x1eedebf` |
 
-The supported element dtypes for arg-min/max are therefore exactly **{F16, BF16, F32, S32, S64, U32, U64}**. Any other type falls into the `NCC_EUDT001` "unsupported dtype" path. The `fnames` width code (`"2"`/`"4"`) exists only for the four integer types — it selects the index-arithmetic width and is irrelevant for the three float value types (which still index in S32, see below).
+The supported element dtypes for arg-min/max are therefore exactly **{F16, BF16, F32, S32, S64, U32, U64}** — the same seven codes the `0x1eece42` accept mask lets through, which is the independent confirmation that the mask and the map encode one dtype contract. The `NCC_EUDT001` "unsupported dtype" diagnostic is emitted from the cold blocks around `0x1eed75e`–`0x1eedc94`; the mask gate itself is a silent `continue`, so which of the two arms fires for a given rejected type is not pinned by this trace. The `fnames` width code (`"2"`/`"4"`) exists only for the four integer types — it selects the index-arithmetic width and is irrelevant for the three float value types (which still index in S32, see below).
 
 > **GOTCHA —** `fnames` and `retNames` share the same ctor (`0x1eec220`) but are **two distinct maps with different key sets**. `fnames` has 4 keys (int only); `retNames` has 7 (int + float). Treating them as one map — or assuming the float types have a width code — is wrong: floats are absent from `fnames` by design.
 
@@ -173,7 +192,7 @@ The `pair.second` is the comparator-direction selector handed to the engine: **A
 
 ### Purpose
 
-Consume the canonical custom-call and emit the iota + reduce + compare + arithmetic-index subgraph that replaces it. This is the only function that builds Create*-HLO; every other function on this page either normalizes (forward), dispatches (inverse), or is a helper called from here. Reconstructed from the disasm Create* call sequence — every call address is cited and verified.
+Consume the canonical custom-call and emit the iota + reduce + compare + arithmetic-index subgraph that replaces it. This is the only function that builds `Create*` HLO; every other function on this page either normalizes (forward), dispatches (inverse), or is a helper called from here. The sequence below follows the `Create*` call order in the disassembly, with each call address cited inline.
 
 ### Algorithm
 
@@ -238,7 +257,7 @@ The "select the index whose value equals the extremum" step is implemented **ari
 
 The `GetMin`/`GetMaxNonInfValue` sentinels keep the value-reduce identity off ±Inf so the comparator never has to reason about infinities. The whole shape is data-flow only: two reduces, a compare, an iota, three converts, two broadcast-scalars, and three binary ops — **no branch on tensor data**. This is precisely why it lowers onto the DVE `Max8`/`FindIndex8` search primitives (Part 2.16): the value-reduce is the `Max8` tree and the masked-iota index-reduce is the `FindIndex8` companion.
 
-### Op Tally (CERTAIN — exact `edx` immediates)
+### Op Tally
 
 | Op | HloOpcode | Immediate | Site | Role |
 |---|---|---|---|---|
@@ -251,9 +270,9 @@ The `GetMin`/`GetMaxNonInfValue` sentinels keep the value-reduce identity off ±
 
 Plus: 2× `CreateReduce` (0x1f0595c, 0x1f06357), 1× `CreateBroadcast` (0x1f059e8), 3× `CreateConvert` (0x1f05c0a mask→S32, 0x1f05e09 iota→working, 0x1f06649 result), 1× `CreateIota` (0x1f05d9e, S32), 1× `CreateConstant` (reduce init), 2× `BroadcastScalar` sentinels (0x1f05f46, 0x1f06471).
 
-> **NOTE —** the index comparator at `0x1f061f0` is loaded with `esi = 0x43`, the **same** direction as the value comparator (this trace is on the ArgMax path; ArgMin loads `0x44`). The second reduce uses the same min/max sense as the first — confirmed by the immediate, correcting any assumption that the index reduce always uses `max`.
+> **NOTE —** the index comparator at `0x1f061f0` is loaded with `esi = 0x43`, the **same** direction as the value comparator (this trace is on the ArgMax path; ArgMin loads `0x44`). The second reduce uses the same min/max sense as the first; it is not fixed to `max`.
 
-> **CORRECTION (D-B01) —** an earlier sketch (S2-02 §4.5) attributed the whole "iota + reduce + compare" graph to `LegalizeAwsNeuronArgMax`. That is wrong: the forward pass emits only `CreateConstant` (the iota literal) and `CreateCustomCall`. Every `CreateReduce`/`CreateCompare`/`CreateIota`/`CreateBroadcast`/`CreateConvert` call lives in `handleArgMinMaxCustomCall` (pass #19), not in the forward `Run`. Verified: the forward disasm has no `CreateReduce`/`CreateIota`/`CreateCompare` call sites.
+> **GOTCHA —** the "iota" in the forward pass is only an iota *literal*. `LegalizeAwsNeuronArgMax` emits exactly two builders — `CreateConstant` (the int64 index literal) and `CreateCustomCall` — and its disassembly contains no `CreateReduce`, `CreateIota`, or `CreateCompare` call site at all. The whole iota + reduce + compare graph is built in `handleArgMinMaxCustomCall` (pass #19). Attributing the expansion to the forward pass puts the dtype gate and the graph construction in the same stage, which the binary does not do.
 
 ---
 
@@ -355,21 +374,28 @@ All strings verified against `hlo-opt` `strings.json` / `rodata.bin` (`.rodata` 
 
 The structured NCC diagnostics route through `hilo::formatErrorMessage<…>(ErrorCode, …)` @ `0x1eeb8d0`, which calls `hilo::lookup_resolution(ErrorCode)` (@ rel `0x1eeb907`) and `hilo::lookup_cause(ErrorCode)` (@ rel `0x1eeb916`) — a code → {cause, resolution} table keyed by the `hilo::ErrorCode` enum. `EUDT001` and `EUOC001` are members of that enum.
 
-> **NOTE —** `NCC_EUOC001` is cited from `strings.json` (`0x27a77c`) as the inverse-pass diagnostic tag; its exact xref inside the engine disasm was not isolated in this trace (the failure-path block is reached via the `goto error` chains at `0x1f069ef`/`0x1f06a1c`). The string and its association with the inverse pass are CERTAIN; the precise emit site is INFERRED.
+> **NOTE —** `NCC_EUOC001` is cited from `strings.json` (`0x27a77c`) as the inverse-pass diagnostic tag; its exact xref inside the engine disasm was not isolated in this trace (the failure-path block is reached via the `goto error` chains at `0x1f069ef`/`0x1f06a1c`). The string and its association with the inverse pass are direct readings; the precise emit site is not [UNRESOLVED].
 
 ---
 
-## Self-Verification
+## Evidence summary
 
-Five strongest claims, re-challenged against the binary:
+| Claim | Anchor |
+|---|---|
+| Forward and inverse `Run` addresses and roles | demangled symbols `_ZN3xla23LegalizeAwsNeuronArgMax3RunE…_0x1eecd30` and `_ZN3xla24LowerArgMinMaxCustomCall3RunE…_0x1f06c60`; the role split follows from the `Create*` inventory — forward has only `CreateConstant`/`CreateCustomCall`, inverse `Run` only matches and calls the engine |
+| The expansion is subtract/multiply/subtract with no `kSelect` | `mov edx,0x72` @ `0x1f0603e` and `0x1f06559` (kSubtract), `mov edx,0x45` @ `0x1f06114` (kMultiply); no `kSelect` immediate occurs anywhere in the engine |
+| Two reduces, two comparators, same direction | `CreateReduce` @ `0x1f0595c` and `0x1f06357` (both `r9d=1`, single dim); `addReduceMinMaxComputation` called twice, the second loading `esi=0x43` @ `0x1f061f0` — the same `kMaximum` the dispatcher used for the value comparator on the ArgMax path |
+| Supported dtype set `{F16,BF16,F32,S32,S64,U32,U64}` | all seven `retNames` dword stores at `0x1eeddbf`..`0x1eedebf`; the four `fnames` byte stores (`4`/`2`) at `0x1eed9c8`..`0x1eeda40` |
+| The forward gate is a dtype whitelist on `operand(0)`, not a `TUPLE` assert | operand fetch `test BYTE PTR [r15+0x18],0x1` / `cmovne` @ `0x1eece28`, `HloInstruction::shape` @ `0x1eece35`, `element_type = [Shape+0]` @ `0x1eece3a`; bound `cmp eax,0x10` @ `0x1eece42`; mask `mov rcx,0xfffffffffffef0cf` / `bt rcx,rax` @ `0x1eece4b`; clear bits ≤ `0x10` are `{4,5,8,9,10,11,16}` |
+| `TUPLE` is `0x0D`, not `0x10` | `cmp DWORD PTR [rax],0xd` @ `0x1e9f81e` (`DecomposeCCOps`) and `0x1f852e3` (`EnsureDescendingLayoutInRoot`), both immediately after `xla::HloInstruction::shape` @ `0x9650370`; `BF16 = 0x10` from the `retNames` key set above |
+| Sentinel direction: ArgMax → `GetMinNonInfValue`, ArgMin → `GetMaxNonInfValue` | `GetMaxNonInfValue` call @ `0x1f0582d` (ArgMin branch), `GetMinNonInfValue` @ `0x1f06820` (ArgMax branch), branch keyed on `opcode == 0x43` |
 
-1. **Forward and inverse Run addresses + roles.** CONFIRMED — disasm filenames carry the demangled symbols `_ZN3xla23LegalizeAwsNeuronArgMax3RunE…_0x1eecd30` and `_ZN3xla24LowerArgMinMaxCustomCall3RunE…_0x1f06c60`. Roles confirmed by the Create* call inventory (forward has only `CreateConstant`/`CreateCustomCall`; inverse `Run` only matches + calls the engine).
-2. **The expansion uses subtract/multiply/subtract, no `kSelect`.** CONFIRMED — `mov edx,0x72` @ `0x1f0603e` and `0x1f06559` (kSubtract), `mov edx,0x45` @ `0x1f06114` (kMultiply). Grep for any `kSelect` immediate in the engine returns nothing. The "select" is arithmetic.
-3. **Two reduces, two comparators, both same direction.** CONFIRMED — `CreateReduce` @ `0x1f0595c` and `0x1f06357` (both `r9d=1`, single dim); `addReduceMinMaxComputation` called twice, the 2nd loading `esi=0x43` @ `0x1f061f0` (same `kMaximum` as the dispatcher's value comparator on the ArgMax path).
-4. **Supported dtype set {F16,BF16,F32,S32,S64,U32,U64}.** CONFIRMED — all 7 `retNames` dword stores verified at `0x1eeddbf`..`0x1eedebf` (`_f32`,`_f16`,`_bf16`,`_s64`,`_s32`,`_u64`,`_u32`); `fnames` 4 byte stores (`4`/`2`) at `0x1eed9c8`..`0x1eeda40`.
-5. **Sentinel direction: ArgMax→GetMinNonInfValue, ArgMin→GetMaxNonInfValue.** CONFIRMED — `GetMaxNonInfValue` call @ `0x1f0582d` (ArgMin branch), `GetMinNonInfValue` @ `0x1f06820` (ArgMax branch); branch keyed on `opcode==0x43`.
+## Limits of this reading
 
-INFERRED / not pinned: the exact `NCC_EUOC001` emit site inside the engine (string and association CERTAIN, emit block INFERRED); whether the inverse engine consumes the forward's int64 iota *constant* operand or rebuilds the S32 `iota` fresh (the engine reads `operand(0)` = the data tensor and builds its own S32 iota at `0x1f05d9e` — the constant-operand consumption is MED); precise broadcast-dimension spans (MED, the ops emitted are CERTAIN). No Hex-Rays pseudocode exists for either `Run` or the engine (`NVOPEN_IDA_SKIP_DECOMPILE`); instruction order is the disasm Create* call order.
+- The exact `NCC_EUOC001` emit site inside the engine was not isolated; the failure path is reached through the `goto error` chains at `0x1f069ef` / `0x1f06a1c`.
+- Whether the inverse engine consumes the forward pass's int64 iota *constant* operand, or ignores it and rebuilds an S32 `iota` fresh, is unresolved. The engine reads `operand(0)` (the data tensor) and does build its own S32 iota at `0x1f05d9e`, which leaves the constant's fate open.
+- The precise broadcast-dimension spans are reconstructed; the set of ops emitted is read directly.
+- No decompiler output exists for either `Run` or the engine (`NVOPEN_IDA_SKIP_DECOMPILE`), so the statement order above follows the `Create*` call order in the disassembly rather than recovered source structure.
 
 ---
 
@@ -383,7 +409,7 @@ INFERRED / not pinned: the exact `NCC_EUOC001` emit site inside the engine (stri
 
 ## Cross-References
 
-- [DVE Search Primitives — Max8 / FindIndex8](../arch/dve-search-primitives.md) — the hardware search engine this two-reduce idiom lowers onto (value-reduce → `Max8`, masked-iota index-reduce → `FindIndex8`)
-- [Codegen Max-Index Path](../codegen/max-index.md) — Part 7 codegen of the lowered reduce/iota graph onto the DVE
+- [DVE Search Primitives — Max8 / FindIndex8](../isa/dve-search-encoding.md) — the hardware search engine this two-reduce idiom lowers onto (value-reduce → `Max8`, masked-iota index-reduce → `FindIndex8`)
+- [Codegen Max-Index Path](../bir/codegen-dve-rng-control.md) — Part 7 codegen of the lowered reduce/iota graph onto the DVE
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — sibling `AwsNeuron*` custom-call legalizers and the shared `hilo::formatErrorMessage` / `ErrorCode` diagnostic machinery
 - [The hlo-opt Pass Registry](pass-registry.md) — registry positions #6 and #19, `RegisterHiloHloPasses`

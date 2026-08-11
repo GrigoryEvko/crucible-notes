@@ -35,29 +35,27 @@ Confidence/evidence tags follow the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so` (sha256 `b7c67e89…`) and decoded with the shipped `ncore2gp`
-`xtensa-elf-objdump`.
+`xtensa-elf-objdump`. The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag.
 
 > **NOTE — the objects used.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
 > `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`, ELF64 x86-64 DYN, **not
 > stripped**). The first R `LOAD` is the identity map (`off 0x0 == vaddr 0x0`, `filesz 0x9af194`,
-> re-confirmed `readelf -lW` this session), so each `<NAME>_get.data` accessor address is
+> per `readelf -lW`), so each `<NAME>_get.data` accessor address is
 > **simultaneously** the `.rodata` VA and the file offset of its blob — carve =
 > `so[ptr : ptr+size]`. All 46 POOL blob VAs (`0xa0600…0x302880`) fall inside this R `LOAD`.
 > Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo,
-> Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW). All carve
-> sha256, both reset vectors, the 178-slot SEQ table, the 17-entry `kernel_info_table`, the 41
-> handlers, the `0xF0` slot byte, and the PROF 4/4 identity were reproduced this session (exit 0,
-> empty stderr). `[HIGH/OBSERVED]`
+> Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW).
 
 > **GOTCHA — carve the blobs, not the stubs.** The getter accessor lives in `.text` (e.g.
 > `CAYMAN_NX_POOL_DEBUG_IRAM_get` at `.text` VA `0x9b36a0`), and `.text` has a **`0x2000`
 > VA − file-offset delta** (`readelf -SW`: `.text` VA `0x9b01a0`, file `0x9af1a0`). A raw `dd`
 > aimed at the **stub** VA therefore reads garbage. The blob VAs in `.rodata` are identity-mapped
 > (`.rodata` VA `0x46b0` == file `0x46b0`), so the *carved blobs* are correct as long as you carve
-> at the `IMG-PTR` (the `.data` accessor address), never the stub. `[HIGH/OBSERVED]`
+> at the `IMG-PTR` (the `.data` accessor address), never the stub.
 
 ---
 
@@ -67,7 +65,7 @@ Confidence/evidence tags follow the project
    getters split into a **14-getter `NX_POOL` (SEQ)** family and a **32-getter `Q7_POOL`
    (compute)** family. The byte-level proof of two cores: `NX_POOL` IRAM head is `06 76 00 00`
    (`j 0x1dc`), shared with ACT/DVE/PE/SP; `Q7_POOL` IRAM head is `06 7f 00 00` (`j 0x200`), a
-   **distinct** reset trampoline. Both converge on `enter_run @0x90`. `[HIGH/OBSERVED]`
+   **distinct** reset trampoline. Both converge on `enter_run @0x90`.
 2. **`engine_idx = 2`.** The corpus CSR enum is `PE=0 ACT=1 POOL=2 DVE=3 SP=4` (carried from the PE
    page's verified CSR enum); the Q7 boot-identity log
    `"P%i: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u"` is the
@@ -76,15 +74,14 @@ Confidence/evidence tags follow the project
 3. **The `0xF0 = ExtendedInst` SEQ handler is the bridge.** `NX_POOL` table slot for opcode `0xf0`
    (`@ DRAM 0x80814 + (0xf0−0x41)*4 = file 0xad0`) reads `90 31 00 00` = trampoline `0x3190` →
    `"S: ExtendedInst"`. On the Q7 side, opcode `0xf0` appears as **five** `kernel_info_table` rows
-   differing only by the spec byte. **Same opcode, two cores** — reconciled in §4c. `[HIGH/OBSERVED]`
+   differing only by the spec byte. **Same opcode, two cores** — reconciled in §4c.
 4. **41-handler POOL roster, the richest distinct compute subset.** `18` shared-all-5 SEQ control
    handlers + `7` shared-with-DVE compute primitives + `16` POOL-only handlers (incl.
    `ExtendedInst`, `RandGetState`/`RandSetState`, `Sort`, `TensorGather`, `EmbeddingUpdate`,
-   `SB2SB_Collective`). `[HIGH/OBSERVED]`
+   `SB2SB_Collective`).
 5. **PROF is generic, code is private.** `NX_POOL` `PROF_CAM`/`PROF_TABLE` are **byte-identical**
    across ACT/DVE/PE/POOL (4/4, sha256 `8fd7e422` / `ce761f81`), but `NX_POOL` shares **no**
    IRAM/DRAM bytes with any sibling — each is a separately-compiled `cayman/seq/` build.
-   `[HIGH/OBSERVED]`
 
 > **WALL.** `PeManageSeed (0x08)`, `LdweightsMX`, `MatmulMX` and the Mariana `ConvLutLoad (0xe4)`
 > matmul-path micro-ops do **not** belong to CAYMAN POOL. POOL *does* carry a `ConvLutLoad` `S:`
@@ -108,8 +105,7 @@ CAYMAN_NX_POOL_DEBUG_IRAM_get @ .text 0x9b36a0:
 
 `28` getters carry real bytes; `18` are zero-size SRAM/EXTRAM boundary cursors (the `(ptr, 0)`
 return at the start of the *next* blob — the same contiguous-layout aliasing as ACT/DVE/PE). Each
-`IMG-PTR`/`SIZE` below was re-disassembled this session and matches
-[image-catalog-index.md](./image-catalog-index.md). `[HIGH/OBSERVED]`
+`IMG-PTR`/`SIZE` below matches [image-catalog-index.md](./image-catalog-index.md).
 
 ### 2a. `NX_POOL` (CLS = NX) — 14 getters (the SEQ sequencer)
 
@@ -151,17 +147,16 @@ return at the start of the *next* blob — the same contiguous-layout aliasing a
 
 > **QUIRK — `DKL_TEST` is `DKL_PERF`.** `cmp` confirms `Q7_DKL_PERF_IRAM == Q7_DKL_TEST_IRAM`
 > (both sha `c05e05eb…`) and `Q7_DKL_PERF_DRAM == Q7_DKL_TEST_DRAM` (both `e98902ac…`). The DKL
-> build has only a DEBUG-vs-release split; there is no separate TEST flavor. `[HIGH/OBSERVED]`
+> build has only a DEBUG-vs-release split; there is no separate TEST flavor.
 
 > **QUIRK — EXTISA ships under PERF only.** The DEBUG/TEST Q7 builds carry **no** EXTISA getters;
 > the `EXTISA_n` relocatable kernel containers are the **production custom-op** packaging. The
 > DEBUG Q7 image still self-names every kernel via `P%i:` logs, which is the RE substrate.
-> `[HIGH/OBSERVED]`
 
 ### 2c. Carve provenance + byte-identity
 
 Carve rule: `.rodata` file-offset == VA, so `blob = so[IMG-PTR : IMG-PTR+SIZE]` (`dd bs=1`). The 15
-images carved + sha256'd this session (every digest matches the catalog and the firmware anchors):
+images carved + sha256'd (every digest matches the catalog and the firmware anchors):
 
 | IMAGE | SIZE | sha256 |
 | --- | --- | --- |
@@ -184,13 +179,13 @@ images carved + sha256'd this session (every digest matches the catalog and the 
 The static archive `libnrtucode.a` ships exactly 46 CAYMAN POOL members (`2 hwdecode_` + `44 img_`);
 spot-reconciliation (`objcopy -O binary --only-section=.rodata` vs carve, `cmp`) was IDENTICAL for
 all 12 members checked across both families + EXTISA + PROF + DKL. The internal `.so` getter blob
-== the `.a` member `.rodata`. `[HIGH/OBSERVED]`
+== the `.a` member `.rodata`.
 
 ---
 
 ## 3. Flat-image geometry + the two reset vectors
 
-Three distinct packaging forms coexist in the CAYMAN POOL corpus. `[HIGH/OBSERVED]`
+Three distinct packaging forms coexist in the CAYMAN POOL corpus.
 
 **(A) `NX_POOL` IRAM/DRAM — flat device segments (no ELF magic):**
 
@@ -218,7 +213,7 @@ DRAM head = 34 cb 99 60                                  (same header word 0x609
 > NX engines); `Q7_POOL` boots via `j 0x200` (`06 7f 00 00`, the *distinct* Q7-compute reset).
 > Both trampolines then converge on `enter_run @0x90`. The differing primary-jump bytes
 > (`06 76` vs `06 7f`) are the byte-level proof that `NX_POOL` and `Q7_POOL` are separate cores
-> in one engine cluster — verified `xxd -l 12` on both IRAM carves this session. `[HIGH/OBSERVED]`
+> in one engine cluster — verified by `xxd -l 12` on both IRAM carves.
 
 **(C) `EXTISA_0..3` SO — real `EM_XTENSA` ELFs** (ELFCLASS32 LE, `e_machine = 94`, `ET_EXEC`,
 dynamically linked, stripped — **not** flat). `EXTISA_0` section geometry (`readelf -SW`):
@@ -237,11 +232,11 @@ kernel corpus (a 256-byte window at EXTISA `.text+0x300` matches flat `Q7_PERF_I
 247/256 bytes — two packaging views differing only by load-time relocation deltas).
 `[HIGH/OBSERVED for the geometry + the window match]`
 
-**Disassembly proof** (shipped `ncore2gp` objdump, exit 0): `NX_DEBUG_IRAM` decodes real windowed
-ABI — **679 `entry` / 873 `retw`** this session (reproduced), plus `const16`/`call8`/`callx8`/`jx`
+**Disassembly proof** (shipped `ncore2gp` objdump): `NX_DEBUG_IRAM` decodes real windowed
+ABI — **679 `entry` / 873 `retw`**, plus `const16`/`call8`/`callx8`/`jx`
 and the IVP `ivp_scatterw` vector op; `Q7_DEBUG_IRAM` decodes **430 `entry` / 573 `retw`**. Both
 cores carry a full FLIX vector compute datapath (the bundle-interleaved FLIX lanes are partly
-desynced by the linear sweep — the documented disassembler limitation). `[HIGH/OBSERVED]`
+desynced by the linear sweep — the documented disassembler limitation).
 
 ---
 
@@ -267,15 +262,14 @@ source: cayman/seq/src/...                   miss -> "P%i: UNKNOWN OPCODE=0x%x"
 
 Both cores share the `.globstruct` dispatcher state block — magic word `0x6099cb34`, the SAME
 header word that heads every flat DRAM (`34 cb 99 60`) and the `EXTISA .globstruct @0x02000408`
-(verified byte-identical this session). `NonzeroWithCount` appears on **both** (`S:` on NX, `P%i:`
-on Q7) — the decode/execute pair across the two cores. `[HIGH/OBSERVED for the strings + the magic;
-the exact SEQ→Q7 handoff register/slot is MED — direction is HIGH (NX owns
-`fetch_cache_line`/`start_fill_siram`; Q7 "got" the opcode), the slot is not pinned.]`
+(byte-identical). `NonzeroWithCount` appears on **both** (`S:` on NX, `P%i:`
+on Q7) — the decode/execute pair across the two cores. `[strings + magic HIGH/OBSERVED; the
+SEQ→Q7 handoff slot MED — direction HIGH (NX owns `fetch_cache_line`/`start_fill_siram`;
+Q7 "got" the opcode), the slot is not pinned]`
 
 ### 4a. Path 1 — the `NX_POOL` SEQ 178-slot ASCII hub
 
-Table base `DRAM 0x80814` (`file 0x814`). First words re-read this session
-(`xxd -s 0x814 NX_DEBUG_DRAM.bin`):
+Table base `DRAM 0x80814` (`file 0x814`). First words (`xxd -s 0x814 NX_DEBUG_DRAM.bin`):
 
 ```text
 0x814: 74 30 00 00  98 31 00 00  9d 30 00 00  ad 30 00 00   ('A'=0x3074 Tensor-Tensor ; default 0x3198 ;
@@ -284,12 +278,12 @@ Table base `DRAM 0x80814` (`file 0x814`). First words re-read this session
 ```
 
 The **178-slot** size is *not* arbitrary: the index is `opcode_byte − 0x41`, and the highest
-opcode handled is `0xf2` → index `0xf2 − 0x41 = 177` → **178 entries (0…177)** required. Confirmed
-this session: `len(slots) = 178`, of which **55 are real handlers** and **123 are the default slot
+opcode handled is `0xf2` → index `0xf2 − 0x41 = 177` → **178 entries (0…177)** required:
+`len(slots) = 178`, of which **55 are real handlers** and **123 are the default slot
 `0x3198`** (`"S: Bad Opcode"` path). This is the **same 178-bound** as ACT/SEQ, and **larger** than
 DVE's **170-bound** (DVE tops out at a lower opcode and uses dual tables `@0x814/0xabc`). The
 `"S: Dispatch opcode=0x%x"` log is at `DRAM 0x80e38`. PERF relocates the clean indexed table to
-`DRAM 0x80218`. `[HIGH/OBSERVED]`
+`DRAM 0x80218`.
 
 Reproduced as annotated C (the `NX_POOL` decode loop; the 4-hop indirection is the C++
 `Handler::execute()` virtual chain):
@@ -323,8 +317,8 @@ bad:
 ### 4b. Path 2 — the `Q7_POOL` `kernel_info_table` back-end
 
 The Q7 dispatcher (`'P%i:'`, `entry 0x01005610` in the EXTISA ELF) runs a **linear scan** over the
-8-byte `kernel_info_table` records, matching the packed key. `EXTISA_0`'s 17 records re-decoded
-byte-exact this session (`xxd -s 0x7400 -l 0x88 Q7_EXTISA_0_SO.bin`):
+8-byte `kernel_info_table` records, matching the packed key. `EXTISA_0`'s 17 records decode
+byte-exact (`xxd -s 0x7400 -l 0x88 Q7_EXTISA_0_SO.bin`):
 
 | idx | opcode | spec | funcVA | role |
 | --- | --- | --- | --- | --- |
@@ -346,9 +340,9 @@ byte-exact this session (`xxd -s 0x7400 -l 0x88 Q7_EXTISA_0_SO.bin`):
 | 15 | `0xf2` | 0 | `0x0100484c` | `get_sequence_bounds` / `nonzero_with_count` |
 | 16 | `0x7b` | 0 | `0x01004dc4` | `decode_tensor_dequantize` |
 
-Record format (re-confirmed): `{ u8 0; u8 0; u8 spec(+2); u8 opcode(+3); u32_le funcVA(+4) }`. The
+Record format: `{ u8 0; u8 0; u8 spec(+2); u8 opcode(+3); u32_le funcVA(+4) }`. The
 native-LE `u32` of the first 4 bytes is therefore `(opcode<<24)|(spec<<16)` — the packed key. All
-17 `funcVA`s carry an `R_XTENSA_RELATIVE` reloc. `[HIGH/OBSERVED]`
+17 `funcVA`s carry an `R_XTENSA_RELATIVE` reloc.
 
 ```c
 /* Q7_POOL — the kernel_info_table back-end (dispatch.hpp, 'P%i:' dialect).
@@ -381,7 +375,6 @@ void q7_pool_dispatch(unsigned cpu_id, uint8_t opcode, uint8_t spec, decoded_ins
 > **NOTE — work partitioning.** The Q7 core fans the kernel across pool channels by
 > `get_cpu_id()` (`"P%i: num_chans = %0d"`, `"P%i: Starting pooling engine: %i"`). Per-core index
 > `i` is the `P%i:` prefix argument — the same per-core split the `'P%i:'` dispatch loop documents.
-> `[HIGH/OBSERVED]`
 
 ### 4c. The `0xF0` escape — reconciled across the two cores
 
@@ -390,13 +383,13 @@ Q7 "`0xf0` × 5 specs" (five `kernel_info_table` rows)? They are the **same opco
 cores**:
 
 - **SEQ side (`NX_POOL`):** index `0xf0 − 0x41 = 0xaf = 175`; entry `@ file 0x814 + 175·4 = 0xad0`.
-  Re-read this session: `90 31 00 00` = trampoline `0x3190` → impl `0x235c` → handler `0xb3f0`
-  (thunk `0x96d4`) → logs `"S: ExtendedInst"` at `DRAM 0x826a5`. `[HIGH/OBSERVED]`
+  The slot reads `90 31 00 00` = trampoline `0x3190` → impl `0x235c` → handler `0xb3f0`
+  (thunk `0x96d4`) → logs `"S: ExtendedInst"` at `DRAM 0x826a5`.
 - **Q7 side (`EXTISA_0`):** opcode `0xf0` is registered **five times** (idx 6–10, specs
   `0,1,2,4,3`) at funcVAs `0x01003370 / 0x01003380 / 0x01003484 / 0x010037a8 / 0x01003a60`. The Q7
   dispatcher's single linear scan matches the packed `(spec, opcode)` key, so a `(0xf0, spec)`
-  lands on exactly one of the five rows. `[HIGH/OBSERVED for the rows; HIGH for specs 0/1/2 binding,
-  MED for specs 3/4 → {RandGetState, RandSetState, Cptc} per the FLIX-desynced extended path.]`
+  lands on exactly one of the five rows. `[rows HIGH/OBSERVED; specs 0/1/2 binding HIGH; specs
+  3/4 → {RandGetState, RandSetState, Cptc} MED (FLIX-desynced extended path)]`
 
 **The reconciliation:** the SEQ `0xf0` handler is the **front-end route** that forwards an
 extended instruction (`opcode 0xf0` + its `spec` sub-byte) to the Q7 POOL core; the Q7
@@ -411,12 +404,12 @@ table.
 > `0xf0` rows live inline in the same `kernel_info_table`, and the *same* linear scan that resolves
 > every other opcode resolves them by the spec byte. The native-LE `u32 (opcode<<24)|(spec<<16)`
 > framing and the byte-exact "opcode `@+3`, spec `@+2`" framing describe the **identical 4 key
-> bytes**. `[HIGH/OBSERVED]`
+> bytes**.
 
 > **QUIRK — why only POOL has the dual-dispatch.** `ExtendedInst` is a **POOL-exclusive** SEQ
-> handler: 5-way `S:`-roster set-diff (this session) shows it present in `NX_POOL`, **absent** from
+> handler: the 5-way `S:`-roster set-diff shows it present in `NX_POOL`, **absent** from
 > ACT/DVE/PE/SP. Only POOL ships *both* the SEQ `0xf0` bridge *and* a separate Q7 compute core —
-> which is exactly why only POOL has a dual-dispatch. `[HIGH/OBSERVED]`
+> which is exactly why only POOL has a dual-dispatch.
 
 ### 4d. Three-way opcode reconciliation (SEQ ASCII ↔ Q7 key ↔ kernel name)
 
@@ -441,7 +434,7 @@ the **same opcode numbers** on the two cores:
 
 Method (identical to the ACT/DVE/PE pages): extract every single-token `"S: <OpName>"` handler log
 from each engine's CAYMAN DEBUG DRAM (`strings | rg -P '^S: [A-Za-z][\w/-]*$' | sort -u`), set-diff.
-Per-engine distinct counts reproduced this session:
+Per-engine distinct counts:
 
 | Engine | Distinct `S:` handlers |
 | --- | --- |
@@ -452,18 +445,18 @@ Per-engine distinct counts reproduced this session:
 | SP | 18 |
 
 POOL = 41, the **richest GENERAL-compute subset** (DVE's 53 are narrow data/vector variants; POOL
-spans the widest distinct primitive set). `[HIGH/OBSERVED]`
+spans the widest distinct primitive set).
 
 ### 5a. The 18 shared-all-5 SEQ control/move core (5-way intersection)
 
 `AluOp · BRANCH · BranchPrefetchHint · Event_Semaphore · EXT_BREAK · Halt · INS_BREAK · INS_FL ·
 MOVE · NOP · NOTIFY · POLL_SEM · Redirect · SET_OM · STRONG_ORDER · TensorLoad · TensorStore ·
-WRITE` — byte-for-handler-name identical in all five engines. `[HIGH/OBSERVED]`
+WRITE` — byte-for-handler-name identical in all five engines.
 
 ### 5b. POOL's 7 shared-with-DVE compute primitives (POOL+DVE, not all-5)
 
 `EngineNop · MEMSET/RNG · Pool · Tensor-Reduce · Tensor-Scalar · Tensor-Scalar-PTR · Tensor-Tensor`
-— the dense tensor-arith primitives POOL and DVE both carry. `[HIGH/OBSERVED]`
+— the dense tensor-arith primitives POOL and DVE both carry.
 
 ### 5c. The 16 POOL-only handlers (set-diff: absent from ACT/DVE/PE/SP)
 
@@ -488,7 +481,7 @@ WRITE` — byte-for-handler-name identical in all five engines. `[HIGH/OBSERVED]
 
 > **NOTE — the RNG lives on POOL, not PE.** The `RandGetState`/`RandSetState` pair is **POOL-only**
 > in the 5-way diff — confirming the RNG/seed handlers ship on POOL. The `MEMSET/RNG` entry in §5b
-> is the shared MEMSET path; the stateful RNG-seed read/write is POOL-exclusive. `[HIGH/OBSERVED]`
+> is the shared MEMSET path; the stateful RNG-seed read/write is POOL-exclusive.
 
 ### 5d. Apples-to-apples (same regex on all 5 DEBUG DRAMs)
 
@@ -500,7 +493,7 @@ WRITE` — byte-for-handler-name identical in all five engines. `[HIGH/OBSERVED]
 - **SP (0 compute):** pure 18-handler SEQ control core.
 
 POOL, ACT, DVE, PE, SP are the **same** `cayman/seq/` engine with **disjoint** compute subsets;
-POOL's is the widest GENERAL-compute set + the unique `ExtendedInst` escape. `[HIGH/OBSERVED]`
+POOL's is the widest GENERAL-compute set + the unique `ExtendedInst` escape.
 
 ---
 
@@ -522,12 +515,11 @@ P%i: engine_base_addr=%llx tpb_base_addr=%llx -> ... engine_idx=%u   (boot ident
 
 The two miss paths are the structural proof of the two-level key: a plain-opcode miss emits
 `UNKNOWN OPCODE=0x%x`; a `0xf0`-spec miss emits `UNKNOWN EXTENDED OPCODE=%d` (the spec). Source
-module `dispatch.hpp`. `[HIGH/OBSERVED]`
+module `dispatch.hpp`.
 
 ### 6b. The per-image `kernel_info_table` sub-tables
 
-Each EXTISA ELF carries its own `kernel_info_table` section (all re-decoded byte-exact this
-session):
+Each EXTISA ELF carries its own `kernel_info_table` section (all decoded byte-exact):
 
 | ELF | section VA | entries | content |
 | --- | --- | --- | --- |
@@ -542,7 +534,7 @@ corroborate the funcVA roster: `pool_iota`, `pool_cross_lane_reduce_arith/_bitve
 `decode_pool(bool)`, `decode_tensor_tensor_arith`, `decode_tensor_dequantize`,
 `decode_extended_inst_tensor_tensor_arith`, `pool_extended_inst_copy`, `iota_impl<true/false>`,
 `nonzero_with_count_impl<float/int>`, `get_sequence_bounds_impl`,
-`TensorDequantize::proc_4bit_mx_8`. `[HIGH/OBSERVED]`
+`TensorDequantize::proc_4bit_mx_8`.
 
 > **NOTE — no baked weight table.** The per-kernel state pointers are the `.bss` band in the EXTISA
 > ELF (`.bss @0x02000450 size 0x3c`, one slot per kernel). CAYMAN POOL carries **no** host-supplied
@@ -563,13 +555,12 @@ P%i: CustomOps not supported on Cayman
 
 DKL loads a custom-op "prelink library" at runtime and dispatches into it via the **same**
 `kernel_info_table` mechanism — a DKL-build extension of the existing dispatch, **not** a third
-mechanism. `[HIGH/OBSERVED for the symbols; runtime-load semantics INFERRED-HIGH from the symbol
-names + "prelink library"/"start symbol".]`
+mechanism. `[symbols HIGH/OBSERVED; runtime-load semantics INFERRED-HIGH]`
 
 > **CORRECTION — CustomOps are gated OFF on CAYMAN.** Despite the DKL image shipping, the string
 > `"P%i: CustomOps not supported on Cayman"` shows the dynamic custom-op path is **disabled** on
 > CAYMAN — it is a forward-looking layer. See
-> [External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md). `[HIGH/OBSERVED]`
+> [External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md).
 
 ---
 
@@ -590,7 +581,7 @@ Per-kernel helpers named in DRAM: `proc_4bit_mx_8` / `proc_4bit_non_mx` / `proc_
 (TensorDequantize MX paths); `decode_embedding_update` / `decode_sb2sb_collective` / `decode_sort` /
 `decode_extended_inst_sb2sb` / `dma_memcopy_impl` / `dge_reshape_apply_impl` / `run_indirect_copy`.
 The DKL build adds `DmaMemcopy`, `do_indirection`, `allgather` (the dynamic-kernel-load /
-custom-op kernels). `[HIGH/OBSERVED]`
+custom-op kernels).
 
 ---
 
@@ -611,7 +602,7 @@ DEBUG is the only build with the runtime logs (NX: 187 `S:`; Q7: 156 `P%i:`) —
 PERF (production/release) strips all logs (the residual strings are assertion source-paths). TEST
 sits between. The dispatch mechanism is **invariant** across builds: same reset vectors, same SEQ
 table base (DEBUG `0x80814` / PERF `0x80218`), same `kernel_info_table` format, same UNKNOWN-OPCODE
-arms. DEBUG→PERF is a pure observability change. `[HIGH/OBSERVED]`
+arms. DEBUG→PERF is a pure observability change.
 
 ---
 
@@ -628,16 +619,16 @@ arms. DEBUG→PERF is a pure observability change. `[HIGH/OBSERVED]`
 - **CODE (IRAM/DRAM):** `NX_POOL` shares **no** bytes with ACT/DVE/PE/SP — each is a
   separately-compiled `cayman/seq/` build with its own handler subset. Sharing is at the
   source/structure level (identical reset vector `06 76 00 00`, dispatch model, 18-handler control
-  core), **not** the linked-byte level. `[HIGH/OBSERVED]`
-- **PROF (CAM/TABLE):** **byte-identical** across all 4 NX engines (re-derived 4/4 this session;
-  `cmp` of POOL vs ACT `PROF_TABLE` returned IDENTICAL). `PROF_CAM` = 16-byte records
-  `{opcode_id, mask=0xff, enable=1, rsvd=0}` (first records `0x01 / 0x06 / 0x02` verified);
+  core), **not** the linked-byte level.
+- **PROF (CAM/TABLE):** **byte-identical** across all 4 NX engines (4/4;
+  `cmp` of POOL vs ACT `PROF_TABLE` is IDENTICAL). `PROF_CAM` = 16-byte records
+  `{opcode_id, mask=0xff, enable=1, rsvd=0}` (first records `0x01 / 0x06 / 0x02`);
   `PROF_TABLE` header word `0x00000201` (`01 02 00 00`), 8 KiB preallocated. The HW-decode profiling
   CAM/table are a **generic** shipped resource, not per-engine. SP ships no PROF. See
-  [PROF CAM/TABLE Formats](./prof-cam-table-formats.md). `[HIGH/OBSERVED]`
+  [PROF CAM/TABLE Formats](./prof-cam-table-formats.md).
 - **RESET VECTORS:** the five NX engines all share `06 76 00 00` (`j 0x1dc`); the Q7 POOL core has
   its own `06 7f 00 00` (`j 0x200`). The `.globstruct` magic `0x6099cb34` is shared by the EXTISA
-  `.globstruct` and every flat DRAM head. `[HIGH/OBSERVED]`
+  `.globstruct` and every flat DRAM head.
 
 ---
 
@@ -665,20 +656,20 @@ The two cores coexist as a fetch/decode → execute pipeline: `NX_POOL` decodes 
 routes compute opcodes (via the `0xf0 ExtendedInst` bridge) to `Q7_POOL`, which runs the
 `kernel_info_table` dispatch and the kernel. The `0xf0` escape reconciles the two tables: opcode
 `0xf0` in the SEQ table = the same opcode `0xf0` (×5 specs) in the `kernel_info_table`, the
-`(opcode<<24)|(spec<<16)` two-level key (`opcode @+3`, `spec @+2`). `[HIGH/OBSERVED]`
+`(opcode<<24)|(spec<<16)` two-level key (`opcode @+3`, `spec @+2`).
 
 ---
 
 ## 11. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):**
+**HIGH / OBSERVED:**
 
 - 46 POOL getters parsed instruction-exact (28 real + 18 zero-size/cursor); both families (14 NX +
   32 Q7). 15 carves sha256-verified, incl. DKL_PERF == DKL_TEST byte-identity.
 - Both reset vectors (`06 76 00 00` / `06 7f 00 00`) and both converge on `enter_run @0x90`.
-- SEQ 178-slot table @ `0x80814` re-decoded (55 real + 123 default `0x3198`); `0xf0` slot @ `0xad0`
+- SEQ 178-slot table @ `0x80814` decoded (55 real + 123 default `0x3198`); `0xf0` slot @ `0xad0`
   = `0x3190`; the 178-bound derived from `0xf2 − 0x41 + 1`.
-- `kernel_info_table` 17/1/2/9 entries re-decoded byte-exact; the five `0xf0+spec` rows pinned;
+- `kernel_info_table` 17/1/2/9 entries decoded byte-exact; the five `0xf0+spec` rows pinned;
   the `0xf0` escape reconciled.
 - 41 POOL handlers (18 shared-all-5 + 7 shared-with-DVE + 16 POOL-only incl. `ExtendedInst` +
   RNG); counts DVE 53 / POOL 41 / ACT 26 / PE 24 / SP 18.

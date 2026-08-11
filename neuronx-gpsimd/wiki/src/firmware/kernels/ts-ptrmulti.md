@@ -38,7 +38,7 @@
 | 5 | **Arith-vs-Bitvec is an op-class + dtype split** (because `S4D4_TSM` *has* an `op` field — unlike [`ImmLd`](ts-immld.md)). Arith = `is_general_arith_op`; Bitvec = `is_bitvec_op` (the **full 10**, *including* `Crc32`). Both reject `Divide`/`Pow`/`Mod`. | `tensor_scalar_ptr_multi_valid_ops` (`:172`) | HIGH/OBSERVED |
 | 6 | **dtype split**: Arith admits any valid dtype (12-way, FP32R barred on input), "all converted to fp32 in the DVE"; Bitvec forces `in_dtype == out_dtype ∈ {UINT8, UINT16, UINT32, INT32}` raw-bits. | `tensor_scalar_ptr_multi_valid_types` (`:183`) + header `:54–59` | HIGH/OBSERVED |
 | 7 | `op_dim` is **FORCED `XYZ`**; `reverse_operands` is **FORCED `{None, Both}`** (not the 4-valued set) — the 8 scalars **bank 4+4 across two physical DVE ALU stages**, so a reverse must flip both. | `is_valid_tsm_subdim` (`:193`) + `tensor_scalar_ptr_multi_reverse_chk` (`:202`) + the verbatim hardware note `:99–107` | HIGH/OBSERVED |
-| 8 | **Stub-wired** on every DVE gen: the self-name `"S: TensorScalarPtrMulti{Arith,Bitvec}"` strings + a registered **LOG-only** thunk exist (CAYMAN/MARIANA/MAVERICK), but **no compute body** — the `// n` signature. | binary strings (sha256 `b7c67e89…`) + the SX-FW-58 carve | HIGH/OBSERVED; runtime-result inference HIGH/INFERRED |
+| 8 | **Stub-wired** on every DVE gen: the self-name `"S: TensorScalarPtrMulti{Arith,Bitvec}"` strings + a registered **LOG-only** thunk exist (CAYMAN/MARIANA/MAVERICK), but **no compute body** — the `// n` signature. | binary strings (sha256 `b7c67e89…`) + the FW-58 carve | HIGH/OBSERVED; runtime-result inference HIGH/INFERRED |
 | 9 | **Per-gen**: opcodes + struct byte-identical on all 4 gens. The **SUNDA-only Dual** pair `0x87`/`0x88` (W≤4, dual-op) was **retired** on NC-v3+ (`0x87` reused as a semaphore constant); the `struct2opcode` JSON still **stale-lists** Dual everywhere. MAVERICK adds tile-aware channel ranging. | `common.h` + `instruction_mapping.json` + `s4d4_tsm.h` diff (all 4 gens) | HIGH/OBSERVED |
 
 ---
@@ -48,12 +48,12 @@
 All device-firmware facts derive from static analysis of the shipped device-firmware blob (carved from
 `libnrtucode_internal.so`, disassembled with the Cadence Xtensa toolchain that ships *inside* the
 gpsimd-tools package, `XTENSA_CORE=ncore2gp`, Vision-Q7 FLIX/VLIW) plus the shipped public ISA C headers,
-**compile-verified this session with gcc**. No source was consulted.
+**compile-verified with gcc**. No source was consulted.
 
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified in-task (`sha256sum`) |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Disassembler | `gpsimd_tools/…/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
 | MARIANA `NX_DVE` DEBUG IRAM / DRAM | VA `0x408fc0` / `0x425520` (`.rodata` VA == file offset) |
 | CAYMAN `NX_DVE` DEBUG DRAM | self-name pool `0x27c0`/`0x27de` |
@@ -70,11 +70,11 @@ The authoritative struct/enum/validator source is the shipped public ISA headers
 - `…/neuron_<gen>_arch_isa/tpb/instruction_mapping.json` — the `struct2opcode` binding.
 
 The `S4D4_TSM` struct is **byte-identical** (`sizeof 64`, same offsets) on sunda/cayman/mariana/maverick —
-**compile-verified** below (§4). `[HIGH/OBSERVED]`
+**compile-verified** below (§4).
 
 > **NOTE — `.rodata`/`.text` VMA == file offset, but the ncore2gp config DLLs' `.data`/`.data.rel.ro`
 > carry a `+0x200000` VMA−fileoffset delta** (confirm per-section with `readelf -SW`). The DVE DEBUG IRAM/DRAM
-> blobs of this page live in `.rodata`, so VA == offset; do not over-generalise the delta to them. `[HIGH/OBSERVED]`
+> blobs of this page live in `.rodata`, so VA == offset; do not over-generalise the delta to them.
 
 ---
 
@@ -105,7 +105,7 @@ NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_PTR_MULTI_DUAL_BITVEC  = 0x88,   // n, ucode
 The arith/bitvec opcode-pair convention is the family's standard low-nibble split: `0x4F`→arith,
 `0x5F`→bitvec (high nibble `4`=arith, `5`=bitvec, low nibble `F` for the pointer-multi form). `0x4F`/`0x5F`
 are firmware **kernel-lane** opcodes (the ~140-entry `NEURON_ISA_TPB_OPCODE_*` SEQ axis), **not** Xtensa ISA
-mnemonics — the same two-axis caution [`tensor-scalar.md`](tensor-scalar.md) §3 raises. `[HIGH/OBSERVED]`
+mnemonics — the same two-axis caution [`tensor-scalar.md`](tensor-scalar.md) §3 raises.
 
 > **GOTCHA — `0x87` was NEVER "reused"; both meanings coexist in SUNDA, only the OPCODE name is dropped on
 > NC-v3+.** SUNDA already carries `0x87` in **two** distinct enums simultaneously:
@@ -114,7 +114,7 @@ mnemonics — the same two-axis caution [`tensor-scalar.md`](tensor-scalar.md) �
 > name is dropped; the `UPDATE_MODE` constant is gen-stable, so it is not a "reuse" of a freed value — the
 > value lived in both namespaces all along. A reimplementer must not treat `0x87`/`0x88` as PtrMulti
 > opcodes outside SUNDA. (See [sunda-dual-tensorscalarptr.md](sunda-dual-tensorscalarptr.md) §3c for the
-> byte-exact enum-boundary scan.) `[HIGH/OBSERVED]`
+> byte-exact enum-boundary scan.)
 
 ### 3a. The struct→opcode binding (`instruction_mapping.json`)
 
@@ -131,7 +131,7 @@ including the Dual pair — `jq`-read verbatim (mariana):
 ```
 
 `S4D4_TSM` is bound to the PtrMulti family and **nothing else** — there are no shared-struct co-residents
-(unlike [`ImmLd`](ts-immld.md)'s `S2_BN`, which serves three load ops). `[HIGH/OBSERVED]`
+(unlike [`ImmLd`](ts-immld.md)'s `S2_BN`, which serves three load ops).
 
 > **CORRECTION — the JSON is a STALE superset on NC-v3+.** On cayman/mariana/maverick the `struct2opcode`
 > table still lists `PTR_MULTI_DUAL_ARITH`/`DUAL_BITVEC` under `S4D4_TSM`, but those opcode **names are no
@@ -143,7 +143,7 @@ including the Dual pair — `jq`-read verbatim (mariana):
 
 ## 4. The operand struct — `NEURON_ISA_TPB_S4D4_TSM_STRUCT` (64 B)
 
-`s4d4_tsm.h:110`, `ISA_STATIC_ASSERT(sizeof == 64)`. **Compile-verified this session** — a real C program
+`s4d4_tsm.h:110`, `ISA_STATIC_ASSERT(sizeof == 64)`. **Compile-verified** — a real C program
 `#include`-ing each gen's `aws_neuron_isa_tpb_s4d4_tsm.h` and printing `offsetof`/`sizeof` prints
 **byte-identical** output on all four gens:
 
@@ -175,7 +175,7 @@ sunda/cayman/mariana/maverick (identical):
 uint16 num_elem[4](8) }` — a 4-D strided access pattern in C-order `[W,Z,Y,X]`. `num_elem[3]` is **W**, the
 outer scalar-index dimension; `num_elem[2..0]` are the `Z,Y,X` sub-volume the op streams for each W. Both
 `src` and `dst` are `AllowedInPSUM::True && AllowedInSBUF::True`, so PtrMulti can read the matmul **PSUM**
-directly (`tensor4d_valid(…, AllowedInPSUM::True, …)`, `s4d4_tsm.h:154–155`). `[HIGH/OBSERVED]`
+directly (`tensor4d_valid(…, AllowedInPSUM::True, …)`, `s4d4_tsm.h:154–155`).
 
 > **CORRECTION — the header's inline `reserved1` byte-count comment is a typo.** The declaration is
 > `uint8_t reserved1[5]` with a trailing comment `// 6 (39 - 43)`. The byte range `39..43` is **five** bytes
@@ -198,7 +198,7 @@ structurally different layout, and **every** difference flows from "Multi":
 | `accumulator_cmd` | `accum_cmd`@12 (forced Idle) | (none) | PtrMulti is pure elementwise |
 
 The decisive structural proof of "Ptr": `S4D4_TSM` has **zero** immediate fields. The op **cannot** carry an
-inline scalar; it **must** consume the [`ImmLd`](ts-immld.md)-preloaded flops. `[HIGH/OBSERVED]`
+inline scalar; it **must** consume the [`ImmLd`](ts-immld.md)-preloaded flops.
 
 ### 4b. `op_dim` forced XYZ, `reverse_operands` forced `{None, Both}` — and the hardware reason
 
@@ -270,7 +270,7 @@ that changes per W-slice is *which* preloaded scalar is folded. `has_valid_src_s
 // }
 ```
 
-This is literally "merge `W` single-op `TensorScalarPtr` instructions into one 4D kernel." `[HIGH/OBSERVED]`
+This is literally "merge `W` single-op `TensorScalarPtr` instructions into one 4D kernel."
 
 ### 5b. The "Ptr" — the scalars come from the ImmLd preload (the producer/consumer macro-pair)
 
@@ -347,7 +347,7 @@ The full validity chain (`is_valid_tensor_scalar_ptr_multi`, `s4d4_tsm.h:134`), 
 In one sentence: **apply the single `AluOp` to every element of the 4-D `src` (PSUM or SBUF), swapping the
 preloaded scalar at each W boundary, and write the same-shaped 4-D `dst`** — `op_dim` XYZ, `reverse ∈
 {None,Both}`, dtypes valid, the op in the arith/bitvec accept set. `same_element_count_t4d` makes the op an
-elementwise transform (one out-element per in-element). `[HIGH/OBSERVED]`
+elementwise transform (one out-element per in-element).
 
 ---
 
@@ -394,12 +394,12 @@ The predicate bodies are read verbatim from `aws_neuron_isa_tpb_assert.h`:
 > accounting straight: `is_bitvec_op` = **10 ops** (with `Crc32`); `is_general_bitvec_op` = **9 ops**
 > (`Crc32` removed; `assert.h:1827`) — the latter is what [`scalar-tensor-tensor.md`](scalar-tensor-tensor.md)
 > uses. PtrMultiBitvec admits `Crc32` (it gates on the full `is_bitvec_op`); STT-bitvec does **not**. Do not
-> conflate the two predicates. `[HIGH/OBSERVED]`
+> conflate the two predicates.
 
 > **NOTE — no `op0`/`op1` composition rule.** Because PtrMulti carries a **single** `op`, there is **no**
 > `(op0 != Bypass) || (op1 == Bypass)` gate and **no** `Rsqrt`-then-`Bypass` special case (both of which the
 > two-op base `S3D3_TS` carries; [`tensor-scalar.md`](tensor-scalar.md) §6b). The op is whatever single
-> member of the accept set you put in `op`@36; `Bypass` is the degenerate copy. `[HIGH/OBSERVED]`
+> member of the accept set you put in `op`@36; `Bypass` is the degenerate copy.
 
 ### 6b. The dtype split (`tensor_scalar_ptr_multi_valid_types`)
 
@@ -424,7 +424,7 @@ This **mirrors the whole family**: arith = fp-hub (convert-to-fp32) general-arit
 integer-container raw-bits identity — the same shape as the base `0x43`/`0x53`
 ([`tensor-scalar.md`](tensor-scalar.md) §6d). And it mirrors the **loader**: PtrMultiBitvec's 4-dtype set
 `{u8, u16, u32, i32}` is **identical** to [`ImmLdBitvec`](ts-immld.md)'s load-dtype set — `INT8`/`INT16` are
-excluded on both (zero-extend is meaningless for signed-narrow), all fp/`FP32R`/64-bit excluded. `[HIGH/OBSERVED]`
+excluded on both (zero-extend is meaningless for signed-narrow), all fp/`FP32R`/64-bit excluded.
 
 ---
 
@@ -449,7 +449,7 @@ FP8_E5 0xF`.
 > `[HIGH/OBSERVED — `mariana`↔`maverick` `s4d4_tsm.h` diff; v5 interior INFERRED]`
 
 The arith fp-hub vs bitvec integer-container split is the family-wide dtype rule ([`tensor-scalar.md`](tensor-scalar.md)
-§6d): arith = fp-hub through fp32; bitvec = integer-container raw-bits identity. `[HIGH/OBSERVED]`
+§6d): arith = fp-hub through fp32; bitvec = integer-container raw-bits identity.
 
 ---
 
@@ -475,7 +475,7 @@ Per-gen DVE-DRAM self-name VAs (xtensa-elf-strings on the carved DVE DEBUG DRAM)
 | MARIANA | `0x28a0` | `0x28be` | `ImmLd`@`0x283f`/`0x285a`; `Select`@`0x2921` |
 | MAVERICK | `0x28d0` | `0x28ee` | same block layout |
 
-`[HIGH/OBSERVED — binary strings + the SX-FW-58 carve]`
+`[HIGH/OBSERVED — binary strings + the FW-58 carve]`
 
 ### 8a. The wiring verdict — "stub-wired" (the `// n` middle state, decoded)
 
@@ -510,7 +510,7 @@ behaviour of an unmaintained op (no-op vs fault) is not statically observable, M
 > under stock `xtensa-elf-objdump` on the recurring `.byte 0x2f` literal-pool lead byte. The `entry`, the
 > `const16` self-name loaders, the `call8 0x188a4`/`0x9920` edges, and the stub funcVA `const16`s are
 > byte-**clean**; the desynced `.byte`/spurious bundles between LOG calls are **not** real instructions. The
-> stub verdict rests only on the byte-clean facts. `[HIGH/OBSERVED]`
+> stub verdict rests only on the byte-clean facts.
 
 ---
 
@@ -524,9 +524,9 @@ behaviour of an unmaintained op (no-op vs fault) is not statically observable, M
 | **MAVERICK** | v5 | defined `// n` | 64 B (id) | 1..8 | **RETIRED** | DRAM `0x28d0`/`0x28ee` | stub-wired |
 
 - Opcode values, the maintenance flag, and the `S4D4_TSM` struct (`sizeof 64` + every offset) are
-  **byte-identical** on all four gens (my compile output, §4). `[HIGH/OBSERVED]`
+  **byte-identical** on all four gens (my compile output, §4).
 - The stub-wired DVE thunks + registration stubs are present on every DVE-equipped gen (CAYMAN/MARIANA/
-  MAVERICK). `[HIGH/OBSERVED]`
+  MAVERICK).
 - **SUNDA-only Dual** (NC-v2): the twin pair `0x87`/`0x88`
   (`TensorScalarPtrMultiDual{Arith,Bitvec}`) is defined in `sunda/common.h` and documented in
   `sunda/s4d4_tsm.h` ("merges up to **FOUR** regular TensorScalarPtr instructions (**dual** ALU op per

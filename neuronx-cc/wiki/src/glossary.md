@@ -42,7 +42,7 @@ The Neuron stack carries a dense, partly-internal vocabulary: a single data stru
 | **Activation (Act)** | The activation engine; evaluates PWP functions via on-chip LUTs loaded by `LoadActFuncSet`. |
 | **DVE** | The vector/data engine, driven by an on-device microcode table. |
 | **SP** | The control processor — the TPB's sequencer; runs register-lane ops, branches, sync. |
-| **GPSIMD** | **Two distinct things** sharing a name: (1) the *external alias* of the internal **Pool** engine, surfaced as `InstGPSIMDSB2SB` (cross-core SB-to-SB); (2) the **8-core Xtensa custom-op CPU cluster** that runs user custom ops. They are unrelated units; see [11.9](customop/two-gpsimd.md). |
+| **GPSIMD** | **Two distinct things** sharing a name: (1) the *external alias* of the internal **Pool** engine, surfaced as `InstGPSIMDSB2SB` (cross-core SB-to-SB); (2) the **8-core Xtensa custom-op CPU cluster** that runs user custom ops. They are unrelated units; see [11.9](custom-ops/two-gpsimd-reconciliation.md). |
 | **SBUF** | State Buffer — the on-core scratchpad SRAM; **replicated** per logical neuron core. |
 | **PSUM** | Partial-Sum buffer — the matmul accumulator banks; replicated per core. |
 | **DRAM / HBM** | Off-core high-bandwidth memory; **partitioned** across logical cores (contrast SBUF/PSUM). |
@@ -75,7 +75,7 @@ The compiler names targets two ways — a silicon codename and an ISA-generation
 
 - **`sub_ADDR`** — a function whose symbol was stripped, named by address. A readable name, when assigned, keeps the `sub_ADDR` in a comment.
 - **`base+0xNN`** — a byte offset into a struct or instruction bundle.
-- **CONFIRMED / STRONG / INFERRED / SPECULATIVE** — the confidence ladder; see [Methodology](methodology.md).
+- **CERTAIN / HIGH / MEDIUM / LOW** — the confidence ladder, used in a table's Confidence column; see [Methodology](methodology.md). Certainty is the default, so prose marks only doubt, with `[INFERRED]` / `[SPECULATIVE]` / `[UNRESOLVED]`.
 - **"binary-derived"** — every claim is from static analysis of the pinned build; recovered identifier strings count as binary evidence.
 
 ## Cross-References

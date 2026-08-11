@@ -4,11 +4,11 @@
 
 ## Abstract
 
-This page is the byte-for-byte field map of the random-number op family the TPB emits on the wire: **`Rng`** (the primitive raw-bits generator), **`Rand2`** (the modern uniform-distribution generator), and the two engine-state ops **`RandGetState`** / **`RandSetState`** that snapshot and seed the per-lane PRNG. It also fixes the **algorithm ordinals** (`LFSR` / `PCG32` / `PHILOX_1` and the gen-2 `XORWOW`), the **distribution** field, the **dropout-threshold** band that the related `Dropout` op carries, and several **container assignments** that earlier passes got wrong.
+This page is the byte-for-byte field map of the random-number op family the TPB emits on the wire: **`Rng`** (the primitive raw-bits generator), **`Rand2`** (the modern uniform-distribution generator), and the two engine-state ops **`RandGetState`** / **`RandSetState`** that snapshot and seed the per-lane PRNG. It also pins the **algorithm ordinals** (`LFSR` / `PCG32` / `PHILOX_1` and the gen-2 `XORWOW`), the **distribution** field, and the **dropout-threshold** band that the related `Dropout` op carries.
 
-The single most important structural fact: **the on-wire RNG family is split across two hardware generations, and they do not share a state representation.** The gen-1 `Rng` path (a `CoreV2`-era opcode) writes 32 raw PRNG bits per element and selects from a *three-way* algorithm switch — `LFSR`/`PCG32`/`PHILOX_1` — but the algorithm is **engine-global state**, not a bundle field. The gen-2 `Rand2` path (a `CoreV4` override, a different container) folds raw-generate + range-normalise into one op over a fixed `XORWOW` generator and carries an FP32 `[min,max)` range. The two state ops thread between them, discriminated by an `EngineType` (gen-1 = 6 `uint32`/lane, gen-2 = 24 `uint32`/lane). This generational split is exactly where the prior container assignments went wrong, and the corrections are called out in place.
+The single most important structural fact: **the on-wire RNG family is split across two hardware generations, and they do not share a state representation.** The gen-1 `Rng` path (a `CoreV2`-era opcode) writes 32 raw PRNG bits per element and selects from a *three-way* algorithm switch — `LFSR`/`PCG32`/`PHILOX_1` — but the algorithm is **engine-global state**, not a bundle field. The gen-2 `Rand2` path (a `CoreV4` override, a different container) folds raw-generate + range-normalise into one op over a fixed `XORWOW` generator and carries an FP32 `[min,max)` range. The two state ops thread between them, discriminated by an `EngineType` (gen-1 = 6 `uint32`/lane, gen-2 = 24 `uint32`/lane). This generational split is where most container mis-assignments originate, and the traps it sets are called out in place.
 
-Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, blanket-zeroed (so any unwritten byte is a hard `0x00`), header-stamped, field-filled, ISA-checked, and `fwrite(buf, 1, 0x40, bin)`-ed — the lifecycle shared by the whole TPB ISA ([2.1 the bundle](instruction-bundle.md)). The bar for this page: a reader can **byte-encode each RNG-family instruction by hand and select the algorithm/distribution**, knowing for each control byte its offset, width, semantic, the value source, and the disassembly store-site that pins it. Every field row and ordinal carries a confidence tag (CONFIRMED = exact store/validator-load disassembled; STRONG = name/enum-corroborated; INFERRED = zero-init implied; SPECULATIVE). No ordinal or field name is fabricated.
+Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, blanket-zeroed (so any unwritten byte is a hard `0x00`), header-stamped, field-filled, ISA-checked, and `fwrite(buf, 1, 0x40, bin)`-ed — the lifecycle shared by the whole TPB ISA ([2.1 the bundle](instruction-bundle.md)). The bar for this page: a reader can **byte-encode each RNG-family instruction by hand and select the algorithm/distribution**, knowing for each control byte its offset, width, semantic, the value source, and the disassembly store-site that pins it. Every field row and ordinal carries a confidence tag: **CERTAIN** = the exact store or validator load is disassembled; **HIGH** = name- or enum-corroborated; **MEDIUM** = implied by zero-init. No ordinal or field name is fabricated.
 
 For reimplementation, the contract is:
 
@@ -61,11 +61,13 @@ GEN-2  ("Rand2" family — the CoreV4 override)
   per-lane state = 24 uint32  (4× XorwowState, each 6 uint32)
 ```
 
-The discriminator that tells a state op which generation it touches is the **`EngineType`** field on the BIR instruction (`Instruction+0x90` in the simulator): `EngineType == 1` → gen-1 6-`uint32` state; `EngineType == 5` → gen-2 24-`uint32` `XORWOW` state. CONFIRMED — `mov eax,[rbx+90h]; cmp 5; cmp 1` in the simulator's `visitInstSetRandState`. The `Rng` op (gen-1) and `Rand2` op (gen-2) consume their generation's running state; the algorithm is fixed per generation, not chosen per bundle. This is the single fact a reimplementer must internalise before reading the field maps.
+The discriminator that tells a state op which generation it touches is the **`EngineType`** field on the BIR instruction (`Instruction+0x90` in the simulator): `EngineType == 1` → gen-1 6-`uint32` state; `EngineType == 5` → gen-2 24-`uint32` `XORWOW` state. The `Rng` op (gen-1) and `Rand2` op (gen-2) consume their generation's running state; the algorithm is fixed per generation, not chosen per bundle. This is the single fact a reimplementer must internalise before reading the field maps.
 
-> **CORRECTION — `EngineType == 1` / `== 5` are the canonical engine ordinals Pool / DVE, not generation tags.** The values `1` and `5` are not a private "gen-1 / gen-2" encoding: they are the same `bir::EngineType` ordinals used everywhere — `Pool = 1`, `DVE = 5` (the full map `Pool=1, Activation=2, PE=3, DMA=4, DVE=5, SP=6`, byte-pinned from `bir::EngineType2string @0x47fa80`; owned by [2.23 ISA Enum Ordinals](isa-enum-ordinals.md)). The two coincide because the gen-1 `Rng`/state path runs on the **Pool** engine and the gen-2 `Rand2`/state path runs on the **DVE** engine; the simulator's `cmp 1` / `cmp 5` is therefore an *engine* discriminant that happens to also separate the two PRNG generations, not an independent generation enum. Read the field that selects the state vector as "which engine owns this RNG state", with Pool ⇒ gen-1 6-`uint32` and DVE ⇒ gen-2 24-`uint32` `XORWOW`.
+Those two values are not a private generation encoding. `1` and `5` are the ordinary `bir::EngineType` ordinals — `Pool = 1`, `DVE = 5`, from the full map `Pool=1, Activation=2, PE=3, DMA=4, DVE=5, SP=6` (byte-pinned in `bir::EngineType2string @0x47fa80`, owned by [2.23 ISA Enum Ordinals](isa-enum-ordinals.md)). The generations line up with the engines because the gen-1 `Rng`/state path runs on the **Pool** engine and the gen-2 `Rand2`/state path runs on the **DVE** engine. So read the field that selects the state vector as "which engine owns this RNG state": Pool ⇒ gen-1 6-`uint32`, DVE ⇒ gen-2 24-`uint32` `XORWOW`.
 
-> **CORRECTION — `Xorwow` is the gen-2 algorithm only.** An earlier reading labelled the *whole* RNG family `XORWOW`. The binary is authoritative: only `Rand2` / `RandGetState` / `RandSetState` (gen-2) run `XORWOW`; `Rng` / `GetRandState` / `SetRandState` (gen-1) run the three-way `LFSR`/`PCG32`/`PHILOX_1` switch keyed by the engine-global `_RAND_ALGORITHM` ordinal. The two are separate state vectors (6 vs 24 `uint32`/lane) and separate algorithm namespaces.
+*Anchors: the simulator's `visitInstSetRandState` — `mov eax,[rbx+90h]` then `cmp 5` / `cmp 1`.*
+
+> **GOTCHA — `XORWOW` is the gen-2 algorithm only, not the family's algorithm.** Only `Rand2` / `RandGetState` / `RandSetState` run `XORWOW`. Gen-1 `Rng` / `GetRandState` / `SetRandState` run the three-way `LFSR`/`PCG32`/`PHILOX_1` switch keyed by the engine-global `_RAND_ALGORITHM` ordinal. Two separate state vectors (6 vs 24 `uint32`/lane), two separate algorithm namespaces.
 
 ---
 
@@ -79,12 +81,14 @@ Ground truth: `bir::RandomAlgorithmKind2string @0x401de0` (libBIR) and the inver
 
 | Ord | Name | Generator (simulator-confirmed) | Confidence |
 |---|---|---|---|
-| `0` | `LFSR` | 32-bit Fibonacci LFSR, taps `{32,22,2,1}` → poly `x³²+x²²+x²+x+1` | CONFIRMED |
-| `1` | `PCG32` | PCG-XSH-RR 64/32, mult `0x5851F42D4C957F2D`, inc `0x14057B7EF767814F` | CONFIRMED |
-| `2` | `PHILOX_1` | Philox-4×32-10, `M0=0xD2511F53`, `M1=0xCD9E8D57`, `W0=0x9E3779B9`, `W1=0xBB67AE85` | CONFIRMED |
-| — | (other) | `default → FATAL "Supported PRNGs are LFSR/PCG32/PHILOX_1: "` | CONFIRMED |
+| `0` | `LFSR` | 32-bit Fibonacci LFSR, taps `{32,22,2,1}` → poly `x³²+x²²+x²+x+1` | CERTAIN |
+| `1` | `PCG32` | PCG-XSH-RR 64/32, mult `0x5851F42D4C957F2D`, inc `0x14057B7EF767814F` | CERTAIN |
+| `2` | `PHILOX_1` | Philox-4×32-10, `M0=0xD2511F53`, `M1=0xCD9E8D57`, `W0=0x9E3779B9`, `W1=0xBB67AE85` | CERTAIN |
+| — | (other) | `default → FATAL "Supported PRNGs are LFSR/PCG32/PHILOX_1: "` | CERTAIN |
 
-> **CORRECTION — `LFSR=0`, `PCG32=1`, `PHILOX_1=2`.** An earlier note implied `PCG32=0`. The libBIR `2string`/`string2` tables emit them in the order `LFSR / PCG32 / PHILOX_1`; the simulator switch (`==1 → PCG32 @0x1d71b4`, `==2 → Philox @0x1d6ac5`, `==0 → LFSR @0x1d6cdf`) confirms the ordinals. The wire form on the gen-1 `Rand` path is the ordinal itself — **no remap** — but note these ordinals do **not** appear in the `Rng 0x4D` bundle (see the `Rng` field map: the algorithm is engine-global, not a bundle field).
+The wire form on the gen-1 `Rand` path is the ordinal itself — there is **no remap**. But these ordinals never appear in the `Rng 0x4D` bundle at all: the algorithm is engine-global state, not a bundle field (see the `Rng` field map below).
+
+*Anchors: the simulator switch dispatches `==0 → LFSR` @ `0x1d6cdf`, `==1 → PCG32` @ `0x1d71b4`, `==2 → Philox` @ `0x1d6ac5`.*
 
 ### `RandomDistributionKind` — gen-1 distribution selector
 
@@ -92,10 +96,10 @@ Ground truth: `bir::RandomDistributionKind` `@0x401ee0` (libBIR), the `InstRand`
 
 | Ord | Name | Materialised in libBIRSimulator? | Confidence |
 |---|---|---|---|
-| `0` | `Raw` | **yes** — the only distribution the sim implements; raw `uint32` words straight to dst | CONFIRMED |
-| `1` | `Uniform` | only via `Rand2`'s `xorwowStep` affine `min+(max-min)·u`, not on the gen-1 path | CONFIRMED |
-| `2` | `Normal` | **not found** — no Box-Muller, no inverse-CDF in any RNG kernel | CONFIRMED (absence) |
-| `3` | `Binomial` | **not found** — no binomial/BTPE loop | CONFIRMED (absence) |
+| `0` | `Raw` | **yes** — the only distribution the sim implements; raw `uint32` words straight to dst | CERTAIN |
+| `1` | `Uniform` | only via `Rand2`'s `xorwowStep` affine `min+(max-min)·u`, not on the gen-1 path | CERTAIN |
+| `2` | `Normal` | **not found** — no Box-Muller, no inverse-CDF in any RNG kernel | CERTAIN (absence) |
+| `3` | `Binomial` | **not found** — no binomial/BTPE loop | CERTAIN (absence) |
 
 > **GOTCHA — gen-1 `Rng`/`Rand` produces only `Raw` bits.** The simulator's `visitInstRand` reads **only** `Instruction+240` (algorithm); an exhaustive field-offset grep shows it never reads `+288` (distribution) or `+296` (params). The kernel models the hardware RNG bit-stream; `Uniform`/`Normal`/`Binomial` shaping is done either upstream in lowering or by the gen-2 `Rand2` op. A reimplementer who expects `Rng` to honour a `distribution` field will be wrong — `Rng` truncates each 32-bit raw draw to the dst dtype and stops there.
 
@@ -103,7 +107,9 @@ Ground truth: `bir::RandomDistributionKind` `@0x401ee0` (libBIR), the `InstRand`
 
 The `d3_rand` `rand_algorithm` byte at `+0x0C` is validated by `is_valid_enum(list 0x1d)` (check name `strict_rand2_algorithm`) and is stamped to the **constant `0x3`** by the `CoreV4` encoder. This `3` is the `XORWOW` slot of *enum-list 0x1d* — it is **not** an `_RAND_ALGORITHM` ordinal (that namespace tops out at `PHILOX_1 = 2`; there is no ordinal `3`).
 
-> **CORRECTION — `Rand2`'s `+0x0C == 3` is NOT `_RAND_ALGORITHM` ordinal 3.** Do not cross-decode the `Rand2` algorithm byte through the `{LFSR,PCG32,PHILOX_1}` table. The two are different enum-lists: the gen-1 field carries the `RandomAlgorithmKind` ordinal `0..2`; the gen-2 `Rand2` field carries enum-list-0x1d value `3` (the cuRAND `XORWOW` slot, the only algorithm `Rand2` supports). On the wire, treat the `Rand2` algorithm byte as the literal `3`; do not equate it to `PHILOX_1` or any other gen-1 ordinal. CONFIRMED — the `CoreV4` encoder stores the constant `3` (`@0x143b07e`) and the validator gates `enum-list 0x1d`.
+> **GOTCHA — `Rand2`'s `+0x0C == 3` is not `_RAND_ALGORITHM` ordinal 3.** The two are different enum-lists: the gen-1 field carries the `RandomAlgorithmKind` ordinal `0..2`, while the gen-2 `Rand2` field carries enum-list-0x1d value `3`, the cuRAND `XORWOW` slot and the only algorithm `Rand2` supports. Treat the `Rand2` algorithm byte as the literal `3`; cross-decoding it through the `{LFSR, PCG32, PHILOX_1}` table yields nonsense, since that namespace has no ordinal `3` at all.
+
+*Anchors: the `CoreV4` encoder stores the constant `3` @ `0x143b07e`; the validator gates it on enum-list `0x1d`.*
 
 ---
 
@@ -117,23 +123,23 @@ The `d3_rand` `rand_algorithm` byte at `+0x0C` is validated by `is_valid_enum(li
 
 `Rng` does **not** have a private wire struct. Its `rng_info` Cython doc-string states verbatim *"ISAInstructionInfo for d4_mr_struct - Rng"*. The `d4_mr` ("4-D match-replace") 64-byte container is **shared** by opcodes `0x49` (`Memset`), `0x4B`, `0xE9`, and `0x4D` (`Rng`) — proved by `core_v4::is_valid_d4_mr` dispatching on the opcode byte (`cmp 0x49`, `cmp 0x4b`, `cmp 0xe9`, `cmp 0x4d` at successive sites in `@0x146b020`).
 
-> **CORRECTION — `Rng` reuses `d4_mr`, it has no `rng_struct`.** A prior assignment gave `Rng` a dedicated container. The `rng_info` doc-string and the `is_valid_d4_mr` opcode dispatch both pin `Rng` to the `d4_mr` family. The *only* on-wire difference between `Memset 0x49` and `Rng 0x4D` in this shared container is byte `+0x28` (see the `Memset` shared-container map below): `Memset` writes the fill immediate there, `Rng` pins it to reserved-zero.
+The *only* on-wire difference between `Memset 0x49` and `Rng 0x4D` in this shared container is byte `+0x28` (see the `Memset` shared-container map below): `Memset` writes the fill immediate there, `Rng` pins it to reserved-zero.
 
 ### Field map (validator `core_v4::is_valid_d4_mr`, `Rng` branch; emit `CoreV2GenImpl::visitInstRng @0x12376a0`)
 
 | Off | W | Field | Constraint / enum | Value source | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | u8 | opcode = `0x4D` | `is_valid_enum(list 0x04)` | `mov BYTE[...],0x4d @0x12377fb`/`@0x123797e` | CONFIRMED |
-| `+0x01` | u8 | inst_word_len `0x10` / event hdr | `has_valid_neuron_events()` | header constant | STRONG |
-| `+0x1C` | u32 | dst_element_count | elements/partition | `getNumElementsPerPartition()` → `[r12+0x1c]` | CONFIRMED |
-| `+0x20` | u8 | dst dtype (`d4_mr_dtype`) | `is_valid_dtype(ALLOW_FP32)` | helper `@0x120e650` → `[r12+0x20]` | CONFIRMED |
-| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1) | `AP[+0x8]` low byte → `[r12+0x22]` | CONFIRMED |
-| `+0x24` | u8 | reserved_zero | must == 0 (`test r15b`) | `[r12+0x24]=0` | CONFIRMED |
-| `+0x28` | u32 | reserved_zero (`Rng`) | must == 0 (`test r14d`) | `[r12+0x28]=0` | CONFIRMED |
-| `+0x2C` | T4D | dst tensor4d AP | `tensor4d_valid(WRITE, PSUM/SBUF)` | `assignAccess<TENSOR4D>(dstAP)` | CONFIRMED |
-| — | — | reserved nibble-masks | `(rsp+0xc8\|rsp+0xbc)==0`, `(rsp+0xd0 & 0xffffff00ff00ff00)==0` | AP-dim high bytes reserved-zero (`d4_mr_reserved_z`) | CONFIRMED |
+| `+0x00` | u8 | opcode = `0x4D` | `is_valid_enum(list 0x04)` | `mov BYTE[...],0x4d @0x12377fb`/`@0x123797e` | CERTAIN |
+| `+0x01` | u8 | inst_word_len `0x10` / event hdr | `has_valid_neuron_events()` | header constant | HIGH |
+| `+0x1C` | u32 | dst_element_count | elements/partition | `getNumElementsPerPartition()` → `[r12+0x1c]` | CERTAIN |
+| `+0x20` | u8 | dst dtype (`d4_mr_dtype`) | `is_valid_dtype(ALLOW_FP32)` | helper `@0x120e650` → `[r12+0x20]` | CERTAIN |
+| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1) | `AP[+0x8]` low byte → `[r12+0x22]` | CERTAIN |
+| `+0x24` | u8 | reserved_zero | must == 0 (`test r15b`) | `[r12+0x24]=0` | CERTAIN |
+| `+0x28` | u32 | reserved_zero (`Rng`) | must == 0 (`test r14d`) | `[r12+0x28]=0` | CERTAIN |
+| `+0x2C` | T4D | dst tensor4d AP | `tensor4d_valid(WRITE, PSUM/SBUF)` | `assignAccess<TENSOR4D>(dstAP)` | CERTAIN |
+| — | — | reserved nibble-masks | `(rsp+0xc8\|rsp+0xbc)==0`, `(rsp+0xd0 & 0xffffff00ff00ff00)==0` | AP-dim high bytes reserved-zero (`d4_mr_reserved_z`) | CERTAIN |
 
-> **NOTE — the two "unused" `d4_mr` selectors.** `rng_info` documents two fields the `d4_mr` container carries for `Memset`/match-replace that `Rng` pins to constants: *"Must be 0 for Rng (unused)"* and *"Must be Serial for Rng (unused)"* — a perf-mode / accumulate selector that `Rng` zeroes. They are not RNG fields; they are inherited container slots. STRONG.
+> **NOTE — the two "unused" `d4_mr` selectors.** `rng_info` documents two fields the `d4_mr` container carries for `Memset`/match-replace that `Rng` pins to constants: *"Must be 0 for Rng (unused)"* and *"Must be Serial for Rng (unused)"* — a perf-mode / accumulate selector that `Rng` zeroes. They are not RNG fields; they are inherited container slots.
 
 ### Annotated encode
 
@@ -167,18 +173,18 @@ The wire struct is `d3_rand_struct`; the operand list (`rand2_info`) is `{dst, d
 
 | Off | W | Field | Constraint / enum | Value source | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | u8 | opcode = `0xE2` | `is_valid_enum(0x04)`; check `rand2_opcode` | `mov WORD[r13],si @0x143ae25` (byte0 = `0xE2`) | CONFIRMED |
-| `+0x01` | u8 | inst_word_len / event hdr | `has_valid_neuron_events()` | header | STRONG |
-| `+0x0C` | u8 | rand_algorithm = `3` | `is_valid_enum(list 0x1d)`; `strict_rand2_algorithm`; **XORWOW slot** | `mov BYTE[r13+0x0c],3 @0x143b07e` | CONFIRMED |
-| `+0x0E` | u8 | post_process = `1` | `is_valid_enum(list 0x1e)`; `RandPostProc.UniformInRange` | `mov BYTE[r13+0x0e],1 @0x143b083` | CONFIRMED |
-| `+0x20` | u8 | dtype | `is_valid_dtype(ALLOW_FP32)`; FP32/FP16/BF16/FP8\*; `valid_rand2_dtype` | helper → `[r13+0x20]` | CONFIRMED |
-| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1) | `[r13+0x22]` | CONFIRMED |
-| `+0x26` | u8 | min_src (value-kind) | `is_valid_enum(list 0x37)` scalar/vector selector | operand encoder `@0x142e370` over `getArgument(0)` → `[r13+0x26]` | CONFIRMED |
-| `+0x27` | u8 | max_src (value-kind) | `is_valid_enum(list 0x37)`; `valid_rand2_post_processing` | operand encoder over `getArgument(1)` → `[r13+0x27]` | CONFIRMED |
-| imm | f32 | min | FP32 lower bound (scalar imm slot or vector AP) | `ImmValInstField` via operand encoder | STRONG |
-| imm | f32 | max | FP32 upper bound; `min < max` enforced | `ImmValInstField` | STRONG |
-| `+0x30` | T3D | dst tensor3d AP | `tensor3d_valid(WRITE, PSUM/SBUF)` | `assignAccess<TENSOR3D>(dstAP)` | CONFIRMED |
-| — | — | reserved nibble-masks | `[rsp+0x6c..]` high nibbles `& 0xff00ff00 == 0` | AP-dim reserved-zero (`d3_rand reserved`) | CONFIRMED |
+| `+0x00` | u8 | opcode = `0xE2` | `is_valid_enum(0x04)`; check `rand2_opcode` | `mov WORD[r13],si @0x143ae25` (byte0 = `0xE2`) | CERTAIN |
+| `+0x01` | u8 | inst_word_len / event hdr | `has_valid_neuron_events()` | header | HIGH |
+| `+0x0C` | u8 | rand_algorithm = `3` | `is_valid_enum(list 0x1d)`; `strict_rand2_algorithm`; **XORWOW slot** | `mov BYTE[r13+0x0c],3 @0x143b07e` | CERTAIN |
+| `+0x0E` | u8 | post_process = `1` | `is_valid_enum(list 0x1e)`; `RandPostProc.UniformInRange` | `mov BYTE[r13+0x0e],1 @0x143b083` | CERTAIN |
+| `+0x20` | u8 | dtype | `is_valid_dtype(ALLOW_FP32)`; FP32/FP16/BF16/FP8\*; `valid_rand2_dtype` | helper → `[r13+0x20]` | CERTAIN |
+| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1) | `[r13+0x22]` | CERTAIN |
+| `+0x26` | u8 | min_src (value-kind) | `is_valid_enum(list 0x37)` scalar/vector selector | operand encoder `@0x142e370` over `getArgument(0)` → `[r13+0x26]` | CERTAIN |
+| `+0x27` | u8 | max_src (value-kind) | `is_valid_enum(list 0x37)`; `valid_rand2_post_processing` | operand encoder over `getArgument(1)` → `[r13+0x27]` | CERTAIN |
+| imm | f32 | min | FP32 lower bound (scalar imm slot or vector AP) | `ImmValInstField` via operand encoder | HIGH |
+| imm | f32 | max | FP32 upper bound; `min < max` enforced | `ImmValInstField` | HIGH |
+| `+0x30` | T3D | dst tensor3d AP | `tensor3d_valid(WRITE, PSUM/SBUF)` | `assignAccess<TENSOR3D>(dstAP)` | CERTAIN |
+| — | — | reserved nibble-masks | `[rsp+0x6c..]` high nibbles `& 0xff00ff00 == 0` | AP-dim reserved-zero (`d3_rand reserved`) | CERTAIN |
 
 > **QUIRK — `min`/`max` are operands, not the `RandomDistributionKind` params.** The FP32 `[min,max)` range comes from the two `ImmValInstField` operands (`getArgument(0)`/`(1)`, default `0.0`/`1.0`), encoded by the generic operand encoder `@0x142e370`. For a scalar source the FP32 immediate is written into the bundle's immediate slot and `*_src` selects "scalar"; for a vector source an AP is written and `*_src` selects "vector". This is *not* the `Instruction+296` `params` SmallVector of the gen-1 distribution path. The simulator's `xorwowStep @0x1aa1c0` confirms the affine: `u = bitcast((bits & 0x7FFFFF) | 0x3F800000) - 1.0f` (a `[0,1)` draw), then `min + (max-min)·u`.
 
@@ -226,19 +232,19 @@ The `CoreV3` encoder writes a single 32-bit literal `0x01000003` at `+0x0C` (`@0
 
 | Off | W | Field | Constraint / enum | Value source | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | u8 | opcode = `0x77` | `is_valid_enum(0x04)` (also accepts `0x76`) | `mov BYTE[...],0x77` | CONFIRMED |
-| `+0x0C` | u8 | rand_algorithm = `3` | enum-list; XORWOW slot | low byte of `0x01000003` | CONFIRMED |
-| `+0x0D` | u8 | rand_generator = `0` | `RandSrc.RNG_XORWOW` | packed | STRONG |
-| `+0x0E` | u8 | post-proc-lo / reserved = `0` | — | packed | STRONG |
-| `+0x0F` | u8 | post_process / valid = `1` | `RandPostProc.RawU32` | packed | STRONG |
-| `+0x20` | u8 | dtype | validator `cmp == 0x09` (u32 PRNG-word); `rand_get_state_valid_dtype` | helper → `[r12+0x20]` | CONFIRMED |
-| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1); `valid_rand_state_channels` | `[r12+0x22]` | CONFIRMED |
-| `~+0x2x` | u8/u32 | rand_num_steps | present in container; `0` for plain GetState (zero-init) | not written by `CoreV3` GetState | STRONG |
-| `+0x2C` | T4D | dst tensor4d AP | `tensor4d_valid(WRITE, PSUM/SBUF)`; `valid_rand_get_state_dst_tensor` | `assignAccess<TENSOR4D>` | CONFIRMED |
-| — | — | reserved | `[rsp+0x9c]&0xffff00`, `[rsp+0xb0]&0xff...ff00ff00`, `[rsp+0xb8]==0` | AP high-byte reserved-zero | CONFIRMED |
-| — | gate | legal-combo | `rand_get_state_legal_combinations(union, engine)` couples `{algo, generator, dtype, engine}` | branch on `[rsp+0x4c] ∈ {1,2,3}` `@0x14723c0` | CONFIRMED |
+| `+0x00` | u8 | opcode = `0x77` | `is_valid_enum(0x04)` (also accepts `0x76`) | `mov BYTE[...],0x77` | CERTAIN |
+| `+0x0C` | u8 | rand_algorithm = `3` | enum-list; XORWOW slot | low byte of `0x01000003` | CERTAIN |
+| `+0x0D` | u8 | rand_generator = `0` | `RandSrc.RNG_XORWOW` | packed | HIGH |
+| `+0x0E` | u8 | post-proc-lo / reserved = `0` | — | packed | HIGH |
+| `+0x0F` | u8 | post_process / valid = `1` | `RandPostProc.RawU32` | packed | HIGH |
+| `+0x20` | u8 | dtype | validator `cmp == 0x09` (u32 PRNG-word); `rand_get_state_valid_dtype` | helper → `[r12+0x20]` | CERTAIN |
+| `+0x22` | u8 | num_active_channels | `start_addr_active_channels` (≥1); `valid_rand_state_channels` | `[r12+0x22]` | CERTAIN |
+| `~+0x2x` | u8/u32 | rand_num_steps | present in container; `0` for plain GetState (zero-init) | not written by `CoreV3` GetState | HIGH |
+| `+0x2C` | T4D | dst tensor4d AP | `tensor4d_valid(WRITE, PSUM/SBUF)`; `valid_rand_get_state_dst_tensor` | `assignAccess<TENSOR4D>` | CERTAIN |
+| — | — | reserved | `[rsp+0x9c]&0xffff00`, `[rsp+0xb0]&0xff...ff00ff00`, `[rsp+0xb8]==0` | AP high-byte reserved-zero | CERTAIN |
+| — | gate | legal-combo | `rand_get_state_legal_combinations(union, engine)` couples `{algo, generator, dtype, engine}` | branch on `[rsp+0x4c] ∈ {1,2,3}` `@0x14723c0` | CERTAIN |
 
-> **NOTE — the `dtype == 0x09` pin and the 6-vs-24 element count.** The state tensor's wire dtype is forced to the `uint32` tag (`0x09`); the per-partition element count is gated by `rand_get_state_legal_combinations` against the engine: GpSimd → **6** state words, Vector → **24** (4 `XORWOW` lanes × 6). `rand_num_steps` is a real container field used by a seed-advance variant, but a plain `GetState` advances `0` steps (the byte is left at zero-init). STRONG.
+> **NOTE — the `dtype == 0x09` pin and the 6-vs-24 element count.** The state tensor's wire dtype is forced to the `uint32` tag (`0x09`); the per-partition element count is gated by `rand_get_state_legal_combinations` against the engine: GpSimd → **6** state words, Vector → **24** (4 `XORWOW` lanes × 6). `rand_num_steps` is a real container field used by a seed-advance variant, but a plain `GetState` advances `0` steps (the byte is left at zero-init).
 
 ---
 
@@ -255,25 +261,27 @@ The same `s1_rand` container is emitted under two opcodes across generations:
 - **`0x78`** — the modern `RandSetState` (`CoreV3GenImpl::visitInstRandSetState @0x1357ee0`; record key `mov DWORD[rbp-0xb0],0x78 @0x1357fc8`, bundle byte `@0x135803b`). The validator `core_v2::is_valid_rand_set_state @0x12b4510` accepts **only** `0x78` (`cmp bl,0x78 @0x12b45b1`).
 - **`0xD0`** — the legacy `CoreV2GenImpl::visitInstSetRandState @0x1224690` (record key `mov DWORD[rbp-0xb0],0xd0 @0x12247ff`, bundle byte `@0x1224871`).
 
-> **CORRECTION — `0xD0` is the legacy `SetRandState` spelling; the modern opcode enum reuses slot `0xD0` for `PseudoSetRngSeed`.** This is the subtlest of the container corrections. In the current `NEURON_ISA_TPB` opcode enum, `0xD0 (208) = PseudoSetRngSeed` — a *pseudo*-instruction (the high-level "set rng seed" op, lowered upstream), **not** a raw wire opcode. The `CoreV2` `visitInstSetRandState` historically stamped bundle byte `0xD0`, but the modern validator rejects `0xD0` and canonicalises to `0x78`. So: real `RandSetState` wire bundles use **`0x78`**; `0xD0` survives only as the deprecated pre-`CoreV3` spelling and as the opcode-enum slot now owned by the `PseudoSetRngSeed` pseudo-op. A reimplementer must emit `0x78`, and must not read `0xD0` as `PseudoSetRngSeed` semantics when it appears in a legacy `CoreV2` bundle. CONFIRMED (the `0x78`-only validator gate; the `0xD0` enum slot).
+In the current `NEURON_ISA_TPB` opcode enum, slot `0xD0 (208)` is `PseudoSetRngSeed` — a *pseudo*-instruction (the high-level "set rng seed" op, lowered upstream), not a raw wire opcode. The `CoreV2` `visitInstSetRandState` historically stamped bundle byte `0xD0`, but the modern validator rejects `0xD0` and canonicalises to `0x78`. Real `RandSetState` wire bundles therefore use **`0x78`**; `0xD0` survives only as the deprecated pre-`CoreV3` spelling.
+
+> **GOTCHA — a `0xD0` byte in a legacy `CoreV2` bundle is not `PseudoSetRngSeed`.** The opcode-enum slot and the legacy wire spelling collide on the same number by accident of history. Emit `0x78`, and when decoding an old bundle read `0xD0` as the deprecated `SetRandState`, never as pseudo-op semantics.
 
 ### Field map (validator `core_v2::is_valid_rand_set_state @0x12b4510`, base `rsp+0xd0`; emit `@0x1357ee0`, base `rbp-0xb0`)
 
 | Off | W | Field | Constraint / enum | Value source | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | u8 | opcode = `0x78` | `is_valid_enum`; check `s1_rand opcode` (legacy `0xD0`) | `mov BYTE[...],0x78` | CONFIRMED |
-| `+0x01` | u8 | header = `0x10` | `cmp == 0x10` (fixed mem/event hdr) | header | CONFIRMED |
-| `+0x0C` | u8 | rand_algorithm = `3` | `is_valid_enum`; XORWOW slot | `[off 0x0c] = 0x03 @0x1358223` | CONFIRMED |
-| `+0x0D` | u8 | rand_generator | `RandSrc.RNG_XORWOW` | `[off 0x0e]=0` family | STRONG |
-| `+0x0F` | u8 | proc / reserved | `is_valid_enum` | — | STRONG |
-| `+0x10` | u8 | update_state | `RandStateUpdate.SrcTensor`; emit `0`/`1` | `@0x1358543`/`@0x1358576` | CONFIRMED |
-| `+0x16` | u16 | count / par hdr | WORD `@[rsp+0xe6]` | — | STRONG |
-| `+0x18` | u8 | seed-source valid / mode | `cmp == 0x2`; emit `1` | `@0x135822a` | CONFIRMED |
-| `+0x20` | T1D | src_seeds tensor AP | `tensor_start_addr_valid(WRITE, PSUM/SBUF)`; 1-D seed vector (6 GpSimd / 24 Vector) | `assignAccess<TENSOR1D>(getArgument(1))` `@0x1358075` | CONFIRMED |
-| — | — | reserved | `s1_rand_reserved` band; `cmp eax,0x9010002`/`0x9000002` enumerate legal `{dtype,dims}` | `valid_rand_state_channels` | CONFIRMED |
-| — | gate | legal-combo | `rand_set_state_legal_combinations(union, engine)` gates `{algorithm, generator, engine, element-count}` | `@0x1482e50` | CONFIRMED |
+| `+0x00` | u8 | opcode = `0x78` | `is_valid_enum`; check `s1_rand opcode` (legacy `0xD0`) | `mov BYTE[...],0x78` | CERTAIN |
+| `+0x01` | u8 | header = `0x10` | `cmp == 0x10` (fixed mem/event hdr) | header | CERTAIN |
+| `+0x0C` | u8 | rand_algorithm = `3` | `is_valid_enum`; XORWOW slot | `[off 0x0c] = 0x03 @0x1358223` | CERTAIN |
+| `+0x0D` | u8 | rand_generator | `RandSrc.RNG_XORWOW` | `[off 0x0e]=0` family | HIGH |
+| `+0x0F` | u8 | proc / reserved | `is_valid_enum` | — | HIGH |
+| `+0x10` | u8 | update_state | `RandStateUpdate.SrcTensor`; emit `0`/`1` | `@0x1358543`/`@0x1358576` | CERTAIN |
+| `+0x16` | u16 | count / par hdr | WORD `@[rsp+0xe6]` | — | HIGH |
+| `+0x18` | u8 | seed-source valid / mode | `cmp == 0x2`; emit `1` | `@0x135822a` | CERTAIN |
+| `+0x20` | T1D | src_seeds tensor AP | `tensor_start_addr_valid(WRITE, PSUM/SBUF)`; 1-D seed vector (6 GpSimd / 24 Vector) | `assignAccess<TENSOR1D>(getArgument(1))` `@0x1358075` | CERTAIN |
+| — | — | reserved | `s1_rand_reserved` band; `cmp eax,0x9010002`/`0x9000002` enumerate legal `{dtype,dims}` | `valid_rand_state_channels` | CERTAIN |
+| — | gate | legal-combo | `rand_set_state_legal_combinations(union, engine)` gates `{algorithm, generator, engine, element-count}` | `@0x1482e50` | CERTAIN |
 
-> **NOTE — `RandSetState` emits a two-bundle pair.** `visitInstRandSetState` issues two `fwrite(.,1,0x40,.)` calls (`@0x13580dc`/`@0x135816b`): the seed-write bundle plus a state-commit bundle. The source seed vector is bound as a `TENSOR1D` AP (a second `TENSOR1D` arg `@0x13581d8` — the 6/24-element seed vector). On restore, the simulator applies a per-lane zero-guard: if a lane's first five words are all zero it forces the first word to `1`, avoiding a dead all-zero `XORWOW` state. CONFIRMED.
+> **NOTE — `RandSetState` emits a two-bundle pair.** `visitInstRandSetState` issues two `fwrite(.,1,0x40,.)` calls (`@0x13580dc`/`@0x135816b`): the seed-write bundle plus a state-commit bundle. The source seed vector is bound as a `TENSOR1D` AP (a second `TENSOR1D` arg `@0x13581d8` — the 6/24-element seed vector). On restore, the simulator applies a per-lane zero-guard: if a lane's first five words are all zero it forces the first word to `1`, avoiding a dead all-zero `XORWOW` state.
 
 ---
 
@@ -283,15 +291,15 @@ The same `s1_rand` container is emitted under two opcodes across generations:
 
 | Off | W | `Memset` (`0x49`) | `Rng` (`0x4D`) | Tag |
 |---|---|---|---|---|
-| `+0x00` | u8 | opcode `0x49` | opcode `0x4D` | CONFIRMED |
-| `+0x1C` | u32 | dst_element_count | dst_element_count | CONFIRMED |
-| `+0x20` | u8 | dtype | dtype | CONFIRMED |
-| `+0x22` | u8 | num_active_channels | num_active_channels | CONFIRMED |
-| `+0x24` | u8 | reserved_zero | reserved_zero | CONFIRMED |
-| `+0x28` | u32 | **set_value (fill imm)** | **reserved_zero (= 0)** | CONFIRMED |
-| `+0x2C` | T4D | dst tensor4d AP | dst tensor4d AP | CONFIRMED |
+| `+0x00` | u8 | opcode `0x49` | opcode `0x4D` | CERTAIN |
+| `+0x1C` | u32 | dst_element_count | dst_element_count | CERTAIN |
+| `+0x20` | u8 | dtype | dtype | CERTAIN |
+| `+0x22` | u8 | num_active_channels | num_active_channels | CERTAIN |
+| `+0x24` | u8 | reserved_zero | reserved_zero | CERTAIN |
+| `+0x28` | u32 | **set_value (fill imm)** | **reserved_zero (= 0)** | CERTAIN |
+| `+0x2C` | T4D | dst tensor4d AP | dst tensor4d AP | CERTAIN |
 
-`CoreV2GenImpl::visitInstMemset @0x125b320` (base `r13`): `[r13+0x28] = [r12+0xf8]` (the fill immediate, DWORD `@0x125b455`), gated by a `[r12+0x118]` flag (`0` = immediate-fill, non-zero = vector path/error). pybind check names confirm the field family: `memset_set_value_type`, `memset_opcode`, and the `d4_mr` family `d4_mr_reserved_z` / `d4_mr_le16k_src` / `d4_mr_same_src_dst` / `match_replace_dtype`. STRONG.
+`CoreV2GenImpl::visitInstMemset @0x125b320` (base `r13`): `[r13+0x28] = [r12+0xf8]` (the fill immediate, DWORD `@0x125b455`), gated by a `[r12+0x118]` flag (`0` = immediate-fill, non-zero = vector path/error). pybind check names confirm the field family: `memset_set_value_type`, `memset_opcode`, and the `d4_mr` family `d4_mr_reserved_z` / `d4_mr_le16k_src` / `d4_mr_same_src_dst` / `match_replace_dtype`.
 
 ---
 
@@ -303,18 +311,18 @@ The same `s1_rand` container is emitted under two opcodes across generations:
 
 | Off | W | Field | Constraint / name | Value source | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | u8 | opcode = `0x7F` | `s_dropout_opcode` | `movb 0x7f @0x123e676` | CONFIRMED |
-| `+0x01` | u8 | header = `0x10` | shared | header | INFERRED |
-| `+0x20` | u8 | in_dtype | `d3_dropout_same_src_dst_type` (in == out) | `sub_120E650(src) @0x123e6c7` | CONFIRMED |
-| `+0x21` | u8 | out_dtype | same-type assert | `sub_120E650(dst) @0x123e6d3` | CONFIRMED |
-| `+0x22` | u8 | active / lane | `d3_dropout_src_dst_count_check` | `src.AP[0x50][0x8]` low `@0x123e701` | CONFIRMED |
-| `+0x23` | u8 | **threshold_imm_ptr** | the KEEP/DROP threshold scalar-operand slot | boost::variant converter `sub_12051E0` → slot index `@0x123e740` | CONFIRMED (store); STRONG (name) |
-| `+0x24` | u8 | **threshold_dtype** | `d3_dropout_threshold_dtype_check` | `sub_120E650(converter) @0x123e848` | CONFIRMED |
-| `+0x2B` | u8 | **rng_mode / dropout_variant** | which RNG mode/variant the dropout uses | `*(this+0xF0)` (RNG-config byte) `@0x123e737` | CONFIRMED (store); INFERRED (semantic) |
-| `+0x10` | T3D | src AP | `assignAccess<TENSOR3D>(src) @0x123e856` | — | CONFIRMED |
-| `+0x30` | T3D | dst AP | `assignAccess<TENSOR3D>(dst) @0x123e864` | — | CONFIRMED |
+| `+0x00` | u8 | opcode = `0x7F` | `s_dropout_opcode` | `movb 0x7f @0x123e676` | CERTAIN |
+| `+0x01` | u8 | header = `0x10` | shared | header | MEDIUM |
+| `+0x20` | u8 | in_dtype | `d3_dropout_same_src_dst_type` (in == out) | `sub_120E650(src) @0x123e6c7` | CERTAIN |
+| `+0x21` | u8 | out_dtype | same-type assert | `sub_120E650(dst) @0x123e6d3` | CERTAIN |
+| `+0x22` | u8 | active / lane | `d3_dropout_src_dst_count_check` | `src.AP[0x50][0x8]` low `@0x123e701` | CERTAIN |
+| `+0x23` | u8 | **threshold_imm_ptr** | the KEEP/DROP threshold scalar-operand slot | boost::variant converter `sub_12051E0` → slot index `@0x123e740` | CERTAIN (store); HIGH (name) |
+| `+0x24` | u8 | **threshold_dtype** | `d3_dropout_threshold_dtype_check` | `sub_120E650(converter) @0x123e848` | CERTAIN |
+| `+0x2B` | u8 | **rng_mode / dropout_variant** | which RNG mode/variant the dropout uses | `*(this+0xF0)` (RNG-config byte) `@0x123e737` | CERTAIN (store); MEDIUM (semantic) |
+| `+0x10` | T3D | src AP | `assignAccess<TENSOR3D>(src) @0x123e856` | — | CERTAIN |
+| `+0x30` | T3D | dst AP | `assignAccess<TENSOR3D>(dst) @0x123e864` | — | CERTAIN |
 
-> **CORRECTION — the dropout threshold is a 1-byte operand-slot pointer at `+0x23`, not an inline FP32.** A prior reading described the dropout bundle as embedding `{threshold value, DropoutThresholdType, dst AP}` inline. The disassembly is precise: `+0x23` is `threshold_imm_ptr`, a 1-byte index into a scalar-operand slot (resolved from a `boost::variant` by `sub_12051E0`), **not** an inline `f32`; the threshold's own dtype is the separate byte `+0x24`. The threshold *value* lives in the bundle's operand slot the pointer selects. The RNG-mode selector is yet a third byte, `+0x2B`.
+> **GOTCHA — the dropout threshold is a 1-byte operand-slot pointer, not an inline FP32.** `+0x23` is `threshold_imm_ptr`, a one-byte index into a scalar-operand slot (resolved from a `boost::variant` by `sub_12051E0`); the threshold *value* lives in the slot that index selects. Its dtype is a separate byte at `+0x24`, and the RNG-mode selector is a third byte at `+0x2B`. Nothing about the threshold is embedded inline in the control band.
 
 ### The `DropoutThresholdType` polarity (`klr::DropoutThresholdType`)
 
@@ -322,25 +330,25 @@ The threshold-type selects whether the threshold is read as the probability of *
 
 | Ord | Name | Meaning | Confidence |
 |---|---|---|---|
-| `1` | `DropRate` | threshold = probability to **drop** | CONFIRMED |
-| `2` | `KeepRate` | threshold = probability to **keep** | CONFIRMED |
-| `0` | (unset/other) | not a valid configured polarity | CONFIRMED |
+| `1` | `DropRate` | threshold = probability to **drop** | CERTAIN |
+| `2` | `KeepRate` | threshold = probability to **keep** | CERTAIN |
+| `0` | (unset/other) | not a valid configured polarity | CERTAIN |
 
 > **NOTE — `Dropout` has no seed/state field in its bundle.** The RNG seed is established out-of-band by the separate `PseudoSetRngSeed` pseudo-instruction (`s_rng_opcode`, the `0xD0`-slot pseudo-op); `Dropout` consumes the engine's current stream. The polarity byte (`DropoutThresholdType`, carried by the BIR instruction, not the threshold-dtype byte) selects the comparison direction. The full `DropoutThresholdType` enum is owned by [2.23 ISA Enum Ordinals](isa-enum-ordinals.md).
 
 ---
 
-## The container-assignment corrections, consolidated
+## Five traps in the RNG container map
 
-The prior-pass container map had four assignments that the binary overturns. They are stated in place above; collected here for a reimplementer auditing an older map:
+Each of these has a tempting reading that the binary rules out. They are stated in place above; collected here as an audit checklist.
 
-| Op | Prior assignment | Correct (binary-grounded) |
+| Op | Tempting reading | Actual encoding |
 |---|---|---|
-| `Rng 0x4D` | private `rng_struct` | shares `d4_mr_struct` with `Memset 0x49` (`rng_info` doc-string; `is_valid_d4_mr` dispatch) |
+| `Rng 0x4D` | a private `rng_struct` | shares `d4_mr_struct` with `Memset 0x49` (`rng_info` doc-string; `is_valid_d4_mr` dispatch) |
 | `Rand2 0xE2` algo byte | `_RAND_ALGORITHM` ordinal `3` | enum-list-0x1d value `3` (XORWOW slot); `_RAND_ALGORITHM` has no ordinal `3` |
 | `RandSetState` opcode | `0xD0` | canonical `0x78`; `0xD0` is the legacy spelling, and the opcode enum now labels slot `0xD0` as `PseudoSetRngSeed` |
-| `Dropout 0x7F` threshold | inline FP32 value in the bundle | 1-byte `threshold_imm_ptr@+0x23` (operand-slot index) + `threshold_dtype@+0x24` + `rng_mode@+0x2B` |
-| whole family algorithm | `XORWOW` everywhere | `XORWOW` is gen-2 (`Rand2`) only; gen-1 (`Rng`) is `LFSR`/`PCG32`/`PHILOX_1` engine-global |
+| `Dropout 0x7F` threshold | an inline FP32 value in the bundle | 1-byte `threshold_imm_ptr@+0x23` (operand-slot index) + `threshold_dtype@+0x24` + `rng_mode@+0x2B` |
+| family algorithm | `XORWOW` everywhere | `XORWOW` is gen-2 (`Rand2`) only; gen-1 (`Rng`) is `LFSR`/`PCG32`/`PHILOX_1`, engine-global |
 
 ---
 

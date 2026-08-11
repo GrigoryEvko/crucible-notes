@@ -10,17 +10,18 @@ and a **per-lane-vector-amount** form (`ivp_slln*`, the shift count read element
 `vec` source). The batch owns **24 mnemonics / 266 of the 12 569 shipped placements**
 ([the coverage tally's certified-perfect denominator](../core/coverage-tally.md)).
 
-Everything below is re-grounded against the shipped binaries this pass: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (the `Opcode_<mnem>_Slot_<slot>_encode` thunks, the `Field_*_get` operand accessors,
 and the immediate-amount `vec_alu_i_imm{3,4,5}` fields); the **value semantics** by *executing* the
 matching `module__xdref_*` leaves in `libfiss-base.so` live in-process (license-free) over full input
 domains; an independent **encode/decode oracle** from the device-native `xtensa-elf-as`/
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); and **retirement latency** from the `libcas-core.so`
-per-instruction stage symbols. Confidence tags per
-[the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-re-used at a sibling page's confidence. Prose reads as derived from shipped-artifact static analysis
-and in-process execution of license-free value leaves (lawful interoperability RE).
+per-instruction stage symbols. The page default is `[HIGH/OBSERVED]` (read-from-byte /
+proven-by-execution); claims that depart from that default carry an explicit tag per
+[the Confidence & Walls model](../../reference/confidence-model.md) — `[MED/INFERRED]` = reasoned over
+OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence. Prose reads as derived from
+shipped-artifact static analysis and in-process execution of license-free value leaves (lawful
+interoperability RE).
 
 > **Scope split — read this before pairing a mnemonic to a batch.** This batch is the **standalone
 > `vec → vec` bit-shift core**. Four boundaries are enforced so the 30 batches never double-count:
@@ -54,7 +55,7 @@ and in-process execution of license-free value leaves (lawful interoperability R
 | Value leaves resolved | **30** | `nm libfiss-base.so \| rg -c 'xdref_(sll\|srl\|sra\|rotr\|nsa\|nsau)_'` (§6) |
 | Semantic iclass | `ivp_sem_vec_shift` (fields `vr`/`vt`/`vs`) + `ivp_sem_vec_alu_i_imm{3,4,5}` for the imm amount | `Field_fld_ivp_sem_vec_shift_*` / `…_vec_alu_i_imm*` thunks (§3) |
 | Functional unit | the `alu` slot class (immediate forms additionally fold into the Mul-class slot) | `slots[]` ([flix-encoding §5](../core/flix-encoding.md)) |
-| Retirement latency | issues stage 0, retires **stage 11** (1-cycle ALU, `use@10 → def@11`) | `libcas-core.so` `IVP_*_inst_stage{0..11}` symbols `[HIGH/OBSERVED]` |
+| Retirement latency | issues stage 0, retires **stage 11** (1-cycle ALU, `use@10 → def@11`) | `libcas-core.so` `IVP_*_inst_stage{0..11}` symbols |
 | Lane geometry | `2nx8`=64×8b · `nx16`=32×16b · `n_2x32`=16×32b (one 512-bit reg) | value-leaf width suffix; `xt_ivp32.h` typedefs |
 | Encode-thunk ABI | `C7 07 imm32 [C7 47 04 0] C3` — `imm32` = the `(opcode×slot)` selector, `word1≡0` | [flix-encoding §6.1](../core/flix-encoding.md) |
 | Shift-leaf ABI (binary) | `void leaf(uint64 ctx, uint32 val, uint32 amt, uint32 *out)` — `val`=`rsi`, `amt`=`rdx`, `out`=`rcx` | disassembled §4 |
@@ -82,15 +83,16 @@ than a 5-bit `vec` index) fits the Mul slot where the three-`vec`-source variabl
 > the fiss leaf `module__xdref_lashift_512_512_6` / `wideldshift_*_512_6` (TIE name
 > `xdsem_ld_shifter_512`/`xdsem_st_shifter_512`), which shifts *across* the 512-bit row — is a **separate**
 > datapath, owned by [B06 loads](b06-loads.md)/[B08 reduce](b08-reduce.md). Different shifter, different
-> leaf. `[HIGH/OBSERVED]`
+> leaf.
 
 ---
 
 ## 2. Batch roster — 24 shift / rotate / normalize opcodes
 
 Columns: `mnemonic` · `lanes×width` · representative `F0_S3_ALU` **opcode-selector imm** (the
-`Opcode_<mnem>_Slot_f0_s3_alu_encode` thunk's `movl $imm`, disassembled this pass) · **shift-amount
-source** (immediate field / per-lane `vec`) and its bit-width · one-line lane semantics · `[conf]`.
+`Opcode_<mnem>_Slot_f0_s3_alu_encode` thunk's `movl $imm`, disassembled) · **shift-amount
+source** (immediate field / per-lane `vec`) and its bit-width · one-line lane semantics. Every row of
+§2.1–§2.5 is `[HIGH/OBSERVED]`.
 Every selector imm is for the **`F0_S3_ALU` slot specifically** and `word1 ≡ 0` (the §3 GOTCHA: the
 selector is per-`(opcode×slot)`, never a roster-wide direction bit). The three `vec` operand fields
 (dest `vr`, source `vt`, amount-source `vs`) occupy slot-fixed bit windows identical across the batch
@@ -99,52 +101,52 @@ these ops occupy), so a per-row byte-size column is omitted.
 
 ### 2.1 Logical left shift (`sll` — zero-fill from the right)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_slli2nx8`   | 64×8  | `0x868c8100` | imm3 (3-bit, 0–7)   | `a = (b << k) & 0xFF` per lane | `[HIGH/OBSERVED]` |
-| `ivp_sllinx16`   | 32×16 | `0x868c8200` | imm4 (4-bit, 0–15)  | `a = (b << k) & 0xFFFF` | `[HIGH/OBSERVED]` |
-| `ivp_sllin_2x32` | 16×32 | `0x86a38000` | imm5 (5-bit, 0–31)  | `a = b << k` (32-bit) | `[HIGH/OBSERVED]` |
-| `ivp_slln_2x32`  | 16×32 | `0x86b38000` | per-lane `vec` (signed amt) | `a = b <</>> amt_lane` (bidirectional, §4.4) | `[HIGH/OBSERVED]` |
-| `ivp_sllnx16`    | 32×16 | `0x86ab8000` | per-lane `vec` (signed amt) | `a = b <</>> amt_lane`, over-shift → 0 | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics |
+|---|---|---|---|---|
+| `ivp_slli2nx8`   | 64×8  | `0x868c8100` | imm3 (3-bit, 0–7)   | `a = (b << k) & 0xFF` per lane |
+| `ivp_sllinx16`   | 32×16 | `0x868c8200` | imm4 (4-bit, 0–15)  | `a = (b << k) & 0xFFFF` |
+| `ivp_sllin_2x32` | 16×32 | `0x86a38000` | imm5 (5-bit, 0–31)  | `a = b << k` (32-bit) |
+| `ivp_slln_2x32`  | 16×32 | `0x86b38000` | per-lane `vec` (signed amt) | `a = b <</>> amt_lane` (bidirectional, §4.4) |
+| `ivp_sllnx16`    | 32×16 | `0x86ab8000` | per-lane `vec` (signed amt) | `a = b <</>> amt_lane`, over-shift → 0 |
 
 ### 2.2 Logical right shift (`srl` — zero-fill from the left)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_srli2nx8`   | 64×8  | `0x868d8100` | imm3 (3-bit) | `a = (b & 0xFF) >> k` (zero-fill) | `[HIGH/OBSERVED]` |
-| `ivp_srlinx16`   | 32×16 | `0x868e0200` | imm4 (4-bit) | `a = (b & 0xFFFF) >> k` | `[HIGH/OBSERVED]` |
-| `ivp_srlin_2x32` | 16×32 | `0x86ac8000` | imm5 (5-bit) | `a = b >>u k` (32-bit logical) | `[HIGH/OBSERVED]` |
-| `ivp_srln_2x32`  | 16×32 | `0x86bc8000` | per-lane `vec` | logical right, over-shift → 0 | `[HIGH/OBSERVED]` |
-| `ivp_srlnx16`    | 32×16 | `0x86b48000` | per-lane `vec` | logical right, over-shift → 0 | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics |
+|---|---|---|---|---|
+| `ivp_srli2nx8`   | 64×8  | `0x868d8100` | imm3 (3-bit) | `a = (b & 0xFF) >> k` (zero-fill) |
+| `ivp_srlinx16`   | 32×16 | `0x868e0200` | imm4 (4-bit) | `a = (b & 0xFFFF) >> k` |
+| `ivp_srlin_2x32` | 16×32 | `0x86ac8000` | imm5 (5-bit) | `a = b >>u k` (32-bit logical) |
+| `ivp_srln_2x32`  | 16×32 | `0x86bc8000` | per-lane `vec` | logical right, over-shift → 0 |
+| `ivp_srlnx16`    | 32×16 | `0x86b48000` | per-lane `vec` | logical right, over-shift → 0 |
 
 ### 2.3 Arithmetic right shift (`sra` — sign-fill from the left)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_srai2nx8`   | 64×8  | `0x868d0100` | imm3 (3-bit) | `a = sext8(b) >> k` (sign-fill) | `[HIGH/OBSERVED]` |
-| `ivp_srainx16`   | 32×16 | `0x868d8200` | imm4 (4-bit) | `a = sext16(b) >> k` | `[HIGH/OBSERVED]` |
-| `ivp_srain_2x32` | 16×32 | `0x86b40000` | imm5 (5-bit) | `a = b >>s k` (32-bit arithmetic) | `[HIGH/OBSERVED]` |
-| `ivp_sran_2x32`  | 16×32 | `0x86a48000` | per-lane `vec` (signed amt) | arithmetic right, bidirectional | `[HIGH/OBSERVED]` |
-| `ivp_sranx16`    | 32×16 | `0x86bc0000` | per-lane `vec` (signed amt) | arithmetic right, bidirectional | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics |
+|---|---|---|---|---|
+| `ivp_srai2nx8`   | 64×8  | `0x868d0100` | imm3 (3-bit) | `a = sext8(b) >> k` (sign-fill) |
+| `ivp_srainx16`   | 32×16 | `0x868d8200` | imm4 (4-bit) | `a = sext16(b) >> k` |
+| `ivp_srain_2x32` | 16×32 | `0x86b40000` | imm5 (5-bit) | `a = b >>s k` (32-bit arithmetic) |
+| `ivp_sran_2x32`  | 16×32 | `0x86a48000` | per-lane `vec` (signed amt) | arithmetic right, bidirectional |
+| `ivp_sranx16`    | 32×16 | `0x86bc0000` | per-lane `vec` (signed amt) | arithmetic right, bidirectional |
 
 ### 2.4 Rotate right (`rotr` — lane-internal, no bit loss)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_rotri2nx8`   | 64×8  | `0x868c0100` | imm3 (3-bit) | `a = ror8(b, k & 7)` | `[HIGH/OBSERVED]` |
-| `ivp_rotrinx16`   | 32×16 | `0x868c0200` | imm4 (4-bit) | `a = ror16(b, k & 15)` | `[HIGH/OBSERVED]` |
-| `ivp_rotrin_2x32` | 16×32 | `0x86ba8000` | imm5 (5-bit) | `a = ror32(b, k & 31)` | `[HIGH/OBSERVED]` |
-| `ivp_rotrn_2x32`  | 16×32 | `0x86ab0000` | per-lane `vec` | `a = ror32(b, amt_lane & 31)` | `[HIGH/OBSERVED]` |
-| `ivp_rotrnx16`    | 32×16 | `0x86a30000` | per-lane `vec` | `a = ror16(b, amt_lane & 15)` | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | amount source | semantics |
+|---|---|---|---|---|
+| `ivp_rotri2nx8`   | 64×8  | `0x868c0100` | imm3 (3-bit) | `a = ror8(b, k & 7)` |
+| `ivp_rotrinx16`   | 32×16 | `0x868c0200` | imm4 (4-bit) | `a = ror16(b, k & 15)` |
+| `ivp_rotrin_2x32` | 16×32 | `0x86ba8000` | imm5 (5-bit) | `a = ror32(b, k & 31)` |
+| `ivp_rotrn_2x32`  | 16×32 | `0x86ab0000` | per-lane `vec` | `a = ror32(b, amt_lane & 31)` |
+| `ivp_rotrnx16`    | 32×16 | `0x86a30000` | per-lane `vec` | `a = ror16(b, amt_lane & 15)` |
 
 ### 2.5 Normalize shift amount (`nsa`/`nsau` — count-leading, unary, count → `vec`)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | source | semantics (count emitted) | conf |
-|---|---|---|---|---|---|
-| `ivp_nsanx16`    | 32×16 | `0x808f8304` | `vec` (1 src) | `a = CLS16(b) − 1` (leading-sign run minus one) | `[HIGH/OBSERVED]` |
-| `ivp_nsan_2x32`  | 16×32 | `0x808f8306` | `vec` (1 src) | `a = CLS32(b) − 1` | `[HIGH/OBSERVED]` |
-| `ivp_nsaunx16`   | 32×16 | `0x809f8304` | `vec` (1 src) | `a = CLZ16(b)` (leading-zero count) | `[HIGH/OBSERVED]` |
-| `ivp_nsaun_2x32` | 16×32 | `0x809f8306` | `vec` (1 src) | `a = CLZ32(b)` | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | source | semantics (count emitted) |
+|---|---|---|---|---|
+| `ivp_nsanx16`    | 32×16 | `0x808f8304` | `vec` (1 src) | `a = CLS16(b) − 1` (leading-sign run minus one) |
+| `ivp_nsan_2x32`  | 16×32 | `0x808f8306` | `vec` (1 src) | `a = CLS32(b) − 1` |
+| `ivp_nsaunx16`   | 32×16 | `0x809f8304` | `vec` (1 src) | `a = CLZ16(b)` (leading-zero count) |
+| `ivp_nsaun_2x32` | 16×32 | `0x809f8306` | `vec` (1 src) | `a = CLZ32(b)` |
 
 > **QUIRK — `i` means immediate-amount, no `i` means per-lane-vector amount; there is no AR-scalar
 > amount form.** The naming is the amount *source*, not the operation: `ivp_sllinx16` (`i` after `sll`)
@@ -153,7 +155,7 @@ these ops occupy), so a per-row byte-size column is omitted.
 > amount. The Vision-Q7 vector shift ISA has **no AR-scalar broadcast-amount form**: the device
 > assembler rejects an `a`-register as the third operand (`Error: bad register name: a2`, §3.3).
 > Broadcast-by-one-scalar is achieved by splatting the scalar into a `vec` first (B16) and then issuing
-> the variable form. (The *scalar* `SAR`-based shift `sll`/`src` is base-Xtensa, B25.) `[HIGH/OBSERVED]`
+> the variable form. (The *scalar* `SAR`-based shift `sll`/`src` is base-Xtensa, B25.)
 
 > **QUIRK — `nsa*` is a unary op whose result is a *count*, not a shifted value.** `ivp_nsanx16 v3,v1`
 > takes **one** `vec` source and writes a per-lane **shift-amount** (an exponent/normalization count)
@@ -161,7 +163,7 @@ these ops occupy), so a per-row byte-size column is omitted.
 > "compute exponent, then shift" sequence is the block-float normalize (§4.5). `nsa` (signed) counts the
 > **leading sign run minus 1** so that the post-shift MSB sits one bit below the sign (a guard bit);
 > `nsau` (unsigned) is a plain count-leading-zeros. The destination is `vec`, **not** `vbool`/`b32_pr`
-> — the device assembler rejects `vb0` as the `nsa` destination (§3.3). `[HIGH/OBSERVED]`
+> — the device assembler rejects `vb0` as the `nsa` destination (§3.3).
 
 ---
 
@@ -192,7 +194,7 @@ immediate amount is unsigned `[0,15]`, the variable amount is signed `[−32,+31
 ### 3.2 The slot-word operand fields (`vec_shift` iclass + `imm` field)
 
 The `ivp_sem_vec_shift` iclass exposes three `vec` role fields and the shifts additionally pull an
-immediate field; all disassembled this pass for `F0_S3_ALU`:
+immediate field; all disassembled for `F0_S3_ALU`:
 
 ```c
 // dest vr — Field_fld_ivp_sem_vec_shift_vr_Slot_f0_s3_alu_get @ 0x32e650 :
@@ -214,12 +216,11 @@ The immediate amount and the variable amount-source occupy the **same** slot-wor
 `[14:10]` in `vt`'s neighbourhood): an immediate form spends that window on a literal count, a variable
 form spends it on the `vs` `vec` index. The `vr`/`vs` role fields **scatter** (a disjoint low bit OR-ed
 with a 4-bit run) — a reimplementation deposits the 5-bit `vec` index through the role's `_set` thunk,
-never by a single contiguous mask. `[HIGH/OBSERVED]`
+never by a single contiguous mask.
 
 ### 3.3 The selector is per-`(opcode×slot)`, and the device operand grammar pins the amount source
 
-Every thunk is the canonical `C7 07 imm32 ; C7 47 04 00000000 ; C3` template — re-disassembled this
-pass, e.g.:
+Every thunk is the canonical `C7 07 imm32 ; C7 47 04 00000000 ; C3` template, e.g.:
 
 ```asm
 0000000000343060 <Opcode_ivp_sllinx16_Slot_f0_s3_alu_encode>:   # immediate form
@@ -243,7 +244,7 @@ flips `nsa` (signed/sign-count) to `nsau` (unsigned/zero-count), and the `…04`
 hold **only within `F0_S3_ALU`** — the selector is format-local opcode packing, not a roster-wide
 direction/arith bit.
 
-The **device assembler is the operand-grammar oracle** (`XTENSA_CORE=ncore2gp`, this pass) — it pins
+The **device assembler is the operand-grammar oracle** (`XTENSA_CORE=ncore2gp`) — it pins
 the amount source structurally:
 
 ```
@@ -255,8 +256,6 @@ IVP_SLLINX16 v3,v1,16   -> Error: operand 3 of 'ivp_sllinx16' has invalid value 
 IVP_NSANX16  vb0,v1     -> Error                                       (nsa dest is vec, not vbool)
 ```
 
-`[HIGH/OBSERVED]`
-
 ---
 
 ## 4. Lane value semantics — proven by execution
@@ -265,7 +264,7 @@ The `module__xdref_*` value leaves in `libfiss-base.so` are the per-element valu
 in-process via ctypes with no license**. The binary-shift ABI (disassembly-fixed) is
 `void leaf(uint64 ctx /*rdi, unused*/, uint32 val /*rsi*/, uint32 amt /*rdx*/, uint32 *out /*rcx*/)`;
 the normalize ABI drops the `amt` argument and writes the count to `*rdx`. Every run below was executed
-live this pass.
+live.
 
 ### 4.1 Logical right (`srl`, zero-fill) vs arithmetic right (`sra`, sign-fill) — live
 
@@ -316,7 +315,7 @@ The **immediate** form has no runtime over-shift path: its amount field is only 
 *cannot* encode an out-of-range count — the device assembler rejects `16`/`8`/`32` at assembly time
 (§3.3). A reimplementation must: (a) for the variable form, check `amt ≥ width → 0` *before* a bare host
 shift (whose count would otherwise wrap mod register width and give a wrong non-zero result); (b) for the
-immediate form, trust the field width. `[HIGH/OBSERVED by execution]`
+immediate form, trust the field width.
 
 ```c
 // variable logical-left/right lane (16-bit), exact per the executed _6 leaf:
@@ -341,7 +340,6 @@ width so a full rotation is the identity. Executed:
 
 No bit is lost — every set bit that leaves the bottom re-enters at the top. There is **no rotate-left
 opcode**; a left rotate by `k` is `rotr*` by `width − k` (the rotate amount is taken mod width).
-`[HIGH/OBSERVED by execution]`
 
 ```c
 // ivp_rotrnx16 lane:  uint16_t ror16(uint16_t b, unsigned k){ k&=15; return (uint16_t)((b>>k)|(b<<((16-k)&15))); }
@@ -364,7 +362,7 @@ right shift, and vice-versa. Executed (6-bit signed amount: `0x3C = −4`, `0x04
 This is the single most important quirk for a compiler back-end: one *variable* shift opcode covers
 both directions via the sign of the per-lane amount, so a "shift by a signed exponent" (e.g. a per-lane
 `ldexp`-style rescale) is one instruction, not a select between `sll`/`srl`. The *immediate* forms have
-no sign bit and are unidirectional. `[HIGH/OBSERVED by execution]`
+no sign bit and are unidirectional.
 
 ### 4.5 Normalize — count-leading-sign / count-leading-zero, value + count — live
 
@@ -394,7 +392,6 @@ The **signed** `nsa` leaves a guard bit (e.g. `0x0001 → nsa 14 → 0x4000`, MS
 the normalized value stays a *signed* magnitude that will not alias the sign bit; the **unsigned** `nsau`
 packs the leading one all the way to bit 15 (`0x0001 → nsau 15`). The two-instruction sequence
 `nsa; sll` is the block-float normalize: `nsa` produces the exponent, `sll` applies it.
-`[HIGH/OBSERVED by execution]`
 
 ```c
 // ivp_nsaunx16 lane:  uint16_t clz16(uint16_t v){ if(!v) return 16; return 15 - bsr16(v); }   // bsr = index of MSB
@@ -406,7 +403,6 @@ packs the leading one all the way to bit 15 (`0x0001 → nsau 15`). The two-inst
 > full lane width on a zero input (`16`/`32`); `nsa` forms `2·v+1` so the `bsr` argument is never zero
 > even for `v = 0` (which then yields `15`/`31`). A reimplementation that runs `width − bsr(v)` without
 > the zero guard reads garbage on an all-zero lane — a real correctness hazard the leaves close.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -414,7 +410,7 @@ packs the leading one all the way to bit 15 (`0x0001 → nsau 15`). The two-inst
 
 Feeding the device-native `xtensa-elf-as` (`XTENSA_SYSTEM=…/ncore2gp/config`, `XTENSA_CORE=ncore2gp`)
 the mnemonics and disassembling back. Every form assembles `rc=0` and round-trips to the same lowercase
-mnemonic as a single op in an **8-byte FLIX bundle** (the rest `nop`). Verbatim bytes (LE), this pass:
+mnemonic as a single op in an **8-byte FLIX bundle** (the rest `nop`). Verbatim bytes (LE):
 
 | mnemonic | operands | 8-byte bundle | disasm |
 |---|---|---|---|
@@ -449,13 +445,11 @@ Three structural facts the oracle pins:
   variable forms carry the `…c2…` operand byte (vec-amount), the immediate forms carry `…d4…` /
   `…c4…` (imm-amount), in a common `…45 2f` narrow-`N0` frame.
 
-`[HIGH/OBSERVED]`
-
 ---
 
 ## 6. Batch coverage tally — 24 mnemonics / 266 placements / 30 value leaves
 
-Re-counted this pass with `nm libisa-core.so | rg -c 'Opcode_ivp_<glob>_Slot_…_encode'` over the
+Counted with `nm libisa-core.so | rg -c 'Opcode_ivp_<glob>_Slot_…_encode'` over the
 explicit 24-op glob (never the decompile — [coverage-tally §0 GOTCHA](../core/coverage-tally.md)).
 Every one of the 24 grounds to ≥ 9 placements; **none ungrounded**.
 
@@ -466,7 +460,7 @@ Every one of the 24 grounds to ≥ 9 placements; **none ungrounded**.
 | `nsa` / `nsau` (normalize, unary) | 4 | 42 | ~10.5 | ALU class (1-source → also picks up the LdSt-adjacent ALU placements) |
 | **TOTAL** | **24** | **266** | — | — |
 
-The exact per-group split, re-tallied this pass: `slli`-group **33** (12+12+9), `srli`-group **43**
+The exact per-group split: `slli`-group **33** (12+12+9), `srli`-group **43**
 (17+17+9), `srai`-group **43** (17+17+9), `rotri`-group **33** (12+12+9); `sll`-var **18** (9+9),
 `srl`-var **18**, `sra`-var **18**, `rotr`-var **18**; `nsa` **21** (12+9), `nsau` **21** (12+9). Sum =
 `33+43+43+33 + 18·4 + 21·2 = 152 + 72 + 42 = 266`. ✓ The asymmetry — `srli`/`srai` 16/8-bit forms at
@@ -493,46 +487,43 @@ de-scaling shift (B10), the `ivp_shfl*` element shuffles (B21), and the `ivp_ror
 > [B21](b21-select-shuffle.md). `ivp_rorbn`/`ivp_rorb2n`/`ivp_rorbn_2` rotate a *predicate* bit-mask and
 > are [B11](b11-vbool-alu.md)'s. `ivp_clsfynxf16`/`ivp_clsfyn_2xf32` (float *classify* — sign/exp/mantissa
 > category, not a shift) are the fp ALU's, [B02](b02-vec-alu-fp.md). They are cited so a reader greping
-> the `sh`/`ror`/`nsa` neighbourhood knows where they went, not to claim them. `[HIGH/OBSERVED]` on the
-> adjacency.
+> the `sh`/`ror`/`nsa` neighbourhood knows where they went, not to claim them.
 
 ---
 
 ## 7. Adversarial self-verification — the five strongest claims
 
-Each re-challenged against the binary this pass; failures fixed.
-
-1. **"24 shift/rotate/normalize mnemonics own 266 placements, none ungrounded."** Re-run:
+1. **"24 shift/rotate/normalize mnemonics own 266 placements, none ungrounded."**
    `nm libisa-core.so | rg -c 'Opcode_ivp_(slli2nx8|…|nsaunx16)_Slot_…_encode'` over the explicit 24-op
    glob = **266**; per-op loop shows **0 with < 9 placements**. The per-group breakdown sums
-   `152 + 72 + 42 = 266`. ✓ `[HIGH/OBSERVED]`
-2. **"Logical right zero-fills, arithmetic right sign-fills — distinct opcodes."** Re-challenged by
-   executing both leaves on `0x8000`: `srl_u_16_16_4(0x8000,4) = 0x0800` (zero-fill) but
+   `152 + 72 + 42 = 266`. ✓
+2. **"Logical right zero-fills, arithmetic right sign-fills — distinct opcodes."** Executing both
+   leaves on `0x8000`: `srl_u_16_16_4(0x8000,4) = 0x0800` (zero-fill) but
    `sra_u_16_16_4(0x8000,4) = 0xf800` (sign-fill) — opposite top nibbles on identical bits. A full
    **65 536 × 16** differential of `sra_u_16_16_4` against `sext16→shr` returned **0 mismatches**;
    `srl_u_8_8_3` over **256 × 8** vs `(v&0xff)>>a` returned **0 mismatches**. They are different leaves
-   (`sra_u_*` sign-extends, `srl_u_*` does not). ✓ `[HIGH/OBSERVED by execution]`
+   (`sra_u_*` sign-extends, `srl_u_*` does not). ✓
 3. **"The variable form over-shift clamps `amt ≥ width → 0`; the immediate form is field-bounded."**
-   Re-challenged: `srl_u_16_16_6(0xFFFF, 16) = 0x0000` and `…(0xFFFF, 63) = 0x0000` (the leaf's `cmp
+   `srl_u_16_16_6(0xFFFF, 16) = 0x0000` and `…(0xFFFF, 63) = 0x0000` (the leaf's `cmp
    $0x1f / cmova 0` guard), and a **65 536 × 40** sweep of `srl_u_16_16_6` against
    `0 if a>31 else (v>>(a&31))` returned **0 mismatches**; the immediate `sllinx16,16` is *rejected at
    assembly* (imm4 ≤ 15). A bare host shift would wrap the count mod register width and give the wrong
-   non-zero result. ✓ `[HIGH/OBSERVED by execution]`
+   non-zero result. ✓
 4. **"The variable shift is bidirectional — a negative per-lane amount reverses direction."**
-   Re-challenged: `sll_s_16_16_6(0x00F0, −4) = 0x000F` (a *left* opcode shifting *right*) and
+   `sll_s_16_16_6(0x00F0, −4) = 0x000F` (a *left* opcode shifting *right*) and
    `srl_s_16_16_6(0x0F00, −4) = 0xF000` (a *right* opcode shifting *left*); the leaf's `test $0x20,%dl
    ; neg ; and $0x3f` is the sign dispatch. The immediate forms have no sign bit (only `_u` 3/4/5-bit
-   leaves) and are unidirectional. ✓ `[HIGH/OBSERVED by execution]`
+   leaves) and are unidirectional. ✓
 5. **"`nsa` is a unary op emitting a count to `vec`; `nsa` = leading-sign−1, `nsau` = leading-zero;
-   `bsr(0)` is guarded."** Re-challenged: a **65 536**-input differential of both `nsa_16_16`
+   `bsr(0)` is guarded."** A **65 536**-input differential of both `nsa_16_16`
    (vs `15 − bsr(2·x′+1)`) and `nsau_16_16` (vs `16 if v==0 else 15−bsr(v)`) returned **0 mismatches**
    each; `nsa16(0x0001)=14`, `nsau16(0x0001)=15` (the guard-bit difference); `nsau16(0)=16` and
    `nsa16(0)=15` (the zero special-cases). The device assembler rejects `ivp_nsanx16 vb0,v1` (dest is
-   `vec`, not `vbool`) and accepts only two operands (unary). ✓ `[HIGH/OBSERVED by execution]`
+   `vec`, not `vbool`) and accepts only two operands (unary). ✓
 
 **Ungrounded / flagged items** (honest residue): (a) the `opc#`/`iclass#` row indices are **not**
 tabulated per row here — the opcodes-table name pointers did not resolve under the
-`.data.rel.ro − 0x200000` base on this pass (the table appears to reference the rodata name strings
+`.data.rel.ro − 0x200000` base (the table appears to reference the rodata name strings
 indirectly), so the roster cites the **iclass *name*** (`ivp_sem_vec_shift`) and the `nm`-counted
 placement total (the hard OBSERVED anchor) rather than a numeric `iclass#`; this is `[MED/INFERRED]` on
 the exact row numbers, `[HIGH/OBSERVED]` on the iclass name and the placement counts. (b) The

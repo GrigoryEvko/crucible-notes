@@ -13,7 +13,7 @@
 >
 > The predicate is supplied as an instruction-immediate (one global `0`/`1`) **or** as a per-lane
 > *pointer-immediate* (a distinct value per DVE partition). It binds a **distinct 64-byte operand
-> struct** — `NEURON_ISA_TPB_S3D3_TS_SELECT_STRUCT` (compile-verified `sizeof == 64` this session) —
+> struct** — `NEURON_ISA_TPB_S3D3_TS_SELECT_STRUCT` (compile-verified `sizeof == 64`) —
 > that is a **separate layout** from the `S3D3_TS` the [cache ops](ts-cache-cumulative.md) use: no
 > `AluOp`, no accumulator, a *single* copy-only dtype. This page decodes the opcode and its
 > SortMerge-slot annotation, the struct field-for-field, the verbatim blend pseudocode and its three
@@ -64,7 +64,7 @@ Vision-Q7 FLIX/VLIW), plus the shipped host customop-lib **ISA C headers**. No s
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified in-task |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Disassembler | `gpsimd_tools/…/bin/xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp` |
 | ISA header | `…/neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_s3d3_ts_select.h` (sunda/cayman/mariana/maverick) |
 | Opcode enum | `…/neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_common.h` |
@@ -74,7 +74,7 @@ Vision-Q7 FLIX/VLIW), plus the shipped host customop-lib **ISA C headers**. No s
 | MARIANA DVE DEBUG DRAM self-name | DRAM-local `0x2921` (CAY `0x2841` / MAV `0x2951`) |
 
 The `S3D3_TS_SELECT` struct is **byte-identical** (`sizeof 64`, same field offsets) on
-cayman/mariana/maverick/sunda — compile-verified this session (§3). `[HIGH/OBSERVED]`
+cayman/mariana/maverick/sunda — compile-verified (§3).
 
 ---
 
@@ -105,7 +105,7 @@ typedef struct NEURON_ISA_TPB_S3D3_TS_SELECT_STRUCT {
 ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S3D3_TS_SELECT_STRUCT) == 64, "…NOT 64B.");
 ```
 
-`offsetof` output (this session, **identical** on sunda / cayman / mariana / maverick):
+`offsetof` output (**identical** on sunda / cayman / mariana / maverick):
 
 ```text
 sizeof S3D3_TS_SELECT = 64
@@ -152,7 +152,7 @@ descriptor**, not an arithmetic descriptor. `[HIGH/OBSERVED — both structs com
 ## 4. The select semantics — the central deliverable
 
 The operative section is the header doc-block (verbatim) plus the validator `is_valid_tensor_scalar_select`
-and its helper functions, all read verbatim this session. The header states the purpose directly:
+and its helper functions, all read verbatim. The header states the purpose directly:
 
 > *"The existing Select operation is done through two instructions: a Copy instruction and a
 > CopyPredicate instruction. The TensorScalarSelect instruction can speed up a special category of
@@ -194,7 +194,7 @@ broadcast scalar. (Contrast [RangeSelect](rangeselect.md): its arms are `{value,
 > [RangeSelect](rangeselect.md)'s two-comparator predicate), TensorScalarSelect has **no comparator
 > field, no `comp_op`, no bound**. The condition is a **pre-computed boolean** (`0`/`1`). The compare
 > that produced it ran in a *prior* instruction. TensorScalarSelect only **consumes** the boolean and
-> blends on it — it is the *fused* `Copy` + `CopyPredicate` the header cites. `[HIGH/OBSERVED]`
+> blends on it — it is the *fused* `Copy` + `CopyPredicate` the header cites.
 
 ### 4.3. The blend — verbatim pseudocode
 
@@ -257,7 +257,6 @@ There is **no `AluOp` field** (no `op0`/`op1`), **no `accumulator_cmd`**, **no c
 Max-reduce**. The only operative fields are the two operands, the predicate, and the blend-flip. `dst`
 is full-sized (`same_element_count`). The worker has a **single compute edge** (§5.3) — a one-pass
 per-lane move with no loop-carried recurrence. It is the predicated-copy member of the family.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -335,12 +334,11 @@ self-name load) → in-carve setup helpers → a `l32i.n`/`s32i.n` block that co
 1. **Validator constant.** `is_valid_tensor_scalar_select` ends with
    `has_valid_active_channel_range(num_active_channels, DVE_NUM_CHANNELS)` — the **DVE** channel
    constant (`DVE_NUM_CHANNELS == 128U`, `common.h:36`), whereas POOL ops use `POOLING_NUM_CHANNELS`.
-   `[HIGH/OBSERVED]`
 2. **Self-name multiplicity.** `"S: TensorScalarSelect"` appears **4 times** in the library
    (`0x18db61` / `0x427e41` / `0x6efb61` / `0x8aff11`) — multiplicity 4 = the DVE pattern, co-located
    with `"S: RangeSelect"` (4) and `"S: TensorScalarCacheReduce"` (4). `[HIGH/OBSERVED — byte-scan]`
 3. **Absent from POOL.** `0x98` is in **no** Q7_POOL `kernel_info_table` — it is **not** a POOL
-   software kernel. `[HIGH/OBSERVED]`
+   software kernel.
 
 ### 6.2. The self-name strings + worker funcVAs
 
@@ -426,12 +424,11 @@ is_valid_dtype(dtype, DtypeAllowFP32R::False)          // data dtype, the broad 
 > accumulator-precision concern. This is the dtype *tell* that Select is a copy, not an accumulate.
 > Likewise there is **no FP32-compare hub**: Select does no comparison, so unlike
 > [RangeSelect](rangeselect.md) (FP32-compare-only) it accepts integer *and* FP data dtypes
-> symmetrically — it just moves bits. `[HIGH/OBSERVED]`
+> symmetrically — it just moves bits.
 
 `num_active_channels` (`@33`) is `1..128` (`DVE_NUM_CHANNELS`). DTYPE ordinals (common.h): `INVALID 0x0,
 UINT64 0x1, INT8 0x2, UINT8 0x3, INT16 0x4, UINT16 0x5, BF16 0x6, FP16 0x7, INT32 0x8, UINT32 0x9, FP32
 0xA, FP32R 0xB, INT64 0xC, FP8_E3 0xD, FP8_E4 0xE, FP8_E5 0xF, FP4_E2 0x10, CPTC1..7 0x19..0x1F`.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -479,7 +476,7 @@ separate engines with separate structs.** The `// SortMerge wip 0x97` reservatio
 Those are AluOp arith ops (`op0` fold + `op1` accumulate + an accumulator cache + scan/reduce emit) on
 `S3D3_TS`. TensorScalarSelect shares **none** of that — no AluOp, no accumulator, no fold. It is the
 predicated-copy member of the family, fusing the separate `Copy` + `CopyPredicate` instructions the
-header cites. `[HIGH/OBSERVED]`
+header cites.
 
 ---
 
@@ -494,7 +491,7 @@ header cites. `[HIGH/OBSERVED]`
 | MAVERICK (NC-v5) | defined `// Y` | 64 B id. | DRAM `0x2951` | `0xcaec` | WIRED |
 
 The opcode value `0x98` + the `// SortMerge wip 0x97 // Y` comment + the `S3D3_TS_SELECT` struct
-(`offsetof`) are **byte-identical on all four gens** (this session). **Unlike** [RangeSelect](rangeselect.md)
+(`offsetof`) are **byte-identical on all four gens**. **Unlike** [RangeSelect](rangeselect.md)
 (`0xbc`, first at CAYMAN / `nc ≥ V3`), **TensorScalarSelect IS defined on SUNDA (NC-v2)** — its opcode
 line + `s3d3_ts_select.h` ship for sunda, byte-identical to the others (only the NC-v comment differs).
 **MAVERICK** additionally swaps `has_valid_active_channel_range` → `has_valid_active_channel_range_with_tile`

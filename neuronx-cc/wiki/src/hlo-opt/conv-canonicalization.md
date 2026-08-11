@@ -7,8 +7,8 @@
 `CanonicalizeConv` is one of the hlo2penguin MLIR conv-canonicalization passes that
 normalizes `mhlo.convolution` before the conv device-lowering selects a kernel
 ([6.8.1](../nki/conv-device-lowering.md)). It is a **func-level**
-`OperationPass<func::FuncOp>` (RTTI-confirmed via the `getName`/`clonePass`
-wrapper) registered under the pass argument `canonicalize-conv`. A byte-identical
+`OperationPass<func::FuncOp>` — its kind is readable from the RTTI on the
+`getName`/`clonePass` wrapper — registered under the pass argument `canonicalize-conv`. A byte-identical
 twin, `StableHLOCanonicalizeConv` (`stablehlo-canonicalize-conv`), runs the same
 algorithm over the StableHLO dialect.
 
@@ -143,9 +143,10 @@ function canCanonicalize(conv):                     // sub_20774D0 (576 B)
 
 Plain-language gate: **rank-4 convolutions only**, with spatial extents `> 1`, a
 feature-flag escape (`qword_9C71578`) for size-2/3 kernels, and an upper bound of
-31 on one stride/pad component. Confidence is HIGH on the rank-4 + small-spatial
-intent; MEDIUM on the exact `var_*` field → semantic mapping, because `ConvParams`
-is a large struct whose vectors are witnessed only by destructor order (§5).
+31 on one stride/pad component. The rank-4 + small-spatial shape of the gate is
+read directly; the mapping from individual `var_*` stack slots to named
+`ConvParams` fields is reconstructed, because `ConvParams` is a large struct whose
+vectors are witnessed only by destructor order (§5).
 
 > **GOTCHA —** the gate builds a full `ConvParams` (every conv attribute + both
 > operand shapes) on *every* candidate, just to read a handful of fields. A naive
@@ -191,7 +192,7 @@ function explicitlyPad(convOp) -> Operation*:        // sub_207A7A0 (6858 B)
     return newConv
 ```
 
-`OpBuilder::create<mhlo::ConvolutionOp>` (@0x2078070, demangle-confirmed) carries:
+`OpBuilder::create<mhlo::ConvolutionOp>` (@0x2078070) carries:
 `RankedTensorType`, 2× `TypedValue<RankedTensorType>`, **4× `DenseIntElementsAttr`**
 (strides, padding, lhs_dilation, rhs_dilation), `DenseElementsAttr` (window_reversal),
 `ConvDimensionNumbersAttr`, **2× `unsigned long`** (feature_group_count,
@@ -262,7 +263,7 @@ start / limit / **stride**; the third is where the folded window stride lands.
 shared attribute/shape extractor — its only caller is `canCanonicalize`. It reads
 every conv attribute and both operand shapes into a `hilo::ConvParams` (~0x200 bytes).
 
-Accessors called (all demangle-confirmed in the callee graph):
+Accessors called, each resolved from its demangled symbol in the callee graph:
 
 | Group | Symbols |
 |---|---|
@@ -284,8 +285,9 @@ Variadic attrs are materialized into vectors via
 
 ### Struct layout (witnessed by `~ConvParams` @0x21cc510)
 
-The destructor frees 11 owned regions in order; the layout is inferred from that
-order plus accessor call sites (field → semantic mapping MEDIUM):
+The destructor frees 11 owned regions in order; the layout below is reconstructed
+from that order plus the accessor call sites, so the field → semantic mapping is
+deduced rather than observed [INFERRED]:
 
 | Offset | Kind | Inferred role |
 |---|---|---|
@@ -313,14 +315,14 @@ are dialect substitutions:
 | Source file | `CanonicalizeConv.cc` @0x2f66a0 | `StableHLOCanonicalizeConv.cc` @0x348ed8 |
 | `PadOp::build` sig | 3× `DenseIntElementsAttr` (@0x8f7f470) | 3× `llvm::ArrayRef<long>` (@0x9159ef0) |
 
-> **CORRECTION (D-C11) —** the backing analysis stated the StableHLO twin shares the
-> *same* source file `CanonicalizeConv.cc`. The binary disagrees: the StableHLO pass
-> references its own file `hilo/MLIRPasses/Transforms/StableHLOCanonicalizeConv.cc`
-> @0x348ed8, and `stablehlo::PadOp::build` takes `llvm::ArrayRef<long>` (@0x9159ef0)
-> rather than `DenseIntElementsAttr`. Two distinct translation units, same algorithm.
-> The error code `NCC_EUET001` @0x226305 and the gate logic are identical.
+The two passes are separate translation units running the same algorithm, not one
+templated body: the StableHLO pass references its own source file
+`hilo/MLIRPasses/Transforms/StableHLOCanonicalizeConv.cc` @0x348ed8, and its
+`stablehlo::PadOp::build` @0x9159ef0 takes `llvm::ArrayRef<long>` where the MHLO
+one takes `DenseIntElementsAttr`. Everything else matches — the error code
+`NCC_EUET001` @0x226305 and the gate logic are identical across the two.
 
-StableHLO member set, all demangle-confirmed: `canCanonicalize` @0x21191c0,
+StableHLO member set: `canCanonicalize` @0x21191c0,
 `isBackwardConv` @0x21194b0, `explicitlyPad` @0x211c270 (6744 B),
 `explicitlyStride` @0x211b600 (2998 B), stride lambda @0x211a140.
 
@@ -328,8 +330,8 @@ StableHLO member set, all demangle-confirmed: `canCanonicalize` @0x21191c0,
 
 ## 7. What This Pass Does *Not* Do
 
-This is the key correction to the task premise. A reimplementer must not expect any
-of the following from conv canonicalization:
+The name invites three assumptions that the binary does not support. A reimplementer
+must not expect any of the following from conv canonicalization:
 
 - **No conv→dot and no conv→im2col-matmul rewrite.** The four bodies
   (`runOnOperation`, `explicitlyPad`, `explicitlyStride`, stride lambda) reference
@@ -380,41 +382,26 @@ of the following from conv canonicalization:
 | `qword_9C714B8` | gates phase-2b `isBackwardConv` diagnostic re-pad | CERTAIN |
 | `qword_9C71578` | gates acceptance of size-2/3 spatial dims in the gate | HIGH |
 
-Both are unnamed BSS bytes (likely `cl::opt`/VLOG statics); their option-arg names
-and defaults were not recovered from this binary (MEDIUM).
+Both are unnamed BSS bytes, most likely `cl::opt`/VLOG statics; their option-argument
+names and defaults were not recovered from this binary.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+| Claim | Anchor |
+|---|---|
+| `explicitlyPad` emits `mhlo.pad` + a zeroed-padding conv, with group counts copied as 2× `unsigned long` | callee graph of `0x207a7a0` lists `mhlo::PadOp::build` (@0x8f7f470, 3× `DenseIntElementsAttr`) and `OpBuilder::create<mhlo::ConvolutionOp>` (@0x2078070), whose demangled signature ends `…, unsigned long, unsigned long, mlir::ArrayAttr&&` |
+| `explicitlyStride` folds the stride into the third `DenseIntElementsAttr` of `mhlo.slice` | `mhlo::SliceOp::build` (@0x8f83dd0) demangles to `(…, Type, Value, DenseIntElementsAttr ×3)` = start/limit/stride; `BoolAttr::get` (@0x9b4ddb0) and `AddOp::build` (@0x8f704b0) appear in the stride callee graph |
+| Func-level pass, source `CanonicalizeConv.cc`, error `NCC_EUET001` | both string literals (`0x2f66a0`, `0x226305`) appear in the `explicitlyPad` context refs; the `OperationPass<func::FuncOp>` wrapper carries matching RTTI |
+| No im2col / dot / transpose construction anywhere in the pass | a case-insensitive search for `im2col`, `DotGeneral`, `TransposeOp`, and `matmul` over all four bodies (`runOnOperation`, `explicitlyPad`, `explicitlyStride`, stride lambda) returns nothing |
+| MHLO and StableHLO are separate translation units | StableHLO `explicitlyPad` @0x211c270 references `StableHLOCanonicalizeConv.cc` @0x348ed8, and `stablehlo::PadOp::build` @0x9159ef0 takes `llvm::ArrayRef<long>` |
 
-1. **"explicitlyPad emits `mhlo.pad` + zeroed-padding conv; group counts copied as
-   2× `unsigned long`."** — CONFIRMED. The `explicitlyPad` @0x207a7a0 callee graph
-   lists `mhlo::PadOp::build` (@0x8f7f470, 3× `DenseIntElementsAttr`) and
-   `OpBuilder::create<mhlo::ConvolutionOp>` (@0x2078070) whose demangled signature
-   ends `…, unsigned long, unsigned long, mlir::ArrayAttr&&` — the two group counts
-   + precision_config.
-2. **"explicitlyStride folds stride into the third `DenseIntElementsAttr` of
-   `mhlo.slice`."** — CONFIRMED. `mhlo::SliceOp::build` (@0x8f83dd0) demangles to
-   `(…, Type, Value, DenseIntElementsAttr, DenseIntElementsAttr, DenseIntElementsAttr)`
-   = start/limit/stride; `BoolAttr::get` (@0x9b4ddb0) and `AddOp::build` (@0x8f704b0)
-   appear in the stride callee graph.
-3. **"Func-level pass; source `CanonicalizeConv.cc` @0x2f66a0; error `NCC_EUET001`
-   @0x226305."** — CONFIRMED. Both string literals appear in the `explicitlyPad`
-   context refs; the `OperationPass<func::FuncOp>` wrapper is RTTI-confirmed.
-4. **"No im2col/dot/transpose anywhere in the four bodies."** — CONFIRMED.
-   `rg -ic 'im2col|DotGeneral|TransposeOp|matmul'` over the four decompiled bodies
-   returned 0 for each.
-5. **"StableHLO twin shares the *same* source file `CanonicalizeConv.cc`."** —
-   **FAILED → corrected.** The StableHLO `explicitlyPad` @0x211c270 refs
-   `StableHLOCanonicalizeConv.cc` @0x348ed8 (a distinct TU) and `stablehlo::PadOp::build`
-   @0x9159ef0 takes `llvm::ArrayRef<long>` (not `DenseIntElementsAttr`). Corrected in
-   §6.
+## Limits of this reading
 
-INFERRED / not pinned: the per-vector `ConvParams` field → semantic mapping (§5,
-witnessed by dtor order only); the `cl::opt` names/defaults of the two BSS flags;
-the full human-readable text of `NCC_EUET001` (formatted at runtime).
+- The per-vector `ConvParams` field → semantic mapping (§5) is witnessed only by destructor order, not by named accessors.
+- The `cl::opt` names and defaults of the two BSS flags (`qword_9C714B8`, `qword_9C71578`) were not recovered.
+- The full human-readable text of `NCC_EUET001` is assembled at runtime and does not exist as a single pool string.
 
 ---
 

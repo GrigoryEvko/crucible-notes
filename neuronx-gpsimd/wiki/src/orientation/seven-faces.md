@@ -36,8 +36,8 @@ The seven, with their canonical anchor and deep page, are the spine of this guid
 
 The rest of this page takes each face in turn, states the role it plays, names the exact anchor
 that activates it (an opcode byte, a symbol at a hex address, a device trace string, or a firmware
-image), and hands off to the page that develops it. Every anchor below was read directly from the
-shipped binaries this pass; the ones quoted with a hex address reproduce under
+image), and hands off to the page that develops it. Every anchor below is read directly from the
+shipped binaries; the ones quoted with a hex address reproduce under
 `nm -C`/`rg`/`objdump` against the named file.
 
 ---
@@ -288,7 +288,7 @@ The faces are not a taxonomy to memorize — they are **seven dispatch lenses on
 - and its per-lane value is **proven by execution** (Face 7) — a live `module__xdref_*` leaf.
 
 One core. Seven anchors. Every face above resolves to a symbol, an opcode byte, or a device string
-in a shipped binary — read this pass, reproducible under `nm`/`rg`/`objdump`. That reproducibility
+in a shipped binary, reproducible under `nm`/`rg`/`objdump`. That reproducibility
 *is* the thesis: there is one machine here, and the seven faces are how a reimplementer reads it.
 
 ---

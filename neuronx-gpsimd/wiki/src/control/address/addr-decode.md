@@ -13,10 +13,10 @@ die?, take neighbor route?, hit PEB?"). This is the field codec that the cross-d
 
 Everything below is **macro-proven** from the shipped RTL-generated headers — the C
 GET/SET accessor macros, the Verilog `` `define `` GET macros, and the Verilog
-`struct packed` field list. Every bit range and width was re-derived this session by
-independent shift/mask arithmetic (popcount of each mask, struct width-sum unpack
-MSB-first) and the three forms — C macro, Verilog macro, Verilog struct — were
-confirmed to **agree exactly** for both decoders.
+`struct packed` field list. Every bit range and width is derivable by independent
+shift/mask arithmetic (popcount of each mask, struct width-sum unpack MSB-first),
+and the three forms — C macro, Verilog macro, Verilog struct — **agree exactly**
+for both decoders.
 
 **Provenance** (gitignored extracted tree; absolute paths):
 
@@ -26,7 +26,7 @@ confirmed to **agree exactly** for both decoders.
 | NEIGHBOR | `…/cayman_addr_decode_neighbor.h` | `…/cayman_addr_decode_neighbor.vh` | `…/arch-headers/cayman/cayman_addr_decode_neighbor.h` |
 
 > **NOTE — confidence tags.** Per the [confidence model](../reference/confidence-model.md):
-> `OBSERVED` = byte/macro/struct read from a shipped artifact this session;
+> `OBSERVED` = byte/macro/struct read from a shipped artifact;
 > `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited
 > cross-page anchor; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK**
 > (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION**
@@ -63,7 +63,7 @@ allocated.
 > i.e. geometry occupies **`[54:0]` = 55 bits**; with the three attribute bits `[57:55]`
 > the full envelope is **58 bits**. The "47 vs 57" shorthand is approximate: 47 is the
 > exact per-die LOCAL width; the "cross-die" number should be read as the 55-bit routed
-> geometry (or 58-bit full envelope), **not** a 57-bit field. `[HIGH·OBSERVED]`
+> geometry (or 58-bit full envelope), **not** a 57-bit field.
 
 ---
 
@@ -131,7 +131,7 @@ typedef struct packed {
 > emitter; it does not affect the bit layout, but a strict SystemVerilog parser will
 > reject the file as-is — add the semicolons before compiling. The `.vh` also ships only
 > **GET** macros (`` `CAYMAN_ADDR_DECODE_GET_LOCAL(addr) `` → `addr[46:0]` etc.), **no
-> SET** form; the C header carries both directions. `[HIGH·OBSERVED]`
+> SET** form; the C header carries both directions.
 
 ---
 
@@ -201,7 +201,7 @@ typedef struct packed {
 
 MSB-first width-sum unpack reproduces the macro positions exactly (sum = 58, bottom at
 bit 0). The `.vh` GET macros match the C macros field-for-field. Same no-semicolon
-generator quirk as §2.3. `[HIGH·OBSERVED]`
+generator quirk as §2.3.
 
 ### 3.4 LOCAL → NEIGHBOR diff (what `[55:48]` becomes)
 
@@ -286,7 +286,7 @@ static inline cayman_neighbor_t cayman_neighbor_decode(uint64_t a) {
 > in one TU silently keeps **only the first** (the second is `#ifndef`-elided), so the
 > `cayman_addr_decoder_t` you get is whichever header you included first — there is no
 > compile error to warn you. A reimplementation must pick exactly one view per TU (or
-> rename the guard/typedef before merging both). `[HIGH·OBSERVED]`
+> rename the guard/typedef before merging both).
 
 ---
 
@@ -341,7 +341,7 @@ SET_PCIE_ATTR_RELAXED_ORDERING(_,1)  -> bit[56]    set
             composed addr = 0x016A923456789ABC
 ```
 
-Round-trip decode (verified this session):
+Round-trip decode:
 
 | GET | value |
 |---|---|
@@ -357,7 +357,7 @@ The same `0x016A923456789ABC`, read through the **NEIGHBOR** decoder, would surf
 `[53:48]` bits as `{PEB=1, NEIGHBOR_ROUTE=0, EXIT_DIE=1, EXIT_SENG=0,
 NEIGHBOR_RSVD=0b10}` — i.e. the *same bits* reinterpreted as egress flags rather than a
 chip id. That dual interpretation of `[53:48]` is the whole point of shipping two
-decoders. `[HIGH·OBSERVED]`
+decoders.
 
 ---
 
@@ -377,7 +377,7 @@ decoders. `[HIGH·OBSERVED]`
 > custom-op toolchain (`custom_op/c10/include/arch-headers/cayman/`, C only) and the
 > RTL/arch-regs generation output (`address_map/`, C + Verilog). Both copies being
 > byte-identical corroborates this is the **shipped production layout**, not a one-off
-> intermediate. `[HIGH·OBSERVED]`
+> intermediate.
 
 ---
 
@@ -385,17 +385,9 @@ decoders. `[HIGH·OBSERVED]`
 
 **.h / .vh / struct agreement.** For *both* decoders, the C macros (GET+SET), the
 Verilog GET macros, and the Verilog packed struct **agree exactly** on every field's
-position and width — 7 fields (LOCAL) and 11 fields (NEIGHBOR), re-derived this session
-by independent shift/mask popcount and MSB-first struct width-sum unpack. Both occupy
-exactly `[57:0]` (58 defined bits). `[HIGH·OBSERVED]`
-
-**vs SX-ADDR-02.** This page **confirms** the report's layout verbatim (all 7 LOCAL +
-11 NEIGHBOR field ranges, the 6-bit `CAYMAN_ID` → 64-die sizing, the 47-bit LOCAL, the
-byte-identical second copy). The only **CORRECTION** is to the task's *narrative*
-shorthand "47-bit local vs 57-bit cross-die": the headers define **47-bit LOCAL** and a
-**58-bit defined envelope** with a **55-bit routed geometry** `[54:0]` — there is no
-57-bit field (see §1 callout). The report's own widths and the headers agree; only the
-task title's "57" needed correcting.
+position and width — 7 fields (LOCAL) and 11 fields (NEIGHBOR), derived by independent
+shift/mask popcount and MSB-first struct width-sum unpack. Both occupy exactly
+`[57:0]` (58 defined bits).
 
 | Confidence | Claims |
 |---|---|

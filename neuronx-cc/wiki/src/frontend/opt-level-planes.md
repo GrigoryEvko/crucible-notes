@@ -15,7 +15,7 @@ The thread that ties them together is loose, not arithmetic. The user `-O` is re
 | **Plane 1 — user `-O`** | `optlevel` *string* attr; `CompileCommand.buildPipeline` @ `0x619d0`; choices `kp_u_0..kp_u_3`; default `"2"`; **`-O3 ≡ -O2`** |
 | **Plane 2 — tensorizer mode** | `internal_tensorizer_opt_level` *string* attr; `=="nki"` @ `buildPipeline` py L1334; `=="eager"` @ `runPipeline` py L1548 |
 | **Plane 3 — penguin enum** | `ir.OptLevel(Enum)` — 4 members, `@unique @total_ordering`; `OptLevel.cpython-310-*.so` |
-| **Plane 4 — walrus integer** | backend opt-level dispatcher `sub_80D9D0`; `{0, 1/2/3, 6, 7, 8}`; `7 ⇐ --smt-allocation` (D-K19) |
+| **Plane 4 — walrus integer** | backend opt-level dispatcher `sub_80D9D0`; `{0, 1/2/3, 6, 7, 8}`; `7 ⇐ --smt-allocation` |
 | **Bridge (3)** | `penguin/Compile.get_optimization_functions(target, optlevel)` @ `0x4b0c0` → `extract_nki_opt_level` @ `0x3a4d0` (`Compile.py:315`) |
 | **The three read-sites of `optlevel`** | `0x629a0` (`=="0"`), `0x717f2`/`0x7180f` (`=="3"`), write `0x71862` (`="2"`) |
 | **No `-O4..-O9`** | only `kp_u_0..kp_u_3` exist in the Cython string table — higher values are rejected by argparse |
@@ -38,7 +38,7 @@ So "the opt level" is never a single quantity. The rest of this page treats each
 
 ## 2. Plane 1 — the user `-O{0,1,2,3}` string
 
-**Binary:** `neuronxcc/driver/commands/CompileCommand.cpython-310-*.so`. **Body:** `buildPipeline` @ file-off `0x619d0` (16 616 decompiled lines; the optlevel logic is in the normalization prologue). **Confidence: CONFIRMED** — every claim below is read directly from the decompiled body.
+**Binary:** `neuronxcc/driver/commands/CompileCommand.cpython-310-*.so`. **Body:** `buildPipeline` @ file-off `0x619d0` (16 616 decompiled lines; the optlevel logic is in the normalization prologue). Every claim in this section is read directly from that body.
 
 ### 2.1 The attribute and its value space
 
@@ -83,7 +83,7 @@ Decompiled branch logic: `test ebx,ebx / jz` on `enable_dge` FALSE → clear; `t
 
 **Effect:** at `-O0` (or whenever `--enable-dge` is off) the *Descriptor-Generation-Engine* per-level optimization set is emptied. This is `-O0`'s **only** directly `-O`-keyed effect in the driver.
 
-> **CORRECTION — the `enable_internal_new_backend=False` you may have seen attributed to `-O0` is not gated on `optlevel`.** The block immediately after the DGE gate (py L1196–1199) sets `internal_run_standalone_legacy_compilation = True` and `enable_internal_new_backend = False` — but the guard is the **experimental-tensorized-scheduler** flag (`@0x629f2`), *not* `optlevel=="0"`. An earlier wave (D-A05) conflated the two adjacent prologue blocks. The single direct `-O0` effect is `dge_on_levels.clear()`. **(CONFIRMED.)**
+> **GOTCHA — the block right after the DGE gate is not `-O0`-gated.** Py L1196–1199 sets `internal_run_standalone_legacy_compilation = True` and `enable_internal_new_backend = False`, and sits close enough to the DGE gate to look like part of it. Its guard is the **experimental-tensorized-scheduler** flag (`@0x629f2`), not `optlevel == "0"`. The single direct `-O0` effect is `dge_on_levels.clear()`.
 
 ### 2.4 The `-O3 ≡ -O2` collapse (py L1485–1490)
 
@@ -108,9 +108,9 @@ So in **this** build, `-O3`:
 3. marks `layer_unroll_factor_Used = True`, which *suppresses* the fsdp unroll default (§2.5);
 4. emits a `USER`-level advisory that `-O3` is not compile-time-optimized.
 
-> **QUIRK — `-O3` is strictly *worse-behaved* than `-O2`, not better.** It produces the exact `-O2` optimization behavior *plus* a forced `layer_unroll_factor=0` *plus* a warning. The help text's promise of "additional performance" is not delivered by any code path in this build; the value `"3"` is consumed and discarded in the prologue. A reimplementer should model `-O3` as "`-O2` with unroll pinned to 0 and a printed advisory." **(CONFIRMED — the equality vs `kp_u_3` then triple-`SetAttr` is fully decompiled.)**
+> **QUIRK — `-O3` is strictly *worse-behaved* than `-O2`, not better.** It produces the exact `-O2` optimization behavior *plus* a forced `layer_unroll_factor=0` *plus* a warning. The help text's promise of "additional performance" is not delivered by any code path in this build; the value `"3"` is consumed and discarded in the prologue. A reimplementer should model `-O3` as "`-O2` with unroll pinned to 0 and a printed advisory."
 
-> **CORRECTION — the collapse is unconditional.** An earlier catalog (D-AF02) described `-O3` as falling back to `-O2` "when its preconditions are not met." There are no preconditions; the only guard is `optlevel=="3"`. The degrade always happens, and it additionally pins unroll to 0. **(CONFIRMED.)**
+> **GOTCHA — the collapse has no preconditions.** `-O3 → -O2` is not a fallback that triggers when some requirement is unmet; the only guard is `optlevel == "3"`, so the degrade always happens, and it additionally pins unroll to 0.
 
 ### 2.5 `layer_unroll_factor` — a distribution knob, not an `-O` knob
 
@@ -139,7 +139,7 @@ Because the fsdp arm only bumps unroll when `_Used` is still `False`, an explici
 
 ## 3. Plane 2 — `--internal-tensorizer-opt-level` (a string mode, not a number)
 
-**Binary:** `CompileCommand.cpython-310-*.so` (driver) + `starfish/penguin/Options.so`. **Confidence: CONFIRMED string + CONFIRMED single use; STRONG semantics.**
+**Binary:** `CompileCommand.cpython-310-*.so` (driver) + `starfish/penguin/Options.so`. The attribute name, its two comparison sites, and the compared literals are read from the decompiled bodies; the downstream semantics of each mode are read from what the taken branch does.
 
 The name screams "numeric opt level." It is not. The attribute `internal_tensorizer_opt_level` (dest literal @ `0x868b0`, auto-INTERNAL via the `internal-` prefix rule; no help string) is read in only two places, and the only comparisons performed on it are against **mode-name strings**:
 
@@ -161,15 +161,15 @@ if ( self.internal_tensorizer_opt_level == "eager" )           // RichCompare vs
 
 So the recognized values include at least `"nki"` and `"eager"`. The attribute is a **backend/path selector**, never an integer. When `== "nki"` (and NKI validation is not disabled) it routes onto the NKI codegen path and appends the BIR simulator stage; when `== "eager"` it routes `runPipeline` into `InitGlobalState`.
 
-> **GOTCHA — `--internal-tensorizer-opt-level` does not numerically override `-O`.** It selects the *backend* (NKI vs the default tensorizer path). The numeric "which stages run" decision is the penguin `ir.OptLevel` enum (§4), set inside the penguin flow — not this driver attribute. A reimplementer modeling this as `opt_level = max(user_O, internal_tensorizer_opt_level)` would be wrong: the two are not on the same axis. **(CONFIRMED disasm.)**
+> **GOTCHA — `--internal-tensorizer-opt-level` does not numerically override `-O`.** It selects the *backend* (NKI vs the default tensorizer path). The numeric "which stages run" decision is the penguin `ir.OptLevel` enum (§4), set inside the penguin flow — not this driver attribute. A reimplementer modeling this as `opt_level = max(user_O, internal_tensorizer_opt_level)` would be wrong: the two are not on the same axis.
 
-> **CORRECTION — there is no numeric "internal level 7" on this attribute.** A wave-1 note ("optlevel 7 / smt-allocation") referred to the *walrus* backend opt-level (§5), an entirely different plane reached via `--smt-allocation`. This Python attribute carries mode *names*. **(CONFIRMED.)**
+> **NOTE — "opt level 7" belongs to a different plane.** If you have seen an "opt level 7 / smt-allocation" reference, it is the *walrus* backend integer of §5, reached via `--smt-allocation`. This Python attribute carries mode *names* and has no numeric values at all.
 
 ---
 
 ## 4. Plane 3 — the penguin `ir.OptLevel` staged-skip enum
 
-**Binary:** `neuronxcc/starfish/penguin/ir/OptLevel.cpython-310-*.so`. **Confidence: CONFIRMED** (member set, order, docstring, `__gt__` all read from the decompile + string table).
+**Binary:** `neuronxcc/starfish/penguin/ir/OptLevel.cpython-310-*.so`. The member set, their order, the docstring, and `__gt__` are all read from the decompile plus the Cython string table.
 
 ### 4.1 The class
 
@@ -185,7 +185,7 @@ The optimization toward the end of this list will run less optimizations
 
 ### 4.2 The four members and their order
 
-The class body defines exactly **four** members with `enum.auto()`. Confirmed from the Cython string table (`Pyx_CreateStringTabAndInitStrings`), where each name is interned with its `_mm_insert_epi64` literal:
+The class body defines exactly **four** members with `enum.auto()`, read from the Cython string table (`Pyx_CreateStringTabAndInitStrings`), where each name is interned with its `_mm_insert_epi64` literal:
 
 | `auto()` value | Member | string_tab slot | Meaning |
 |---|---|---|---|
@@ -196,7 +196,7 @@ The class body defines exactly **four** members with `enum.auto()`. Confirmed fr
 
 Because of `@total_ordering` + `auto()`, **higher value ⇒ later in the list ⇒ fewer optimizations**: `default_level (1) < skip_loop_level_transformations (2) < skip_middle_end (3) < skip_allocators (4)`.
 
-> **CORRECTION — exactly four members; no `prepare`, no `allow_none`.** An earlier roster (D-U01) listed `prepare` and `allow_none` as members. In this binary, `prepare` is the metaclass `__prepare__` hook (a single load in class-body construction), and there is no `allow_none` member at all — only the four `auto()` `SetItem`s above. **(CONFIRMED: the four member names are the only ones in the string table alongside the docstring.)**
+> **GOTCHA — `prepare` is not a member.** The name `prepare` appears in this module and reads like a fifth enum member; it is the metaclass `__prepare__` hook, a single load during class-body construction. The enum has exactly the four `auto()` `SetItem`s above and nothing else — the four member names are the only ones in the string table alongside the docstring.
 
 ### 4.3 `__gt__` — ordering on the underlying int
 
@@ -224,7 +224,7 @@ if ( function_opt_level >= getattr(OptLevel, "skip_allocators") )      // gen L1
     // skip StackAllocator / RelocateNKIStack / LegalizeInstSize
 ```
 
-The resulting stage map (taxonomy CONFIRMED; the exact user-`-O`→member cutoff is INFERRED — it is set per-function from the tensorizer, not a static literal table):
+The resulting stage map. [INFERRED] The exact user-`-O`→member cutoff is not a static literal table — it is set per-function from the tensorizer:
 
 ```text
   default_level                    →  middle-end + loop-level + ISel + allocators + peephole   (FULL)
@@ -250,13 +250,13 @@ return default_optimization_function_set;
 
 `extract_nki_opt_level(cu)` (@ `0x3a4d0`, `Compile.py:315`) reads the `opt_level` attribute off the compile-unit's per-function object (`GetAttr n_s_opt_level`, decompile L381) and asserts the cu type ("Unexpected cu type"). Its docstring: *"optlevel: The optimization level ('eager', 'nki', or other)."*
 
-> **NOTE — a third recognized mode, `codegen_only`.** Besides `eager` and `nki`, `get_optimization_functions` also branches on `kp_u_codegen_only` (decompile L1301), which likewise calls `extract_nki_opt_level`. So at the penguin layer the `optlevel` *parameter* is a string mode over at least `{eager, nki, codegen_only, …default}`, and the numeric `OptLevel` enum is carried **per-function** — there is no global "user `-O2` == `OptLevel.default_level`" literal in the shipped binaries. The coupling is by construction. **(CONFIRMED dispatch; INFERRED exact user-`-O` ↔ enum mapping.)**
+> **NOTE — a third recognized mode, `codegen_only`.** Besides `eager` and `nki`, `get_optimization_functions` also branches on `kp_u_codegen_only` (decompile L1301), which likewise calls `extract_nki_opt_level`. So at the penguin layer the `optlevel` *parameter* is a string mode over at least `{eager, nki, codegen_only, …default}`, and the numeric `OptLevel` enum is carried **per-function** — there is no global "user `-O2` == `OptLevel.default_level`" literal in the shipped binaries. The dispatch itself is read from the decompiled body; [INFERRED] the exact user-`-O` ↔ enum mapping, which is established by construction rather than by a lookup.
 
 ---
 
 ## 5. Plane 4 — the walrus backend opt-level (the real `0..8` integer)
 
-**Binary:** the `walrus_driver` backend ELF (the codegen/allocator engine). The dispatcher is `sub_80D9D0`. **Confidence: CONFIRMED via the dedicated backend analysis (D-K19); this page owns only the *cross-plane* statement — Plane-4 mechanics are owned in depth by [Part 8](../walrus/).**
+**Binary:** the `walrus_driver` backend ELF (the codegen/allocator engine). The dispatcher is `sub_80D9D0`. This page carries only the *cross-plane* statement; the Plane-4 mechanics are owned in depth by [Part 8](../walrus/).
 
 This is the one plane that is a genuine integer, and the only one that reaches 7 and 8. It is **not** a Python attribute and is **not** selected by `--internal-tensorizer-opt-level` or by the user `-O` number directly. It is normalized and switched inside the backend:
 
@@ -277,14 +277,14 @@ switch ( optlevel ) {                                         // the pass-builde
 }
 ```
 
-Key cross-plane facts (all CONFIRMED in D-K19):
+Key cross-plane facts:
 
 - The walrus level **reaches 8**. Level **7** is the `--smt-allocation` experimental arm; the `SmtAllocation` `cl::opt` is the *only* thing that forces it. The persisted `PassOptions` byte `+0x6D` carries the smt bit; `Unroll::run` invokes `check_in_place` only when that byte is set (opt7). In opt0/1-3/6/8 the byte is 0 and the in-place re-check is skipped.
 - Despite the name, there is **no Z3 / SMT solver** in the opt7 path — `check_in_place` is an in-place unroll re-check, not a constraint solver.
 - **No user `-O` level turns this on.** `-O{0,1,2,3}` never sets `SmtAllocation`. Walrus opt7 is orthogonal to the user `-O` dial.
 - Allocator *class* = `--allocator` string (`coloring` vs `lsa`) × the walrus opt-level case (opt6 → coloring-with-loop; opt7 → plain per-space coloring; opt8 → linear-scan). Whether allocators run *at all* is the penguin `OptLevel.skip_allocators` gate (§4.4) — a different plane again.
 
-> **GOTCHA — `--smt-allocation` is the only door to walrus opt7, and it is not an `-O` value.** Reimplementers who expect `-O3` to mean "maximum" will miss that the most aggressive *allocator* arm (7) and the linear-scan arm (8) are reached through backend `cl::opt` flags and the `loopsInBackend` upgrade, after the user `-O` has already been mapped into the forwarded `--walrus-passes` list. See [Part 8](../walrus/) and [3.7](walrus-driver-cli.md). **(CONFIRMED D-K19.)**
+> **GOTCHA — `--smt-allocation` is the only door to walrus opt7, and it is not an `-O` value.** Reimplementers who expect `-O3` to mean "maximum" will miss that the most aggressive *allocator* arm (7) and the linear-scan arm (8) are reached through backend `cl::opt` flags and the `loopsInBackend` upgrade, after the user `-O` has already been mapped into the forwarded `--walrus-passes` list. See [Part 8](../walrus/) and [3.7](walrus-driver-cli.md).
 
 ### 5.1 What `-O` does *not* gate in the backend
 
@@ -366,12 +366,21 @@ To reproduce this build's opt-level behavior, a reimplementer must honor all of:
 
 ---
 
-## 8. Confidence ledger
+## 8. Evidence anchors and limits
 
-- **CONFIRMED** — `-O` choice-set `{0,1,2,3}` + default `"2"`; the three `optlevel` read-sites; the `-O0` DGE-clear gate and its branches; the `-O3`→`-O2` triple-`SetAttr` + advisory (full decompile L15262–15378); `internal_tensorizer_opt_level == "nki"` (decompile L11953) and `== "eager"` (runPipeline); the `ir.OptLevel` four-member `auto()` set + order + docstring + `__gt__` (string table + decompile); `get_optimization_functions` `eager`/`nki`/`codegen_only` dispatch (decompile L881/L1066/L1301) and `extract_nki_opt_level` @ `Compile.py:315`; the walrus dispatcher switch `{0,1/2/3,6,7,8}` and `--smt-allocation`→7 gate (D-K19).
-- **STRONG** — the Cython→Python reconstruction of the `buildPipeline` prologue (control flow + string identities certain; exact py text is the conventional lift); the flow-level `OptLevel` comparison direction.
-- **INFERRED** — the exact user-`-O` number → `ir.OptLevel` member numeric cutoff (set per-function from the tensorizer, not a static literal table); the precise penguin-`optlevel`-string ↔ user-`-O` coupling.
-- **Plane-4 ownership** — the walrus opt-level mechanics are CONFIRMED in the dedicated backend analysis (D-K19); this page reproduces only the cross-plane statement and defers depth to [Part 8](../walrus/).
+| Claim | Confidence | Anchor |
+|---|---|---|
+| `-O` choice-set `{0,1,2,3}`, default `"2"`, three read-sites | CERTAIN | Cython string table; `0x629a0`, `0x717f2`/`0x7180f`, `0x71862` |
+| `-O0` DGE-clear gate and its branch structure | CERTAIN | decompile L5046–5559 |
+| `-O3` → `-O2` triple-`SetAttr` + USER advisory | CERTAIN | decompile L15262–15378 |
+| `internal_tensorizer_opt_level == "nki"` / `== "eager"` | CERTAIN | decompile L11953; `runPipeline` @ `0x7af80` |
+| `ir.OptLevel` four-member `auto()` set, order, docstring, `__gt__` | CERTAIN | string table + decompile |
+| `get_optimization_functions` `eager`/`nki`/`codegen_only` dispatch; `extract_nki_opt_level` @ `Compile.py:315` | CERTAIN | decompile L881 / L1066 / L1301 |
+| walrus dispatcher switch `{0, 1/2/3, 6, 7, 8}`; `--smt-allocation` → 7 | CERTAIN | `sub_80D9D0`; owned in depth by [Part 8](../walrus/) |
+| the Cython→Python lift of the `buildPipeline` prologue | HIGH | control flow and string identities are exact; the Python text is the conventional lift |
+| the flow-level `OptLevel` comparison direction | HIGH | gen L382–423 / L1304 |
+| user-`-O` number → `ir.OptLevel` member cutoff | MEDIUM | set per-function from the tensorizer; no static literal table exists |
+| penguin-`optlevel`-string ↔ user-`-O` coupling | MEDIUM | coupling is by construction, not by a lookup |
 
 ## See also
 

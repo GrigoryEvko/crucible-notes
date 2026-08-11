@@ -64,9 +64,8 @@ verbatim) pins this 1-struct→4-opcode binding:
 ],
 ```
 
-> `[HIGH/OBSERVED]` — opcodes `0x9d`/`0x9e`/`0xe5`/`0xea` read verbatim from
-> `common.h` on cayman/mariana/maverick/sunda; the struct→opcode binding read
-> verbatim from `instruction_mapping.json`.
+> `[HIGH/OBSERVED]` — opcodes and the struct→opcode binding read verbatim from
+> `common.h` and `instruction_mapping.json`.
 
 ### The elementwise-arith family at a glance
 
@@ -78,14 +77,14 @@ verbatim) pins this 1-struct→4-opcode binding:
 
 STT is the 3-input completion of the family: it keeps TS's two-AluOp +
 `reverse_operands` control machinery, but swaps TS's *second scalar* for a *second
-tensor*. `[HIGH/OBSERVED]`
+tensor*.
 
 ---
 
 ## 2. The operand struct — `NEURON_ISA_TPB_S2S2D2_STT_STRUCT` (64 B, compile-verified)
 
 From `aws_neuron_isa_tpb_s2s2d2_stt.h:24`. The header carries
-`ISA_STATIC_ASSERT(sizeof == 64)`. **Self-compiled this task** (`gcc -I<gen>/tpb`,
+`ISA_STATIC_ASSERT(sizeof == 64)`. **Self-compiled** (`gcc -I<gen>/tpb`,
 `offsetof`/`sizeof` printed) — offsets are **byte-identical** on
 cayman/mariana/maverick/sunda:
 
@@ -133,14 +132,14 @@ typedef struct {
 > patterns, *not* the `TENSOR3D` (3-D) that [Tensor-Tensor](./tensor-tensor.md) and
 > [Tensor-Scalar](./tensor-scalar.md) use. The struct gives up one address-generator
 > dimension per operand to make room for the second tensor pattern inside the same
-> 64-byte envelope. `[HIGH/OBSERVED compile-verify + common.h:643]`
+> 64-byte envelope. `[HIGH/OBSERVED]`
 
 > **GOTCHA — the `imm0 @60` placement.** `dst_mem_pattern` is 12 bytes at offset
 > 48, so it occupies bytes `48..59`; `imm0` then occupies `60..63`, total exactly
 > 64. The header comments `// (48 - 60)` / `// (60 - 63)` use inclusive-of-next-start
 > notation — there is **no overlap**, as the compile-verify confirms (`dst`@48,
 > `imm0`@60, `sizeof==64`). Reading `imm0` as if it overlapped `dst` is a decode
-> bug. `[HIGH/OBSERVED]`
+> bug.
 
 ### The three operands, byte-pinned
 
@@ -162,7 +161,7 @@ typedef struct {
   The scalar's *source* is `imm0_src @39` (`{InstructionImmediate=0, PointerImmediate=1,
   RegPtrImmediate=2}`) and its *dtype* is `imm0_dtype @43`. STT has **exactly one**
   immediate field — *not* two as Tensor-Scalar has. This single-immediate property
-  is the structural difference from TS. `[HIGH/OBSERVED]`
+  is the structural difference from TS.
 
 - **TENSOR A** = `src0_mem_pattern @12` (`TENSOR2D`), dtype = `in0_in1_dtype.dtype_lo`.
 - **TENSOR B** = `src1_mem_pattern @24` (`TENSOR2D`), dtype = `in0_in1_dtype.dtype_hi`.
@@ -173,8 +172,7 @@ typedef struct {
 `op0 @36` and `op1 @37`, each a full `NEURON_ISA_TPB_ALU_OP` (1 byte). This is
 *unlike* [Tensor-Tensor](./tensor-tensor.md) (one `op` field) and *like*
 [Tensor-Scalar](./tensor-scalar.md) (`op0`+`op1`). The two ops are the two fusion
-stages (§3). `[HIGH/OBSERVED — two distinct ALU_OP fields, compile-verified offsets
-36 & 37]`
+stages (§3).
 
 ---
 
@@ -256,7 +254,7 @@ The two predicates resolve from the float `NEURON_ISA_TPB_ALU_OP` enum
   `LogicalShiftLeft 0x10`, `LogicalShiftRight 0x11`, `BitwiseAnd 0x0A`,
   `BitwiseOr 0x0B`, `BitwiseXor 0x0C`.
 
-> **CORRECTION (per-gen) vs SX-FW-53.** The backing report's general-arith list appends
+> **CORRECTION (per-gen).** An earlier general-arith list appends
 > "(+AbsMax/AbsMin/ReLU/Square on the gens that define them)" — and that *gen-qualified* form is
 > correct. An earlier draft of this page over-corrected it to "no `ReLU`/`Square`,
 > no `AbsMax`/`AbsMin` on **all four** gens", which is wrong: only **SUNDA/CAYMAN** lack those
@@ -265,8 +263,7 @@ The two predicates resolve from the float `NEURON_ISA_TPB_ALU_OP` enum
 > add the float enumerators `ABS_MAX = 0x20`, `ABS_MIN = 0x21`, `RE_LU = 0x22`, `SQUARE = 0x23` to
 > the ALU_OP enum and to `is_arith_op`; none are special-excluded, so general-arith there is **21**.
 > So the STT general-arith set is **17 (SUNDA/CAYMAN) / 21 (MARIANA+)**, harmonized with the
-> canonical [ALU-op matrix §3.1](./alu-op-matrix.md). `[HIGH/OBSERVED — common.h ALU_OP enum +
-> `is_arith_op`/`is_general_arith_op`/`is_valid_int_aluop` bodies, per-gen]`
+> canonical [ALU-op matrix §3.1](./alu-op-matrix.md). `[HIGH/OBSERVED per-gen]`
 
 The fused-multiply-add `dst = scalar·src0 + src1` is therefore the *special case*
 `op0=MULT(0x06)`, `op1=ADD(0x04)`, `reverse_operands=NONE`. STT is the **generic
@@ -276,15 +273,13 @@ general-bitvec (bitvec) class. It does **not** map to a single
 passes** through the shared `alu_op.cpp` datapath (§4), the same datapath
 [Tensor-Tensor](./tensor-tensor.md) and [Tensor-Scalar](./tensor-scalar.md) use. The
 anchor is the [ALU-op matrix](./alu-op-matrix.md), not a dedicated MAC opcode.
-`[HIGH/OBSERVED]`
 
 > **NOTE — no `op0!=Bypass` guard.** The `s3d3_ts.h` Tensor-Scalar header has a
 > `tensor_scalar_valid_ops` ordering constraint (`(op0!=Bypass)||(op1==Bypass)`).
 > `s2s2d2_stt.h` carries **no** STT-specific equivalent — both ops must merely be
 > *independently* general-arith/bitvec. Since `Bypass` is itself a general op,
 > `op0=Bypass, op1=Add` is structurally permitted (a single-tensor-stage degenerate:
-> `dst = src0 + src1`, scalar ignored at stage 0). `[HIGH/OBSERVED — header has no
-> STT op0!=Bypass guard]`
+> `dst = src0 + src1`, scalar ignored at stage 0).
 
 ### 3c. The per-element trace evidence
 
@@ -303,7 +298,6 @@ STT uses **both** forms — unlike Tensor-Scalar, which uses only the
 `R[d]=OP(R[d],imm)` form. One stage folds the scalar (the `imm` trace), the other
 folds the second tensor (the `R,R` trace). This is the decisive evidence that STT
 mixes a scalar-imm op **and** a tensor-tensor op inside one instruction.
-`[HIGH/OBSERVED — all three strings present in the shipped binary]`
 
 ### 3d. The siblings on the same struct (out of core scope)
 
@@ -382,7 +376,7 @@ immediate, not two).
 
 > Stub edges, the entry/log edges, the two-stage `s16i` window-program, and the
 > single `bnei` imm-src test are `[HIGH/OBSERVED]`. The inner FLIX compute bundles
-> are `[MED]` through the SX-FW-00 desync; the two `call0 0xfffb…` compute targets
+> are `[MED]` through the FLIX desync; the two `call0 0xfffb…` compute targets
 > resolve out-of-carve into the shared `alu_op.cpp` datapath, so the exact compute
 > body is `[LOW]`. The opcode→descriptor literal is runtime-bound, `[LOW/out-of-carve]`.
 
@@ -450,7 +444,7 @@ directly** (no SBUF copy needed). The element counts are cross-checked:
 There is **no broadcast-flag bit**: a source broadcasts (if at all) via a `step_elem`
 (stride) of `0` in its `TENSOR2D` pattern — the same convention
 [Tensor-Tensor](./tensor-tensor.md) uses. `tt_valid_partitions(src0.start_addr,
-src1.start_addr)` further constrains the two sources' partition placement. `[HIGH/OBSERVED]`
+src1.start_addr)` further constrains the two sources' partition placement.
 
 ### 5c. The accumulator contract — `accumulator_cmd @44`
 
@@ -466,7 +460,7 @@ src1.start_addr)` further constrains the two sources' partition placement. `[HIG
 So **STT-arith may engage the DVE running accumulator** (`Accumulate` /
 `ZeroAccumulate`) — unlike plain [Tensor-Scalar](./tensor-scalar.md), which forces
 `Idle`. The device's `@0xb200` `bnei a2,2` + `movi a10,-1` is this accum branch.
-`[HIGH/OBSERVED header; the device accum branch MED]`
+`[HIGH/OBSERVED; MED device branch]`
 
 ---
 
@@ -500,7 +494,7 @@ soft-float convention [Tensor-Tensor](./tensor-tensor.md) /
 [Tensor-Scalar](./tensor-scalar.md) follow (the arith datapath converts to/through
 FP32). A pointer- or reg-ptr-sourced scalar takes its dtype from memory
 (`is_const_ptr_dve` covers both `PointerImmediate` and `RegPtrImmediate`) and so is
-exempt. `[HIGH/OBSERVED — s2s2d2_stt.h:228]`
+exempt. `[HIGH/OBSERVED]`
 
 ### BITVEC (`0x9e`)
 
@@ -523,7 +517,7 @@ exempt. `[HIGH/OBSERVED — s2s2d2_stt.h:228]`
 
 `in0_in1_dtype` packs `dtype_lo`(src0) and `dtype_hi`(src1) as two 4-bit fields
 (`NEURON_ISA_TPB_DTYPE_PAIR`, 1 byte). `num_active_channels` is validated by
-`check_active_channels` (1..128, the DVE 128-lane width). `[HIGH/OBSERVED]`
+`check_active_channels` (1..128, the DVE 128-lane width).
 
 > **NOTE.** The per-element trace `R[d]=OP(R[d],imm)` / `R[d]=OP(R[d],R[d])` shows the
 > compute operates on register-resident lanes (`R[]`) — the FP32-hub staging
@@ -541,7 +535,7 @@ exempt. `[HIGH/OBSERVED — s2s2d2_stt.h:228]`
  *               has_valid_scalar_tensor_tensor_op, s2s2d2_stt_imm0_dtype,
  *               has_valid_s2s2d2_stt_accum_cmd, alu_op.cpp per-lane dispatch.
  * Structure HIGH/OBSERVED (entry/log/two-stage/imm-src/accum/return byte-decoded);
- * inner FLIX compute MED through the SX-FW-00 desync.
+ * inner FLIX compute MED through the FLIX desync.
  */
 void decode_scalar_tensor_tensor(const NEURON_ISA_TPB_S2S2D2_STT_STRUCT *i)
 {
@@ -632,8 +626,8 @@ the `R,R` forms — the STT scalar+tensor mix is present on every generation.
 > **header-OBSERVED** (the shipped `neuron_maverick_arch_isa` headers; the struct body
 > `diff`s byte-identical to cayman). The MAVERICK DVE worker *interiors* are
 > `[INFERRED]` from the same DEBUG-string + stub pattern as the byte-grounded
-> v2–v4 carves; v5 interiors are not independently byte-walked. `[struct/opcode
-> HIGH/OBSERVED; v5 worker interior INFERRED]`
+> v2–v4 carves; v5 interiors are not independently byte-walked.
+> `[HIGH/OBSERVED struct; INFERRED v5 interior]`
 
 STT is a **core DVE op present on every DVE-equipped generation**: SUNDA defines the
 opcode + struct; the DVE worker is wired CAYMAN→MAVERICK. `[HIGH/OBSERVED]`
@@ -702,7 +696,7 @@ shared op-set/dtype datapath.
   identical value on cayman/mariana/maverick/sunda (`common.h`, read verbatim).
 - `S2S2D2_STT` struct→opcode binding `{STT-Arith, STT-Bitvec, TensorTensorScanArith,
   SelectReduce}` read verbatim from `instruction_mapping.json`. The 64-B layout
-  **self-compile-verified this task** (`gcc` `offsetof`: src0@12, src1@24, op0@36,
+  **self-compile-verified** (`gcc` `offsetof`: src0@12, src1@24, op0@36,
   op1@37, reverse@38, imm0_src@39, in0_in1_dtype@40, out_dtype@41, channels@42,
   imm0_dtype@43, accum@44, reserved@45, dst@48, imm0@60; `sizeof==64`), byte-identical
   on all four gens.
@@ -744,8 +738,8 @@ shared op-set/dtype datapath.
   reached but not byte-walked end-to-end).
 
 **FLIX-DESYNC FLAG.** The DEBUG worker bodies desync under stock `objdump` on the
-recurring `.byte 0x2f/0x8f/0x4f/0x5f/0xcf` literal-pool lead bytes (the SX-FW-00
-limitation). Mis-decoded `.byte`/spurious bundles are not reported as real
+recurring `.byte 0x2f/0x8f/0x4f/0x5f/0xcf` literal-pool lead bytes (the corpus-wide
+FLIX-desync limitation). Mis-decoded `.byte`/spurious bundles are not reported as real
 instructions. The cleaner PERF image supplies the IVP splat vocabulary. The
 macro-structure (entry/log/descriptor-copy/two-stage/imm-src/accum/return) is
 recovered from the surviving well-formed instructions + the xxd-verified
@@ -771,7 +765,7 @@ rg 'SCALAR_TENSOR_TENSOR_(ARITH|BITVEC)' \
 #     s2s2d2_stt_imm0_dtype @228 ; s2s2d2_stt_src_dst_dtype @221 ; has_valid_s2s2d2_stt_accum_cmd @234
 #     has_valid_s2s2d2_stt_immediate @142
 
-# compile-verify (this task): sizeof==64, offsets 12/24/36/37/38/39/40/41/42/43/44/45/48/60
+# compile-verify: sizeof==64, offsets 12/24/36/37/38/39/40/41/42/43/44/45/48/60
 gcc -I$H/neuron_cayman_arch_isa/tpb /tmp/stt_verify.c -o /tmp/v && /tmp/v
 
 # enums: common.h  ALU_OP @939 ; IMM_SRC @1207 ; TENS_SCALAR_REV_OPS @1246 (formula @1239)

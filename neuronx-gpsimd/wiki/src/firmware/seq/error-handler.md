@@ -22,7 +22,7 @@ class that pointedly does **not** reach this handler (see §8). Read those if th
 fetch→decode→dispatch flow upstream of a fault is unclear; this page picks up at
 the moment a fault is detected.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The anchor
+Everything below is **byte-pinned to a shipped artifact**. The anchor
 image is the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from
 `libnrtucode.a` (members `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code,
 `…_DRAM_contents.c.o` for strings), disassembled with the native
@@ -55,7 +55,7 @@ The error subsystem is one translation unit in IRAM, plus a few shared sinks:
 byte 0). DRAM lives at VA `0x80000`, so a DRAM string's *file offset* = VA −
 `0x80000`. The firmware materialises a DRAM VA with a `const16 aX,8 ; const16
 aX,0xNNNN` pair (high half = `0x0008`), so e.g. `const16 a10,8 ; a10,0x3b11`
-addresses DRAM VA `0x83b11`. **HIGH/OBSERVED** — re-verified this session: the
+addresses DRAM VA `0x83b11`. **HIGH/OBSERVED** — the
 `0x83b11` literal at `0x13f64` resolves to the verbatim `"S: ErrorHandler : Bad
 Opcode(0x%x)"` string.
 
@@ -70,7 +70,7 @@ Opcode(0x%x)"` string.
 > trust a linear-sweep rendering of these functions; the re-synced bytes are what
 > appears below.
 
-The carve reproduces the SX-FW anchor hashes exactly
+The carve reproduces the shared anchor hashes exactly
 (`iram.bin` SHA-256 `8e4412b9…`, `dram.bin` `7bdf6ed7…`), so this is the same
 firmware as the sibling pages. **HIGH/OBSERVED.**
 
@@ -134,7 +134,7 @@ Then the policy branches:
 The 178-entry SEQ decode table (DRAM `0x80814`, owned by
 [SEQ Decode / Dispatch Hub](dispatch-hub.md)) has **123 entries** that point at a
 single 3-instruction stub at IRAM `0x3198`; the other **55** point at real
-handlers. Re-counted this session straight from the table words (not a decompile):
+handlers. Counted straight from the table words (not a decompile):
 `0x3198` appears **123** times, **55** entries are real, **56** distinct targets.
 
 ```text
@@ -273,7 +273,7 @@ non-zero ⇒ skip) *else* `0xbf64: call8 0x13f34`. A zero divisor is therefore a
 ```
 
 The 16-entry table at DRAM `0x83a70` remaps the one-hot `fp_status` bit into a
-*numbered* error code, re-decoded this session from the LE words:
+*numbered* error code, decoded from the LE words:
 
 | `fp_status` | table arm | error code |
 | --- | --- | --- |
@@ -355,12 +355,11 @@ specific POSIX signal numbers — grounded in the libc `signal()` shape and the
 > **NOTE — forward link to the interrupt/exception Part.** The full Xtensa
 > hardware-exception roster (illegal instruction, load/store, integer-divide,
 > window over/underflow, the ISL/KSL stack-limit violation, break/debug,
-> interrupt/syscall) and the precise `exccause`→signal binding live on the planned
+> interrupt/syscall) and the precise `exccause`→signal binding live on the
 > [interrupt handler-bodies](../../control/interrupt/handler-bodies.md) and
-> [Q7 surprises binding](../../control/interrupt/q7-surprises-binding.md) pages.
-> Those targets do not exist yet — these are **forward links**. The on-device
-> producer side documented here is HIGH/OBSERVED; the HW-vector mapping is the
-> piece those pages will pin.
+> [Q7 surprises binding](../../control/interrupt/q7-surprises-binding.md) pages
+> (**forward links**). The on-device producer side documented here is HIGH/OBSERVED;
+> the HW-vector mapping is the piece those pages pin.
 
 ---
 
@@ -386,7 +385,7 @@ specific POSIX signal numbers — grounded in the libc `signal()` shape and the
 `read_engine_id_global` `@0x13dec` is `const16 a2,8 ; a2,0x5f38 ; l32i.n a2,[a2]`
 — it reads `*(u32*)DRAM[0x85f38]`, the engine-identity global (runtime-zero in the
 static image, set at boot). The 6-entry table at DRAM `0x83a30` remaps it to the
-host-visible `block_id`. The table words re-decoded this session:
+host-visible `block_id`. The table words decode as:
 `{0x13dad, 0x13db4, 0x13dc2, 0x13dd0, 0x13dc9, 0x13dbb}`, i.e. engine-id
 `{0→2, 1→1, 2→3, 3→assert, 4→4, 5→5}`. **HIGH/OBSERVED** that it reads `0x85f38`
 and remaps via the JT; **INFERRED** (from the `get_block_id` symbol string) that
@@ -640,8 +639,7 @@ Source-file strings: `0x83ab9` `"error_handler.cpp"`; `0x83a55`
 `"/opt/workspace/NeuronUcode/src/handlers/signal_handler.cpp:9 0"`. Symbol/arg
 strings: `0x83a48` `"get_block_id"`; `0x83ab0` `"fp_error"`. Jump/data tables:
 `0x83a30` (6-entry block-id JT), `0x83a70` (16-entry FP-status→code JT), `0x83b70`
-(6-word signal table `{6,2,4,8,0xb,0xf}`). **All HIGH/OBSERVED** — re-read this
-session.
+(6-word signal table `{6,2,4,8,0xb,0xf}`). **All HIGH/OBSERVED.**
 
 **Error codes** (the code byte folded into the record): `BadOpcode = 0`,
 `IntDivZero = 2`, `FPError = {1,2,4,8,16}` (FP-status-mapped), `signal_handler =
@@ -659,7 +657,7 @@ is fatal. **HIGH/OBSERVED.**
 > is the *dispatch-table entry count* (123 default → `0x3198`, 55 real). It is a
 > different population from the `'S:'` format-string census: this POOL DEBUG image
 > contains **187** `'S: '` substring occurrences in DRAM (the PERF build strips
-> them to **0**). Re-grounded this session straight from the binary (`python3 -c
+> them to **0**). Grounded straight from the binary (`python3 -c
 > "print(open('dram.bin','rb').read().count(b'S: '))"` → `187`; the dispatch table
 > `0x3198` count → `123`). Never write "178 `'S:'` strings".
 
@@ -708,34 +706,33 @@ enter this TU at all. **HIGH/OBSERVED** for the fatal/recoverable split via the
   On the real device the corresponding HW traps are delivered to the firmware as
   one of the 6 registered signals (§4e) and hard-fault via `0x14014`. The
   firmware's coupling is the `signal()` table, **not** a per-cause handler array.
-  The exception bodies and the `exccause`→signal binding live on the planned
+  The exception bodies and the `exccause`→signal binding live on the
   [interrupt handler-bodies](../../control/interrupt/handler-bodies.md) and
   [Q7 surprises binding](../../control/interrupt/q7-surprises-binding.md) pages
-  (**forward links** — not yet authored). **MED/INFERRED** for the signal-number
-  bridge.
+  (**forward links**). **MED/INFERRED** for the signal-number bridge.
 - **Stack-limit (ISL) faults.** A kernel that stores below its HBM stack floor
   raises an ISL `StackLimitViolation` (HW) → a signal → `0x14014` → FATAL spin. So
   a kernel stack overflow is an *unrecoverable engine halt*: the library installs
   the limit, the HW enforces it, this ErrorHandler fields the fault. **MED.**
 - **Security/boot fault chain.** The boot-time security/fault posture (and where a
-  *boot* fault diverges from this *run-time* ErrorHandler) is on the planned
+  *boot* fault diverges from this *run-time* ErrorHandler) is on the
   [boot-fault overview](../../control/security/boot-fault-overview.md)
-  (**forward link** — not yet authored).
+  (**forward link**).
 - **Host error model.** A host runtime reading channels (1)+(2)+(3) above
   distinguishes "engine still alive, reported an FP fault" (sev 1) from "engine
   hung — bad opcode / illegal instr / div0 / trap / assert" (sev 2, the spin). The
-  host-side binding is documented on the planned
+  host-side binding is documented on the
   [runtime lifecycle error model](../../runtime/lifecycle-error-model.md)
-  (**forward link** — not yet authored). The on-device producer side here is
+  (**forward link**). The on-device producer side here is
   HIGH/OBSERVED; the host consumer side is out of this blob's scope and inferred.
 
 ---
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED** (direct disassembly or byte read this session):
+**HIGH / OBSERVED** (direct disassembly or byte read):
 
-- Carve reproduced; `iram.bin 8e4412b9…` / `dram.bin 7bdf6ed7…` match the SX-FW
+- Carve reproduced; `iram.bin 8e4412b9…` / `dram.bin 7bdf6ed7…` match the sibling
   anchors exactly.
 - The dispatch-default stub `0x3198` (`l8ui ; call8 0x13f58 ; j`), and the
   178-entry table census (123 default / 55 real / 56 distinct) re-counted from the

@@ -38,7 +38,7 @@ For reimplementation, the contract is:
 
 ### The claim being corrected
 
-An early reading of this backend (the S2-07 §3.4 brief) described a single **"scheduler partition-band reservation table shared by pre_sched and post_sched for resource-constrained list scheduling,"** with a per-engine issue-slot intersection test and a Hwm-latency-weighted critical path. That description fuses three real things that live in three different passes into one imaginary object. The correction, byte-grounded below, is:
+An early reading of this backend described a single **"scheduler partition-band reservation table shared by pre_sched and post_sched for resource-constrained list scheduling,"** with a per-engine issue-slot intersection test and a Hwm-latency-weighted critical path. That description fuses three real things that live in three different passes into one imaginary object. The correction, byte-grounded below, is:
 
 > **The partition-band reservation table is the SBUF coloring allocator's, not any scheduler's.** No scheduler function in the binary owns, fills, or reads it. pre_sched has *no* resource table at all; post_sched's resource model is per-engine cycle timelines, not partition bands.
 
@@ -74,7 +74,7 @@ Both strings are present in `.rodata` at the offsets the table's bounds-asserts 
 0x1cc4128 : "intersectionIter != reservations[otherPartitionBandIndex].end()"
 ```
 
-[CONFIRMED — `rg -abo` over the binary returns these two strings at exactly `30155024 = 0x1cc2110` and `30163240 = 0x1cc4128`. The token `reservation` appears 12 times total in the binary; none is a free-standing scheduler C-string — they are mangled `SB_Allocator` symbol fragments and these two asserts.]
+*Anchors: `rg -abo` over the binary returns these two strings at exactly `30155024 = 0x1cc2110` and `30163240 = 0x1cc4128`. The token `reservation` appears 12 times in total; none of them is a free-standing scheduler C-string — they are mangled `SB_Allocator` symbol fragments plus these two asserts.*
 
 ### The two — and only two — references
 
@@ -89,7 +89,7 @@ a06d6a:  48 8d 3d b7 d3 2b 01   lea  0x12bd3b7(%rip),%rdi   # 1cc4128  (reservat
 a06d71:  e8 6a 68 be ff         call 5ed5e0 <__assert_fail@plt>
 ```
 
-[CONFIRMED — independent whole-`.text` `objdump -d | rg -c '# 1cc2110|# 1cc4128'` returns **2**, both at `0xa06d4b` / `0xa06d6a`. No other site in the binary references either VA. `selectNode`'s body is `0xa05250..0xa06e20`, so both references are inside it.]
+*Anchors: a whole-`.text` `objdump -d | rg -c '# 1cc2110|# 1cc4128'` returns **2**, at `0xa06d4b` and `0xa06d6a`. No other site in the binary references either VA, and `selectNode`'s body spans `0xa05250..0xa06e20`, so both references sit inside it.*
 
 ### The owner symbols are all `SB_Allocator`, none scheduler
 
@@ -108,7 +108,7 @@ a06d71:  e8 6a 68 be ff         call 5ed5e0 <__assert_fail@plt>
 0xa04530  SB_Allocator::sortReservationsWithFlags(vector<pair<int,int>>&, vector<bool>&)
 ```
 
-[CONFIRMED — `nm -DC` demangles all six with the `SB_Allocator::` qualifier; `selectNode`'s 3rd parameter and `collectReservations`'s 1st parameter are both `std::array<std::vector<std::pair<int,int>>, 4ul>`. No scheduler-namespaced symbol (`pre_sched::*`, `post_scheduler::*`, `TimeAwareScheduler::*`, `ready_list_s::*`) appears anywhere in the reservation cluster.]
+*Anchors: `nm -DC` demangles all six with the `SB_Allocator::` qualifier; `selectNode`'s 3rd parameter and `collectReservations`'s 1st parameter are both `std::array<std::vector<std::pair<int,int>>, 4ul>`. No scheduler-namespaced symbol (`pre_sched::*`, `post_scheduler::*`, `TimeAwareScheduler::*`, `ready_list_s::*`) appears anywhere in the reservation cluster.*
 
 > **The conclusion is forced.** The only code in the binary that names the partition-band reservation table is `SB_Allocator`; the table's static type *is* the 4-band quadrant structure; and the allocator's TU (`coloring_allocator/.../sb_select.cpp`) is a disjoint subtree from every scheduler TU (`dep_based_optims/`). The brief's "scheduler reservation table" does not exist.
 
@@ -141,7 +141,9 @@ for (otherPartitionBandIndex in bands the candidate spans) {
 // candidate fits iff [byteOff, byteOff+size) ∩ every reserved interval in every spanned band == ∅
 ```
 
-This is **placement-time SBUF address assignment**: it decides *where in the 128×SB_SIZE scratchpad a tensor lives*. It is **engine-agnostic** and **time-agnostic** — it never asks *when* or *on which engine* an instruction issues. The axis is **partition-band × byte**; the operation is a **2-D rectangle intersection**. [CONFIRMED for type/owner/xref and for the 4-band fill loop (`collectReservations` strides the `array<…,4>` in lockstep, `cmp`/`jne` @ `0xa022d8`); the interior `lower_bound`/overlap shape in `selectNode` is STRONG — pseudocode reconstructs the two asserts' control flow, not a verbatim transcription of `selectNode`'s 6 KB body, which is documented on 8.17.]
+This is **placement-time SBUF address assignment**: it decides *where in the 128×SB_SIZE scratchpad a tensor lives*. It is **engine-agnostic** and **time-agnostic** — it never asks *when* or *on which engine* an instruction issues. The axis is **partition-band × byte**; the operation is a **2-D rectangle intersection**.
+
+*Anchors: the type, owner, and cross-references are read directly, as is the 4-band fill loop — `collectReservations` strides the `array<…,4>` in lockstep, `cmp`/`jne` @ `0xa022d8`. The interior `lower_bound`/overlap shape in `selectNode` is reconstructed from the two asserts' control flow rather than transcribed from its 6 KB body, which page 8.17 documents.*
 
 ---
 
@@ -158,7 +160,7 @@ pre_sched is the **first** scheduler (order 33), and it runs **before** any SBUF
 (no matches)
 ```
 
-[CONFIRMED — disassembling `0xca1490..0xca1cc0` and grepping for `assign_engines`, `getEngineType`, `0x156f700`, `0x917400` returns nothing. pre_sched produces one logical instruction order per basic block; engine binding is deferred to post_sched (next section).]
+*Anchors: disassembling `0xca1490..0xca1cc0` and grepping for `assign_engines`, `getEngineType`, `0x156f700`, `0x917400` returns nothing. pre_sched produces one logical instruction order per basic block; engine binding is deferred to post_sched (next section).*
 
 ### No latency, no reservation — only live bytes
 
@@ -182,7 +184,7 @@ inst_kill_size  @0xcaeb60   Σ bytes of inputs whose LAST use is this inst (free
 inst_gain_size  @0xcaf010   = kill − def  (net SBUF bytes freed by scheduling now)
 ```
 
-[CONFIRMED — the four sizing symbols at the listed addresses; `inst_gain_size` is the Sethi-Ullman-flavoured pressure heuristic. There is no per-engine slot, no cycle, and no partition coordinate anywhere in the pre_sched/pre_scheduler bodies.]
+*Anchors: the four sizing symbols resolve at the listed addresses, with `inst_gain_size` as the Sethi-Ullman-flavoured pressure heuristic. There is no per-engine slot, no cycle, and no partition coordinate anywhere in the pre_sched/pre_scheduler bodies.*
 
 > **pre_sched is the doubly-empty case.** The brief's premise — a partition-band reservation table *and* an engine-resource model in pre_sched — is absent on both counts. pre_sched has neither.
 
@@ -200,7 +202,7 @@ post_sched is the real cost-model scheduler (order 92), running **after** colori
 c36539:  e8 b2 aa 9d ff   call 610ff0 <…backend::assign_engines(bir::BasicBlock&)@plt>
 ```
 
-[CONFIRMED — the call at `0xc36539` targets the `assign_engines` PLT thunk `0x610ff0` → body `0x156f700`. `assign_engines` binds each instruction to a `bir::EngineType` via `getEngineType` @ `0x917400`. This is the engine-resource model's materialization, and it is **post_sched's** — pre_sched makes no such call (previous section).]
+*Anchors: the call at `0xc36539` targets the `assign_engines` PLT thunk `0x610ff0` → body `0x156f700`, which binds each instruction to a `bir::EngineType` via `getEngineType` @ `0x917400`. This is where the engine-resource model materializes, and it belongs to post_sched — pre_sched makes no such call.*
 
 ### Its resource axis is engine, never partition
 
@@ -210,7 +212,7 @@ The scheduler counts engines three congruent ways, none of which is a partition 
 - `PerfSim::SimEngineId` — the level-3 simulated roster: `simEngineId2string` @ `0x1657410` dispatches **13 cases** (`cmpl $0xc,(%rsi)` → `ja`) = 6 base engines (Pool/Act/PE/DMA/DVE/SP) + 4 CollectiveCompute streams + Num.
 - per-engine **register-pressure** cap: `check_skip_due_to_register_pressure(int eng)` @ `0xc56630` — a per-engine integer budget over the 8 EngineType ordinals.
 
-[CONFIRMED — `update_timings` ENG jump table is 6-case; `simEngineId2string` is 13-case (`cmpl $0xc`); both symbols and `check_skip_due_to_register_pressure` resolve at the listed addresses. Every one of these is an *engine* index; none carries a partition coordinate.]
+*Anchors: the `update_timings` ENG jump table is 6-case, `simEngineId2string` is 13-case (`cmpl $0xc`), and both symbols plus `check_skip_due_to_register_pressure` resolve at the listed addresses. Every one of these is an *engine* index; none carries a partition coordinate.*
 
 ### Its "multi-cycle reservation" is a SimEvent on a cycle timeline
 
@@ -221,7 +223,7 @@ The closest scheduler analog to "an instruction occupies a resource for N units"
 - free-slot search: `PerfSim::determine_start_time(clock, SimEngineId, …)` @ `0x165ad90` indexes a per-engine timeline (24-byte stride), takes `max(clock, engine-free-time)` — a **1-D earliest-feasible-cycle** scan, single-dimensional, per engine.
 - latency: `post_scheduler::get_latency` @ `0xc18730` makes the Hwm virtual call `call *0x68(%rax)` @ `0xc18796` — the per-cycle cost pre_sched never consults.
 
-[CONFIRMED — the `ready_list_insert_by_eng_start` parameter type demangles to `vector<map<ulong, set<Instruction*, ReadyInstCmp>>>`; `get_latency`'s indirect `call *0x68(%rax)` is at `0xc18796`. The `SimEvent` field layout (`{start, cost, dispatch…}`) is INFERRED from the `get_timeline_*` accessors; the `{start,cost}` *semantics* are CONFIRMED via `add_instruction(…, start, …)` + `get_cost` = duration.]
+*Anchors: the `ready_list_insert_by_eng_start` parameter type demangles to `vector<map<ulong, set<Instruction*, ReadyInstCmp>>>`, and `get_latency`'s indirect `call *0x68(%rax)` sits at `0xc18796`. The `{start,cost}` semantics come from `add_instruction(…, start, …)` plus `get_cost` = duration; the `SimEvent` field layout `{start, cost, dispatch…}` itself is reconstructed from the shape of the `get_timeline_*` accessors.*
 
 ---
 
@@ -245,21 +247,17 @@ The table is the page. Read across the bottom row: the partition-band reservatio
 
 ---
 
-## Adversarial self-verification
+## Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary, with the failure mode each check rules out.
+The disambiguation rests on five instruction-level reads, each of which rules out a specific way of getting this wrong:
 
-1. **"The partition-band table's strings have exactly two xrefs, both in `selectNode`."** Re-ran `objdump -d <bin> | rg -c '# 1cc2110|# 1cc4128'` over the whole 65 MB `.text` → **2**, at `0xa06d4b` and `0xa06d6a`, both within `selectNode`'s body `0xa05250..0xa06e20`. Rules out a second owner. **CONFIRMED.**
+- **The partition-band table's strings have exactly two cross-references, both in `selectNode`.** `objdump -d <bin> | rg -c '# 1cc2110|# 1cc4128'` over the whole 65 MB `.text` returns **2**, at `0xa06d4b` and `0xa06d6a`, both inside `selectNode`'s body `0xa05250..0xa06e20`. There is no second owner.
+- **The table really is the 4-band quadrant structure.** `nm -DC` shows `selectNode`'s 3rd param and `collectReservations`'s 1st param are both literally `std::array<std::vector<std::pair<int,int>>, 4ul>` — not a generic container misread as 4-band.
+- **pre_sched binds no engine; post_sched does.** `run_pre_sched` @ `0xca1490..0xca1cc0` contains zero `assign_engines`/`getEngineType` calls, while `post_scheduler::schedule(Function)` @ `0xc36010` reaches `call assign_engines@plt` @ `0xc36539`. pre_sched carries no hidden engine model.
+- **pre_sched's depth is latency-free; post_sched's is not.** `compute_depths_forward` @ `0xc8f610` calls only DenseMap helpers, `__assert_fail`, and itself — no Hwm, no float cost. `post_scheduler::get_latency` @ `0xc18730` makes `call *0x68(%rax)` (Hwm vptr+0x68) @ `0xc18796`. The two schedulers do not share a latency-weighted priority.
+- **post_sched's resource axis is engine × cycle, not partition.** `update_timings(ENG)` is a 6-case ENG jump table, `simEngineId2string` a 13-case (`cmpl $0xc`) SimEngineId roster, and `ready_list_insert_by_eng_start`'s type is `vector<map<cycle,set<I>>>`. No partition coordinate appears anywhere — there is no partition-band table hiding inside post_sched.
 
-2. **"The table's type is the 4-band quadrant structure."** `nm -DC` shows `selectNode`'s 3rd param and `collectReservations`'s 1st param are both literally `std::array<std::vector<std::pair<int,int>>, 4ul>`. Rules out the type being a generic container misread as 4-band. **CONFIRMED.**
-
-3. **"pre_sched binds no engine; post_sched does."** `run_pre_sched` @ `0xca1490..0xca1cc0` → 0 `assign_engines`/`getEngineType` calls; `post_scheduler::schedule(Function)` @ `0xc36010` → `call assign_engines@plt` @ `0xc36539`. Rules out pre_sched secretly carrying an engine model. **CONFIRMED.**
-
-4. **"pre_sched's depth is latency-free; post_sched's is not."** `compute_depths_forward` @ `0xc8f610` calls only DenseMap helpers, `__assert_fail`, and itself — no Hwm/float-cost. `post_scheduler::get_latency` @ `0xc18730` makes `call *0x68(%rax)` (Hwm vptr+0x68) @ `0xc18796`. Rules out the two schedulers sharing a latency-weighted priority. **CONFIRMED.**
-
-5. **"post_sched's resource axis is engine×cycle, not partition."** `update_timings(ENG)` is a 6-case ENG jump table; `simEngineId2string` is a 13-case (`cmpl $0xc`) SimEngineId roster; `ready_list_insert_by_eng_start`'s type is `vector<map<cycle,set<I>>>`. None carries a partition coordinate. Rules out a partition-band table hiding inside post_sched. **CONFIRMED.**
-
-**Re-verify ceiling.** What is *not* personally disassembled to instruction level here, and is therefore at most STRONG: the interior control flow of `selectNode` (the `lower_bound`/overlap pseudocode reconstructs the two asserts' guards, not a verbatim 6 KB transcription — that belongs to 8.17); `collectReservations`'s 4-iteration fill loop (verified by the `array<…,4ul>` signature, not by stepping the loop); the `SimEvent` field offsets (INFERRED from accessor shapes — `{start,cost}` *semantics* are CONFIRMED, the byte layout is not). The *ownership* claims — who references the strings, who calls `assign_engines`, who calls the Hwm latency vptr — are all CONFIRMED at the instruction level above.
+Three things stop short of an instruction-level read. `selectNode`'s interior control flow: the `lower_bound`/overlap pseudocode reconstructs the two asserts' guards rather than transcribing its 6 KB body, which belongs to page 8.17. `collectReservations`'s 4-iteration fill loop, established from the `array<…,4ul>` signature rather than by stepping the loop. And the `SimEvent` field offsets, deduced from the accessor shapes — the `{start,cost}` semantics are read, the byte layout is not.
 
 ## Cross-references
 

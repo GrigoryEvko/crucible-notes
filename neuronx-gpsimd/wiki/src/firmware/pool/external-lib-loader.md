@@ -24,8 +24,8 @@ device-side leak**.
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `[HIGH/MED/LOW]` × `[OBSERVED/INFERRED/CARRIED]`. `OBSERVED` = read directly from the
 shipped firmware bytes / native Xtensa disassembly; `INFERRED` = deduced from anchored
-mechanics; `CARRIED` = taken from a backing report and not independently re-grounded
-this pass. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
+mechanics; `CARRIED` = taken from a backing report and not independently re-grounded.
+Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**.
 
 ---
@@ -33,7 +33,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**.
 ## 1. Provenance — which image carries the loader
 
 The POOL cluster's anchor identity is the **`CAYMAN_NX_POOL` DEBUG** image family
-(re-carved and sha-confirmed this pass, identical to
+(re-carved and sha-confirmed, identical to
 [`pool-dispatch`](./pool-dispatch.md) and [`dispatch-hub`](../seq/dispatch-hub.md)):
 
 | Fact | Value | Anchor | Conf |
@@ -60,7 +60,7 @@ The POOL cluster's anchor identity is the **`CAYMAN_NX_POOL` DEBUG** image famil
 
 **Disassembler.** Device code is decoded with the native Vision-Q7 tool
 `gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump` under `XTENSA_CORE=ncore2gp`
-(`GNU objdump 2.34.20200201, Xtensa Tools 14.09`, `--version`-confirmed this pass), the
+(`GNU objdump 2.34.20200201, Xtensa Tools 14.09`, `--version`-confirmed), the
 FLIX/VLIW HAVE_VISION=1 config — **not** scalar-LX.
 
 > **GOTCHA — flat carve ⇒ no L32R literal resolution (MED wall).** The Q7 IRAM is a
@@ -79,7 +79,7 @@ FLIX/VLIW HAVE_VISION=1 config — **not** scalar-LX.
 
 The loader's whole class/method vocabulary survives as `__FILE__`/self-naming DEBUG
 strings. Byte-exact offsets in `SUNDA_Q7_POOL_DEBUG_DRAM` `.rodata`
-(`strings -t x`, this pass — every offset re-verified):
+(`strings -t x`):
 
 | DRAM off | token | source unit | role |
 |---|---|---|---|
@@ -245,7 +245,7 @@ reclaimable **without** the host resending an address.
 ## 5. kernel_info_table registration (the dispatch write-path)
 
 The loaded library is an `EM_XTENSA` (`e_machine=94`) `ET_EXEC` ELF32 carrying a
-`kernel_info_table` PROGBITS section. Ground-truthed this pass against
+`kernel_info_table` PROGBITS section. Ground-truthed against
 `CAYMAN_Q7_POOL_PERF_EXTISA_0` (selector 0, the base POOL lib):
 
 ```
@@ -340,7 +340,7 @@ getenv in firmware"; the 17/9 counts HIGH/OBSERVED — §9.]`
 ## 7. The error model
 
 The CAYMAN DKL DEBUG image carries the full loader runtime-log narrative (richer than
-SUNDA's RELEASE floor). Byte-exact strings (`strings -t x`, this pass; all carry the
+SUNDA's RELEASE floor). Byte-exact strings (`strings -t x`,; all carry the
 `P%i:` pool-core prefix):
 
 | DKL off | string | trigger / status |
@@ -412,8 +412,8 @@ prelink memory bounds.
   (selectors `0,1,2,3` — `ar t` confirmed). `[HIGH/OBSERVED — member inventory.]`
 - **Gen-invariant** formats: the `0x1095` record, the selector space, the `UCPL `
   header, and the 8-byte `kernel_info_table` entry. Per-gen deltas are only the table
-  entry **count** — `[HIGH/OBSERVED this pass]` CAYMAN base = **17**, CAYMAN CPTC = **9**
-  (`readelf -S` on the EXTISA blobs); SUNDA = 18 `[CARRIED from SX-FW-16 — SUNDA's table
+  entry **count** — `[HIGH/OBSERVED]` CAYMAN base = **17**, CAYMAN CPTC = **9**
+  (`readelf -S` on the EXTISA blobs); SUNDA = 18 `[CARRIED from FW-16 — SUNDA's table
   is embedded in the base image, not a standalone EXTISA member]`.
 
 ---
@@ -485,10 +485,10 @@ mechanisms:
 ## See also
 
 - [POOL Engine Main Dispatch Loop](./pool-dispatch.md) — the loop that scans the table this loader binds (#677).
-- [POOL Extended-Opcode (0xF0) Dispatch](./pool-ext-0xf0.md) — the `opcode 0xf0` / `spec` family seen in the decoded table *(stub — #678, concurrent)*.
-- [kernel_info_table Binary Layout](./kernel-info-table.md) — the 8-byte entry format in full *(stub — #681)*.
-- [External-Lib Prelink Validation + NUM_POOL_CORES](./prelink-validation.md) — the `total_cpus`/bounds validator §8 hands off to *(stub — #680)*.
-- [SEQ Dispatch Hub](../seq/dispatch-hub.md) — the dispatch key `opcode<<24\|spec<<16` and the two pool dispatch back-ends *(committed)*.
-- [nrtucode_ll load/unload](../../runtime/nrtucode-ll-load-unload.md) — the host generator of the `0x1095` sequence this loader consumes *(forward Part-8; not yet authored)*.
-- [Prelinker / UCPL](../../runtime/prelinker-ucpl.md) — the host relocator + `UCPL ` header staging step *(forward Part-8; not yet authored)*.
+- [POOL Extended-Opcode (0xF0) Dispatch](./pool-ext-0xf0.md) — the `opcode 0xf0` / `spec` family seen in the decoded table *(#678)*.
+- [kernel_info_table Binary Layout](./kernel-info-table.md) — the 8-byte entry format in full *(#681)*.
+- [External-Lib Prelink Validation + NUM_POOL_CORES](./prelink-validation.md) — the `total_cpus`/bounds validator §8 hands off to *(#680)*.
+- [SEQ Dispatch Hub](../seq/dispatch-hub.md) — the dispatch key `opcode<<24\|spec<<16` and the two pool dispatch back-ends.
+- [nrtucode_ll load/unload](../../runtime/nrtucode-ll-load-unload.md) — the host generator of the `0x1095` sequence this loader consumes *(forward Part-8)*.
+- [Prelinker / UCPL](../../runtime/prelinker-ucpl.md) — the host relocator + `UCPL ` header staging step *(forward Part-8)*.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the tag legend used throughout.

@@ -15,7 +15,7 @@ DEBUG build:
 | `proc_4bit_non_mx` | `P%i: proc_4bit_non_mx: num_elems=%d`                | 4-bit, `grp==0` | 4-bit scale-free widen |
 | `proc_6bit_non_mx` | `P%i: proc_6bit_non_mx: num_elem=%d, num_groups=%d`  | 6-bit, `grp==0` | FP6/E2M3 scale-free widen |
 
-Everything below is re-grounded **this pass** against the shipped binary:
+Everything below is grounded against the shipped binary:
 `libnrtucode_internal.so` (`sha256 b7c67e89…`, the customop-lib host blob that
 carries all 16 per-arch `Q7_POOL` device images as `.rodata` getter blobs) and
 its carved `CAYMAN_Q7_POOL` EXTISA_0 image (`sha256 910d41c3…`,
@@ -36,7 +36,7 @@ them with `fd --no-ignore` or an absolute path.
 > [`MatmulMX 0x0A`/`LdweightsMX 0x09`](pe-matmul.md)) which uses an **out-of-band**
 > `scale_addr` tensor and an explicit **E8M0** (`SFP8_E8`) shared-exponent scale.
 > Both are "microscaling"; their block/scale plumbing is different. §6 reconciles
-> them. `[HIGH/OBSERVED both contracts — §6.]`
+> them.
 
 ---
 
@@ -45,34 +45,34 @@ them with `fd --no-ignore` or an absolute path.
 1. **One opcode, three paths.** `0x7b TensorDequantize` dispatches (byte-exact)
    to a trampoline `@0x01004dc4` → `decode_tensor_dequantize @0x01004df0`, which
    either calls the **standalone** `proc_4bit_mx_8 @0x0100511c` (MX) or runs one
-   of two **inline** non-MX arms. `[HIGH/OBSERVED — §2.]`
+   of two **inline** non-MX arms. `[HIGH/OBSERVED]`
 2. **The MX block is 8, not 32.** `group_size` is literally `8`; the OCP-MX
    block-of-32 is **not** what this op uses. The scale rides **in-band** within
    each group of 8 source codes — `s3d3_tens_dequant` has **no `scale_addr`
-   field**. `[HIGH/OBSERVED — struct §3 + the `grp==8`/`8:5` rule §3.3.]`
+   field**.
 3. **The scale is applied as a multiply.** `proc_4bit_mx_8` reconstructs each
    nibble to FP16/FP32, then **multiplies** by the broadcast per-block scale via
    the IVP MAC ops (`ivp_mulus4tan16xr16` / `ivp_dmulqa2n8xr8`, packed-register
-   scale `pr<N>`). Not a `2^exp` add on the dequant side. `[HIGH that a multiply
-   happens / MED exact register routing — §5, §10.]`
+   scale `pr<N>`). Not a `2^exp` add on the dequant side.
+   `[HIGH multiply; MED register routing]`
 4. **`4-bit` vs `6-bit` is width + pack-density + scale-presence, not a
    different scale algebra.** 4-bit nibble-packs 2/byte (ratio `2:1` non-MX,
    `8:5` MX); 6-bit FP6 bit-packs 4 codes per 3 bytes (ratio `4:3`, `grp==0`
    only — the ISA **forbids** `grp==8` for FP6). Only the 4-bit MX path applies a
-   scale. `[HIGH/OBSERVED — §4, §7.]`
+   scale.
 5. **Output is FP8.** `E5M2` for `FP4`/`INT4`, `E4M3` for `NF4`/`FP6` (the
    `dequant_fmt` table). Intermediate compute is soft-float FP16/FP32 (no HW FP);
    the narrow-to-FP8 is a saturating clamp (`ivp_bmin*`/`ivp_bmax*`) after a
    48-bit accumulator extract (`ivp_cvtg48n_2x32l`). Rounding RNE (implicit).
-   `[HIGH output FP8 / MED implicit RNE — §5.]`
+   `[HIGH output FP8; MED implicit RNE]`
 6. **`NF4` is a 16-entry table lookup, not a bitfield re-bias.** The `const16`
    constants at the proc head (`0x43a8 0x22d5 0xc465 0x1841 0xc558 0xf228 0x6506
    0xe3a1`, OBSERVED in the body) are the packed NormalFloat-4 codebook /
-   re-encode constants. `[HIGH that NF4 is a lookup / MED the exact table — §4.]`
+   re-encode constants. `[HIGH NF4 lookup; MED exact table]`
 7. **Per-gen: NC-v3+.** Present (byte-verified `kernel_info` entry) on
    CAYMAN / MARIANA / MARIANA_PLUS / MAVERICK; **absent** on SUNDA (NC-v2 — the
    `has_valid_nc_tens_dequant: nc >= V3` gate, and SUNDA ships no
-   `s3d3_tens_dequant` header and no `0x7b` POOL kernel). `[HIGH/OBSERVED — §8.]`
+   `s3d3_tens_dequant` header and no `0x7b` POOL kernel).
 
 ---
 
@@ -82,7 +82,7 @@ The compute bodies are **not** byte-recoverable from the host x86 lib directly �
 they are Xtensa device code carved out of the `Q7_POOL` EXTISA blobs the host lib
 holds as `.rodata`. The single most useful artifact for *naming* the paths is the
 firmware's **own DEBUG build**, which prints each function's name. Those format
-strings ship verbatim in the host lib (`strings -a -t x`, this pass):
+strings ship verbatim in the host lib, at these hex `.rodata` offsets:
 
 ```
  2696b4  P%i: TensorDequantize : num_chans = %0d          <- per-core entry log
@@ -93,9 +93,8 @@ strings ship verbatim in the host lib (`strings -a -t x`, this pass):
  269784  P%i: proc_4bit_mx_8: num_elem=%d, num_groups=%d   <- 4-bit MX block path
 ```
 
-`[HIGH/OBSERVED — byte offsets read this pass; the same six strings repeat in the
-MARIANA / MARIANA_PLUS / MAVERICK `Q7_POOL` DEBUG blocks (four identical per-arch
-blobs in the one host lib).]`
+The same six strings repeat in the MARIANA / MARIANA_PLUS / MAVERICK `Q7_POOL`
+DEBUG blocks (four identical per-arch blobs in the one host lib).
 
 The format strings are themselves a compute-path **contract**:
 
@@ -115,14 +114,13 @@ The format strings are themselves a compute-path **contract**:
 > `TensorDequantize::proc_4bit_mx_8(unsigned int)`). The DEBUG strings prove the
 > inline source functions are real and named; their exact inline boundaries
 > within `decode` are not separately pinned (no func-start record).
-> `[HIGH/OBSERVED — string + prop sweep.]`
 
-> **CORRECTION (resolves the SX-FW-63 "no `proc_6bit` exists" finding).** An
+> **CORRECTION — the "no `proc_6bit` exists" finding, resolved.** An
 > earlier pass searched only `.xt.prop` symbols and concluded `proc_6bit` did not
 > exist. The firmware DEBUG self-naming (`@0x26972c`) **proves it does** — it is a
 > real, named source function, merely inlined into `decode`. The three-arm model
 > `{4bit_mx(grp8), 4bit_non_mx(grp0), 6bit_non_mx(grp0)}` is the correct one.
-> `[HIGH/OBSERVED — supersedes the prop-only census.]`
+> `[HIGH/OBSERVED]`
 
 ---
 
@@ -131,8 +129,7 @@ The format strings are themselves a compute-path **contract**:
 The POOL kernel-dispatch table is a flat array of 8-byte records
 `{ u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA }` (the FW-18 record format). On
 the carved `CAYMAN_Q7_POOL` EXTISA_0 the `TensorDequantize` record is the **last
-real entry**, immediately followed by the `.data` terminator word `34cb9960`
-(OBSERVED this pass):
+real entry**, immediately followed by the `.data` terminator word `34cb9960`:
 
 ```
 $ xxd -s 0x7480 -l 16 CAYMAN_0.so
@@ -140,7 +137,7 @@ $ xxd -s 0x7480 -l 16 CAYMAN_0.so
           └idx16┘└op┘ └funcVA 0x01004dc4 LE┘ └terminator┘
 ```
 
-`[HIGH/OBSERVED bytes — op `0x7b`=123, spec 0, funcVA `0x01004dc4`.]` The
+`[HIGH/OBSERVED — op 0x7b=123, spec 0]` The
 trampoline at `0x01004dc4` is clean-decoding (binary-mode, OBSERVED): `entry a1,32`;
 `const16 a2,0x0200 ; const16 a2,0x0480` (= `0x02000480`, the per-kernel dequant
 state slot in the `.data`/`.bss` state band); a state-setup `call0`; then
@@ -165,8 +162,7 @@ record's LE VMA, OBSERVED):
 | `decode_tensor_dequantize(bool)`           | `0x01004df0` | `0x01004df0 .. 0x0100511c` (~812 B; holds the two inline non-MX paths) |
 | `TensorDequantize::proc_4bit_mx_8(unsigned int)` | `0x0100511c` | `0x0100511c .. ~0x010055e6` (~1226 B) |
 
-`[HIGH/OBSERVED func-starts; HIGH the `const16==funcVA` pin; MED the exact branch
-arms — FLIX desync §10.]`
+`[HIGH func-starts + const16 pin; MED branch arms]`
 
 ---
 
@@ -194,9 +190,7 @@ element-count ratios. **There is no `src1`/scale tensor, no zero-point, no
 | 44–59 | 16 | `dst_mem_pattern`     | `TENSOR3D` (mav: `MEM_PATTERN3D`) | **output** (FP8), written, SBUF |
 | 60–63 | 4  | `reserved2[4]`        | —                         | `== 0` |
 
-`[HIGH/OBSERVED layout — header struct declaration read this pass; the validity
-fns are comment-only so the layout is OBSERVED, not compile-asserted beyond the
-`==64` static assert.]`
+`[HIGH/OBSERVED layout]`
 
 > **QUIRK — `in_dtype == out_dtype == UINT32`, always.** The dtype fields do
 > **not** carry the logical micro-format. They are a fixed `UINT32` transport
@@ -204,8 +198,8 @@ fns are comment-only so the layout is OBSERVED, not compile-asserted beyond the
 > consumes the sub-byte dtype codes (`FP4_EXP2=0x10`, `INT4=0x12`) through the
 > `dtype` field — it consumes them through `dequant_fmt` + the `UINT32`
 > transport. This is exactly why the [dtype model](dtype-model.md) marks
-> `FP4`/`INT4` as **transport-only** dtypes. `[HIGH/OBSERVED — header validity
-> `has_valid_tens_dequant_in_dtype: d == UINT32`.]`
+> `FP4`/`INT4` as **transport-only** dtypes.
+> `[HIGH/OBSERVED — has_valid_tens_dequant_in_dtype]`
 
 ### 3.1 Validity contract (`is_valid_tensor_dequantize`, verbatim)
 
@@ -231,7 +225,7 @@ This single predicate is the entire `grp8`/`grp0` split, verbatim from the heade
 // }
 ```
 
-`[HIGH/OBSERVED.]` ⇒ **`group_size==8` is legal only for the three 4-bit formats.
+⇒ **`group_size==8` is legal only for the three 4-bit formats.
 `E2M3ToE4M3` (FP6) has no `grp==8` form** — `proc_6bit` is **always** non-MX.
 
 ### 3.3 Element-count ratios (`s3d3_tens_dequant_element_count_check_t3d`)
@@ -245,15 +239,13 @@ is what each `proc_*` body's loop reciprocal realises:
 | `E2M3` (FP6)        | 0 | `4 : 3` | `% 3 == 0` | `proc_6bit_non_mx` |
 | `E2M1`/`INT4`/`NF4` | 8 | `8 : 5` | `% 5 == 0` | `proc_4bit_mx_8` |
 
-`[HIGH/OBSERVED — `ratio_element_count_t3d(src, dst, A, B)` + `is_num_elem_mult_n_t3d`
-calls, verbatim from the header.]`
+`[HIGH/OBSERVED — ratio_element_count_t3d + is_num_elem_mult_n_t3d]`
 
 > **NOTE — the `8:5` ratio *is* the in-band scale being consumed.** For the MX
 > block, 8 source units map to 5 destination FP8 outputs: of the 8 packed units,
 > the shared block exponent/scale is extracted in-band and the remainder expand
 > to 5 FP8. This is why the prologue carries an `n/5` reciprocal (§5.1) and why
-> the DEBUG name prints `num_groups`. `[HIGH ratio / MED which of the 8 packed
-> units is the scale byte — desync §10.]`
+> the DEBUG name prints `num_groups`. `[HIGH ratio; MED which unit is the scale]`
 
 ---
 
@@ -272,8 +264,6 @@ typedef enum NEURON_ISA_TPB_DEQUANT_FMT {
 } NEURON_ISA_PACKED NEURON_ISA_TPB_DEQUANT_FMT;
 ```
 
-`[HIGH/OBSERVED — read byte-for-byte this pass.]`
-
 | fmt | input micro-format | output FP8 | MX (`grp8`)? | ratio | per-format arithmetic |
 |---|---|---|:-:|---|---|
 | 0 | — (`INVALID`) | — | — | (rejected) | `"Unimplemented dequant format"` |
@@ -282,8 +272,7 @@ typedef enum NEURON_ISA_TPB_DEQUANT_FMT {
 | 3 | `NF4` (4-bit codebook)    | `FP8_E4M3` | yes | `2:1`/`8:5` | **16-entry table lookup** → re-encode E4M3 |
 | 4 | `FP6_E2M3` (6-bit `1.2.3`) | `FP8_E4M3` | **no** | `4:3` | exp rebias `1.2.3→1.4.3`, **mantissa passes through (3 bits)** |
 
-`[HIGH/OBSERVED enum + ratios; HIGH conversion model / MED exact in-FLIX micro-op
-order — §10.]`
+`[HIGH enum + ratios; MED micro-op order]`
 
 The element micro-formats (bit fields, from the enum comments + the
 [dtype model](dtype-model.md)):
@@ -292,7 +281,7 @@ The element micro-formats (bit fields, from the enum comments + the
 - **`INT4`** — 4-bit signed integer. Dtype code `INT4 = 0x12`.
 - **`NF4`** — NormalFloat-4: a **non-uniform 16-entry codebook**, i.e. a *table
   index*, **not** a float bitfield. There is no `NF4` `NEURON_ISA_TPB_DTYPE` code
-  — it exists only as a `dequant_fmt`. `[HIGH — enum comment.]`
+  — it exists only as a `dequant_fmt`.
 - **`FP6_E2M3`** — 6-bit `1-2-3`. **E2M3, not E3M2** — confirmed by the enum
   name. There is no FP6 `NEURON_ISA_TPB_DTYPE` code either.
 - **Outputs** — `FP8_E5M2` (= `FP8_EXP5 = 0x0F`) for FP4/INT4; `FP8_E4M3`
@@ -303,14 +292,11 @@ The element micro-formats (bit fields, from the enum comments + the
 > integer-affine dequant (zero-point subtract, scale multiply) lives in a
 > **different engine** (the Activation engine), not this POOL kernel. The only
 > multiply this op performs is the MX block-scale multiply on the `grp8` path.
-> `[HIGH/OBSERVED — the struct has no zero-point/scale field; the rebias paths
-> are scale-free.]`
 
 > **QUIRK — the output FP8 is an ISA/ucode intermediate, not an `at::Tensor`
 > dtype.** In `v0.21.2.0` there is no pre-FP8 `c10::ScalarType`, so the FP8
 > produced here is an internal datapath value selected by `dequant_fmt`, not
-> something marshallable across the host `at::Tensor` boundary. `[HIGH cross-link
-> — dtype model §FP8.]`
+> something marshallable across the host `at::Tensor` boundary.
 
 ---
 
@@ -332,9 +318,8 @@ plus a 10-phase binary-mode scan; both agree.
 The `0xCCCD` half is OBSERVED at file off `0x5228` (`cdcc` little-endian inside
 the first FLIX bundle word `3340cccd`); it is the low half of the magic constant
 `0xCCCCCCCD` whose `(x * 0xCCCCCCCD) >> (32+2)` computes `x/5`. This realises the
-`8:5` block ratio (5 FP8 outputs per group of 8 source units). `[HIGH the `/5`
-idiom + the `0xCCCD` byte / MED the exact upper half — it sits in a FLIX-desync
-span, §10.]`
+`8:5` block ratio (5 FP8 outputs per group of 8 source units).
+`[HIGH /5 idiom + 0xCCCD; MED upper half]`
 
 ### 5.2 The IVP intrinsic set (phase-stable)
 
@@ -346,7 +331,7 @@ span, §10.]`
 | **saturate / clamp** | `ivp_bminnx16`, `ivp_bminn_2x32`, `ivp_bmin2nx8`, `ivp_bmaxn_2x32`, `ivp_bmaxun_2x32` | saturating min/max → **clamp** to the FP8 `E5M2`/`E4M3` representable range |
 | **fp gate** | `ivp_ultn_2xf32t` | fp32 unordered compare — overflow/NaN gating |
 
-`[HIGH that these ops are emitted in the body / MED exact register routing — §10.]`
+`[HIGH ops present; MED register routing]`
 
 ### 5.3 The clean FLIX bundles (byte-exact, merged-prop)
 
@@ -371,8 +356,7 @@ executed in parallel. Other clean bundles:
 - `@0x010053c0` `{ ivp_dmulqa2n8xr8 wv3,wv1,v25,v9,v13,v29,pr0 ; ivp_dselnx16 v2,… }`
   — dual quad-8b MAC with packed scale `pr0` + lane select.
 
-`[HIGH/OBSERVED — these four bundles decode clean under the merged property
-table; the desynced spans between them are NOT reported as real instructions.]`
+The desynced spans between them are **not** reported as real instructions.
 
 ### 5.4 The codebook / re-bias constants
 
@@ -384,9 +368,7 @@ OBSERVED in the proc body (`0x0100511c..~0x010055e6`):
 0x43a8  0x22d5  0xc465  0x1841  0xc558  0xf228  0x6506  0xe3a1
 ```
 
-`[HIGH that these `const16` constants are present in the body (each verified by a
-little-endian byte search of the carved proc extent) / MED the exact code→FP8
-mapping table — desync prevents pinning the per-code routing.]`
+`[HIGH constants present; MED code→FP8 mapping]`
 
 ### 5.5 `proc_4bit_mx_8` as annotated C pseudocode
 
@@ -449,9 +431,7 @@ static void proc_4bit_mx_8(unsigned int num_elem)
 }
 ```
 
-`[HIGH the loop shape, the unpack→scale-mul→saturate→pack chain, and the named
-IVP ops at the cited bundle addresses; MED the per-fmt arm order and the exact
-`pr` routing — §10.]`
+`[HIGH chain + named ops; MED arm order + pr routing]`
 
 ---
 
@@ -469,7 +449,7 @@ IVP ops at the cited bundle addresses; MED the per-fmt arm order and the exact
 ### 6.2 NC-v5 `MXTensorV2` + `QuantizeMX` (maverick, the *forward* data→MX)
 
 This is the place where the OCP-MX **E8M0** shared-exponent scale is **explicit**.
-`NEURON_ISA_TPB_MXTENSOR_V2` (`common.h:884`, read byte-for-byte this pass):
+`NEURON_ISA_TPB_MXTENSOR_V2` (`common.h:884`):
 
 ```c
 typedef struct NEURON_ISA_TPB_MXTENSOR_V2 {
@@ -483,10 +463,10 @@ typedef struct NEURON_ISA_TPB_MXTENSOR_V2 {
 } NEURON_ISA_TPB_MXTENSOR_V2;
 ```
 
-`[HIGH/OBSERVED.]` The `QuantizeMX` header comment (verbatim): *"finds scale
+`[HIGH/OBSERVED]` The `QuantizeMX` header comment (verbatim): *"finds scale
 exponents for groups of lanes/partitions, scales all elements by the reciprocal
 of their scale, quantizes to FP8/FP4, and outputs both quantized/scaled data and
-scales."* Its struct `NEURON_ISA_TPB_S3DMX1_QUANT_STRUCT` (64 B, read this pass)
+scales."* Its struct `NEURON_ISA_TPB_S3DMX1_QUANT_STRUCT` (64 B)
 binds to opcode `QUANTIZE_MX = 0xe3` (`instruction_mapping.json`), is **NC-v5
 only** (`s3dmx1_quant_valid_nc: nc == V5`), and requires
 `num_active_channels ∈ [16,128], %16==0` (group-of-16-partitions).
@@ -496,13 +476,13 @@ Key facts, all OBSERVED from the maverick header:
 - **The MX shared scale is E8M0.** `scale_dtype` is one of the **scale-only**
   codes: `SFP8_E8 = 0x13` (`// FP8_S0E8M0`, an E8M0 power-of-two exponent with no
   sign bit), `SFP8_E7 = 0x14`, `SFP8_E6 = 0x15`, `SFP8_E5 = 0x16` — or
-  `FP8_EXP4`/`Invalid` (`is_valid_mxtensorv2` at `common.h:3277`). `[HIGH/OBSERVED.]`
+  `FP8_EXP4`/`Invalid` (`is_valid_mxtensorv2` at `common.h:3277`).
 - **The block dims are power-of-two.** `p_f_dim` packs F (upper nibble) and P
   (lower nibble) as 2's exponents; the validity gate allows `p_f_dim == 0x04 ||
-  0x44` (`common.h:3275`). An OCP-MX block of 32 is `2^5`. `[HIGH/OBSERVED.]`
+  0x44` (`common.h:3275`). An OCP-MX block of 32 is `2^5`.
 - **The MX element dtype** is `is_valid_mx_dtype` = `{ FP8_EXP2(0x11),
   FP8_EXP3(0x0D), FP8_EXP4(0x0E), FP8_EXP5(0x0F), FP4_EXP2(0x10), INT4(0x12) }`
-  (`common.h:1712`) — matching the [dtype model](dtype-model.md). `[HIGH/OBSERVED.]`
+  (`common.h:1712`) — matching the [dtype model](dtype-model.md).
 - `QuantizeMX 0xe3` is one of the MARIANA-DVE-new opcodes (DVE engine);
   [`MatmulMX 0x0A`/`LdweightsMX 0x09`](pe-matmul.md) are the PE-side MX matmul.
 
@@ -526,13 +506,13 @@ Key facts, all OBSERVED from the maverick header:
 > family convention). The **E8M0 fact is HIGH/OBSERVED only for the separate
 > NC-v5 `MXTensorV2`/`QuantizeMX` `scale_dtype` field**. The device applies the
 > dequant-side scale as a multiply regardless of its exact bit-format.
-> `[flagged honestly — §10.]`
+> `[flagged — §10]`
 
 > **QUIRK — the POOL dequant MX *pre-dates* the MARIANA MXTensorV2 wave.**
 > `proc_4bit_mx_8` is already present on CAYMAN (NC-v3). The framing "MX is the
 > MARIANA+ addition" refers to the **DVE/PE `MXTensorV2`** surface
 > (`QuantizeMX`/`MatmulMX`/`LdweightsMX`), which *is* genuinely MARIANA+. Both
-> coexist on maverick. `[HIGH reconciliation — §8.]`
+> coexist on maverick.
 
 ---
 
@@ -559,8 +539,7 @@ stride/select; **(2)** pack density (nibble vs 6-bit) → different ratio
 per-block scale-multiply; both non-MX paths are scale-free bitfield-rebias
 widens. FP6 can **never** be MX (the ISA forbids `grp8` for `E2M3`), so 6-bit is
 never scaled. **The scale algebra does not differ between paths beyond
-present/absent — there is no second scale scheme.** `[HIGH/OBSERVED — ISA +
-DEBUG + IVP.]`
+present/absent — there is no second scale scheme.** `[HIGH/OBSERVED]`
 
 ### 7.1 The two inline non-MX bodies (in `decode_tensor_dequantize`)
 
@@ -586,7 +565,7 @@ Clean bundle `@0x01004fc8` (byte-exact):
 ```
 
 and `@0x01004dfc { ivp_labvdcmprs2nx8_xp vb12,… ; ivp_oltnxf16t vb2,… ; ivp_dselnx16t v0,… }`
-(compressed strided load + fp16 compare + lane move). `[HIGH/OBSERVED bundles.]`
+(compressed strided load + fp16 compare + lane move).
 
 ```c
 /*
@@ -614,9 +593,7 @@ static void proc_Nbit_non_mx(unsigned int num_elem)   /* N in {4,6} */
 }
 ```
 
-`[HIGH the load→unpack→subtract→rebias→gate→pack chain and the named IVP ops at
-`@0x01004fc8`/`@0x01004dfc`; MED which fmt takes which inline arm and the exact
-`n/3` (`0xAAAB`) FP6 divisor — the constant sits in a desync span, §10.]`
+`[HIGH chain + named ops; MED inline arm + n/3 divisor]`
 
 ---
 
@@ -634,7 +611,7 @@ static void proc_Nbit_non_mx(unsigned int num_elem)   /* N in {4,6} */
 | **MAVERICK** | `0000007b ec500000` | rel `0x000050ec` | ET_DYN, **stripped** (no `.xt.prop`/strings); op present, bodies not symbol-recoverable |
 | **SUNDA** | — (no `0x7b` record) | — | **ABSENT** |
 
-`[HIGH/OBSERVED — every `kernel_info` line read this pass with `xxd`.]` The three
+`[HIGH/OBSERVED]` The three
 `proc_*` DEBUG names appear in **all four** per-arch `Q7_POOL` DEBUG blocks
 (including maverick — the host lib carries four identical blocks), so the maverick
 path-names are recoverable from the DEBUG strings even though its EXTISA is
@@ -646,14 +623,13 @@ stripped.
 > file under `neuron_sunda_arch_isa/`), and **(b)** the SUNDA POOL device image
 > carries no `0x7b` kernel — the `has_valid_nc_tens_dequant: nc >= V3` gate makes
 > dequant an NC-v3+ feature and SUNDA is the pre-v3 (NC-v2) POOL set. The opcode
-> number is reserved in the enum; the kernel is not built. `[HIGH/OBSERVED —
-> header gate + missing struct header + the NC-v3 gate.]`
+> number is reserved in the enum; the kernel is not built.
 
 > **NOTE — the dequant contract did not change across NC-v3..v5.** The
 > `DEQUANT_FMT` 5-value enum and the `s3d3_tens_dequant` struct are byte-identical
 > cayman/mariana/maverick; maverick only renames `TENSOR3D → MEM_PATTERN3D` (a
 > union widening that adds the `MXTensorV2`/indirect access patterns) and adds
-> indirect-quadrant guards. `[HIGH/OBSERVED diff.]`
+> indirect-quadrant guards.
 
 ### B) The NC-v4/v5 `MXTensorV2` family (separate engines, MARIANA+)
 
@@ -667,7 +643,7 @@ on the DVE and PE engines, documented at
 - **PE `MatmulMX 0x0A` + `LdweightsMX 0x09`** — MX matmul / weight-load. MARIANA+.
 
 They use the `MXTensorV2` out-of-band-scale, E8M0, power-of-two-block mechanism
-(§6.2), **not** the POOL in-band-block-of-8 path. `[HIGH cross-link — reconciled.]`
+(§6.2), **not** the POOL in-band-block-of-8 path.
 
 ---
 

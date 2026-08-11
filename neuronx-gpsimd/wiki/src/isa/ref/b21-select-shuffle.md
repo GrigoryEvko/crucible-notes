@@ -20,25 +20,25 @@ the B19 scatter/gather or B20 hp-convert groups). It hosts five compute shapes:
   but locked into the LdSt / Mul / ALU2 FLIX slot so a `sel` in S3 and a byte-permute in another slot
   can co-issue in one bundle.
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (`Opcode_<mnem>_Slot_<slot>_encode` thunks read byte-for-byte; the `Iclass_IVP_<MNEM>_args`
 operand-descriptor arrays and the `regfiles[]` table walked directly), the **value semantics** by
 *executing* the matching `module__xdref_*` leaves in `libfiss-base.so` live in-process, the **issue
 timing** from the per-op `*_issue` scoreboard bodies in `libcas-core.so`, and a byte-exact
 **encode/decode oracle** from the device-native `xtensa-elf-as`/`xtensa-elf-objdump`
-(`XTENSA_CORE=ncore2gp`). Every representative was round-tripped through that device oracle this pass.
+(`XTENSA_CORE=ncore2gp`). Every representative round-trips through that device oracle.
 Confidence tags per [the Confidence & Walls model](../../reference/confidence-model.md):
 `[HIGH/OBSERVED]` = read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic re-confirmed this pass.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64,
-> not stripped; 45 198 symbols). `readelf -SW` this pass: `.text` (VMA `0x312c10`) and `.rodata` (VMA
+> **NOTE — address arithmetic.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64,
+> not stripped; 45 198 symbols). Per `readelf -SW`: `.text` (VMA `0x312c10`) and `.rodata` (VMA
 > `0x3b6e40`) are **VMA == file-offset**; `.data` (VMA `0x764040` ↔ file `0x564040`) and `.data.rel.ro`
 > (VMA `0x67bb00` ↔ file `0x47bb00`) carry the per-binary delta **`0x200000`** — **not** libtpu's
 > `0x400000`, so `objdump -s -j .data` on the `Iclass_*_args` operand tables and the `regfiles[]`
 > array must subtract `0x200000`. Encode thunks live in `.text` (VMA == file). All three config DLLs
 > are under `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with
-> `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> `fd --no-ignore` or an absolute path).
 
 ---
 
@@ -55,8 +55,7 @@ neighbours:
   lane) and are owned by B16; they are cited here only as adjacency. `[HIGH/OBSERVED — membership]`
 * **Memory-indexed access (`ivp_gather*`, `ivp_scatter*`) → B19, not here.** Those compute a per-lane
   *address* (`base + offset[lane]`) and hand it to the SuperGather host port; B21 ops route lanes
-  *inside* the register file with no memory touch. The two rosters are disjoint (0 cross-membership,
-  verified this pass). `[HIGH/OBSERVED]`
+  *inside* the register file with no memory touch. The two rosters are disjoint (0 cross-membership).
 * **The cross-lane *fold* (`ivp_radd`/`rmax`/…) and the unaligned-access *funnel shift*
   (`ivp_lalign`/`malign`/…) → the reduce / valign families.** Those collapse or stream the vector;
   B21 *permutes* it. The shared S3-ALU lane-permute datapath this page documents is the crossbar leg;
@@ -73,7 +72,7 @@ encoding/operand/timing reference.
 
 ---
 
-## 1. Roster and count verification `[HIGH/OBSERVED]`
+## 1. Roster and count verification
 
 The two groups are enumerated directly from the `libisa-core.so` symbol table (the encrypted TIE-XML
 that carries the formal `<SEMANTIC>` membership is *not* consulted for counts — every mnemonic below
@@ -103,7 +102,7 @@ granularity** — a result lane copies a whole input element:
 
 ---
 
-## 2. Common encoding model `[HIGH/OBSERVED]`
+## 2. Common encoding model
 
 ### 2.1 State / exception gate
 
@@ -116,7 +115,7 @@ effect — iff the cp1 enable bit is clear). This is the same gate the whole `iv
 
 Each `Iclass_IVP_<MNEM>_args` symbol in `.data` is an array of **16-byte operand descriptors**,
 `{const char* name; uint64 dir}` (the `dir` low byte is an ASCII code: `0x6f`=`'o'`=output,
-`0x69`=`'i'`=input, `0x6d`=`'m'`=inout). Walked this pass (subtracting the `0x200000` `.data` delta),
+`0x69`=`'i'`=input, `0x6d`=`'m'`=inout). Walked (subtracting the `0x200000` `.data` delta),
 `DSELNX16` resolves to exactly **five** descriptors, the first **two** marked `'o'`:
 
 ```
@@ -147,9 +146,9 @@ operand-name strings (`vt vu vs vr sr vbr isel ishfl slct slct_h`) all live in `
 | `DCMPRS2NX8` | 3 | `vt`(o) `vr`(i) `vbr`(i) |
 
 The `.T` predicated forms mark the destination(s) `'m'` (inout) — a read-modify-write, because the
-killed lanes keep the destination's prior value (§4.3). `[HIGH/OBSERVED — every count is
-region-size/16 from the symbol table; the vu/vt dual-out, the inout `.T` destinations, and the vbr/imm
-controls are the literal descriptor directions.]`
+killed lanes keep the destination's prior value (§4.3). Every count is region-size/16 from the symbol
+table; the `vu`/`vt` dual-out, the inout `.T` destinations, and the `vbr`/imm controls are the literal
+descriptor directions.
 
 > **CORRECTION — the immediate operands are named `isel` / `ishfl` / `slct` / `slct_h`, not
 > `saimm7`/`selimm`/`shflimm`.** A conceptual reading labelled the 7-bit `SEL2NX8I`/`SHFL2NX8I`
@@ -162,7 +161,7 @@ controls are the literal descriptor directions.]`
 
 ### 2.3 Register files and operand widths
 
-Two independent reads of the operand classes, both byte-exact this pass:
+Two independent reads of the operand classes, both byte-exact:
 
 The `libcas-core.so` address-resolver thunks mask the operand index to the file size:
 
@@ -189,15 +188,14 @@ gives the bit-width and count per file (`name @+0x0`, `width @+0x18`, `count @+0
 
 The control vector `sr`, the two data sources `vr`/`vs`, and both outputs `vt`/`vu` are all in the
 512-bit `vec` file (idx 2); the `.T`-form predicate `vbr` is a 64-bit `vbool` (idx 3). The
-`&0x1f / &0xf / &0x3` masks match the idx-2/3/4 counts exactly. `[HIGH/OBSERVED — masks + descriptor
-table both read this pass]`
+`&0x1f / &0xf / &0x3` masks match the idx-2/3/4 counts exactly.
 
 ### 2.4 The selector constants — encode-thunk bodies
 
 Each placement's `Opcode_ivp_<mnem>_Slot_<slot>_encode` is a two-instruction thunk `movl
 $imm32,(%rdi); ret` (the high opcode word at `0x4(%rdi)` is always 0); the `imm32` is the format-local
 opcode-selector template the assembler writes into the bundle. Read byte-for-byte at `F0/S3` (the
-canonical ALU slot) this pass:
+canonical ALU slot):
 
 | op | `F0/S3` encode `imm32` | op | `F0/S3` encode `imm32` |
 |----|----------------------:|----|----------------------:|
@@ -216,15 +214,15 @@ Two structural facts fall straight out of these bytes:
 * **`SHFL` shares one base, width in the low byte.** `SHFL{2NX8,NX16,N_2X32}` are
   `0x82900200 + {0x08,0x0a,0x0c}` — the element width is a per-format enumerated low-byte field, *not*
   three independent opcodes. The immediate form `SHFL2NX8I` swaps the base to `0x82800208`. The
-  `DSEL2NX8I_H` "high half" variant is exactly `DSEL2NX8I + 0x4000` (bit 14). `[HIGH/OBSERVED]`
+  `DSEL2NX8I_H` "high half" variant is exactly `DSEL2NX8I + 0x4000` (bit 14).
 * **`DSELNX16T` encodes to `0x0`.** Its opcode-selector bits land entirely in the operand-field region
   of the wide bundle (the legal "no nonzero upper lane" case); the discriminator is carried by the
-  operand binding, not a nonzero selector word. `[HIGH/OBSERVED]`
+  operand binding, not a nonzero selector word.
 
 > **QUIRK — the `&0x3f` (SEL) vs `&0x1f` (SHFL) index-mask split.** For the *same* `NX16` 32-lane
 > grid, the two ops mask the per-lane control index to *different* widths — and that one-bit
 > difference is the whole SEL-vs-SHFL distinction. Read straight from the `libfiss-base.so` value
-> bodies this pass:
+> bodies:
 >
 > | op | index mask | reach |
 > |----|-----------|-------|
@@ -254,7 +252,7 @@ an S4 (ALU2) slot, with **no** cross-contamination:
 
 > **QUIRK — `_Sn` is the host slot, and the immediate is a *coded* lane pattern, not a free index.**
 > The `_Sn` thunks carry a 5-bit `isel`/`ishfl` field that is a **one-hot / power-of-two grouped
-> pattern**, not a raw 0..31 select. Probed exhaustively against the device assembler this pass, the
+> pattern**, not a raw 0..31 select. Probed exhaustively against the device assembler, the
 > legal set for `SEL2NX8I_S0` is `{0,1,2,3,8,16,32,64}` — the assembler *rejects* `4` and `127`. The
 > encode `imm32` is format/slot-specific (it is the packed selector for that one FLIX format): e.g.
 > `SEL2NX8I_S0` in `f1_s0_ldstalu` = `0x11000000`, in `n2_s0_ldst` = `0x10100000`; `SEL2NX8I_S4` in
@@ -288,7 +286,7 @@ the exact split-field bit positions of vs/vr.]`
 
 ---
 
-## 3. Immediate ranges — device-assembler probe `[HIGH/OBSERVED]`
+## 3. Immediate ranges — device-assembler probe
 
 Every immediate range was probed by attempting an `xtensa-elf-as` assembly of the boundary values
 (`XTENSA_CORE=ncore2gp`); legality is the assembler's accept/reject:
@@ -302,7 +300,7 @@ Every immediate range was probed by attempting an `xtensa-elf-as` assembly of th
 
 > **CORRECTION — the `_S0` coded-immediate legal set includes `3`.** An earlier reading listed the
 > accepted `_S0` patterns as `{0,1,2,8,16,32,64}` (rejecting `4`). Re-probing the device assembler
-> exhaustively this pass, **`3` is also accepted** while `4` and `127` remain rejected, so the legal
+> exhaustively, **`3` is also accepted** while `4` and `127` remain rejected, so the legal
 > set is `{0,1,2,3,8,16,32,64}`. The shape of the encoding (sparse, power-of-two-grouped, *not* a free
 > index) is unchanged. `[HIGH/OBSERVED — exhaustive as probe]`
 
@@ -311,7 +309,7 @@ Every immediate range was probed by attempting an `xtensa-elf-as` assembly of th
 ## 4. Semantics — per-lane value functions
 
 The lane-routing core is a 5-bit one-hot 32-way multiplexer instantiated per output half; the value
-functions below were **executed live** in `libfiss-base.so` (`ctypes.CDLL`, NULL context) this pass on
+functions below were **executed live** in `libfiss-base.so` (`ctypes.CDLL`, NULL context) on
 directed edge inputs, and the index masks are the `and $0xN` reads of §2.4. The deeper RTL model
 (`xdsem_tiesel_5_32`, `xdsem_bitkill`) is the [group-semantics-II](../semantics/group-semantics-ii.md)
 reference; the per-lane functions are reproduced here.
@@ -347,7 +345,6 @@ void shfl_nx16(const i16 vr[32] /*src*/, const i16 sr[32] /*ctrl*/, i16 vt[32]) 
 
 **Live-driven**: `idx 5 → 0x105`, `idx 0x25&0x1f=5 → 0x105` (mask wraps), `idx 31 → 0x11f`. Shuffle has
 **no `.T` predicated form** — a pure permute needs no per-lane guard (the roster confirms the absence).
-`[HIGH/OBSERVED]`
 
 ### 4.3 SEL.T — predicated merge
 
@@ -440,10 +437,10 @@ op holds S3. `[HIGH/OBSERVED — slot-pin + compute equivalence]`
 
 ---
 
-## 5. Worked bit-patterns — device-oracle round-trips `[HIGH/OBSERVED]`
+## 5. Worked bit-patterns — device-oracle round-trips
 
 Every bundle below was assembled by `xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) and disassembled back to
-the exact mnemonic + operand spelling by `xtensa-elf-objdump` this pass. The bytes are the bundle's
+the exact mnemonic + operand spelling by `xtensa-elf-objdump`. The bytes are the bundle's
 little-endian word as emitted (companion slots `nop`); the 8-byte forms are the S3 ALU slot inside an
 N0 bundle, the `DCMPRS2NX8` form is a 16-byte wide bundle:
 
@@ -471,7 +468,7 @@ op exactly as §2.5 predicts.
 
 ---
 
-## 6. Issue timing `[HIGH/OBSERVED]`
+## 6. Issue timing
 
 Read from the `*_issue` scoreboard bodies in `libcas-core.so` (the `mov $LAT,%esi` immediate before
 each operand-scoreboard `call`). All generic ops issue in the **S3 ALU** lane-permute slot
@@ -487,8 +484,7 @@ each operand-scoreboard `call`). All generic ops issue in the **S3 ALU** lane-pe
 The data operands and the result(s) resolve at **LAT 10** (the S3-ALU vector-execute stage); the
 **control selector vector `sr`** resolves one stage deeper at **LAT 12** — the extra read depth is the
 lane crossbar. `DSELNX16` shows its dual output as a third LAT-10 `vec` read; `DCMPRS2NX8` pulls the
-`vbool` predicate at LAT 10 and drains the result through the pack network at LAT 12. `[HIGH/OBSERVED —
-every LAT byte read this pass]`
+`vbool` predicate at LAT 10 and drains the result through the pack network at LAT 12.
 
 > **NOTE — result latency vs the deeper selector read (a cross-page reconciliation).** Two readings of
 > the same bytes coexist in sibling reports. Viewed as a control-to-result span, the crossbar is a
@@ -498,14 +494,14 @@ every LAT byte read this pass]`
 > scoreboard latencies directly: data/result at `0xa`, the selector vector at `0xc`. This page reports
 > those operand latencies; both readings agree on the bytes. The
 > [VALIGN / Shuffle-Select / Reduce ISS slice](../../iss/cas-valign-shuffle-reduce.md) carries the full
-> scoreboard model. `[HIGH/OBSERVED]`
+> scoreboard model.
 
 ---
 
-## 7. FLIX placement counts `[HIGH/OBSERVED]`
+## 7. FLIX placement counts
 
 Per-op placement counts (the number of `Opcode_ivp_<mnem>_Slot_*_encode` thunks), counted directly
-from the `libisa-core.so` symbol table this pass (**127 placements total**):
+from the `libisa-core.so` symbol table (**127 placements total**):
 
 | op | placements | op | placements |
 |----|-----------:|----|-----------:|
@@ -542,20 +538,18 @@ per op.]`
 * [Template & Partition](template-and-partition.md) — the 30-batch classifier; the `extr*` glob
   reclassification.
 
-> **CORRECTION / DIVERGENCE LEDGER.**
+> **CORRECTION / DIVERGENCE LEDGER** (every entry `[HIGH/OBSERVED]`).
 > 1. **Immediate operand names** — the binary strings are `isel`/`ishfl`/`slct`/`slct_h`, not
->    `saimm7`/`selimm`/`shflimm` (§2.2). `[HIGH/OBSERVED]`
+>    `saimm7`/`selimm`/`shflimm` (§2.2).
 > 2. **`_S0` coded immediate** — the legal set is `{0,1,2,3,8,16,32,64}` (`3` accepted, `4` rejected),
->    refining an earlier `{0,1,2,8,16,32,64}` reading (§3). `[HIGH/OBSERVED]`
+>    refining an earlier `{0,1,2,8,16,32,64}` reading (§3).
 > 3. **`SEL.T`/`DSEL.T`/`DCMPRS` selector** — a slot-local field map cites these as short 6-bit
->    `[34:29]` prefixes, but the **full encode words** read this pass are `SEL2NX8T=0x80000000`,
+>    `[34:29]` prefixes, but the **full encode words** are `SEL2NX8T=0x80000000`,
 >    `SELNX16T=0x80100000`, `DSELNX16T=0x0`, `DSELN_2X32T=0x20000000`, `DCMPRS2NX8=0x81000002` — the
 >    slot-local prefix and the full word are consistent (the prefix is the high field of the word);
->    this page reports the full encode bytes. `[HIGH/OBSERVED]`
+>    this page reports the full encode bytes.
 > 4. **Result latency reading** — the operand scoreboard encodes data/result at LAT 10 and the control
 >    selector at LAT 12; a "2-cycle use-10/def-12" reading describes the same bytes as a
 >    control-to-result span (§6). No contradiction; this page reports the operand latencies.
->    `[HIGH/OBSERVED]`
 > 5. **`DCMPRS` popcount** — the value body has no `popcnt` *instruction*; the prefix popcount is the
 >    called `module__xdref_popc64_7_64 @0x8236c0` helper. The EXPAND semantic is unchanged (§4.6).
->    `[HIGH/OBSERVED]`

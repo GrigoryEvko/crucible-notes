@@ -18,8 +18,7 @@ Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the scalar-LX rule decode
 `'P%i:'` / `'P%d:'` prefix (vs the SEQ engine's `'S:'`), the cleanest discriminator
 between the two firmwares.
 
-> **NOTE — what was re-carved and re-decoded this session.** Every fact below was
-> re-derived from a fresh independent carve out of the static archive
+> **NOTE — the objects used.** The carve source is the static archive
 > `libnrtucode.a`. The **PERF** dispatcher + tables + five `0xF0` trampolines are in
 > member `img_CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_contents.c.o`; the embedded device SO is
 > the section-`.rodata` payload (symbol `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get.data`,
@@ -33,10 +32,9 @@ between the two firmwares.
 > (`img_CAYMAN_Q7_POOL_DEBUG_DRAM_contents.c.o`, `.rodata` payload), used here purely
 > as name/order anchors — the PERF build strips them. Cross-image stability checked
 > against `img_MARIANA_Q7_POOL_PERF_EXTISA_0_SO_contents.c.o` (carved SO, 41,568 B).
-> `[HIGH/OBSERVED]`
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
 reasoned over OBSERVED facts (often across a FLIX/literal-pool desync); `CARRIED` =
 consolidated from a cited cross-page anchor at its original confidence. Crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
@@ -48,7 +46,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 > set*. The `0xF0` base opcode and its **spec** sub-byte are fields of the
 > *interpreted POOL-microcode instruction word* — a separate encoding the engine
 > decodes. The `kernel_info_table` maps **(opcode, spec) → Xtensa handler address**;
-> it is not an Xtensa decode table. `[HIGH/OBSERVED]`
+> it is not an Xtensa decode table.
 
 ---
 
@@ -84,7 +82,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 > spec)` instruction on exactly one of the five rows. "`dispatch_extended_inst`" is the
 > DEBUG/source *family name* of these handlers (it prints `"P%i: dispatch_extended_inst(%d)
 > : num_chans = %0d"`, `%d` = the spec), **not** a single switch routine — the five
-> handlers do not converge to one address. `[HIGH/OBSERVED]`
+> handlers do not converge to one address.
 
 ---
 
@@ -155,14 +153,13 @@ Re-parsing all 136 table bytes (`opcode = key>>24`, `spec = (key>>16)&0xFF`):
 
 > **COUNT — table census.** `python3` parse of `kernel_info_table` (file off `0x7400`,
 > `0x88` B): **17 total rows**, of which **5 carry opcode `0xF0`** (specs
-> `{0,1,2,4,3}`). Metric: 8-byte rows with `(key>>24)&0xFF == 0xF0`. `[HIGH/OBSERVED]`
+> `{0,1,2,4,3}`). Metric: 8-byte rows with `(key>>24)&0xFF == 0xF0`.
 
 > **QUIRK — registration order is `0,1,2,4,3`, not sorted.** The five `0xF0` rows are
 > stored in *registration* order (`0,1,2,4,3`), so **spec 4 precedes spec 3** in the
 > table. A linear key-scan is order-independent, so this is harmless to dispatch — but
 > a reimplementation that assumes the table is sorted by `(opcode,spec)` and binary-
 > searches it would mis-locate spec 3/4. Scan linearly, or sort first.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -175,7 +172,7 @@ interleaved literal-pool word, so the byte-exact *interior* desyncs; the prologu
 `const16` state-pointer load, and the `const16`+`callx8` route target are recoverable
 and reported. Desync spans are flagged and **never invented**.
 
-### spec 0 — `0x01003370` — `ExtendedInstEngineNop` `[HIGH/OBSERVED]`
+### spec 0 — `0x01003370` — `ExtendedInstEngineNop`
 
 ```
  1003370:  36 41 00     entry   a1, 32
@@ -186,9 +183,9 @@ and reported. Desync spans are flagged and **never invented**.
 A complete, clean, **three-instruction no-op that returns 0**. No state pointer, no
 `callx8`, no channel work. This is the exact signature of the DEBUG variant that
 logs only `"ExtendedInstEngineNop : processing complete"` — the **only** variant with
-no `"Decode : …"` line and no `num_*` work line (§4). `[HIGH/OBSERVED]`
+no `"Decode : …"` line and no `num_*` work line (§4).
 
-### spec 1 — `0x01003380` — `pool_extended_inst_copy()` (EXACT) `[HIGH/OBSERVED]`
+### spec 1 — `0x01003380` — `pool_extended_inst_copy()` (EXACT)
 
 ```
  1003380:  36 41 00     entry   a1, 32     (then FLIX/literal body — DESYNC)
@@ -207,7 +204,7 @@ num_tensor_elements = %d"`. The per-kernel `.bss` slot it touches is `0x02000468
 (§4), recoverable only from the band map (its `const16` lives in the desynced body).
 `[HIGH funcVA / MED exact slot const16]`
 
-### spec 2 — `0x01003484` — `ExtendedInstTensorTensorArith` `[HIGH/OBSERVED]`
+### spec 2 — `0x01003484` — `ExtendedInstTensorTensorArith`
 
 ```
  1003484:  36 41 00     entry   a1, 32
@@ -226,7 +223,7 @@ num_tensor_elements = %d"`. The per-kernel `.bss` slot it touches is `0x02000468
 > is similarly preceded by a `0x0100`-band high half to form `0x010034b0`. Where
 > **both** halves of a pair are clean, the literal is HIGH; where only one `const16`
 > survived the FLIX desync, the *band* (`.bss 0x0200046x` / `.text 0x01003xxx`) is HIGH
-> but the exact low half is MED. `[HIGH/OBSERVED]`
+> but the exact low half is MED.
 
 The `callx8` target `0x010034b0` is the function start of
 `.xt.prop._Z40decode_extended_inst_tensor_tensor_arithbj` — first prop record
@@ -354,7 +351,6 @@ trampoline:
 > selector** chosen *inside* the Cptc handler, proven by the demangled signature and by
 > the `"unsupported in_dtype/out_dtype for cptc_decode : 0x%x"` error strings.
 > `spec ≠ cptc template arg`; do **not** map spec `0/3/4` one-to-one onto `impl<1..6>`.
-> `[HIGH/OBSERVED]`
 
 The six specializations differ **only** in the leading `(unsigned char)` template arg
 (`c++filt` of `cayman3.so`'s `.xt.prop._Z16cptc_decode_implILh1EEvj25_TIE_xt_ivp32_xb_vec2Nx8US0_ttthb`):
@@ -485,7 +481,7 @@ delta:
 
 This proves the spec→handler routing (the five `0xF0` rows in registration order
 `0,1,2,4,3`) is **stable across the CAYMAN / MARIANA / MARIANA_PLUS generation** that
-ships the EXTISA_0 POOL image. `[HIGH/OBSERVED]`
+ships the EXTISA_0 POOL image.
 
 ---
 
@@ -503,7 +499,6 @@ behavior is identical):
 > `=%d` (decimal — a small spec/sub-code integer), while the top-level miss prints
 > `=0x%x` (hex — a full opcode). That the extended path formats a *decimal* sub-code is
 > corroborating evidence that the spec byte is the extended-dispatch discriminator.
-> `[HIGH/OBSERVED]`
 
 The DEBUG family header `"P%i: dispatch_extended_inst(%d) : num_chans = %0d"` (`0xd87`)
 and the module string `"dispatch.hpp"` (`0xde4`) name the handler family and its source

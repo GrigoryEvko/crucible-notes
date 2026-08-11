@@ -11,10 +11,11 @@ This page is reconstructed byte-for-byte from the shipped Cayman arch-regs
 schema `csrs/sdma/udma_m2s.json` (RegFile → RegistersBundleArrays → Registers →
 BitFields; register `AddressOffset` is **relative to its bundle base**), and
 cross-validated field-for-field against the generated C accessor headers
-`maverick/al_udma_m2s_regs.h` and `sunda/udma_m2s_tr.h`. All offsets/resets
-below were re-parsed with `python int(.,16)` directly from the schema; counts
-were recomputed from scratch. This is the Annapurna/Alpine UDMA M2S IP — a
-`reg_map`-generated register file, not a hand-written firmware struct.
+`maverick/al_udma_m2s_regs.h` and `sunda/udma_m2s_tr.h`. All offsets/resets and
+counts below are read directly from the schema. This is the Annapurna/Alpine
+UDMA M2S IP — a `reg_map`-generated register file, not a hand-written firmware
+struct. The page default is `[HIGH/OBSERVED]`; claims that depart from it carry
+an explicit tag.
 
 > **Naming.** This is the *renamed-but-same* `al_udma_m2s_regs` block carried
 > across silicon generations (see [pkl-dma geometry](../address/pkl-dma-subtree.md)).
@@ -27,7 +28,7 @@ were recomputed from scratch. This is the Annapurna/Alpine UDMA M2S IP — a
 
 ---
 
-## 1. RegFile metadata `[HIGH/OBSERVED]`
+## 1. RegFile metadata
 
 Literal from the `RegFile` object of `udma_m2s.json`:
 
@@ -46,9 +47,9 @@ The control plane is **APB**; the engine itself masters **AXI** for descriptor
 read, data read, completion write, and MSI-X. `0x20000` matches the
 `address_map_flat.yaml` `size` for every `*_UDMA_M2S` instance.
 
-### Verified counts `[HIGH/OBSERVED]`
+### Verified counts
 
-Recomputed independently from the schema (not carried from the report):
+Computed from the schema:
 
 | Metric | Value | Derivation |
 |--------|-------|------------|
@@ -66,7 +67,7 @@ The `0xb1` that appears elsewhere in the corpus is the TPB ISA opcode
 
 ---
 
-## 2. Bundle map `[HIGH/OBSERVED]`
+## 2. Bundle map
 
 Eleven bundle arrays; `M2S_Q` is a 16-deep array, all others singletons. Bundle
 base = `AddressOffset`; per-queue absolute = `base + i·0x1000`.
@@ -91,7 +92,7 @@ base = `AddressOffset`; per-queue absolute = `base + i·0x1000`.
 
 ---
 
-## 3. Physical placement & multiplicity `[HIGH/OBSERVED]`
+## 3. Physical placement & multiplicity
 
 From `address_map_flat.yaml`. One UDMA channel occupies a contiguous APB
 sub-window; M2S is always its first `0x20000`:
@@ -112,7 +113,7 @@ address windows in [sdma-windows-apb](../../dma/sdma-windows-apb.md).
 
 ---
 
-## 4. Descriptor-ring programming (the per-queue surface, `M2S_Q[i]`) `[HIGH/OBSERVED]`
+## 4. Descriptor-ring programming (the per-queue surface, `M2S_Q[i]`)
 
 Each of the 16 queues owns **two rings**: a **TX descriptor ring**
 (host→engine, software-produced) and a **TX completion ring** (engine→host).
@@ -242,7 +243,7 @@ static inline bool m2s_q_idle(volatile char *m2s, unsigned q)
 
 ---
 
-## 6. Config / enable & stream routing `[HIGH/OBSERVED]`
+## 6. Config / enable & stream routing
 
 **Engine state machine** (`M2S` @ `0x200`):
 
@@ -271,7 +272,7 @@ the SDMA to the DGE stream↔AXI bridge and into the TPB engines (see
 
 ---
 
-## 7. Prefetch sub-block `[HIGH/OBSERVED]`
+## 7. Prefetch sub-block
 
 The descriptor-prefetch path is split between the **shared** `M2S_rd` (@`0x300`)
 and **per-queue** slices in `M2S_Q.desc_pref_cfg`:
@@ -289,7 +290,7 @@ carved per-queue via `M2S_Q.desc_pref_cfg.fifo_start_addr` / `fifo_depth`. FIFO
 occupancy is observable through `M2S.sel_pref_fifo_status` after selecting the
 queue with `M2S.indirect_ctrl.q_num[11:0]`.
 
-### NC-v3 "enhanced prefetch" (`AXI_M2S_MLA` @ `0x0`) `[HIGH/OBSERVED]`
+### NC-v3 "enhanced prefetch" (`AXI_M2S_MLA` @ `0x0`)
 
 The `AXI_M2S_MLA` bundle is **chicken-bit** tuning, present only in the NC-v3
 schema (see §10 per-gen note):
@@ -307,7 +308,7 @@ the data tail (`TDRDTP_inc`) independently.
 
 ---
 
-## 8. Completion sub-block `[HIGH/OBSERVED]`
+## 8. Completion sub-block
 
 The completion controller (`M2S_comp` @ `0x400`) coalesces completions per
 queue, writes them into the TX completion ring (`TCRBP`/`TCRHP`), then awaits
@@ -337,7 +338,7 @@ CORRECTION in §10 — the Maverick C header encodes this word differently).
 
 ---
 
-## 9. AXI parameters & error log `[HIGH/OBSERVED]`
+## 9. AXI parameters & error log
 
 `AXI_M2S` (@`0x100`) holds one AR/AW config pair per traffic class. Reset words
 cross-checked against the C headers:
@@ -367,7 +368,7 @@ four header words are captured in `log_0..log_3` (@`0x214`–`0x220`, RO);
 
 ## 10. Per-gen applicability & schema-vs-header cross-validation
 
-### Cross-validation: schema offsets vs C headers `[HIGH/OBSERVED]`
+### Cross-validation: schema offsets vs C headers
 
 Every common register's `OFFSET_START` in `maverick/al_udma_m2s_regs.h` and
 `sunda/udma_m2s_tr.h` is **byte-identical** to the Cayman schema. Verified
@@ -386,10 +387,10 @@ words matched across the schema and the generated headers:
 | `M2S.pref_queue_en`    | `0x0000FFFF` | = Maverick `M2S_PREF_QUEUE_EN_RESET_VALUE` |
 | `M2S_Q.rate_limit_cfg_1` | `0x00FFFFFF` | `max_burst_size` |
 
-### CORRECTION vs SX-CSR-07 — Maverick C header omits the NC-v3 prefetch features `[HIGH/OBSERVED]`
+### CORRECTION — the Maverick C header omits the NC-v3 prefetch features
 
-> SX-CSR-07's preamble cites `maverick/al_udma_m2s_regs.h` as the "same block,
-> Maverick silicon; identical offsets" corroborating source. That is true for
+> `maverick/al_udma_m2s_regs.h` is often cited as a "same block, Maverick
+> silicon; identical offsets" corroborating source. That is true for
 > the **common** registers, but a direct `rg` of the Maverick header (generated
 > 2026/02/20) returns **zero** hits for `M2S_MLA`, `TDRDTP`, `data_tail`,
 > `enhanced_ostand`, `cfg_prefetch`, and `cfg_outstanding`. **The
@@ -401,10 +402,10 @@ words matched across the schema and the generated headers:
 > schema (which is the authoritative source for this page) and are *not*
 > Maverick-corroborated.
 
-### Per-gen register-map deltas `[HIGH/OBSERVED]`
+### Per-gen register-map deltas
 
-Re-parsed the four shipped `udma_m2s.json` variants (Cayman + customop
-arch-headers Sunda / Mariana / Mariana+):
+The four shipped `udma_m2s.json` variants (Cayman + customop arch-headers
+Sunda / Mariana / Mariana+):
 
 | Variant | Bundles | Reg defs | Bitfields | `AXI_M2S_MLA` | `TDRDTP` | `M2S_Q` regs |
 |---------|---------|----------|-----------|---------------|----------|--------------|
@@ -431,8 +432,8 @@ this page):
 | `M2S_Q.cfg` | all-zero | `0xe3640000` (pre-sets force_full_line/qos/awcache) | all-zero |
 | `M2S_feature.dma_version` | `version=0x04` | full word `0x10001880` (rev/date packing) | — |
 
-> **CORRECTION (`dma_version`).** SX-CSR-07 §7 reports
-> `M2S_feature.dma_version.version = 0x04`, which is literal-correct for the
+> **CORRECTION (`dma_version`).** `M2S_feature.dma_version.version = 0x04` is
+> commonly quoted as the version, and it is literal-correct for the
 > Cayman schema. The Maverick C header, however, defines
 > `M2S_FEATURE_DMA_VERSION_RESET_VALUE = 0x10001880` — a packed rev/date word,
 > not `4`. Pin the version to the **per-silicon build word**, not a bare `0x04`,

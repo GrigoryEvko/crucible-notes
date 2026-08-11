@@ -18,14 +18,15 @@
 > `neuronx-gpsimd/extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/gpsimd/custom_op/c10/lib/libnrtucode_internal.so`.
 > ELF64 x86-64 DYN, 10,276,288 B, BuildID `9cbf78c6…e585fd`, **not stripped**
 > (full `.symtab`). Every offset, address, struct size, and slot below was
-> re-read **this session** with stock `objdump -d` / `readelf -rSW` / `nm` /
+> read with stock `objdump -d` / `readelf -rSW` / `nm` /
 > `strings` / `c++filt`; the IDA sidecars (`*_structures.json`, `*_functions.json`,
 > `*_strings.json`) were used to *locate*, the binary to *verify*.
 >
 > **Confidence/evidence tags.** Every claim carries `HIGH/MED/LOW` ×
-> `OBSERVED` (read from the binary this session) / `INFERRED` / `CARRIED` (cited
-> from a sibling page, not re-derived). Callouts use literal `QUIRK` / `GOTCHA` /
-> `NOTE` / `CORRECTION`.
+> `OBSERVED` (read from the binary) / `INFERRED` / `CARRIED` (cited from a sibling
+> page, not re-derived). The page default is `HIGH/OBSERVED`; claims that depart
+> from it carry an explicit tag. Callouts use literal `QUIRK` / `GOTCHA` / `NOTE` /
+> `CORRECTION`.
 
 ## 0. Section-offset map (read before any raw dump)
 
@@ -39,7 +40,7 @@ confirm before `xxd`/`objdump` on a `.data`/`.data.rel.ro`-resident table:
 | `.data.rel.ro` | `0x9b8cf0` | `0x9b6cf0` | `0x2000` | no |
 | `.data` | `0x9ba4a8` | `0x9b74a8` | `0x3000` | no |
 
-`HIGH / OBSERVED` (`readelf -SW`). **All addresses on this page are VAs.** For
+Read with `readelf -SW`. **All addresses on this page are VAs.** For
 `objdump -d` and `readelf -r`, VAs are used directly (the tools relocate). Only a
 raw `xxd <file-offset>` of a `.data`/`.data.rel.ro` struct (e.g.
 `plat_memhandle_dummy@0x9b8cf0`, `image_list@0x9b8d20`) must subtract the section
@@ -113,15 +114,15 @@ stores are `OBSERVED` byte-exact:
 9b0301: movq $0x200,0x18(%r15)       ; +0x18 log_scratch_size = 0x200
 ```
 
-| off | sz | type | field | init / role | conf |
-|---|---|---|---|---|---|
-| `0x00` | 8 | `const rw_table*` | `rw_impl` | ctor arg2; the §6.1 5-slot reg/DRAM/log table. **Never NULL** (ctor aborts if `arg2==0`). `mov %r14,(%rax)`. | HIGH OBS |
-| `0x08` | 8 | `const memhandle_table*` | `memhandle_impl` | `&plat_memhandle_dummy@0x9b8cf0` default; overwritten by `nrtucode_context_set_memhandle_impl@0x9b0390` (`mov %rsi,0x8(%rdi)`). The §6.2 5-slot device-memory table. | HIGH OBS |
-| `0x10` | 8 | `void*` | `userdata` | `0`; get/set via `context_get_userdata@0x9b0430` (returns `ctx[+0x10]`) / `context_set_userdata@0x9b0470`. Opaque embedder cookie. | HIGH OBS |
-| `0x18` | 8 | `uint64_t` | `log_scratch_size` | `0x200`; capacity of the `vsnprintf` scratch; grown by `realloc` when a formatted line exceeds it. | HIGH OBS |
-| `0x20` | 8 | `char*` | `log_scratch_buf` | `malloc(0x200)`; **freed FIRST** in destroy. | HIGH OBS |
+| off | sz | type | field | init / role |
+|---|---|---|---|---|
+| `0x00` | 8 | `const rw_table*` | `rw_impl` | ctor arg2; the §6.1 5-slot reg/DRAM/log table. **Never NULL** (ctor aborts if `arg2==0`). `mov %r14,(%rax)`. |
+| `0x08` | 8 | `const memhandle_table*` | `memhandle_impl` | `&plat_memhandle_dummy@0x9b8cf0` default; overwritten by `nrtucode_context_set_memhandle_impl@0x9b0390` (`mov %rsi,0x8(%rdi)`). The §6.2 5-slot device-memory table. |
+| `0x10` | 8 | `void*` | `userdata` | `0`; get/set via `context_get_userdata@0x9b0430` (returns `ctx[+0x10]`) / `context_set_userdata@0x9b0470`. Opaque embedder cookie. |
+| `0x18` | 8 | `uint64_t` | `log_scratch_size` | `0x200`; capacity of the `vsnprintf` scratch; grown by `realloc` when a formatted line exceeds it. |
+| `0x20` | 8 | `char*` | `log_scratch_buf` | `malloc(0x200)`; **freed FIRST** in destroy. |
 
-`sizeof = 0x28`, every byte accounted for. `HIGH/OBSERVED`.
+`sizeof = 0x28`, every byte accounted for.
 
 ### Lifecycle (annotated)
 
@@ -155,7 +156,7 @@ void nrtucode_context_destroy(nrtucode_context_t *ctx) {
 > **GOTCHA.** `context_destroy` does **not** free `rw_impl`/`memhandle_impl`
 > (caller-owned const tables) and does **not** walk or destroy child cores / ll's
 > / opsets — there is **no children list**. A context destroyed with live
-> children leaks them; `objcount` catches the imbalance at exit (§8). `HIGH/OBSERVED`.
+> children leaks them; `objcount` catches the imbalance at exit (§8).
 
 ## 3. `nrtucode_core_t` — `malloc(0x70)`, the booted-engine handle
 
@@ -196,7 +197,7 @@ Ctor signature (`IDA` + embedder caller naming):
 | `0x48` | `0x21` | `char[0x21]` | `friendly_name` | `snprintf(core+0x48,0x21,"nrtucode_core_t@%p",core)`; `set` does `strncpy(core+0x48,src,0x20)+NUL@core[0x68]`. | HIGH OBS |
 | `0x69` | `0x07` | — | tail pad | `malloc(0x70)` round-up (`0x48+0x21=0x69 … 0x70`). | HIGH |
 
-`sizeof = 0x70`, every byte accounted for. `HIGH/OBSERVED`.
+`sizeof = 0x70`, every byte accounted for.
 
 ### 3.1 Lifecycle (annotated)
 
@@ -252,7 +253,7 @@ the host pokes, recovered from the `rw` call sites:
 | `0x38` | 8 | pc_bounds_lo | `enable_pc_bounds_check` / `get_pc_bounds`. |
 | `0x40` | 8 | pc_bounds_hi | r/w via rw slot+0x00/+0x08, len 8. |
 
-`HIGH/OBSERVED` (rw call sites). This is the core object's **device-side
+Recovered from the `rw` call sites. This is the core object's **device-side
 projection**, not a host allocation.
 
 ### 3.3 The boot/claim handshake (`on_ucode_booted@0x9b0ab0`)
@@ -290,7 +291,7 @@ into device memory. **Ctor** `nrtucode_ll_create@0x9b1a90` (`mov $0x48,%edi`@
 | `0x20` | `0x21` | `char[0x21]` | `friendly_name` | `snprintf(ll+0x20,0x21,"nrtucode_ll_t@%p",ll)`; `ll_set_friendly_name` updates. | HIGH OBS |
 | `0x41` | `0x07` | — | tail pad | round-up to `0x48`. | MED |
 
-`sizeof = 0x48`. `HIGH/OBSERVED`.
+`sizeof = 0x48`.
 
 ### 4.1 Create flow — the device-image **build** step
 
@@ -357,22 +358,21 @@ elsewhere — `CARRIED`; here only the ll-object's role is `OBSERVED`.
 **Ctor** `nrtucode_opset_create@0x9b24c0` (`mov $0x830,%edi`@`0x9b24df`,
 `memset(opset+8,0,0x800)`@`0x9b2504`); **dtor** `nrtucode_opset_destroy@0x9b25c0`.
 
-| off | sz | type | field | role | conf |
-|---|---|---|---|---|---|
-| `0x000` | 8 | `context*` | `context` | ctor arg1. | HIGH OBS |
-| `0x008` | 8×256 | `void*[256]` | `opcode_bucket[op]` | one slot per opcode `0..255` (`opset+8+8*op`). NULL = opcode absent; set to a `calloc(1,0x100)` bucket by `add_instruction`. | HIGH OBS |
-| `0x808` | `0x28` | `char[0x28]` | `friendly_name` | 40-byte inline name buffer spanning `+0x808..+0x830`. `create` `snprintf(opset+0x808,0x21,"nrtucode_opset_t@%p",opset)` (`add $0x808,%rdi`@`0x9b250c`); `set_friendly_name` forces the terminating NUL at `+0x828` (`movb $0x0,0x828(%r14)`@`0x9b294e`). | HIGH OBS |
+| off | sz | type | field | role |
+|---|---|---|---|---|
+| `0x000` | 8 | `context*` | `context` | ctor arg1. |
+| `0x008` | 8×256 | `void*[256]` | `opcode_bucket[op]` | one slot per opcode `0..255` (`opset+8+8*op`). NULL = opcode absent; set to a `calloc(1,0x100)` bucket by `add_instruction`. |
+| `0x808` | `0x28` | `char[0x28]` | `friendly_name` | 40-byte inline name buffer spanning `+0x808..+0x830`. `create` `snprintf(opset+0x808,0x21,"nrtucode_opset_t@%p",opset)` (`add $0x808,%rdi`@`0x9b250c`); `set_friendly_name` forces the terminating NUL at `+0x828` (`movb $0x0,0x828(%r14)`@`0x9b294e`). |
 
-`sizeof = 0x830 = 8 + 256*8 + 0x28`. `HIGH/OBSERVED`.
+`sizeof = 0x830 = 8 + 256*8 + 0x28`.
 
 > **CORRECTION — `friendly_name` is `char[0x28]` (40 B), not `char[0x21]` + a `0x07` tail pad.**
-> An earlier draft of this row typed the field as `char[0x21]` with a separate `0x07` pad
-> at `+0x829`. The byte evidence (cross-checked on [`nrtucode-opset`](nrtucode-opset.md) §2)
+> The field is **not** `char[0x21]` with a separate `0x07` pad at `+0x829`. The byte evidence (cross-checked on [`nrtucode-opset`](nrtucode-opset.md) §2)
 > makes the whole `+0x808..+0x830` range the name buffer with **no** separate pad:
 > `set_friendly_name` writes the forced terminating NUL at **`+0x828`** (`movb $0x0,0x828(%r14)`
 > @`0x9b294e`), which is only reachable if the field extends past `+0x828`. The `0x21` is the
 > **default-name `snprintf` cap** (`mov $0x21,%esi`@`0x9b251a`), not the field size. So
-> `0x830 = 8 + 0x800 + 0x28`, all of the trailing `0x28` being the name buffer. *[HIGH/OBSERVED]*
+> `0x830 = 8 + 0x800 + 0x28`, all of the trailing `0x28` being the name buffer.
 
 Each present bucket is a separate `calloc(1,0x100)` = a 256-entry `uint8`
 **specialization-presence** array indexed by spec id `0..255`.
@@ -406,7 +406,6 @@ void nrtucode_opset_destroy(nrtucode_opset_t *opset) {
 > `objcount_decrement`** (verified: no `call 9b17b0` in the body), and
 > `opset_create` likewise omits `objcount_increment`. The opset is a
 > lighter-weight, **untracked** dictionary object; the other three are tracked.
-> `HIGH/OBSERVED`.
 
 ## 6. The two platform tables + the image build/load layer
 
@@ -469,7 +468,7 @@ void* getter_extram}`. `get_memory_image(coretype, region in {0=IRAM,1=DRAM,
 2=SRAM,3=EXTRAM}, flavor, &ptr, &size)` walks to `flavor_id==flavor`, then calls
 the region getter. Flavor 0 (DEFAULT) resolves the `NEURON_UCODE_FLAVOR` env var
 ("debug"=2, "test"=3, else 1=PERF). Errcodes: 1 bad coretype, 2 no entry /
-unknown flavor, 3 region absent. `HIGH/OBSERVED`.
+unknown flavor, 3 region absent.
 
 **The five `*_libs` tables** — the ext-ISA (DKL) library getters.
 `get_ext_isa_internal@0x9b2b30` selects a per-arch table by Q7_POOL coretype
@@ -489,7 +488,7 @@ the two getters fill the two halves of an ext-ISA library descriptor.
 `0x2020202000`, `mov $0x4,%ecx`@`0x9b2cb3`) and **1** for Sunda (`mov $0x1,%eax`@
 `0x9b2c97`). The `*_libs` tables carry `R_X86_64_64` relocs to the
 `SUNDA_Q7_POOL_…EXTISA…_SO_get` symbols and RELATIVE relocs to the `*_get`
-accessors. `HIGH/OBSERVED`.
+accessors.
 
 **`prelink@0x9b5d60` → UCPL** — the ll device-image builder, called **only** from
 `ll_create`. It takes the ext-ISA blob, the per-arch `*_memory_bounds`
@@ -570,7 +569,7 @@ BRING-UP                                            TEARDOWN (reverse, embedder-
 10 (run kernels; core_print_logs drains ring)
 ```
 
-**Leak tracker / globals** (`HIGH/OBSERVED`, `nm` + `objdump`):
+**Leak tracker / globals** (`nm` + `objdump`):
 
 | symbol | VA | role |
 |---|---|---|
@@ -609,7 +608,7 @@ context/core detail pages and is not re-tabulated here.
 
 ## 10. Adversarial self-verify
 
-The five strongest claims, re-challenged against the binary this session:
+The five strongest claims, each anchored in the binary:
 
 1. **`context = 0x28`** — `mov $0x28,%edi ; call malloc@plt`@`0x9b02c1`; five
    field stores `0x9b02d8…0x9b0301` exhaust the block. **Confirmed.**
@@ -624,8 +623,8 @@ The five strongest claims, re-challenged against the binary this session:
    (relocs `0x9b8d28/0x9b8d38/0x9b8d48`); `plat_memhandle_dummy` four relocated
    slots `0x9b8cf0/+8/+0x10/+0x18` → `dummy_device_malloc/free/read/write`, fifth
    slot NULL; `rw_impl` `+0x10`/`+0x18` proven by `context_log` calls; the
-   `ll==core` context bind by the asserted string. **Confirmed.** Challenge that
-   surfaced a real fix: the task framed both tables as C++ `_ZTV…+0x10` vtables —
+   `ll==core` context bind by the asserted string. **Confirmed.** The standard C++
+   `_ZTV…+0x10` vtable convention does **not** apply to these two tables —
    `nm \| rg -c '_ZTV'` returns **0**, so the `+0x10` header subtraction is wrong
    here; slots are at `symbol+8*N`. Captured as the **CORRECTION** in §6.
 
@@ -646,7 +645,7 @@ The five strongest claims, re-challenged against the binary this session:
 ---
 
 *Every offset, size, address, vtable slot, magic word, and string on this page
-was re-verified against `libnrtucode_internal.so` this session
+was verified against `libnrtucode_internal.so`
 (`objdump -d` / `readelf -rSW` / `nm` / `strings` / `c++filt`). Confidence/evidence
 tags are inline; `CORRECTION` callouts mark where the standard `_ZTV…+0x10`
 methodology did not apply to this binary's C function-pointer tables.*

@@ -8,7 +8,7 @@ ring (Part 2). It is the appendix half of the device-firmware survey: where the
 [firmware](../firmware/pool/kernel-info-table.md) and [SEQ](../firmware/seq/dispatch-hub.md)
 pages narrate *how* the firmware uses each structure, this page pins the **byte
 layout** — offset, size, type, field, meaning — for every structure named in the
-census, re-verified against the carved image this session and CORRECTION-flagged where
+census, verified against the carved image and CORRECTION-flagged where
 a naive reading diverges from the bytes.
 
 Every structure below is recovered from one of four binary sources, all
@@ -37,7 +37,7 @@ static-analysis-derived and citeable:
 > "scalar"). The collectives **NCFW** management firmware runs on the **scalar
 > Xtensa-LX** survival core (decode with the LX `op0 e/f` = 3-byte-length rule; the
 > `ncore2gp` config mis-decodes its bytes as Vision bundles). Every disassembly below
-> states which core it belongs to. `[HIGH/OBSERVED]`
+> states which core it belongs to.
 
 > **GOTCHA — the `.data`/`.data.rel.ro` offset delta is `0x200000` for `ncore2gp`
 > config DLLs** (NOT libtpu's `0x400000`). `.text`/`.rodata` are VMA==file-offset; the
@@ -46,7 +46,7 @@ static-analysis-derived and citeable:
 > -SW` before any `xxd`/`objdump` on a `.data`-resident struct.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/header field read from a shipped artifact this session;
+`OBSERVED` = a byte/string/header field read from a shipped artifact;
 `INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool desync);
 `CARRIED` = consolidated from a cited cross-page anchor at its original confidence.
 Crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
@@ -72,7 +72,7 @@ instruction. The two engines dispatch in opposite styles (SEQ = dense direct-ind
 ASCII table → C++ `Handler`; POOL = sparse keyed `(opcode,spec)` table → flat C
 kernel), so each owns its own dispatch struct.
 
-### 1.1 POOL `kernel_info_table` entry — 8 bytes `[HIGH/OBSERVED]`
+### 1.1 POOL `kernel_info_table` entry — 8 bytes
 
 The POOL engine's opcode→kernel dispatch table is its own ELF section
 (`kernel_info_table`, PROGBITS, VMA `0x02000380`, size `0x88` = 17 × 8). Each entry is
@@ -90,7 +90,7 @@ only from the section size and the base/end getter pair (`(0x02000408 −
 | `+0x04` | 4 | u32 LE | `funcVA` | kernel entry VMA in `.text` (`0x010xxxxx`); the **only** relocated field (`R_XTENSA_RELATIVE`, addend 0, one per row at `base + 8·i + 4`) |
 
 ```c
-/* POOL kernel_info_table entry — ELF section @ VMA 0x02000380, 17 × 8 B. [HIGH/OBSERVED]
+/* POOL kernel_info_table entry — ELF section @ VMA 0x02000380, 17 × 8 B.
  * The first four bytes read big-endian (opcode @ +3, spec @ +2); as a native-LE u32
  * (Xtensa is LE) they equal exactly (opcode<<24) | (spec<<16) — the dispatch key. */
 typedef struct {
@@ -103,11 +103,10 @@ typedef struct {
 > byte-exact invariant is `opcode @ entry+3, spec @ entry+2, +0/+1 = 0`. Read those
 > four bytes as a native-LE `u32` and you get `opcode<<24 | spec<<16` — the comparand
 > the dispatcher (`@0x01005610`) builds from the decoded microcode word, then
-> linear-scans for. Do not byte-swap one side only. `[HIGH/OBSERVED]`
+> linear-scans for. Do not byte-swap one side only.
 
-**Re-verified this session** (carve `910d41c3…`, `kernel_info_table` file off `0x7400`,
-0x88 bytes; 17 rows parsed): the entire CAYMAN table, every row `spec@+2 opcode@+3
-funcVA@+4` —
+The entire CAYMAN table (carve `910d41c3…`, `kernel_info_table` file off `0x7400`,
+0x88 bytes, 17 rows), every row `spec@+2 opcode@+3 funcVA@+4` —
 
 | idx | opcode | spec | funcVA | routes to |
 |--:|:--:|:--:|:--|:--|
@@ -134,7 +133,7 @@ f0 52 46 47 be f2 7b`) — a reimplementer must linear-scan, not binary-search. 
 per-row resolution: [kernel_info_table Binary Layout](../firmware/pool/kernel-info-table.md).
 `[HIGH/OBSERVED]`
 
-### 1.2 The `0xF0` EXTENDED_INST byte-13 spec-multiplexed dispatch `[HIGH/OBSERVED]`
+### 1.2 The `0xF0` EXTENDED_INST byte-13 spec-multiplexed dispatch
 
 The POOL extended instruction (base opcode `0xF0`) is sub-dispatched **not by a
 `switch`** but by registering opcode `0xF0` **five times** in the `kernel_info_table`,
@@ -152,7 +151,7 @@ folds into `opcode<<24 | spec<<16` before the single linear scan.
 | `0x03` | 10 | `0x01003a60` | Rand/Cptc band, `entry a1,32`, state `0x02000470` → `decode_pool@0x01000b90` | MED |
 
 ```c
-/* The 0xF0 spec sub-dispatch is the SAME linear scan, no special case. [HIGH/OBSERVED]
+/* The 0xF0 spec sub-dispatch is the SAME linear scan, no special case.
  * spec is byte +0x02 of the kernel_info_table key; a (0xF0, spec) microcode instr
  * lands on EXACTLY ONE of the five 0xF0 rows. */
 uint32_t key = (0xF0u << 24) | (spec << 16);   /* spec ∈ {0,1,2,4,3}, byte-13 of the instr word */
@@ -165,7 +164,7 @@ uint32_t key = (0xF0u << 24) | (spec << 16);   /* spec ∈ {0,1,2,4,3}, byte-13 
 > branch**: the two-level dispatch is realized entirely by the table holding five
 > `0xF0` rows. The five handlers do **not** converge to one address; each owns its own
 > `.bss` state slot (`0x468`/`0x46c`/`0x470`), which is itself proof they are
-> independent kernels, not one shared switch. `[HIGH/OBSERVED]`
+> independent kernels, not one shared switch.
 
 > **QUIRK — registration order is `0,1,2,4,3`, so spec 4 precedes spec 3.** A linear
 > key-scan is order-independent (harmless), but a reimplementation that assumes the
@@ -174,9 +173,9 @@ uint32_t key = (0xF0u << 24) | (spec << 16);   /* spec ∈ {0,1,2,4,3}, byte-13 
 > (`=%d`, a small spec) while the top-level miss prints **hex** (`=0x%x`, a full
 > opcode) — itself corroborating that the spec byte is the extended discriminator.
 > Full per-spec disassembly + the `cptc_decode_impl<1..6>` codec family:
-> [POOL Extended-Opcode (`0xF0`) Dispatch](../firmware/pool/pool-ext-0xf0.md). `[HIGH/OBSERVED]`
+> [POOL Extended-Opcode (`0xF0`) Dispatch](../firmware/pool/pool-ext-0xf0.md).
 
-### 1.3 `nxlib_notification` — the 16-byte TIE-queue record `[HIGH/OBSERVED]`
+### 1.3 `nxlib_notification` — the 16-byte TIE-queue record
 
 The fixed **16-byte (128-bit)** notification record (`NEURON_ISA_NOTIFICATION`,
 `NEURON_ISA_NOTIFICATION_NBYTES = 0x10`, from `aws_neuron_isa_notification.h`) is the
@@ -194,7 +193,7 @@ a single packed byte at `word0[31:24]`.
 | `+0x08` | 8 | u64 | `timestamp` | `{u32 low; u32 high}`, free-running counter snapshot, **fixed unit 1 ps** `[127:64]` |
 
 ```c
-/* NEURON_ISA_GENERIC_NOTIFICATION — 16 B, the TIE-queue record. [HIGH/OBSERVED]
+/* NEURON_ISA_GENERIC_NOTIFICATION — 16 B, the TIE-queue record.
  * sizeof == NEURON_ISA_NOTIFICATION_NBYTES == 0x10. */
 typedef struct {
     uint8_t notific_type:5;             /* header byte [4:0] = word0[28:24] */
@@ -222,7 +221,7 @@ GPSIMD compute engine) `0x0c..0x0f`**, DVE `0x10..0x13`, SP `0x14..0x17`, `AXI_E
 > toggles `phase` once per ring wrap (epoch); a consumer detects a fresh record by the
 > phase flip at `base_addr + head_ptr` **without** any head/tail bookkeeping. The
 > `tail_ptr` does *not* guarantee AXI drain completion — the in-RAM `phase` bit is the
-> authoritative arrival signal. `[HIGH/OBSERVED]`
+> authoritative arrival signal.
 
 > **NOTE — per-class bodies overlay the same 16 B.** All bodies share the `+0x03`
 > header byte and the trailing `+0x08` 64-bit timestamp; they differ in how the 24-bit
@@ -231,9 +230,8 @@ GPSIMD compute engine) `0x0c..0x0f`**, DVE `0x10..0x13`, SP `0x14..0x17`, `AXI_E
 > the DGE-completion EXPLICIT carries `{dma_map:16, num_packets:12, …}`). Full per-type
 > bodies + the NOTIFIC ring descriptor: [CSR — NOTIFIC Queue](../control/csr/notific-queue.md)
 > and the [device→host notification path](../control/interrupt/device-host-notification.md).
-> `[HIGH/OBSERVED]`
 
-### 1.4 SEQ instruction-slot / sequencer state `[HIGH/OBSERVED]`
+### 1.4 SEQ instruction-slot / sequencer state
 
 The SEQ engine's per-instruction dispatch is a **dense direct-indexed 178-slot jump
 table** at DRAM `0x80814`, each slot a **4-byte** absolute IRAM trampoline target.
@@ -276,7 +274,6 @@ operands from (a) the fetch cursor `a4` (still addressing the instruction word) 
 a per-engine state struct (§2.3). Full table + the trampoline/thunk mechanism:
 [SEQ Decode / Dispatch Hub](../firmware/seq/dispatch-hub.md);
 the fetch front-end that feeds it: [SEQ Fetch + PC-Redirect Front-End](../firmware/seq/fetch-pc-redirect.md).
-`[HIGH/OBSERVED]`
 
 ### 1.5 The `enc_*` collectives class family `[HIGH/OBSERVED — host DWARF + libncfw decoder]`
 
@@ -315,7 +312,7 @@ lives at `ctrl_spad_base`; each table slot is an 8-byte `spad_ctrl_entry`.
 | `+3591` | 1 | u8 (packed) | `leader:1 dbg_cc_nop:1 host_cc:1 __reserved0:5` | program flags |
 
 `addr_t` (8 B) is `struct addr { uint64_t soc_addr; }`; `semaphore_t` (DIE `<14f85c8>`,
-8 B) wraps one `addr`. `[HIGH/OBSERVED]`
+8 B) wraps one `addr`.
 
 > **CORRECTION — `function_n` is u16 and `tpb_compl_addr_num` is u8, not wider.** A
 > naive "three u32 counters" reading is wrong: only `op_num@+3584` is u32; `function_n`
@@ -346,7 +343,7 @@ struct DB ordinal 9386):
 | `sema_mask` (MESH) | entry+6 | u16 | mesh sema mask |
 
 ```c
-/* one op-list slot — 8 B; the device walks this table per collective step. [HIGH/OBSERVED] */
+/* one op-list slot — 8 B; the device walks this table per collective step. */
 typedef struct { uint8_t cc_op:1, __reserved:7; } spad_ctrl_entry_header_t; /* +0 */
 typedef struct {
     uint8_t  algo_type:4, algo_sub_type:3, trigger_next:1;   /* byte0 */
@@ -380,7 +377,7 @@ typedef struct { spad_ctrl_entry_header_t header; spad_ctrl_cc_op_entry_t cc_op;
 Each is a 4-byte enum (`DW_AT_const_value`). The DRAM+0xB0 12-entry computed-goto
 table on the NCFW core is indexed by the `algo_type` nibble. Full roster
 cross-referenced to ISA `COLLECTIVE_TYPE` and `nrt_op_type`:
-[collective-enums](../collectives/ops/collective-enums.md). `[HIGH/OBSERVED]`
+[collective-enums](../collectives/ops/collective-enums.md).
 
 #### 1.5c The communicator + proxy-task
 
@@ -587,8 +584,8 @@ DWARF + libncfw printer offsets.]`
 > > **CORRECTION — coretype 37 (`ct37`) is OBSERVED; only the NCFW *image* is absent.
 > > Do NOT conflate the two.** A prior draft of this callout flipped `ct37` to INFERRED
 > > by folding the (true) NCFW-image absence into a (false) coretype-value absence. The
-> > binary refutes the flip: **`ct37` is OBSERVED three independent ways** — re-grounded
-> > against `libnrtucode_internal.so` this pass — and the do-not-repeat distinction is
+> > binary refutes the flip: **`ct37` is OBSERVED three independent ways** (against
+> > `libnrtucode_internal.so`), and the key distinction is
 > > **"v5 NCFW *image* file-absent (TRUE, OBSERVED-negative) ≠ coretype *value* 37
 > > unobserved (FALSE — it IS observed, OBSERVED-positive)."** The three reads:
 > > **(1)** the `maverick_libs` jump-table target (`get_ext_isa` case `idx 31` ⇒
@@ -612,7 +609,7 @@ These structures hold the firmware's **global state** — boot identity, per-eng
 sequencer state, profiler config, and the host-readable stdio ring. Unlike Part 1's
 per-instruction dispatch structs, these persist across the dispatch loop.
 
-### 2.1 `.globstruct` — the boot/runtime global (DRAM[0]) `[HIGH/OBSERVED]`
+### 2.1 `.globstruct` — the boot/runtime global (DRAM[0])
 
 The on-device firmware image's `.globstruct` section (PROGBITS, VMA `0x02000408`, size
 `0x48` = 72 B, `CONTENTS, ALLOC, LOAD` inside the `0x02000000` PT_LOAD) is the shared
@@ -622,7 +619,7 @@ runtime store). It sits **immediately after** the `kernel_info_table` — the ta
 VMA (`0x02000408`) is exactly `.globstruct`'s base, which is why the table scan uses
 that boundary as its terminator.
 
-The full 72-byte word map, **re-read this session from the carved ELF** (file off
+The full 72-byte word map, from the carved ELF (file off
 `0x7488`):
 
 | offset | word | offset | word | offset | word |
@@ -635,7 +632,7 @@ The full 72-byte word map, **re-read this session from the carved ELF** (file of
 | `+0x14` | `0x00000000` | `+0x2c` | `0xFFFFFF00` | `+0x44` | `0xFFFFFFFF` |
 
 ```c
-/* .globstruct @ VMA 0x02000408, 0x48 B — the shared dispatcher state block. [HIGH/OBSERVED]
+/* .globstruct @ VMA 0x02000408, 0x48 B — the shared dispatcher state block.
  * Word 0 is the boot-identity magic; the four 0x00001000 are per-something size fields,
  * the four 0xFFFFFF00 are masks, the two trailing 0xFFFFFFFF are terminators. */
 struct globstruct {
@@ -666,7 +663,7 @@ part of `.globstruct`. `[HIGH/OBSERVED]`
 > `.globstruct`. `[per-core PRID aperture CARRIED from the concurrency/boot pages; the
 > `0x855e0`/`0x84d28`/`0x93c4` DRAM addresses OBSERVED.]`
 
-### 2.2 The DRAM[0] boot/claim handshake — two magic constants `[HIGH/OBSERVED]`
+### 2.2 The DRAM[0] boot/claim handshake — two magic constants
 
 The two magic constants are the device↔host boot/claim handshake. The host
 `nrtucode_core_on_ucode_booted` (x86, `libnrtucode.so @0x308f90`) reads DRAM[0]
@@ -680,7 +677,7 @@ The two magic constants are the device↔host boot/claim handshake. The host
 | reads `0x502B2DA1` | — | — | "already claimed by another handle" → fail 8. |
 
 ```c
-/* nrtucode_core_on_ucode_booted — the one-word spin-mailbox claim. [HIGH/OBSERVED] */
+/* nrtucode_core_on_ucode_booted — the one-word spin-mailbox claim. */
 int on_ucode_booted(nrtucode_core_t *core) {
     uint32_t v;
     read_device(core->target /* DRAM[0] */, 4, &v);      /* vtable slot 0 */
@@ -695,21 +692,21 @@ int on_ucode_booted(nrtucode_core_t *core) {
 }
 ```
 
-**Re-verified this session:** READY `0x6099CB34` appears **99×** and CLAIM
+READY `0x6099CB34` appears **99×** and CLAIM
 `0x502B2DA1` appears **2×** in `libnrtucode_internal.so` (the 99 = host compare/stage
 sites + the embedded device images carrying the `.globstruct` initializer). The
 compares are byte-exact (`41 81 f9 34 cb 99 60` / `41 81 f9 a1 2d 2b 50`). This is a
 **spin-mailbox claim, not a hardware CAS** — serialization comes from per-core
 single-host-thread bring-up ordering. Full boot spine: [Boot / Reset Sequence +
-Startup Config](../uarch/boot-reset.md). `[HIGH/OBSERVED]`
+Startup Config](../uarch/boot-reset.md).
 
 > **GOTCHA — read/write target vs boot_state are different addresses.** The handshake
 > reads/writes 4 bytes at the **device** DRAM address in `core->target` (`0x20(%rbx)`);
 > `boot_state` is a **host-side** field of `nrtucode_core_t` (`0x30(%rbx)`). A
 > reimplementer wiring the `rw_impl` vtable maps slot 0 → `read_device`, slot +8 →
-> `write_device`, both `(impl, target, len, buf)`. `[HIGH/OBSERVED]`
+> `write_device`, both `(impl, target, len, buf)`.
 
-### 2.3 Per-engine SEQ/dispatch state (`instr_fetch_queue` / pop_state) `[HIGH/OBSERVED]`
+### 2.3 Per-engine SEQ/dispatch state (`instr_fetch_queue` / pop_state)
 
 The SEQ engine's running state lives in a central per-engine state struct at DRAM
 `0x855e0` (`state[0x855e0]`), with a second per-engine descriptor at `0x85f88`. The
@@ -729,7 +726,7 @@ rewritten on a redirect. The **fetch cursor** is register `a4` — it addresses 
 32-bit instruction word; the low byte is the opcode.
 
 ```c
-/* SEQ per-engine state (DRAM 0x855e0) + the fetch/dispatch preamble. [HIGH/OBSERVED] */
+/* SEQ per-engine state (DRAM 0x855e0) + the fetch/dispatch preamble. */
 static inline bool seq_is_running(void) {
     return (*(volatile uint8_t *)(0x855e0 + 100)) & 0x1u;   /* poll-surprises @0x6af4 */
 }
@@ -749,12 +746,11 @@ scan preamble** (the POOL side) derives `count = (end − base) >> 3 = 17` from 
 getters before the linear scan. Full fetch FSM + the redirect machine:
 [SEQ Fetch + PC-Redirect Front-End](../firmware/seq/fetch-pc-redirect.md);
 the FSM loop and the `state[0x855e0]` lifecycle: [SEQ Main FSM Loop](../firmware/seq/main-loop.md).
-`[HIGH/OBSERVED]`
 
-### 2.4 Profiler `PROF_CAM` (64×16 B) / `PROF_TABLE` (64×128 B) `[HIGH/OBSERVED]`
+### 2.4 Profiler `PROF_CAM` (64×16 B) / `PROF_TABLE` (64×128 B)
 
 The per-engine HW instruction-decode profiler is two parallel arrays staged from
-`libnrtucode_internal.so` getters. **Re-verified this session:** the CAM getter
+`libnrtucode_internal.so` getters. The CAM getter
 (`CAYMAN_NX_ACT_PROF_CAM_get @0x9b3ba0`) writes `movq $0x400,(%rsi)` = **1 KiB = 64
 slots × 16 B**; the TABLE getter (`@0x9b3bc0`) writes `movq $0x2000,(%rsi)` = **8 KiB =
 64 records × 128 B**.
@@ -792,16 +788,15 @@ The CAM decides *whether* an opcode is profiled and which slot it binds; the TAB
 opcodes on every engine (one shared blob); from MARIANA the profiler is per-`(gen,
 engine)`. Full format + the PROF-vs-activation-PWL disambiguation:
 [PROF_CAM / PROF_TABLE Blob Formats](../images/prof-cam-table-formats.md).
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — `PROF_CAM`/`PROF_TABLE` are the instruction-decode profiler, NOT the
 > activation PWL.** A 47-of-64 / 128-B *size* coincidence drove a prior conflation with
 > the activation transcendental lookup. The 16-B opcode-only CAM (no `func_id`), the
 > 9-bit `0x1e3`/mask-`0x1ff` record, the `≤0x17` sparse TABLE, and the absence of any
 > BUCKET/CONTROL table refute it. The activation PWL is a separate ACT-only four-table
-> quad, not in `libnrtucode` at all. `[HIGH/OBSERVED]`
+> quad, not in `libnrtucode` at all.
 
-### 2.5 The device `pool_stdio_queue` ring descriptor (256-B slots) `[HIGH/OBSERVED]`
+### 2.5 The device `pool_stdio_queue` ring descriptor (256-B slots)
 
 On the **SUNDA** generation, the Q7 custom-op kernel's `stdout`/`stderr` is a
 hand-rolled single-producer DRAM ring of **256-byte slots**, owned by a static
@@ -820,7 +815,7 @@ two-file set (`stdout_file`, `stderr_file`). Each file object is **`0x130` (304)
 | `+0x128` | 4 | u32 | `head` | monotonic write-sequence counter |
 
 ```c
-/* file_io_file — 0x130 (304) B; one virtual file, SUNDA Q7 file_io_manager.hpp. [HIGH/OBSERVED]
+/* file_io_file — 0x130 (304) B; one virtual file, SUNDA Q7 file_io_manager.hpp.
  * The transfer unit is a 256-B slot = 16-B header (+0x28) + 240-B body (+0x38). */
 struct file_io_file {
     uint8_t  enabled;        /* +0x00 */
@@ -844,7 +839,7 @@ drains 256-B slots.
 > region as the live fill cursor, then flushes the whole `+0x28..+0x127` block. A
 > reimplementation that puts `fill_count` in its own non-overlapping field is
 > functionally fine but **not** byte-compatible, and cannot blindly `memcpy` the
-> staging region without re-deriving the live fill value. `[HIGH/OBSERVED]`
+> staging region without re-deriving the live fill value.
 
 > **CORRECTION — `pool_stdio_queue` is SUNDA-only; CAYMAN+ uses newlib `printf`.** The
 > `file_io_manager` 256-B-slot ring ships on **SUNDA Q7-POOL** (DEBUG + RELEASE) and is
@@ -852,15 +847,13 @@ drains 256-B slots.
 > newlib `printf` path with a `'P%i:'` prefix (the same family as the SEQ `'S:'`
 > logger). This ring is the SUNDA-era predecessor, distinct from the `'S:'`/`'P%i:'`
 > firmware-log channel. Full machinery: [On-Device Virtual File-I/O Manager](../firmware/kernels/file-io-manager.md).
-> `[HIGH/OBSERVED]`
 
 ---
 
 ## Adversarial self-verification
 
-The five strongest claims, each re-challenged against the carved binaries **this
-session** (carve sha256 `910d41c3…b4b55527` matches; host loader
-`libnrtucode_internal.so`):
+The five strongest claims, each checked against the carved binaries (carve sha256
+`910d41c3…b4b55527`; host loader `libnrtucode_internal.so`):
 
 | # | claim | challenge | verdict |
 |--:|:--|:--|:--|

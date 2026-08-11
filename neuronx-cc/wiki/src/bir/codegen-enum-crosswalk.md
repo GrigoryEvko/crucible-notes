@@ -34,7 +34,7 @@ For reimplementation, the contract is:
 
 ### Two arithmetic forms
 
-The five helpers split into two implementation shapes, both confirmed from `objdump -d` of the exported bodies.
+The five helpers split into two implementation shapes.
 
 **Value-table form** (Dtype, Engine, AluOp, ActivationFunc). The body is three instructions: a bound `cmp` against the table's last legal index, a `ja` to either a `throw` stub or a soft-default fall-through, then `mov (table_VA,%rsi,4),%eax` — a 4-byte indexed load whose result is the BIR ordinal. The body receives the *already base-adjusted* index in `%esi`; the `klr−1` (Dtype/AluOp/ActivationFunc, 1-based) or `klr−2` (Engine, 2-based) subtraction is folded into the calling convention at the visitor, so what the body proves is the **bound and the table**, not the subtraction. `codegenDtype` is the canonical instance:
 
@@ -49,7 +49,7 @@ int codegenDtype(KlirToBirCodegen* this, uint32_t esi) {
 }                                         // f14073: mov (%rax,%rsi,4),%eax ; ret
 ```
 
-`codegenEngine` and `codegenActivationFunc` are the same skeleton with a *soft default* instead of a throw: they pre-load the default into `%eax` (`xor %eax,%eax` → `0` for Engine; `mov $0x1e,%eax` → `30` for ActivationFunc) **before** the `cmp`, so an out-of-range index falls straight through to `ret` carrying the default. `codegenAluOp` mirrors `codegenDtype` (throw on OOR).
+`codegenEngine` and `codegenActivationFunc` are the same skeleton with a *soft default* instead of a throw: they pre-load the default into `%eax` (`xor %eax,%eax` → `0` for Engine; `mov $0x1e,%eax` → `30` for ActivationFunc) **before** the `cmp`, so an out-of-range index falls straight through to `ret` carrying the default. `codegenAluOp` mirrors `codegenDtype` and throws on out-of-range, with its own message `"Unsupported ALU operation"` at `0x1c7ddda`.
 
 **Jump-table form** (AccumCmd). `codegenAccumCmd @0xf14110` is an inlined `switch(klr)` over a 6-entry `i32` table of *table-relative* offsets:
 
@@ -71,11 +71,11 @@ int codegenAccumCmd(KlirToBirCodegen* this, uint32_t esi) {
 
 `codegenAccumCmd` is dispatched on the raw `klr` ordinal (it is **1-based but not pre-decremented**: arm index `1` is `klr Idle`), which is why its table has six entries with arm `0` reserved for the catch-all throw.
 
-> **NOTE — addressing.** Each helper's `lea` target VA equals its file offset (`.rodata Addr==Off==0x1c72000`), and the `klr::*` to_string symbols sit in `.text` (`Addr==Off==0x62d660`). The same five `codegen*` symbols appear a second time as a low-band thunk twin in the IDA listing (e.g. the `codegenAccumCmd` twin near `0x627a20`); the high-band `0xf140xx` frame is the real body — cite that one. A prior partial referenced the AccumCmd mapper under the IDA-internal label `sub_4F2100`; `0x4f2100` is *below* `.text` (which starts `0x62d660`), so that is a rebased IDA name for the same 5-case logic the compiler inlines at the activation/DVE call sites — the canonical out-of-line export is `codegenAccumCmd @0xf14110`. `[CONFIRMED — nm/objdump]`
+> **GOTCHA — two address frames for the same five helpers.** Each helper's `lea` target VA equals its file offset (`.rodata Addr==Off==0x1c72000`), and the `klr::*` to_string symbols sit in `.text` (`Addr==Off==0x62d660`). All five `codegen*` symbols also appear as a low-band thunk twin in the IDA listing (e.g. the `codegenAccumCmd` twin near `0x627a20`), and IDA-internal labels such as `sub_4F2100` sit *below* `.text` entirely — those are rebased names for the same logic the compiler inlines at the activation/DVE call sites. Cite the high-band `0xf140xx` frame; that is the real out-of-line body.
 
 ### General finding
 
-Every one of the five tables is a **pure ordinal reorder**, not a value-identity. The `klr` enums are alphabetical within their class (Dtype/AluOp/ActivationFunc) or in a private insertion order (Engine/AccumCmd); the BIR enums follow their own canonical order (size-class for Dtype, hardware-pipeline for Engine, etc.). The only coincidental identity ordinals are `klr rsqrt 28 → bir 28` (AluOp) and `klr uint32 14 → bir 14` (Dtype). `[CONFIRMED]`
+Every one of the five tables is a **pure ordinal reorder**, not a value-identity. The `klr` enums are alphabetical within their class (Dtype/AluOp/ActivationFunc) or in a private insertion order (Engine/AccumCmd); the BIR enums follow their own canonical order (size-class for Dtype, hardware-pipeline for Engine, etc.). The only coincidental identity ordinals are `klr rsqrt 28 → bir 28` (AluOp) and `klr uint32 14 → bir 14` (Dtype).
 
 ---
 
@@ -114,11 +114,11 @@ Backing table `dword_1DE97E0` (`.rodata` off `0x1777e0`, 20 × `u32`), `xxd -s 0
 | 20 | `float4_e2m1fn_x4` | 2 | `float4_e2m1fn_x4` | |
 
 **Remap notes.**
-- Both `klr 3 float8e4` and `klr 16 float8_e4m3` collapse to **bir 4** — `e4m3` is the modern spelling of the legacy `float8e4`; `klr 17 float8_e4m3fn` is the distinct `fn`-variant (→ bir 5). `[CONFIRMED — table cells `0x1de97e0[2]==0x1de97e0[15]==4`]`
-- **bir ordinal 6 (`float8_e8m0fnu`) is unreachable** from any `klr::Dtype` member: the OCP-MXFP shared-exponent E8M0 scale type has no `klr` source and is synthesized internally on the QuantizeMx path, never carried as a front-end klr dtype. `[STRONG — 6 is absent from the table image; its origin is documented on the dtype/quantize pages]`
-- The returned bir ordinal is **not** the silicon wire-tag. To reach the `NEURON_ISA_TPB_DTYPE` byte, compose this result through the 20-byte `byte_1DFBAD0` wire-tag LUT — that *second* remap is owned by [dtype-tables](dtype-tables.md). `[CONFIRMED — cross-ref]`
+- Both `klr 3 float8e4` and `klr 16 float8_e4m3` collapse to **bir 4** — `e4m3` is the modern spelling of the legacy `float8e4`; `klr 17 float8_e4m3fn` is the distinct `fn`-variant (→ bir 5). The collapse is visible in the table image itself: cells `[2]` and `[15]` both hold `4`.
+- **bir ordinal 6 (`float8_e8m0fnu`) is unreachable** from any `klr::Dtype` member — it is absent from the whole table image. The OCP-MXFP shared-exponent E8M0 scale type has no `klr` source; it is synthesized internally on the QuantizeMx path and never carried as a front-end klr dtype.
+- The returned bir ordinal is **not** the silicon wire-tag. To reach the `NEURON_ISA_TPB_DTYPE` byte, compose this result through the 20-byte `byte_1DFBAD0` wire-tag LUT — that *second* remap is owned by [dtype-tables](dtype-tables.md).
 
-The mapping agrees with [dtype-tables](dtype-tables.md): e.g. `klr uint8 → bir 0`, `int8 → bir 1`, `float4_e2m1fn_x4 → bir 2`, `float8e3 → bir 3` exactly match that page's `bir::Dtype` ordinals 0–3. `[CONFIRMED]`
+The mapping agrees with [dtype-tables](dtype-tables.md): `klr uint8 → bir 0`, `int8 → bir 1`, `float4_e2m1fn_x4 → bir 2`, `float8e3 → bir 3` match that page's `bir::Dtype` ordinals 0–3 cell for cell.
 
 ---
 
@@ -144,10 +144,10 @@ Backing table `dword_1DE9740` (`.rodata` off `0x177740`, 6 × `u32`), `xxd` byte
 | 1 | `unassigned` / OOR | (`esi=0xFFFFFFFF`) | — | 0 | `Unassigned` (soft default) |
 
 **Remap notes.**
-- The `klr` roster is alphabetical (`act/dma/dve/pe/pool/sp`); BIR's is the hardware-pipeline order `Pool(1)/Activation(2)/PE(3)/DMA(4)/DVE(5)/SP(6)` — the table reorders. `[CONFIRMED]`
-- `klr 1 unassigned` (and any out-of-range value) yields `esi = klr−2 = 0xFFFFFFFF > 5`, which falls through to the pre-loaded `xor %eax,%eax` default → **bir `0` (Unassigned)**, no throw. `[CONFIRMED — body @0xf140f3]`
-- **bir EngineType 7 (`ALL`, the all-engine barrier pseudo) is unreachable** from this scalar field — barriers carry their engine set differently. `[STRONG]`
-- The result is stamped into `Instruction+0x90`; the engine ordinals here agree with [structural-enums](structural-enums.md)'s `EngineType` (`Pool=1 … SP=6`). `[CONFIRMED — cross-ref]`
+- The `klr` roster is alphabetical (`act/dma/dve/pe/pool/sp`); BIR's is the hardware-pipeline order `Pool(1)/Activation(2)/PE(3)/DMA(4)/DVE(5)/SP(6)` — the table reorders.
+- `klr 1 unassigned` (and any out-of-range value) yields `esi = klr−2 = 0xFFFFFFFF > 5`, which falls through to the pre-loaded `xor %eax,%eax` default at `0xf140f3` → **bir `0` (Unassigned)**, no throw.
+- **bir EngineType 7 (`ALL`, the all-engine barrier pseudo) is unreachable** from this scalar field — barriers carry their engine set differently.
+- The result is stamped into `Instruction+0x90`; the engine ordinals here agree with [structural-enums](structural-enums.md)'s `EngineType` (`Pool=1 … SP=6`).
 
 ---
 
@@ -181,10 +181,10 @@ Backing table `dword_1DE9760` (`.rodata` off `0x177760`, 29 × `u32`), `xxd` byt
 | 15 | `is_le` | 23 | | | |
 
 **Remap notes.**
-- The **comparison family** is the salient reorder. `klr` alphabetises the predicates `is_equal(12), is_ge(13), is_gt(14), is_le(15), is_lt(16), not_equal(26)`, while BIR orders them `is_equal(18), not_equal(19), is_gt(20), is_ge(21), is_lt(22), is_le(23)`. The table threads them correctly: `is_ge klr13→bir21`, `is_gt klr14→bir20`, `is_le klr15→bir23`, `is_lt klr16→bir22`, `not_equal klr26→bir19`. `[CONFIRMED — table cells]`
-- This is the **BIR-IR-level (L1) reorder only.** A *third*, separate reorder happens downstream in the CoreV4 `ALU_OP` silicon-nibble encoder (`sub_142E030`, jump table `0x1dfb5e8`), where the comparison predicates are renumbered again so an operand swap maps `gt↔lt`/`ge↔le` onto adjacent wire codes — owned by [aluop-modes](aluop-modes.md). Do not conflate the two; the `klr is_ge → bir 21` here is *not* the silicon byte. `[CONFIRMED — cross-ref]`
-- `klr::AluOp` (29) is a **subset** of BIR's 33. **bir ordinals 25 (`elemwise_mul`), 30 (`abs_max`), 31 (`abs_min`), 32 (`mod_int`) are unreachable** from this table: the front-end has only generic `mult` (→ bir 6); the others are BIR-internal ops minted on other lowering paths. `[STRONG — those four ordinals are absent from the table image; aluop-modes confirms 25 `elemwise_mul` is distinct from 6 `mult`]`
-- `codegenAluOp` does **no** per-op engine filtering; all 29 ops are legal for the `TensorTensor`/`TensorScalar` `op` field. Engine-legality is a downstream verifier/sim concern. `[STRONG]`
+- The **comparison family** is the salient reorder. `klr` alphabetises the predicates `is_equal(12), is_ge(13), is_gt(14), is_le(15), is_lt(16), not_equal(26)`, while BIR orders them `is_equal(18), not_equal(19), is_gt(20), is_ge(21), is_lt(22), is_le(23)`. The table threads them correctly: `is_ge klr13→bir21`, `is_gt klr14→bir20`, `is_le klr15→bir23`, `is_lt klr16→bir22`, `not_equal klr26→bir19`.
+- This is the **BIR-IR-level (L1) reorder only.** A *third*, separate reorder happens downstream in the CoreV4 `ALU_OP` silicon-nibble encoder (`sub_142E030`, jump table `0x1dfb5e8`), where the comparison predicates are renumbered again so an operand swap maps `gt↔lt`/`ge↔le` onto adjacent wire codes — owned by [aluop-modes](aluop-modes.md). Do not conflate the two; the `klr is_ge → bir 21` here is *not* the silicon byte.
+- `klr::AluOp` (29) is a **subset** of BIR's 33. **bir ordinals 25 (`elemwise_mul`), 30 (`abs_max`), 31 (`abs_min`), 32 (`mod_int`) are unreachable** from this table — all four are absent from the table image. The front-end has only generic `mult` (→ bir 6); [aluop-modes](aluop-modes.md) shows `25 elemwise_mul` is a distinct BIR-internal op, and the remaining three are likewise minted on other lowering paths.
+- `codegenAluOp` does **no** per-op engine filtering; all 29 ops are legal for the `TensorTensor`/`TensorScalar` `op` field. Engine-legality is a downstream verifier/sim concern.
 
 ---
 
@@ -228,10 +228,10 @@ Backing table `dword_1DE9840` (`.rodata` off `0x177840`, 25 × `u32`), `xxd` byt
 | 25 | `gelu_apprx_sigmoid_dx` | 20 | `Derivative_Gelu_apprx_sigmoid` | **alias** |
 
 **Remap notes.**
-- `klr` spells derivatives `*_dx`; BIR spells them `Derivative_*`, and `log → Ln`. All 25 resolve to a semantically identical BIR func. `[CONFIRMED — bir names from op-family-enums roster]`
-- `klr::ActivationFunc` (25) is a **subset** of BIR's 31. **bir ordinals 0 (`Identity`), 3 (`Lrelu`), 4 (`Prelu`), 26 (`Abs_reciprocal_sqrt`), 29 (`Is_finite`), 30 (`Unknown`) are unreachable** from this table — `Identity` is reached via `copy(→Copy 23)`, leaky/parametric relu and `is_finite` arrive on other lowering paths, and `30 Unknown` is the soft-default sentinel only. `[STRONG — those six are absent from the table; op-family-enums confirms each as a real bir member]`
-- Out-of-range silently yields **bir `30` (Unknown)** — the body pre-loads `mov $0x1e,%eax` before the bound `cmp`. `[CONFIRMED — body @0xf14043]`
-- This produces the BIR-IR `func` ordinal only; the **silicon PWP opcode-id is a separate downstream remap** (the PWP-id column of [op-family-enums](op-family-enums.md)). Activation therefore has **three** id-spaces: klr `ActivationFunc(1..25)` → BIR `ActivationFunctionType(0..30)` (this table) → silicon PWP-id. `[CONFIRMED — cross-ref]`
+- `klr` spells derivatives `*_dx`; BIR spells them `Derivative_*`, and `log → Ln`. All 25 resolve to a semantically identical BIR func (bir names per the [op-family-enums](op-family-enums.md) roster).
+- `klr::ActivationFunc` (25) is a **subset** of BIR's 31. **bir ordinals 0 (`Identity`), 3 (`Lrelu`), 4 (`Prelu`), 26 (`Abs_reciprocal_sqrt`), 29 (`Is_finite`), 30 (`Unknown`) are unreachable** from this table — all six are absent from the table image, though each is a real bir member. `Identity` is reached via `copy (→ Copy 23)`, leaky/parametric relu and `is_finite` arrive on other lowering paths, and `30 Unknown` serves only as the soft-default sentinel.
+- Out-of-range silently yields **bir `30` (Unknown)** — the body pre-loads `mov $0x1e,%eax` at `0xf14043`, before the bound `cmp`.
+- This produces the BIR-IR `func` ordinal only; the **silicon PWP opcode-id is a separate downstream remap** (the PWP-id column of [op-family-enums](op-family-enums.md)). Activation therefore has **three** id-spaces: klr `ActivationFunc(1..25)` → BIR `ActivationFunctionType(0..30)` (this table) → silicon PWP-id.
 
 ---
 
@@ -266,9 +266,9 @@ Decoded targets (`base 0x1de9580 + rel`):
 | 0 / other | — | — | **THROW** `"Unrecognized accumulation cmd encountered!"` |
 
 **Remap notes (the most behaviourally significant of the five).**
-- Not identity, not a simple `−1` shift. `klr Accumulate(3)` is rerouted to **bir `AddAccumulate(4)`** — the explicit-add PSUM read-modify-write variant — *not* bir `Accumulate(2)`. So **bir `EngineAccumulationType 2` (`Accumulate`) is never produced by this codegen path**; the front-end's generic "Accumulate" always canonicalises to the explicit-add ordinal. `[CONFIRMED — arm idx3 returns `mov $0x4` @0xf1415c]`
-- `klr LoadAccumulate(5)` is a **defined** klr member (it has a `to_string` name) but is **rejected at codegen with a hard `runtime_error`** — load-into-accumulator is not lowerable on this backend even though the BIR enum reserves ordinal 5 for it. A genuine front-end/back-end capability gap, not a reorder. `[CONFIRMED — arm idx5 → throw @0x6d6934]`
-- The result is the BIR-JSON `acc` / `reduce_cmd` field (`InstActivation.acc`, `InstTensorScalarCache.acc`, `InstExponential`/`RangeSelect.reduce_cmd`, `InstCopyPredicated.accumulator_cmd`). The compiler inlines a copy of this 5-case switch at the activation/DVE call sites; the exported `codegenAccumCmd @0xf14110` is the canonical reference. `[STRONG]`
+- Not identity, not a simple `−1` shift. `klr Accumulate(3)` is rerouted to **bir `AddAccumulate(4)`** — the explicit-add PSUM read-modify-write variant — *not* bir `Accumulate(2)`. So **bir `EngineAccumulationType 2` (`Accumulate`) is never produced by this codegen path**; the front-end's generic "Accumulate" always canonicalises to the explicit-add ordinal. Arm `idx3` returns via `mov $0x4` at `0xf1415c`.
+- `klr LoadAccumulate(5)` is a **defined** klr member (it has a `to_string` name) but is **rejected at codegen with a hard `runtime_error`** (arm `idx5` → throw at `0x6d6934`) — load-into-accumulator is not lowerable on this backend even though the BIR enum reserves ordinal 5 for it. A genuine front-end/back-end capability gap, not a reorder.
+- The result is the BIR-JSON `acc` / `reduce_cmd` field (`InstActivation.acc`, `InstTensorScalarCache.acc`, `InstExponential`/`RangeSelect.reduce_cmd`, `InstCopyPredicated.accumulator_cmd`). The compiler inlines a copy of this 5-case switch at the activation/DVE call sites; the exported `codegenAccumCmd @0xf14110` is the canonical reference.
 
 ---
 
@@ -282,20 +282,16 @@ Decoded targets (`base 0x1de9580 + rel`):
 | **ActivationFunc** | 25 | 31 | full perm + alias renames | `0,3,4,26,29,30` (`Identity,Lrelu,Prelu,Abs_reciprocal_sqrt,Is_finite,Unknown`) | soft `30` (Unknown) |
 | **AccumCmd** | 5 | 6 | switch + value remap | `2` (`Accumulate`; klr `Accumulate→4`) | THROW (klr5 + bad: 2 distinct msgs) |
 
-All five backing tables sit in one contiguous `.rodata` **codegen remap band**, `0x1de9580`–`0x1de9858`: the AccumCmd jump table starts it (`0x1de9580`), then the four value tables follow — Engine (`0x1de9740`), AluOp (`0x1de9760`), Dtype (`0x1de97e0`), ActivationFunc (`0x1de9840`) — adjacent to the other per-op `codegenImmediate*` encoders. `[CONFIRMED — xxd of the band]`
+All five backing tables sit in one contiguous `.rodata` **codegen remap band**, `0x1de9580`–`0x1de9858`: the AccumCmd jump table starts it (`0x1de9580`), then the four value tables follow — Engine (`0x1de9740`), AluOp (`0x1de9760`), Dtype (`0x1de97e0`), ActivationFunc (`0x1de9840`) — adjacent to the other per-op `codegenImmediate*` encoders.
 
 **Relation to the sibling pages.** This page is the *klr-codegen-time* L1(klr)→L1(BIR) step. The broad L1/L2/L3 model and the four downstream L1≠L3 silicon families are owned by [op-family-enums](op-family-enums.md); the dtype wire-tag LUT by [dtype-tables](dtype-tables.md); the `ALU_OP` silicon-byte reorder by [aluop-modes](aluop-modes.md); the `EngineType`/`EngineAccumulationType` rosters by [structural-enums](structural-enums.md). Each `codegen*` result is the *input* to those downstream remaps, never their output.
 
 ---
 
-## Adversarial self-verification
+## Limits of this reading
 
-The five strongest claims, re-checked against the binary:
+The helper VAs, the bound checks, the four table images, the jump-table targets and their throw strings, and the agreement with the BIR rosters are all read directly off the cp310 ELF. Three things on this page are weaker:
 
-1. **All five helpers exist as named DYNSYM exports at the cited VAs.** `nm -DC libwalrus.so` returns `codegenActivationFunc 0xf14040`, `codegenDtype 0xf14060`, `codegenAluOp 0xf140c0`, `codegenEngine 0xf140f0`, `codegenAccumCmd 0xf14110` (all `T`). `[CONFIRMED]`
-2. **Each value table is byte-exact.** `xxd -s <VA>` of `0x1de97e0/0x1de9740/0x1de9760/0x1de9840` reproduces the `u32` images above verbatim; lengths 20/6/29/25 match the bound checks (`cmp $0x13/$0x05/$0x1c/$0x18`). `[CONFIRMED]`
-3. **The AccumCmd jump table resolves to the claimed arms.** `base 0x1de9580 + (i32)rel` yields `0x6d6902` (throw), `0xf14148`→0, `0xf14168`→1, `0xf14158`→4, `0xf14138`→3, `0x6d6934` (throw); the arm bodies' `mov $imm,%eax` immediates (`0/1/4/3`) confirm the returns. `[CONFIRMED]`
-4. **The mappings agree with the BIR rosters.** Dtype `uint8→0 … float8e3→3`, EngineType `Pool=1 … SP=6`, AluOp comparison family `is_equal=18 … is_le=23`, ActivationFunctionType `Identity=0 … Unknown=30` all match the sibling pages [dtype-tables](dtype-tables.md), [structural-enums](structural-enums.md), [aluop-modes](aluop-modes.md), [op-family-enums](op-family-enums.md) cell-for-cell. `[CONFIRMED]`
-5. **Out-of-range policy is per-helper.** Dtype/AluOp `ja` into `runtime_error` stubs (`"Unsupported dtype encountered"` `@0x1c7ddbc`; `"Unsupported ALU operation"` `@0x1c7ddda`); Engine/ActivationFunc pre-load a soft default (`0`/`30`) before the `cmp`; AccumCmd has two distinct throw strings. All four strings read verbatim from `.rodata`. `[CONFIRMED]`
-
-**Re-verify ceiling.** The helper VAs, bounds, table bytes, jump-table targets, throw strings, and BIR-roster agreement are all `CONFIRMED` from `nm`/`objdump`/`xxd` on the cp310 ELF. The base-adjustment per helper (`klr−1` / `klr−2`) is `STRONG` rather than `CONFIRMED`-in-body: the bodies receive an already-decremented `%esi`, so the subtraction is inferred from the base (1-based vs 2-based) plus the table semantics, not re-disassembled at the visitor call site here. The `klr` enum **names** are `STRONG` (taken from the `to_string` symbol set without re-walking each switch body on this pass). The "unreachable bir ordinal" claims are `STRONG`: each is provably absent from the table image and confirmed a real bir member on the sibling page, but *which* downstream path mints it (e.g. who emits `elemwise_mul`/`abs_max`) is `INFERRED` and out of scope.
+- **The per-helper base adjustment (`klr−1` / `klr−2`).** [INFERRED] The bodies receive an already-decremented `%esi`, so the subtraction happens at the visitor call site, not in the helper. It is reconstructed from the enum base (1-based vs 2-based) plus the table semantics; the call-site arithmetic is not re-disassembled here.
+- **The `klr` enum member names.** Taken from the `to_string` symbol set rather than by walking each `to_string` switch body.
+- **Which downstream path mints an "unreachable" bir ordinal.** [INFERRED] That `elemwise_mul`, `abs_max`, `abs_min`, `mod_int`, `Lrelu`, `Prelu`, `Is_finite` and `float8_e8m0fnu` are absent from these tables is settled; *who* emits them is out of scope for this page.

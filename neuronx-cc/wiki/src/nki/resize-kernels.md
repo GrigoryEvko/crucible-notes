@@ -62,7 +62,7 @@ The transform is hard-coded to the asymmetric+floor convention because the alter
 - `"ResizeNearest: align_corners=true is not supported in this implementation."`
 - `"Set align_corners=false in your ResizeNearest configuration."`
 
-So half-pixel / align-corners variants never reach codegen, and the NKI kernel carries no mode parameter — neither the transform mode nor `align_corners` is among the kwargs `_get_resize_args` supplies. (CONFIRMED — error strings; backing D-AA07 §d.)
+So half-pixel / align-corners variants never reach codegen, and the NKI kernel carries no mode parameter — neither the transform mode nor `align_corners` is among the kwargs `_get_resize_args` supplies.
 
 ---
 
@@ -162,7 +162,7 @@ base + (b*in_seqlen + load_indices[i]) * in_c + c
 
 — exactly "copy the `in_c`-wide channel vector of nearest source pixel `load_indices[i]`." The **output** side is a dense sweep (tile pixels are contiguous `tile_start..tile_start+actual_tile_size-1`), so the store is a pure affine descriptor — stride `out_c` on dim-0, unit on dim-1, no indirection. Only the input is gathered.
 
-> **QUIRK — integer scale is not special-cased.** When `in/out` divides evenly, `src = floor(dst·k) = dst·k` is affine and the gather could collapse to a constant-stride DMA (partition stride `k·in_c`). This kernel never does that — it always builds the explicit `load_indices` and uses the indirect path (no special-case in the source). The integer-ratio fast path lives only on the **backward** side, as a `reduce_window`. (INFERRED that a strided collapse is possible; CONFIRMED that the kernel does not implement it — backing D-AA07 §c.)
+> **QUIRK — integer scale is not special-cased.** When `in/out` divides evenly, `src = floor(dst·k) = dst·k` is affine and the gather could collapse to a constant-stride DMA (partition stride `k·in_c`). This kernel never does that — it always builds the explicit `load_indices` and uses the indirect path; the source carries no special case. That a strided collapse *would* be legal for integer ratios is [INFERRED] from the transform, not from anything in the kernel. The integer-ratio fast path lives only on the **backward** side, as a `reduce_window`.
 
 ### Considerations
 
@@ -192,7 +192,7 @@ codegenInternalNativeNkiKernel @0x8d630          ── meets an InternalNativeN
 The extractor's entire body, recovered from the Cython decompile `@0x957e0` (`BirCodeGenLoop.py:266-267`):
 
 ```c
-function _get_resize_args(inst):              // @0x957e0  — CONFIRMED, decompile + strings
+function _get_resize_args(inst):              // @0x957e0  — from the Cython decompile
     d = PyDict_New()                          // decompile line 282
     r = getattr(inst, "results")              // __pyx_n_s_results, line 287
     r0 = r[0]                                 // PyObject_GetItem(r, 0), line 319
@@ -215,7 +215,7 @@ registry["ResizeNearest"] = InternalKernelConfig(
 
 **Why a shape and not a scale.** NN-resize output is an explicit target size, not derivable from the input plus a stored scalar. The kernel reconstructs `h_scale, w_scale = in/out` internally from `data_tensor.shape` and `out_shape`, so the single extra argument it needs is exactly the output shape — which `_get_resize_args` reads from `inst.results[0].access_shape`, a quantity the compiler already knows from the HLO op's result type. The mode and `align_corners` are *not* passed; they were fixed upstream.
 
-> **NOTE — `operand_count=1` is explicit.** The registry-builder disassembly constructs this config with `operand_count=1` (it is the single input operand, `data_tensor`). The backing report treats it as a default; the registry page ([internal-kernel-registry](internal-kernel-registry.md)) shows it spelled out. Either way the traced call marshals one operand. (STRONG — registry page cross-confirms the explicit kwarg.)
+> **NOTE — `operand_count=1` is explicit, not a default.** The registry-builder disassembly constructs this config with `operand_count=1` spelled out as a keyword argument — it is the single input operand, `data_tensor`. The traced call marshals exactly one operand either way; see [internal-kernel-registry](internal-kernel-registry.md).
 
 ---
 
@@ -234,7 +234,7 @@ The forward op (`mhlo.resize_nearest`, custom-call target `"ResizeNearest"`) and
 
 The backward path is fully documented at [canonicalize-for-tensorizer](../hlo-opt/canonicalize-for-tensorizer.md#lowerresizenearestgrad--average-pool-lowering-of-the-resize-gradient): the forward NN-upsample replicates one source pixel into a `k×k` output block, so the gradient w.r.t. that source pixel is the **sum** of the upstream gradients of all output pixels that copied it — a non-overlapping `k×k` window-sum (`window=stride=k`), i.e. `reduce_window` with an add body, then a `divide` for normalisation. The integer-ratio constraint is the integer-`k` requirement of this pooling.
 
-> **CORRECTION (D-AA07/D-C09) —** forward and backward do **not** share `_get_resize_args`. An assumption that the gradient reuses the forward arg-extractor is wrong: the gradient is gone before the NKI frontend ever runs, and it carries its own ratio in its shapes. The only shared artefact is the op-family/config schema, not the extraction function. (CONFIRMED — separate addresses, separate IR stages; backing D-AA07 §d.)
+> **GOTCHA —** forward and backward do **not** share `_get_resize_args`. The gradient is already lowered away before the NKI frontend runs, and it carries its ratio implicitly in its result-vs-operand shapes. The only artefact the two paths share is the op-family/config schema, not the extraction function.
 
 ---
 

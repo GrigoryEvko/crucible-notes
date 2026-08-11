@@ -12,7 +12,7 @@ field decode and meaning; a reimplementer can diff their own writer against this
 ground truth.
 
 The [`pe.bin` / `pool.bin` microcode *decode* itself](./seq-microcode.md) is **not
-re-derived here** — that is the job of the per-engine sequencer page. This page
+derived here** — that is the job of the per-engine sequencer page. This page
 carves the **container framing around it**: where those streams sit in the tar, how
 the 64-byte slot header frames the bytes that page decodes, and how the producer
 `.asm` shipped beside each `.bin` cross-validates the decode to the field.
@@ -22,14 +22,14 @@ the 64-byte slot header frames the bytes that page decodes, and how the producer
 > — 122 956 336 B (`0x7542A30`), `sha256 956382de…02cd59a6`. ELF64 LE `DYN`, x86-64.
 > The embedded NEFF begins at **file offset `0xC07E20`**. Every byte quoted below was
 > read with `xxd -s <off>` / `dd` directly out of this file and independently
-> re-inflated/decoded in Python; nothing is paraphrased from any external tree.
+> inflated/decoded in Python.
 
 ---
 
 ## 0. Is there a real `.neff`? — yes, exactly one, and it is embedded `[HIGH × OBSERVED]`
 
 No file named `*.neff` exists anywhere in the corpus (`fd --no-ignore -e neff` → 0
-hits; the only `neff`-matching paths are the `DX-NEFF-*` reports and this wiki). The
+hits). The
 **concrete NEFF that does exist is embedded**: a complete `pkg2` NEFF is compiled into
 `libnrt.so` as a `.data` constant — a built-in default/test model. Scanning the whole
 `.data` window (`0xc07e00..0xc37c20`) for the gzip magic `1f 8b 08` returns a
@@ -81,7 +81,7 @@ are all zero — the unused tail of the 128-byte `build_version` field):
 ### Field-by-field decode
 
 The header is a packed C struct; offsets are relative to `0xC07E20` and were
-re-confirmed this pass by a Python `struct.unpack_from` decode (results in the table):
+confirmed by a Python `struct.unpack_from` decode (results in the table):
 
 ```c
 struct neff_header_t {            // 1024 B (== header_size)
@@ -215,7 +215,7 @@ This fixture passes every gate: `major 2`, `feature_bits 0` (trapdoor inert),
 
 ## 3. The tar member tree — 19 members, offsets mapped `[HIGH × OBSERVED]`
 
-Re-walked with an independent 512-byte-block parser over the inflated tar. Each member
+Walked with an independent 512-byte-block parser over the inflated tar. Each member
 is a 512-byte ustar header followed by `ceil(size/512)` data blocks:
 
 | member          | hdr_off | data_off | size | blks | typeflag |

@@ -103,7 +103,7 @@ The L1 ordinal (column 1) is what `libBIR` stores and what the JSON name decodes
 | 31 | `abs_min` | reduce | `0x21` | ✗ shift |
 | 32 | `mod_int` | arith | `0xC8` | ✗ **ext band** |
 
-Names are CONFIRMED byte-exact from the `0x400600` switch and the `0x40db60` inverse arms. The L3 bytes are CONFIRMED from the `sub_142E030` disasm — each `case N: mov eax, IMM; retn` and the `mov eax, 0FFFFFFC8h` for case 32 were read directly (see below).
+Names are byte-exact from the `0x400600` switch and the `0x40db60` inverse arms. The L3 bytes come from the `sub_142E030` disassembly — each `case N: mov eax, IMM; retn`, and the `mov eax, 0FFFFFFC8h` for case 32, was read directly (see below).
 
 > **QUIRK — the comparison family is reordered on the wire because the predicates are anti-symmetric.** The L1 enum numbers them `is_equal(18), not_equal(19), is_gt(20), is_ge(21), is_lt(22), is_le(23)`; the CoreV4 wire band groups them so `is_gt(20)→0x13` and `is_lt(22)→0x16`, `is_ge(21)→0x14` and `is_le(23)→0x15`, while `not_equal(19)→0x18`. Swapping the two operands of a comparison flips `gt↔lt` and `ge↔le`; the wire layout is chosen so the swapped predicate is one entry away and the codegen never has to re-derive the opcode. A reimplementer who assumes `wire = L1_ordinal` will silently emit the wrong predicate for every `is_gt`/`is_ge`/`is_lt`/`is_le`/`not_equal`. The same anti-symmetry is why these ops must never be operand-canon-swapped by a verifier (see Commutativity below).
 
@@ -158,7 +158,7 @@ Fifteen `Inst*` classes invoke `from_json(json, AluOpType&)` from their `readFie
 
 ### Commutativity
 
-`libBIR.so` has **no** `isCommutative` symbol; operand-order sensitivity is implicit in each operator's semantics. The authoritative behavioral evidence is the simulator's reduce/RMW functor bodies (`libBIRSimulator`), each `redFn(acc, x)` with `acc` the running LHS. Classification (HIGH confidence — derived from functor bodies, not a named flag):
+`libBIR.so` has **no** `isCommutative` symbol; operand-order sensitivity is implicit in each operator's semantics. The authoritative behavioral evidence is the simulator's reduce/RMW functor bodies (`libBIRSimulator`), each `redFn(acc, x)` with `acc` the running LHS. The classification below is derived from those functor bodies; there is no named commutativity flag to read:
 
 - **Commutative** `f(a,b)==f(b,a)`: `add(4)`, `mult(6)`, `max(8)`, `min(9)`, `is_equal(18)`, `not_equal(19)`, `bitwise_and/or/xor(10/11/12)`, `logical_and/or/xor(13/14/15)`, `abs_max(30)`, `abs_min(31)`, `average(24)`, `elemwise_mul(25)`.
 - **Order-sensitive** (`acc` op `x`): `subtract(5)=acc−x`, `divide(7)=acc/x`, shifts `2/3/16/17 = acc<<x` / `acc>>x`, `pow(26)=powf(acc,x)`, `mod(27)`/`mod_int(32)=acc mod x`, and the comparisons `is_gt(20)=acc>x`, `is_ge(21)`, `is_lt(22)`, `is_le(23)`.
@@ -193,9 +193,9 @@ Both directions are byte-exact (`Idle=0, Reset=1, Reduce=2, ResetReduce=3`); rou
 
 ### Dormancy Proof
 
-> **GOTCHA — `ReduceCmdType` is defined, serializable, and consumed by nothing.** The symbol `ReduceCmdType` appears in exactly six functions across the entire decompiled + disasm tree, and they are *all* its own (de)serializer / stream operators: `2string @0x402480`, `string2 @0x40f420`, `from_json @0x417aa0`, `to_json @0x41e650`, `operator<< @0x402520` (plus their second-VA-frame twins). It appears in **no** `Inst::readFieldsFromJson`, no builder, and no setter. The enum is dormant in this build. [CONFIRMED — `rg 'ReduceCmdType'` over both trees returns only those serializer bodies.]
+> **GOTCHA — `ReduceCmdType` is defined, serializable, and consumed by nothing.** The symbol `ReduceCmdType` appears in exactly six functions across the entire decompiled + disasm tree, and they are *all* its own (de)serializer / stream operators: `2string @0x402480`, `string2 @0x40f420`, `from_json @0x417aa0`, `to_json @0x41e650`, `operator<< @0x402520` (plus their second-VA-frame twins). It appears in **no** `Inst::readFieldsFromJson`, no builder, and no setter. The enum is dormant in this build — `rg 'ReduceCmdType'` over both trees returns only those serializer bodies.
 
-The live `reduce_cmd` JSON key — which earlier analysis attributed to `ReduceCmdType` — actually deserializes to a *different* enum. In `InstExponential::readFieldsFromJson` (`0x417b80`), the disasm reads:
+The live `reduce_cmd` JSON key, despite the name, deserializes to a *different* enum. In `InstExponential::readFieldsFromJson` (`0x417b80`), the disasm reads:
 
 ```asm
 0x417ccb: lea  rsi, aReduceCmd            ; "reduce_cmd"
@@ -205,7 +205,9 @@ The live `reduce_cmd` JSON key — which earlier analysis attributed to `ReduceC
 
 So the `reduce_cmd` wire field is an `EngineAccumulationType` (`{Idle, Zero, Accumulate, ZeroAccumulate, AddAccumulate, LoadAccumulate}`), parsed into `+0xF0`, **not** a `ReduceCmdType`. `InstRangeSelect` (`0x419b00`) carries the same `reduce_cmd`→`EngineAccumulationType` binding; `InstTensorReduce` has no such key at all.
 
-> **CORRECTION (D-D02-C1) —** earlier notes listed `reduce_cmd` as a `ReduceCmdType` field on `TensorReduce`/`RangeSelect`. The binary shows `InstTensorReduce` has no `reduce_cmd` field, and the `reduce_cmd` key on `InstExponential`/`InstRangeSelect` deserializes to `EngineAccumulationType` at `+0xF0`. `bir::ReduceCmdType` is a sim/runtime RMW-phase enum only; it is not surfaced in the BIR JSON of any shipped instruction in this build. Where the compiler *sets* a `ReduceCmdType` value at runtime is unresolved — candidate is an internal scheduler/RMW-sequencing path that constructs it programmatically without a JSON round-trip (LOW priority; the enum is dormant).
+> **GOTCHA — the `reduce_cmd` key is not a `ReduceCmdType`.** The name invites the wrong binding. `InstTensorReduce` has no `reduce_cmd` field at all, and on `InstExponential` / `InstRangeSelect` the key deserializes to `EngineAccumulationType` at `+0xF0`. `bir::ReduceCmdType` is a sim/runtime RMW-phase enum that never surfaces in the BIR JSON of any shipped instruction in this build.
+
+Where the compiler *sets* a `ReduceCmdType` value at runtime is [UNRESOLVED]; the likeliest home is an internal scheduler / RMW-sequencing path that constructs it programmatically without a JSON round-trip.
 
 ---
 
@@ -223,13 +225,13 @@ So the `reduce_cmd` wire field is an `EngineAccumulationType` (`{Idle, Zero, Acc
 // bir::string2TSCMode  @0x40e720   — inverse, round-trip exact
 ```
 
-| L1 | Name | L3 wire | Conf |
+| L1 | Name | L3 wire | Confidence |
 |---|---|---|---|
 | 0 | `Reduce` | none | CERTAIN |
 | 1 | `Cumulative` | none | CERTAIN |
 | 2 | `TensorScan` | none | CERTAIN |
 
-`InstTensorScalarCache::readFieldsFromJson` (`0x41b270`) reads `{op0→AluOpType@+0xF0, op1→AluOpType@+0x120, mode→TSCMode@+0x150, acc→EngineAccumulationType@+0x154, reverse0, reverse1, …}`. The `mode` field is CONFIRMED at `+0x150` (336) from the disasm:
+`InstTensorScalarCache::readFieldsFromJson` (`0x41b270`) reads `{op0→AluOpType@+0xF0, op1→AluOpType@+0x120, mode→TSCMode@+0x150, acc→EngineAccumulationType@+0x154, reverse0, reverse1, …}`. The `mode` field sits at `+0x150` (336), per the disasm:
 
 ```asm
 0x41b3c2: lea  rsi, aUpdateMode+7         ; "mode"
@@ -257,14 +259,14 @@ So the `reduce_cmd` wire field is an `EngineAccumulationType` (`{Idle, Zero, Acc
 // bir::string2CopyMode  @0x40e7b0  — inverse, round-trip exact
 ```
 
-| L1 | Name | L3 wire | Conf |
+| L1 | Name | L3 wire | Confidence |
 |---|---|---|---|
 | 0 | `Copy` | none | CERTAIN |
 | 1 | `Transpose` | none | CERTAIN |
 | 2 | `CCE` | none | CERTAIN |
 | 3 | `Replicate` | none | CERTAIN |
 
-`InstDMACopy::readFieldsFromJson` (`0x4311a0`) reads the `mode` key into `+0x128` (296), CONFIRMED from disasm:
+`InstDMACopy::readFieldsFromJson` (`0x4311a0`) reads the `mode` key into `+0x128` (296), per the disasm:
 
 ```asm
 0x4311c3: lea  rsi, aUpdateMode+7         ; "mode"
@@ -298,7 +300,7 @@ function MemsetMode2string(out, ord):     // sub_400cf0
 // bir::string2MemsetMode  @0x40e220  — "Const"→0, "Random"→1, round-trip exact
 ```
 
-| L1 | Name | L3 wire | Conf |
+| L1 | Name | L3 wire | Confidence |
 |---|---|---|---|
 | 0 | `Const` | none | CERTAIN |
 | 1 | `Random` | none | CERTAIN |
@@ -320,14 +322,14 @@ Round-trip serialization is confirmed: `InstMemset::toJson` (`0x435e60`) referen
 
 ## Provenance
 
-All five enums are emitted by the InstaBrew `brewer.py` codegen: every `2string`/`string2` default-error arm cites the source path `…/neuronxcc/instabrew/brewer.py`, consistent with the generated `readFieldsFromJson`/`toJson`/`from_json`/`to_json` family that consumes them. This is why the maps are dense, ordinal-ordered switches with a uniform fatal arm rather than hand-written tables. [CONFIRMED — the path string is present in all ten map bodies.]
+All five enums are emitted by the InstaBrew `brewer.py` codegen: every `2string`/`string2` default-error arm cites the source path `…/neuronxcc/instabrew/brewer.py`, consistent with the generated `readFieldsFromJson`/`toJson`/`from_json`/`to_json` family that consumes them. This is why the maps are dense, ordinal-ordered switches with a uniform fatal arm rather than hand-written tables. The `brewer.py` path string is present in all ten map bodies.
 
-### Gaps
+### Limits of this reading
 
-- **G1.** `ReduceCmdType`'s live runtime setter is unresolved; the enum is dormant in `libBIR` JSON and its symbol does not surface in the simulator strings either. (LOW priority.)
-- **G2.** The four mode enums (`ReduceCmdType`/`TSCMode`/`CopyMode`/`MemsetMode`) have no L3 silicon byte; the exact `libwalrus` emitter branch each selects is not pinned here.
-- **G3.** The int32 extended ALU band (`0xC4..0xE1`) beyond `mod_int=0xC8` is taken from the cross-binary CoreV4 converter, not re-disassembled in this scope.
-- **G4.** The dedicated CoreV4 opcodes that `average(24)`/`elemwise_mul(25)` route to (and the simulator's inline 1/N average functor) are sim/walrus-side and not pinned here.
+- `ReduceCmdType`'s live runtime setter is unresolved; the enum is dormant in `libBIR` JSON and its symbol does not surface in the simulator strings either.
+- The four mode enums (`ReduceCmdType`/`TSCMode`/`CopyMode`/`MemsetMode`) have no L3 silicon byte; the exact `libwalrus` emitter branch each selects is not pinned here.
+- The int32 extended ALU band (`0xC4..0xE1`) beyond `mod_int=0xC8` is taken from the cross-binary CoreV4 converter, not re-disassembled in this scope.
+- The dedicated CoreV4 opcodes that `average(24)`/`elemwise_mul(25)` route to — and the simulator's inline 1/N average functor — are sim/walrus-side and not pinned here.
 
 ---
 

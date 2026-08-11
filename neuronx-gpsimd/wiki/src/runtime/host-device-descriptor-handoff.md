@@ -24,10 +24,11 @@
 > the *per-inference* kickoff) and the host-API companion of
 > [The DGE Host-Private API (priority/mailbox/PC-bounds)](dge-host-api.md).
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this task
-> from `objdump`/`nm`/`readelf`/`c++filt`/DWARF on the shipped binary), `INFERRED`
+> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read from
+> `objdump`/`nm`/`readelf`/`c++filt`/DWARF on the shipped binary), `INFERRED`
 > (a rule applied to an observed fact), `CARRIED` (consolidated from a cited
-> committed page, re-confirmed here only where spot-checked).
+> committed page, re-confirmed here only where spot-checked). The page default is
+> `[HIGH × OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — provenance & artifacts.** Every host fact below is derived **solely
 > from static analysis** of two shipped, redistributable ELF64 objects, read with
@@ -107,7 +108,7 @@ and **two** completion models; the rest of this page exists to keep them apart.
 
 Descriptor and completion-word *payloads* themselves cross the boundary via
 `dmem_buf_copyin` / `dmem_buf_copyout` (the device-DRAM staging primitives), which
-are orthogonal to the two doorbell channels. `[HIGH × OBSERVED]`
+are orthogonal to the two doorbell channels.
 
 **Two completion models** (§5): a **dmem busy-poll** against an `0xABCDEF01`
 sentinel for the load/stage-time per-DMA copies, and the **execute-time
@@ -120,7 +121,7 @@ queue-bank `+0x38` (§4.1).
 
 ---
 
-## 1. Runtime descriptor construction — `dma_util_vring_append_descs`  [HIGH × OBSERVED]
+## 1. Runtime descriptor construction — `dma_util_vring_append_descs`
 
 `dma_util_vring_append_descs` **@0x316d10** (size 0x9cb / 2507 B) is the host
 BD-filler: it turns one logical, *typed* transfer request into one or two al_udma
@@ -142,7 +143,7 @@ dma_packet_t *rx  = al_udma_m2m_alloc_dma_packet(...);         // @0x45ca90  (rs
 
 `al_udma_m2m_alloc_dma_packet` is called **twice** (TX then RX); the first
 packet's byte `+8` takes a bool (a split/odd flag derived from the dimension
-arithmetic in §1.3) and `+0x10` takes the dimension multiplier. `[HIGH × OBSERVED]`
+arithmetic in §1.3) and `+0x10` takes the dimension multiplier.
 
 ### 1.2 Dispatch on the descriptor TYPE (the host branch selector)
 
@@ -186,7 +187,7 @@ Per element, the build calls into the arch-specific BD-writer family
 `al_sdma_m2s_build_{fma,min_max,gradient,seed_init,transpose,replication}_descriptor`).
 The host's job ends at *selecting* the writer by type and feeding it
 `(addr, len, dtype, op)`; the actual byte layout those writers emit is owned by
-the DMA Part. `[HIGH × OBSERVED]`
+the DMA Part.
 
 > **NOTE — the N-D expander peers.** A family of host helpers feeds §1.4 the
 > per-tile `(addr,len)` tuples: `dma_util_expand_desc`,
@@ -197,14 +198,14 @@ the DMA Part. `[HIGH × OBSERVED]`
 
 ---
 
-## 2. The vring→pring lowering + ring allocation  [HIGH × OBSERVED]
+## 2. The vring→pring lowering + ring allocation
 
 The **vring** is the host-resident *virtual* BD list: a paged structure with up
 to `0x10000` (64 Ki) BDs per page, pages chained at `page+0x100000`; each BD is
 16 bytes with `buf_ptr` as the first u64. The **pring** is its lowered device-ring
 image. Source file (`.rodata`): `KaenaRuntime/tdrv/dma_ring.c` (string present).
 
-### 2.1 `dma_pring_alloc` @0x22d8b0 — allocate + bind  [HIGH × OBSERVED]
+### 2.1 `dma_pring_alloc` @0x22d8b0 — allocate + bind
 
 Args `(rdi=ctx, rsi=vring, rdx=count, rcx=?, r8d=ring-type/id, r9d=dir)`. Flow
 byte-verified at `0x22d8be`–`0x22d965`:
@@ -231,9 +232,9 @@ switch (r9d /* dir */) {                       // r9d saved in r12d @0x22d8e3
 > `mov %rbx,0x158(%rbp)`; fall-through `cmp $0x2,%r12d` → `mov %rbx,0x150(%rbp)`)
 > reverses that: **`r9d==1` binds `vring+0x158` (TX)** and **`r9d==2` binds
 > `vring+0x150` (RX)**. The report is **correct as written**; this note exists so a
-> reimplementer does not trust a filtered grep over the branch order. `[HIGH × OBSERVED]`
+> reimplementer does not trust a filtered grep over the branch order.
 
-### 2.2 `dma_ring_create_prings_from_vring` @0x22e310 — the per-queue driver  [HIGH × OBSERVED]
+### 2.2 `dma_ring_create_prings_from_vring` @0x22e310 — the per-queue driver
 
 Asserts `queue->vring != NULL` (`dma_ring.c:0x5af = line 1455`), then emits the TX
 pring, then the RX pring:
@@ -254,9 +255,9 @@ if (*(vring+0x108) != 0 && *(uint8_t *)(vring+0x118) == 0) {
 This names the vring's directional metadata blocks: **TX at `+0x100`..`+0x118`,
 RX at `+0x120`..`+0x138`**; the `+0x118` / `+0x138` bools gate
 "already-lowered / skip"; the per-ring **descriptor counts** are the u32 at
-`+0x100` (TX) / `+0x120` (RX). `[HIGH × OBSERVED]`
+`+0x100` (TX) / `+0x120` (RX).
 
-### 2.3 `vring_dump_to_pring_descriptors` @0x3136e0 → `…_padded` @0x311f10  [HIGH × OBSERVED]
+### 2.3 `vring_dump_to_pring_descriptors` @0x3136e0 → `…_padded` @0x311f10
 
 `vring_dump_to_pring_descriptors` (15 B, a thin tail-call) → `…_padded`
 **@0x3136f0** → `vring_dump_to_pring_descriptors_padded` **@0x311f10** (728 B).
@@ -271,9 +272,9 @@ The `_padded` variant logs `"Copying vring to pring %s"`, dumps the **TX block**
 The `_padded` family exists because a *static* ring is **zero-padded** to a fixed
 depth; the count-mismatch path feeds the descriptor-count bound layer (the device
 "wrote %d, expected %d" invariant, owned by the DMA Part). This host emitter is
-the producer of that invariant. `[HIGH × OBSERVED]`
+the producer of that invariant.
 
-### 2.4 `vring_addr_rewrite` @0x313810 — the BD relocation  [HIGH × OBSERVED]
+### 2.4 `vring_addr_rewrite` @0x313810 — the BD relocation
 
 Walks the vring page list and patches `buf_ptr` of every BD that falls in a
 rebased `[base, base+size)` window:
@@ -293,20 +294,20 @@ for (page = first; page; page = *(void **)(page + 0x100000)) {  // next-page lin
 This is the host SoC-address patch applied to every staged BD's `buf_ptr` when a
 memory region is rebased (the kbin pointer-patch on the descriptor stream). The
 16-byte stride + `buf_ptr` at offset 0 of each BD **exactly matches** the
-`SDMA_CME_BD_DESC` field map owned by the DMA Part. `[HIGH × OBSERVED]`
+`SDMA_CME_BD_DESC` field map owned by the DMA Part.
 
 ---
 
-## 3. The ring-submit path — `sw_dma_queue` cursors  [HIGH × OBSERVED]
+## 3. The ring-submit path — `sw_dma_queue` cursors
 
 At execute prep, `kbl_compute_setup` **@0x306fb0** (765 B; callees OBSERVED:
 `db_physical_core_get_mla_and_tpb`, `hw_exec_queue_add_exec_request`,
 `kbl_exec_cc_enq_proxy_tasks`, `model_ref_*`) re-materialises the template rings
 and enqueues the exec descriptors.
 
-### 3.1 `hw_exec_queue_add_exec_request_impl` @0x320810  [HIGH × OBSERVED]
+### 3.1 `hw_exec_queue_add_exec_request_impl` @0x320810
 
-3029-byte submit core. Callees observed this pass:
+3029-byte submit core. Callees observed:
 
 * `al_udma_m2m_build_copy_descriptor` ×6 — builds the exec-descriptor BDs;
 * `hw_exec_queue_add_descriptors` ×3 (§3.2);
@@ -319,9 +320,8 @@ and enqueues the exec descriptors.
 So the host builds the `device_exec_request_t` BDs (the 52-byte layout is owned by
 the host-struct reference), copies them to the device exec-request buffer, and
 **records the doorbell offset to fire later** — it does **not** fire here.
-`[HIGH × OBSERVED]`
 
-### 3.2 `hw_exec_queue_add_descriptors` @0x3206f0  [HIGH × OBSERVED]
+### 3.2 `hw_exec_queue_add_descriptors` @0x3206f0
 
 Reads the **TX pring** (`*(exec_desc_q)+0x158`) and **RX pring** (`+0x150`) — the
 *same slots* `dma_pring_alloc` bound in §2.1 — asserts both non-NULL, then for each
@@ -334,9 +334,9 @@ sw_dma_queue_set_descriptors    (txq, ..., rx_pring, n);
 ```
 
 The `hw_exec_queue` carries the **txq `sw_dma_queue` at `+0x08`** and the **rxq at
-`+0x14`** (each 12 bytes; layout owned by the host-struct reference). `[HIGH × OBSERVED]`
+`+0x14`** (each 12 bytes; layout owned by the host-struct reference).
 
-### 3.3 `sw_dma_queue_reserve_descriptors` @0x448ce0  [HIGH × OBSERVED]
+### 3.3 `sw_dma_queue_reserve_descriptors` @0x448ce0
 
 Pure host cursor arithmetic over the 12-byte `sw_dma_queue`
 `{next_desc_idx, desc_ring_id, desc_count}`. Byte-verified callees:
@@ -352,9 +352,9 @@ sw_dma_queue_inc_next_desc_idx(rxq, n);          // 448d1a  @0x448c90
 **NOTE — no device write here.** This reads *both* queues' current `next_desc_idx`,
 returns them as the reserved slot pair, and advances both by `n`. It is the host
 **ring-position bookkeeping**; the device tail does not move until the doorbell in
-§4. `[HIGH × OBSERVED]`
+§4.
 
-### 3.4 `dma_ring_get_sema_to_inc` @0x22dc80 — the completion-semaphore selector  [HIGH × OBSERVED]
+### 3.4 `dma_ring_get_sema_to_inc` @0x22dc80 — the completion-semaphore selector
 
 Asserts `ring-type == 2` (`dma_ring.c:0x4fe`), then selects which device semaphore
 the device will increment on BD completion:
@@ -368,16 +368,16 @@ else
 ```
 
 This is the *source* side of the §5.2 wait — it binds the completion semaphore the
-device increments. `[HIGH × OBSERVED]`
+device increments.
 
 ---
 
-## 4. The doorbell — three physically distinct variants  [HIGH × OBSERVED]
+## 4. The doorbell — three physically distinct variants
 
 The runtime issues **three** different "rings." The DMA Part owns the register
 *values*; here is the host code that composes the address and issues the write.
 
-### 4.1 Variant A — the per-queue **tail-pointer-inc** CSR doorbell  [HIGH × OBSERVED]
+### 4.1 Variant A — the per-queue **tail-pointer-inc** CSR doorbell
 
 `get_dma_queue_tail_inc_offset` **@0x318940** (91 B) composes the SoC address of
 the tail-inc CSR for `(base, queue_idx, dir)`. Byte-verified at `0x31894b`:
@@ -407,9 +407,9 @@ bank** — confirming the device-side `TDRTP_inc`/`RDRTP_inc @+0x38` from the
 runtime side. The Cayman **data** tail-inc (a separate "data" doorbell) is at
 `+0xe0` (`0x10e0`), the sw_ctrl reg at `+0xb0` (`0x10b0`). The actual write goes
 **`al_reg_write32` → `csr_write` → `ndl_bar_write`** — a **BAR CSR write, not an
-ioctl** (transport chain byte-verified: `0x265c51: call csr_write`). `[HIGH × OBSERVED]`
+ioctl** (transport chain byte-verified: `0x265c51: call csr_write`).
 
-### 4.2 Variant B — the SP **top-sequencer host-trigger**  [HIGH × OBSERVED]
+### 4.2 Variant B — the SP **top-sequencer host-trigger**
 
 `aws_hal_sp_topsp_set_host_trigger` **@0x457b30** trampolines through `*khal+0x708`.
 The **Cayman** impl @0x471b40 is byte-exact:
@@ -426,9 +426,9 @@ The **Cayman** impl @0x471b40 is byte-exact:
 So the host kicks the SP/SEQ by writing **`1` to the top-SP NX-local host-trigger
 CSR at `xt_local_reg + 0x15a0`**, engine index `4`. This is the bring-up /
 per-engine trigger — distinct from the per-DMA tail-inc and the per-inference
-semaphore. `[HIGH × OBSERVED]`
+semaphore.
 
-### 4.3 Variant C — the execute-time **kickoff** (the GPSIMD custom-op release)  [HIGH × OBSERVED]
+### 4.3 Variant C — the execute-time **kickoff** (the GPSIMD custom-op release)
 
 `kbl_infer_kickoff` **@0x307320** → `exec_kickoff_infer` **@0x2632e0** (71 B; the
 mla/tpb anchor is owned by the host-struct reference) issues **one**
@@ -450,8 +450,8 @@ c3ba0 ndl_nc_semaphore_increment:
 That single semaphore release **unblocks the whole prebuilt per-engine 64-byte
 sequencer stream set** — including the POOL stream's `LOAD_POOL_ARGUMENT` and the
 idx-16 custom-op DMA triggers. `kbl_infer_kickoff` then enters
-`exec_wait_round_robin` (§5.2). `[HIGH × OBSERVED]` (ioctl request `0x80084e29` is
-new this pass — decodes as a `_IOW`-style 8-byte argument.)
+`exec_wait_round_robin` (§5.2). The ioctl request `0x80084e29` decodes as a
+`_IOW`-style 8-byte argument.
 
 ### Summary — the three doorbells
 
@@ -470,15 +470,15 @@ new this pass — decodes as a `_IOW`-style 8-byte argument.)
 
 ---
 
-## 5. The completion-wait — two models  [HIGH × OBSERVED]
+## 5. The completion-wait — two models
 
-### 5.1 The load/stage-time per-DMA poll — `dma_alloc/wait_for_completion_handle`  [HIGH × OBSERVED]
+### 5.1 The load/stage-time per-DMA poll — `dma_alloc/wait_for_completion_handle`
 
 **ALLOC** — `dma_alloc_completion_handle` @0x22de20 (196 B): obtains a handle slot
 via `tdrv_arch_get_completion_handle_mem_location` @0x309520 (per-arch
 sunda/cayman/mariana), `dmem_alloc(size=8, name="completion marker")` a device-DRAM
 8-byte word, and `dmem_buf_copyin`s the seed. The 8-byte word is the device-side
-**completion marker** the DMA engine overwrites. `[HIGH × OBSERVED]`
+**completion marker** the DMA engine overwrites.
 
 **WAIT** — `dma_wait_for_completion_handle` @0x22def0 (468 B) busy-polls it.
 Byte-verified, with the `0xABCDEF01` sentinel, `usleep(10)`, and the `×0x2710`
@@ -513,7 +513,7 @@ So the load/stage-time per-DMA completion is a **software dmem busy-poll against
 sentinel, not an interrupt**. The sentinel value `0xABCDEF01`, the `usleep(10)`
 spacing, and the arch-scaled timeout policy are all runtime-side. **The re-arm is
 two separate copyins** (write `0`, then write `0xABCDEF01`) so the marker is reset
-for reuse before the function returns. `[HIGH × OBSERVED]`
+for reuse before the function returns.
 
 > **GOTCHA — the two-step re-arm is racy if reordered.** The reset writes `0`
 > *before* the sentinel; a reimplementer who writes the sentinel first (or fuses
@@ -521,7 +521,7 @@ for reuse before the function returns. `[HIGH × OBSERVED]`
 > showing a stale done-value, which the *next* wait would mis-read as immediate
 > completion. The observed order (0 then sentinel) is the safe sequence.
 
-### 5.2 The execute-time per-inference poll (NQ drain)  [HIGH × OBSERVED — callees]
+### 5.2 The execute-time per-inference poll (NQ drain)
 
 After the kickoff semaphore (§4.3), `kbl_infer_kickoff` polls via
 `exec_wait_round_robin`; `exec_kickoff_infer` itself also calls
@@ -535,12 +535,12 @@ distinguish it from §5.1:
 * **§5.2** = the per-inference NQ poll, for the *released stream's* done signal —
   gated on the kickoff semaphore.
 
-`[HIGH × OBSERVED]` See [Execute-Time GPSIMD Custom-Op Dispatch](execute-time-dispatch.md)
-for the NQ-poll body.
+The callees are `[HIGH × OBSERVED]`. See
+[Execute-Time GPSIMD Custom-Op Dispatch](execute-time-dispatch.md) for the NQ-poll body.
 
 ---
 
-## 6. The device-side DGE DMA-priority gate, configured from the host  [HIGH × OBSERVED]
+## 6. The device-side DGE DMA-priority gate, configured from the host
 
 `libnrtucode_internal.so` exports the host accessors that program the **device** Q7
 DGE's DMA-priority gate. The 4-byte `nrtucode_dge_mailbox_t`
@@ -552,7 +552,7 @@ config, plus a correction to the kind guard. All three accessor groups share one
 shape: a NULL-core abort, a boot-state guard, a core-KIND bitmask guard, then a
 core-ops-vtable read/write to a fixed offset within `core->base` (= `core+0x20`).
 
-### 6.1 The shared guards  [HIGH × OBSERVED]
+### 6.1 The shared guards
 
 Byte-verified in `nrtucode_core_dge_set_priority_class_map` @0x9b1000 (and identical
 in the others):
@@ -580,14 +580,14 @@ five `*_NX_POOL` entries) these are precisely the **five NX_POOL kinds**:
 > **CORRECTION — the gate admits the NX_POOL cores ONLY.** Any prior phrasing of
 > "pool kinds" is too broad: the bitmask `0x102020204` admits the **five NX_POOL
 > cores** — **NOT** the Q7_POOL cores, and **NOT** ACT/DVE/PE/SP/TOPSP. The DGE
-> DMA-priority mailbox is an **NX-pooling-engine facility**. `[HIGH × OBSERVED]`
+> DMA-priority mailbox is an **NX-pooling-engine facility**.
 
 **The core-ops vtable.** `core`'s first member (`*(core)`) is an ops table:
 `*(ops) = READ(ctx, soc_addr, len, *out)` and `*(ops+8) = WRITE(ctx, soc_addr, len,
 *in)`. The accessors call these to touch device CSR/DRAM (the device-access HAL).
-`core+0x20` is the core's SoC base. `[HIGH × OBSERVED]`
+`core+0x20` is the core's SoC base.
 
-### 6.2 `nrtucode_core_get_dge_mailbox_addr` @0x9b11e0  [HIGH × OBSERVED]
+### 6.2 `nrtucode_core_get_dge_mailbox_addr` @0x9b11e0
 
 Args `(core, num_mailbox, *addr)`. If `num_mailbox <= 4` it **reads back** each of
 the 4 mailboxes (loop idx 0..3: default scratch `0xffffff00`, then a READ via the
@@ -602,9 +602,9 @@ ops table), logs per-mailbox, and returns `*addr = core->base + 0x28`. Byte-veri
 The header (`nrtucode.h:506-522`) shows the intended host use:
 `get_dge_mailbox_addr(core, 4, &addr)`, then the host *itself* `write()`s the 16
 bytes (or one 4-byte mailbox at `addr + 3*4`) to the device. So the **mailbox array
-base = `core->base + 0x28`** (= +40), **4 entries × 4 bytes**. `[HIGH × OBSERVED]`
+base = `core->base + 0x28`** (= +40), **4 entries × 4 bytes**.
 
-### 6.3 `nrtucode_core_private_set/get_dge_mailbox` @0x9b1380 / @0x9b1400  [HIGH × OBSERVED]
+### 6.3 `nrtucode_core_private_set/get_dge_mailbox` @0x9b1380 / @0x9b1400
 
 ```c
 // nrtucode_core_private_set_dge_mailbox @0x9b1380  (set one mailbox by value)
@@ -615,9 +615,9 @@ ops->WRITE(ctx, core->base + 0x28 + idx*4, 4, &mailbox_value);  // 9b13b7: add $
 ```
 
 So the device mailbox is written/read **one 4-byte entry at a time** over the
-core-ops channel; `idx > 3` is rejected. `[HIGH × OBSERVED]`
+core-ops channel; `idx > 3` is rejected.
 
-### 6.4 `nrtucode_core_dge_set/get_priority_class_map` @0x9b1000 / @0x9b10f0  [HIGH × OBSERVED]
+### 6.4 `nrtucode_core_dge_set/get_priority_class_map` @0x9b1000 / @0x9b10f0
 
 ```c
 // nrtucode_core_dge_set_priority_class_map @0x9b1000
@@ -631,7 +631,7 @@ So the DGE **priority-CLASS MAP lives at `core->base + 0x18`** (= +24, ≤5 clas
 and the **mailbox array at `core->base + 0x28`** — adjacent device-config blocks.
 Per `nrtucode.h:466`, `priority_classes[0]` maps to **ISA priority index 1** (class
 0 is the built-in default). This is the host knob that maps a DMAQoSClass / op
-priority onto the ISA priority byte the §6.1 gate compares. `[HIGH × OBSERVED]`
+priority onto the ISA priority byte the §6.1 gate compares.
 
 > **CROSS-REF — where the op's priority comes from.** `model_t.cc_ctx.curr_priority_class`
 > and the host encoder knobs `encd_set_ctx_curr_priority_class` @0x238b00 /
@@ -690,7 +690,7 @@ priority onto the ISA priority byte the §6.1 gate compares. `[HIGH × OBSERVED]
    sentinel busy-poll, `usleep(10)`, arch-scaled `×10000` timeout); the inference polls
    the NQ (`exec_wait_round_robin` / `notification_read_exec_queue`).
 
-### Key host offsets recovered this pass
+### Key host offsets
 
 | Location | Field |
 |---|---|

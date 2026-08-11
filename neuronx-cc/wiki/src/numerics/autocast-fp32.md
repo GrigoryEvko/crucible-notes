@@ -10,7 +10,7 @@ The pass is a `TargetLowering`-style statement walker built on the standard `bef
 
 This page documents the *where-and-why of cast insertion*: the `fp32_cast_mode` gating cascade that picks `self.dtype`; `insertInputCasts`, which materializes the boundary cast; the `transformInstruction` skip-rules that decide which instructions are left alone; `castTCOperand`, which delegates the legal matmul-operand dtype to `target.getMatmultOperandType` and rewires; and `shrinkTensor`, the physical down-cast that re-lays-out an already-narrowed SBUF tensor at the smaller element width.
 
-> **NOTE — Cython line-cookie caveat.** This module is Cython-compiled; the per-statement source-line cookies collapse toward each method's `def` line. Throughout this page, the **order** of attribute access / calls / comparisons is `CONFIRMED` (read directly from the decompiled `_Pyx_PyObject_GetAttrStr` / `PyObject_RichCompare` / `tp_setattro` targets), but interior source line numbers are `STRONG`, not exact. Surface Python syntax (loop/if nesting) is reconstruction consistent with that order, not byte-literal source.
+> **GOTCHA — Cython line cookies collapse toward the `def`.** This module is Cython-compiled, so the per-statement source-line cookies drift toward each method's definition line: the `L…` references throughout this page locate evidence within a method but are not exact source lines. What *is* read directly is the **order** of attribute access, calls and comparisons, taken from the decompiled `_Pyx_PyObject_GetAttrStr` / `PyObject_RichCompare` / `tp_setattro` targets; the surface Python syntax (loop and `if` nesting) is a reconstruction consistent with that order rather than byte-literal source.
 
 For reimplementation, the contract is:
 
@@ -55,7 +55,7 @@ AutoCastFP32.__init__(self, ...)            sub_129D0
 ### Algorithm
 
 ```c
-// AutoCastFP32.__init__ — sub_129D0  (order CONFIRMED; line numbers STRONG)
+// AutoCastFP32.__init__ — sub_129D0
 function AutoCastFP32_init(self):
     mode = self.target.fp32_cast_mode          // L480/490: GetAttr target, then n_s_fp32_cast_mode
 
@@ -73,7 +73,7 @@ function AutoCastFP32_init(self):
 
 ### Why the mode set is exactly these four
 
-The pass only handles the **`all-*`** subset of the precision axis — the modes that ask to cast *every* fp32 op. The `matmult-*` modes do **not** drive the base pass broadly; they route through the TensorContract path (§4) so only matmul operands are cast. The three CONFIRMED comparison keys (`"all"`, `"all-fp32r"`, `"all-fp8e4"`) plus the fp16 fall-through are exactly the all-scope rows of the `fp32-cast-<scope>-<dtype>` grid that the frontend reverse-marshals.
+The pass only handles the **`all-*`** subset of the precision axis — the modes that ask to cast *every* fp32 op. The `matmult-*` modes do **not** drive the base pass broadly; they route through the TensorContract path (§4) so only matmul operands are cast. The three comparison keys (`"all"`, `"all-fp32r"`, `"all-fp8e4"`) plus the fp16 fall-through are exactly the all-scope rows of the `fp32-cast-<scope>-<dtype>` grid that the frontend reverse-marshals.
 
 > **QUIRK — `call_ins` / `call_outs` exist only in the `all-fp32r` branch.** Two empty sets are created (`PySet_New` at L764 / L787) *only* when `mode == "all-fp32r"`. `float32r` ("fp32 round / replicated") must survive a round-trip across call boundaries, so the pass remembers which call edges carry it. A reimplementation that allocates these sets unconditionally will track call edges it never needs; one that omits them in the fp32r branch will lose the round-trip and silently corrupt call I/O dtypes.
 
@@ -81,9 +81,9 @@ The pass only handles the **`all-*`** subset of the precision axis — the modes
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `AutoCastFP32.__init__` | `sub_129D0` | The four-way `fp32_cast_mode` cascade | CONFIRMED |
-| `AutoCastInputs.__init__` | `sub_22170` | Subclass ctor (boundary-only pass) | CONFIRMED |
-| `AutoCastTCInputs.__init__` | `sub_11B70` | Trivial — `super().__init__` only | CONFIRMED |
+| `AutoCastFP32.__init__` | `sub_129D0` | The four-way `fp32_cast_mode` cascade | CERTAIN |
+| `AutoCastInputs.__init__` | `sub_22170` | Subclass ctor (boundary-only pass) | CERTAIN |
+| `AutoCastTCInputs.__init__` | `sub_11B70` | Trivial — `super().__init__` only | CERTAIN |
 
 ### Related Knobs
 
@@ -118,7 +118,7 @@ beforeStmtTransform(self, f)                 sub_26BF0   // walks f.tensors, dec
 ### Algorithm
 
 ```c
-// AutoCastFP32.insertInputCasts — sub_16110  (attr/call ORDER CONFIRMED; surface STRONG)
+// AutoCastFP32.insertInputCasts — sub_16110
 function insertInputCasts(self, tensor):
     loads = TensorUtils.load_insts(tensor)              // L~ .load_insts
     // classify loads: GenericLoad vs AffineLoad        // L1064: n_s_GenericLoad
@@ -154,7 +154,7 @@ function insertInputCasts(self, tensor):
 `insertInputCasts` is called from `beforeStmtTransform` (`sub_26BF0`), which runs once per statement/function before the per-instruction transforms and decides *who* gets a boundary cast:
 
 ```c
-// AutoCastFP32.beforeStmtTransform — sub_26BF0  (ORDER CONFIRMED)
+// AutoCastFP32.beforeStmtTransform — sub_26BF0
 function beforeStmtTransform(self, f):
     for tensor in f.tensors:
         if tensor.is_reinterpreted: continue              // skip reinterpreted views
@@ -183,7 +183,7 @@ The opaque/call edge bookkeeping into `call_ins` / `call_outs` is what preserves
 ### Algorithm
 
 ```c
-// AutoCastFP32.transformInstruction — sub_2B030  (ORDER CONFIRMED; line numbers STRONG)
+// AutoCastFP32.transformInstruction — sub_2B030
 function transformInstruction(self, inst):
     // SKIP-RULE 1: opaque / call ops are NOT transformed (boundary handles their I/O)
     if isinstance(inst, OpaqueOp) or isinstance(inst, CallOpBase):   // L597-611: two PyObject_IsInstance, OR'd
@@ -266,7 +266,7 @@ transformTensorContractOp(self, tc)          sub_20C00
 ### Algorithm
 
 ```c
-// AutoCastTCInputs.castTCOperand — sub_F540  (ORDER CONFIRMED; line refs into the decompile)
+// AutoCastTCInputs.castTCOperand — sub_F540  (L… = line refs into the decompile)
 function castTCOperand(self, v, builder):
     target = self.target.getMatmultOperandType(v.dtype)   // L652: self.target; L662: .getMatmultOperandType;
                                                           // L677: v.dtype; call with v.dtype as arg
@@ -294,7 +294,7 @@ function transformTensorContractOp(self, tc):
 
 > **QUIRK — the matmul operand-dtype policy lives in the target, not in this pass.** A reimplementation that hard-codes "stationary = bf16, moving = fp8" inside `castTCOperand` will be wrong on any arch whose `getMatmultOperandType` returns otherwise. The single source of truth for the legal matmul-operand dtype is `target.getMatmultOperandType(v.dtype)`; `castTCOperand` is the cast-and-rewire shell around it.
 
-> **NOTE — exact `cast_to` arg shape is partly obscured.** The decompiler shows `builder.cast_to` (L777) called with `v` as a positional arg; the destination dtype `target` is threaded through the surrounding frame and whether it reaches `cast_to` as a positional or keyword arg is **not byte-recoverable** here (`INFERRED`). The `bir::CastToNewDType` machinery itself is owned by a sibling page.
+> **NOTE — the exact `cast_to` argument shape is obscured.** The decompiler shows `builder.cast_to` (L777) called with `v` as a positional argument; the destination dtype `target` is threaded through the surrounding frame, and whether it arrives as a positional or keyword argument is not byte-recoverable — that detail is [INFERRED]. The `bir::CastToNewDType` machinery itself is owned by a sibling page.
 
 ---
 
@@ -346,7 +346,7 @@ function transformUnaryOp(self, op):
 
 ### Purpose
 
-After matmul operands have been logically down-cast (§4), the SBUF tensor that physically backs an operand can be re-stored at the **narrower element width** to save bytes — but only if it is safe to rewrite every producer and consumer. `shrinkTensor` is that decision. Its docstring (`@0x386a0`) is exact: *"Tensor shrink for matmult down-cast (in bytes)."* It does **not** choose an arithmetic dtype (that was decided upstream by `getMatmultOperandType`); it decides whether the physical layout can follow.
+After matmul operands have been logically down-cast (§4), the SBUF tensor that physically backs an operand can be re-stored at the **narrower element width** to save bytes — but only if it is safe to rewrite every producer and consumer. `shrinkTensor` is that decision. Its docstring (`@0x386a0`) states the job exactly — the stored literal is *"Tensor shrink for matmult down-cast (in bytes"*, with no closing parenthesis, so a search for the punctuated form will miss it. It does **not** choose an arithmetic dtype (that was decided upstream by `getMatmultOperandType`); it decides whether the physical layout can follow.
 
 ### Entry Point
 
@@ -361,7 +361,7 @@ AutoCastTCInputs.afterStmtTransform(self, f)   sub_1BBE0
 ### Algorithm
 
 ```c
-// AutoCastTCInputs.shrinkTensor — sub_1CB50  (guard ORDER CONFIRMED; rewrite block STRONG)
+// AutoCastTCInputs.shrinkTensor — sub_1CB50  (guard chain read in order; rewrite block reconstructed)
 function shrinkTensor(self, tensor):
     // GUARD: bail if any load/store is opaque or a call (cannot safely rewrite)
     for op in TensorUtils.load_insts(tensor):           // L719: .load_insts
@@ -413,8 +413,6 @@ function shrinkTensor(self, tensor):
 | not `is_reinterpreted` | L2142 | reinterpreted views alias other layouts |
 
 > **NOTE — `tensor_shrink` is a *class* attribute, not an instance field.** The running byte counter is `GetAttr`'d off the `AutoCastTCInputs` class object, `InPlaceAdd`'d with `tensor.size_in_bytes` (L2272), and `SetAttr`'d back onto the *class* (L2345). It accumulates the cumulative bytes saved by down-cast across all tensors — the "(in bytes)" in the docstring. A reimplementation that makes it per-instance loses the cumulative total.
-
-> **CORRECTION (X02-1) — backing report Section 3 truncated the docstring.** The backing note transcribes the shrink docstring as *"Tensor shrink for matmult down-cast (in bytes)"* with a closing paren; the interned string `@0x386a0` is actually *"Tensor shrink for matmult down-cast (in bytes"* — the trailing `)` is not part of the stored literal. Immaterial to the algorithm, noted for byte-exactness.
 
 ---
 

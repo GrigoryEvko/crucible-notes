@@ -484,7 +484,7 @@ The direction logic distilled:
 > vector/scalar selector is `use_vec_memcpy` (5th argument of
 > `memcpy_data_transfer_impl`, not a separate table dimension).
 
-> **CORRECTION — the staging-window assertion's home.** SX-ABI-12 placed the
+> **CORRECTION — the staging-window assertion's home.** ABI-12 placed the
 > `dram_addr >= 0x80000 && dram_addr < 0x90000` check "in `memcpy_data_transfer_impl`".
 > `addr2line` shows it at `cpp:160` inside **`dram_addr_to_soc_addr`** (`0x226 →
 > 0x2d8 _Assert(.data+0x54)`), called only from the **DMA** path and
@@ -540,6 +540,5 @@ Assertion strings (`.data` image), each `_Assert(msg, /*line*/0)`:
   `{hbm_addr@0, ctx_ptr@8, is_nullptr@0xC}`).
 - [Device Memory Allocators](./device-allocators.md) — `data_scratch_map`, over which
   the `_dma_ctx_t` and descriptor rings are laid out.
-- *The DMA / Descriptor / Memory Subsystem* (Part 9, `dma/descriptor-model.md`,
-  forthcoming) — the hardware SDMA engine, `SDMA_CME_BD_DESC` ring semantics, and the
-  M2S/S2M stream model in full.
+- [The DMA / Descriptor / Memory Subsystem](../dma/descriptor-model.md) — the hardware
+  SDMA engine, `SDMA_CME_BD_DESC` ring semantics, and the M2S/S2M stream model in full.

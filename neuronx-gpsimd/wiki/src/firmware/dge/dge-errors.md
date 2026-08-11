@@ -15,25 +15,25 @@ detection, shared delivery** — is the central reconciliation this page resolve
 proven below from the `.rodata` translation-unit layout and a call census of the DGE dispatch
 region.
 
-Everything here is **byte-pinned to shipped artifacts disassembled this session**: the DEBUG
+Everything here is **byte-pinned to shipped artifacts**: the DEBUG
 POOL firmware images carved out of `libnrtucode.a` and decoded with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, `ConfigName=Xm_ncore2gp`, uarch "Cairo",
 `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW); the shipped clean C ISA
 headers (`neuron_*_arch_isa`, compile-verified with `gcc -I … ; offsetof/sizeof`); and the
 shipped cayman arch-regs notification schema. Every log line resolves against the firmware's own
-DRAM string image; every struct/enum/field/predicate is read from the shipped headers. Where the
-backing survey or an earlier reading disagrees with the disassembly, **the binary wins**, and an
+DRAM string image; every struct/enum/field/predicate is read from the shipped headers. Where an
+earlier reading disagrees with the binary, **the binary wins**, and an
 in-place **CORRECTION** says so.
 
 Confidence tags follow the [project model](../../reference/confidence-model.md): `OBSERVED` = a
-byte/string/instruction/struct read from a shipped artifact this session; `INFERRED` = reasoned
+byte/string/instruction/struct read from a shipped artifact; `INFERRED` = reasoned
 over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
 
 > **NOTE — the honest limit, stated once up front.** The DGE bounds-check + dispatch **function
 > bodies are FLIX-desynced** (the same MED ceiling the [setup](dge-setup.md) and
-> [error-handler](../seq/error-handler.md) pages hit). Verified this session: the
+> [error-handler](../seq/error-handler.md) pages hit). The
 > `"Failed bounds check"` (VA `0x83105`) and `"Dispatched error notification"` (VA `0x8318e`)
 > strings are **neither** `const16`-loaded **nor** held as `l32r` literals anywhere in IRAM
 > (0 hits each), whereas `"NO BACKEND FOUND"` (`0x8312f`) and `"Select backend Pool"`
@@ -98,8 +98,8 @@ extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/
 ```
 
 as members `img_<GEN>_NX_POOL_DEBUG_<SEG>_contents.c.o`; the carve is
-`ar p <member> | objcopy -O binary --only-section=.rodata`. All eight images were re-carved and
-sha-confirmed this session (sizes in bytes, sha256 prefix):
+`ar p <member> | objcopy -O binary --only-section=.rodata`. All eight images
+(sizes in bytes, sha256 prefix):
 
 | Member (DEBUG) | Seg | `.rodata` size | sha256 (prefix) | Role here |
 |---|---|---|---|---|
@@ -114,12 +114,12 @@ sha-confirmed this session (sizes in bytes, sha256 prefix):
 
 The `CAYMAN_NX_POOL` DEBUG IRAM (`8e4412b9…`) / DRAM (`7bdf6ed7…`) pair is the **same firmware**
 the [DGE setup](dge-setup.md) and [SEQ error-handler](../seq/error-handler.md) pages anchor on —
-hashes match exactly. `[HIGH/OBSERVED]` (carve → `stat -c%s` → `sha256sum`).
+hashes match exactly. `[HIGH/OBSERVED]`
 
 **Addressing rules.** IRAM loads at device VA `0x0` (IRAM offset == VA). The DRAM image loads at
 device VA `0x80000`, so **DRAM-string VA = file-offset + 0x80000** (every string VA below uses
 this). The firmware materialises a DRAM VA with a `const16 aX,8 ; const16 aX,0xNNNN` pair (high
-half `0x0008`). `[HIGH/OBSERVED]` — re-confirmed.
+half `0x0008`).
 
 > **GOTCHA — the FLIX/VLIW desync ceiling.** These are linked, densely-scheduled FLIX bundles
 > (up to 32 B) with literal pools interleaved in `.text` and **no `.symtab`**. A linear sweep
@@ -137,7 +137,7 @@ half `0x0008`). `[HIGH/OBSERVED]` — re-confirmed.
 Read byte-exact from `CAYMAN_NX_POOL_DEBUG` DRAM `.rodata` (`rg -a -b -o`; VA = off + `0x80000`).
 These strings **encode** the detection conditions and the dispatch event.
 
-### 2a. The detection + dispatch strings (re-confirmed byte-offset this session)
+### 2a. The detection + dispatch strings
 
 | VA | file off | String (byte-exact) | Role |
 |---|---|---|---|
@@ -147,9 +147,7 @@ These strings **encode** the detection conditions and the dispatch event.
 | `0x83173` | `0x3173` | `S: DGE: Select backend RTL` | backend-selector context. |
 | `0x8318e` | `0x318e` | `S: DGE: Dispatched error notification` | the **delivery** event: emitted AFTER the bounds-fail, UNLESS suppressed by `bc_disable_oob_error_notif` or the feature flag. |
 
-All five offsets re-grounded this session (`rg -a -b -o` over `cayman_dram.bin`):
-`0x3105 / 0x312f / 0x3157 / 0x3173 / 0x318e`, hence VA `0x83105 / 0x8312f / 0x83157 / 0x83173 /
-0x8318e`. `[HIGH/OBSERVED]`
+All five offsets are byte-grounded in `cayman_dram.bin`. `[HIGH/OBSERVED]`
 
 ### 2b. The runtime bounds-check evaluation (the detection arithmetic)
 
@@ -163,8 +161,8 @@ bounds:(%1d 0x%llx<=0x%llx, %1d 0x%llx<=0x%llx)
 is **two** `{bc_enabled-flag (%1d), effective_addr (0x%llx) <= bound_limit (0x%llx)}` pairs, src
 then dst. The DGE evaluates `addr <= limit` per direction; `addr > limit` triggers the §2a
 `Failed bounds check`. The construction of this check (per-descriptor, before emit) is the
-[emit page](dge-emit.md)'s subject; this page picks up at the failed comparison. `[HIGH/OBSERVED]`
-for the substring; the per-direction semantics are `[HIGH/INFERRED]` from the doubled field set.
+[emit page](dge-emit.md)'s subject; this page picks up at the failed comparison.
+`[HIGH/OBSERVED]` substring; `[HIGH/INFERRED]` per-direction semantics.
 
 ### 2c. The shared SEQ-egress strings (in this same NX DRAM)
 
@@ -178,9 +176,9 @@ log strings live in the same DRAM image:
 | `0x8226d` | `0x226d` | `S: sending notification` |
 
 These are the report-sink `0xa450`'s log strings (matching the [SEQ error-handler](../seq/error-handler.md)
-§6b read); the DGE dispatch reaches the same external-register notify primitive. `[HIGH/OBSERVED]`
+§6b read); the DGE dispatch reaches the same external-register notify primitive.
 
-### 2d. Per-gen string presence (`rg -c -a` over carved DRAMs, this session)
+### 2d. Per-gen string presence (`rg -c -a` over carved DRAMs)
 
 | String | SUNDA | CAYMAN | MARIANA | MARIANA_PLUS |
 |---|---|---|---|---|
@@ -188,7 +186,7 @@ These are the report-sink `0xa450`'s log strings (matching the [SEQ error-handle
 | `Dispatched error notification` | 0 | 1 | 1 | 1 |
 
 The DGE error-notification path is **CAYMAN-onward**, absent in SUNDA — matching the DGE emit
-path itself (the [backend-selector](dge-backend-selector.md) per-gen table). `[HIGH/OBSERVED]`
+path itself (the [backend-selector](dge-backend-selector.md) per-gen table).
 
 > **COUNT DISCIPLINE.** The "0/1" figures above are the **per-image substring-occurrence count**
 > (`rg -c -a '<string>' <gen>_dram.bin`, one count per carved DRAM). They are *not* a `'S: '`
@@ -201,7 +199,7 @@ path itself (the [backend-selector](dge-backend-selector.md) per-gen table). `[H
 ## 3. The notification record FORMAT — compile-verified
 
 The DGE error notification is the **arch-common 16-byte `NEURON_ISA` notification record**. All
-sizes/offsets/enums below were compile-verified this session
+sizes/offsets/enums below are compile-verified
 (`gcc -I .../neuron_cayman_arch_isa/common ; offsetof/sizeof printed`).
 
 ### 3a. The record envelope
@@ -219,7 +217,7 @@ typedef struct {                       /* sizeof == 1 — VERIFIED */
 ```
 
 `[HIGH/OBSERVED]` — `NBYTES=0x10`, `sizeof(NOTIFICATION)==16`, `sizeof(HEADER)==1`, bitfield
-order all printed by the compile-verify.
+order compile-verified.
 
 ### 3b. The error flavour — `NEURON_ISA_TPB_ERROR_NOTIFICATION` (sizeof == 16, VERIFIED)
 
@@ -235,15 +233,14 @@ typedef struct {                                    /* sizeof == 16 — VERIFIED
 } NEURON_ISA_PACKED NEURON_ISA_TPB_ERROR_NOTIFICATION;
 ```
 
-Offsets **measured** this session: `error_id @0`, `metadata_lo @1`, `header @3`,
+Measured offsets: `error_id @0`, `metadata_lo @1`, `header @3`,
 `metadata_hi @4`, `timestamp @8`; `sizeof(METADATA_LO)==2`, `sizeof(METADATA_HI)==4`.
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — `metadata_lo` straddles the `header` byte.** The layout is **not** a clean
 > `{u8, u8, u16, u32, u64}`. The 16-bit `metadata_lo` sits at `+1..+2`, the 1-byte `header` at
 > `+3`, and the 4-byte `metadata_hi` at `+4..+7`. A reimplementer packing this record must place
 > the header byte **between** the two metadata halves, not after them. The error metadata is
-> thus a 48-bit field split `lo@+1 (15:0)` / `hi@+4 (47:16)` around the header. `[HIGH/OBSERVED]`
+> thus a 48-bit field split `lo@+1 (15:0)` / `hi@+4 (47:16)` around the header.
 
 ### 3c. The type + error-id enums (compile-verified values)
 
@@ -273,13 +270,13 @@ typedef struct {                       /* NEURON_ISA_TPB_SEQUENCER_GENERIC_ERROR
 ```
 
 > **CORRECTION — the sequencer metadata_hi is `{block_id:4, program_counter:12, info:8}`, not
-> just `info:8`.** The backing survey (§3c) names only the `info:8` sub-field. The header read
-> this session shows the full 32-bit union arm carries the faulting **engine `block_id`** (4 b)
+> just `info:8`.** A prior survey names only the `info:8` sub-field. The header shows the full
+> 32-bit union arm carries the faulting **engine `block_id`** (4 b)
 > and the **program counter** (12 b) alongside `info` (8 b). For a DGE OOB the `block_id` is the
 > engine that owns the descriptor, the `program_counter` is the faulting instruction, and `info`
 > carries the condition byte. The record therefore self-identifies the source engine in
 > `metadata_hi.block_id` — which is how the host distinguishes a DGE error from a SEQ error on
-> the shared error ring (§4c). `[HIGH/OBSERVED]` (header struct body).
+> the shared error ring (§4c).
 
 > **NOTE — which `notific_type` the DGE OOB writes is INFERRED, not byte-recovered.** The enum
 > values are OBSERVED; the SEQUENCER error-class mapping is OBSERVED; but *which* of
@@ -312,8 +309,7 @@ typedef struct {                          /* sizeof == 16 — VERIFIED */
 
 This is the success telemetry the **same** feature-flag bit 1 enables — one flag covers the
 whole DGE→host notification class (completion *and* error). `[HIGH/OBSERVED]` header;
-`[HIGH/INFERRED]` the shared-flag reading (the flag name "DGE packet notification" names the
-whole class).
+`[HIGH/INFERRED]` the shared-flag reading.
 
 ---
 
@@ -325,7 +321,7 @@ transport (the arch-regs schema). The DGE does **not** have its own egress — i
 ### 4a. The on-die producer — the shared notify primitive `0xa2f8`
 
 A call census of the **DGE dispatch region** (IRAM `0xf000`–`0x10600`, the backend-select +
-bounds + dispatch code) this session shows the dispatch reaches `0xa2f8`, the
+bounds + dispatch code) shows the dispatch reaches `0xa2f8`, the
 external-register notify helper:
 
 ```text
@@ -340,23 +336,22 @@ external-register notify helper:
 ```
 
 `0xa2f8` is the **same** external-register write primitive the SEQ
-[`build_error_record@0x13e40`](../seq/error-handler.md) calls internally (re-verified this
-session: `0x13e40` → `call8 0xa2f8 @0x13e71`). So the DGE dispatch and the SEQ packer **share
-the same notify-write helper**. `[HIGH/OBSERVED]` (both call sites).
+[`build_error_record@0x13e40`](../seq/error-handler.md) calls internally
+(`0x13e40` → `call8 0xa2f8 @0x13e71`). So the DGE dispatch and the SEQ packer **share
+the same notify-write helper**. `[HIGH/OBSERVED]`
 
-> **CORRECTION — the DGE region calls `0xa2f8` four times, not three.** The backing survey (§4d)
-> reports `0xa2f8 (3×)` in `0xa000`–`0x105ff`. The re-census this session over `0xf000`–`0x10600`
+> **CORRECTION — the DGE region calls `0xa2f8` four times, not three.** A prior survey
+> reports `0xa2f8 (3×)` in `0xa000`–`0x105ff`. A census over `0xf000`–`0x10600`
 > (the string-loading dispatch region) returns **4** `call8 0xa2f8` sites
 > (`0xf1e0`, `0xf685`, `0xfba0`, `0x10040`). The count is a refinement, not a contradiction —
-> the conclusion (the DGE reaches the shared notify primitive) is unchanged. `[HIGH/OBSERVED]`
-> (`rg -c 'call8\s+0xa2f8'` over the forced span).
+> the conclusion (the DGE reaches the shared notify primitive) is unchanged.
 
 The full external-register write (the exact NOTIFIC-input-buffer CSR) is in a FLIX-desynced span
 — `0xa2f8`'s body renders partly as `.byte`/ill (the same MED limit as the
 [SEQ report sink `0xa450`](../seq/error-handler.md) §6b). The **call to the shared primitive is
 OBSERVED**; the precise destination address is **MED — desynced**.
 
-The SEQ delivery half (re-confirmed this session, for the reconciliation):
+The SEQ delivery half, for the reconciliation:
 
 ```text
 00013e18 <raise_error>:                 ; the shared raise core
@@ -367,20 +362,18 @@ The SEQ delivery half (re-confirmed this session, for the reconciliation):
     13e2c:  retw.n
 ```
 
-`[HIGH/OBSERVED]` — `wur UR#0x15` (`20 15 f3`, the `f3`-major WUR, identical idiom to the
+`wur UR#0x15` (`20 15 f3`, the `f3`-major WUR, identical idiom to the
 `wur.fcr = 20 e8 f3` the SEQ page anchors) and the `call8 0xa450` egress.
 
 ### 4b. The hardware transport — the NOTIFIC instruction-notification queue
 
 The record lands in the per-TPB **NOTIFIC instruction-notification queue** (`notific_10_queue`,
-the cayman arch-regs schema). Grounded from the shipped register headers this session:
+the cayman arch-regs schema). Grounded from the shipped register headers:
 
 - **10 SW notification queues.** The `notific_sw_backpressure` register field mask is `0x3ff`
-  (10 bits) — one backpressure bit per SW queue, i.e. `NUM_SW_Q = 10`. `[HIGH/OBSERVED]`
-  (`notific_10_queue.h`).
+  (10 bits) — one backpressure bit per SW queue, i.e. `NUM_SW_Q = 10` (`notific_10_queue.h`).
 - **Per-queue ring descriptor regs.** Each SW NQ ring carries `base_addr_lo`, `base_addr_hi`,
   `head_ptr` (SW consumer), `tail_ptr` (HW producer), `threshold` (`notific_10_queue.yaml`).
-  `[HIGH/OBSERVED]`.
 
 The producer (here the DGE/error logic) emits a 16-B record into a HW input buffer; NOTIFIC
 snapshots the 64-b `timestamp`, sets `phase`/overflow bits in the `header`, routes it to a SW NQ
@@ -398,8 +391,8 @@ name the per-class routes: `…PE sequencer NX generated notifications`, `…exp
 `sw_queue_num3 = errors_NT` — the **same** route the
 [SEQ error-handler](../seq/error-handler.md) §7 pins for the SEQ error notification.
 
-> **NOTE — the route is CARRIED, not re-grounded byte-exact this pass.** The cayman arch-regs
-> JSON ships the `sw_queue_num0..5` field *names* (confirmed present this session), but the
+> **NOTE — the route is CARRIED, not grounded byte-exact.** The cayman arch-regs
+> JSON ships the `sw_queue_num0..5` field *names*, but the
 > per-field route *descriptions* are sparse/ciphered in the carved schema (the string-pool cipher
 > the corpus uses). The `errors_NT == sw_queue_num3` binding is therefore **`[CARRIED]` from
 > CSR-06** (the notification-queue survey) at that report's confidence — exactly as the SEQ
@@ -450,7 +443,7 @@ OBSERVED.
 
 `NEURON_FEATURE_FLAGS` is **XT local register 38**; **bit 1** globally enables/disables DGE
 packet notifications for the whole engine. The host (NRT) owns the bit. When bit 1 is clear,
-**no** DGE notification (completion *or* error) is dispatched. `[HIGH/OBSERVED]` (header verbatim).
+**no** DGE notification (completion *or* error) is dispatched. `[HIGH/OBSERVED]`
 
 The on-device **read** of reg 38 in the dispatch path is in a FLIX-desynced span (no clean
 `rur`/`movi 38` recovered in the DGE region) — the **gate is header-OBSERVED**; the **read
@@ -469,11 +462,11 @@ typedef struct NEURON_ISA_TPB_BOUND_CHECK_REG {  /* sizeof == 1 — VERIFIED */
 
 Every descriptor carries **two** of these (src + dst). `bc_disable_oob_error_notif` (bit 6)
 suppresses the notification for **this** descriptor's direction even when the bounds check itself
-runs and fails. `[HIGH/OBSERVED]` layout; `sizeof == 1` VERIFIED.
+runs and fails.
 
 > **CORRECTION — the "suppress the OOB error notification" gloss is derived, not an inline header
-> comment.** The backing survey (§5b) attributes that phrase to a comment on the struct field
-> at `aws_neuron_isa_tpb_common.h:709`. The header read this session shows the field at line 709
+> comment.** A prior survey attributes that phrase to a comment on the struct field
+> at `aws_neuron_isa_tpb_common.h:709`. The field at line 709
 > carries **no inline comment** (`uint8_t bc_disable_oob_error_notif : 1;` followed by
 > whitespace). The semantic — "suppress the OOB error notification for this direction" — is the
 > **correct** reading, but it is grounded in the **field name + the gating predicate (§5c/§5d)**,
@@ -493,7 +486,7 @@ typedef struct NEURON_ISA_TPB_DMA_INDIRECT_FLAGS {  /* sizeof == 1 — VERIFIED 
 ```
 
 The validity predicate (a Rust-syntax spec annotation embedded as a comment block in
-`aws_neuron_isa_tpb_common.h`, lines 1369–1386, read verbatim this session):
+`aws_neuron_isa_tpb_common.h`, lines 1369–1386, verbatim):
 
 ```rust
 // fn has_valid_idx_bound_check_reg(bound_check_reg: BoundCheckReg, flags: DmaIndirectFlags ) -> bool {
@@ -507,14 +500,13 @@ For an **indirect** (gather/scatter) descriptor, **EITHER** the index-bound must
 hard error (`idx_bound_is_err == 1`) **OR** the OOB notification must remain enabled
 (`bc_disable_oob_error_notif == 0`). You may **not** both disable the notification **and** decline
 to treat it as an error — the header **forbids a silent index-OOB**. This is the indirect path's
-error-vs-notify policy knob. `[HIGH/OBSERVED]` (predicate verbatim).
+error-vs-notify policy knob.
 
 > **GOTCHA — the predicate is a spec annotation in a `//`-comment, not executable C.** The
 > `has_valid_*` functions ship as **commented-out Rust pseudocode** inside the C header (the
 > arch-ISA validity spec). They are binary-derived, citeable evidence of the *intended* validity
 > rule the firmware enforces, but a reimplementer must encode the rule themselves — there is no
-> compiled C function named `has_valid_idx_bound_check_reg` to call. `[HIGH/OBSERVED]` that the
-> annotation is present and verbatim as shown.
+> compiled C function named `has_valid_idx_bound_check_reg` to call.
 
 ### 5d. The base validity predicate (for completeness)
 
@@ -530,7 +522,7 @@ error-vs-notify policy knob. `[HIGH/OBSERVED]` (predicate verbatim).
 
 A bound-check reg is valid **iff** fully-disabled-and-zero **OR** enabled-with-a-valid register
 read. A malformed `BOUND_CHECK_REG` is itself a descriptor-validity error caught **before** emit
-(routed to the §4d structural leg, not the §2a OOB leg). `[HIGH/OBSERVED]` (predicate verbatim).
+(routed to the §4d structural leg, not the §2a OOB leg).
 
 ### 5e. The composite dispatch decision
 
@@ -551,11 +543,10 @@ the composite.
 
 ## 6. Relationship to the SEQ Error-Handler — separate detection, shared delivery
 
-### 6a. The TU-separation proof (the `.rodata` adjacency, re-grounded this session)
+### 6a. The TU-separation proof (the `.rodata` adjacency)
 
 The DGE error strings cluster at VA `0x83105`–`0x8318e` and are **immediately followed** by the
-reshape/backend TU's source strings — re-read this session (`rg -a -b -o` over `cayman_dram.bin`,
-VA = off + `0x80000`):
+reshape/backend TU's source strings (from `cayman_dram.bin`, VA = off + `0x80000`):
 
 | file off | VA | String |
 |---|---|---|
@@ -615,11 +606,11 @@ descriptor of §4d does take the SEQ FATAL `HandleIllegalInstr` leg — a differ
 
 ### 7a. No on-device halt on a DGE content OOB
 
-The DGE dispatch region (`0xf000`–`0x10600`) call census this session shows **no** call to the
+The DGE dispatch region (`0xf000`–`0x10600`) call census shows **no** call to the
 SEQ FATAL raise wrapper `0x13e00` and **no** call to the halt-dispatch `0xa2e0` (both `×0`,
 §4a). The terminal SEQ spin (`j 0x13e14`) is **not** on the DGE content-OOB path. For context,
 `0x13e00` is called **6×** across the whole IRAM (the SEQ fault entry points) — **0** of them in
-the DGE region. `[HIGH/OBSERVED]` (forced-span census).
+the DGE region.
 
 ### 7b. Skip-the-descriptor + continue
 
@@ -627,9 +618,8 @@ The bounds check **gates emit** (the [emit page](dge-emit.md): `addr <= limit` i
 per direction *before* issuing the descriptor). On failure: the descriptor is **not** emitted,
 the notification is posted (gates permitting), and the DGE **proceeds** to the next descriptor.
 The `"NO BACKEND FOUND, doing nothing"` arm is the same model — the DGE explicitly does nothing
-(no descriptor emitted), may dispatch the notification, and continues. `[HIGH/OBSERVED]` the
-no-FATAL census + the "doing nothing" string semantics; `[HIGH/INFERRED]` the skip-and-continue
-model from bounds-gates-emit; the exact post-dispatch control flow is FLIX-desynced (`[MED]`).
+(no descriptor emitted), may dispatch the notification, and continues. `[HIGH/INFERRED]` the
+skip-and-continue model; the exact post-dispatch control flow is FLIX-desynced (`[MED]`).
 
 > **NOTE — the host-side contract is consistent with report-and-continue.** The host twin
 > library's analogous PC-bounds check (`nrtucode.h`, `enable_pc_bounds_check`, recovered string)
@@ -671,7 +661,7 @@ interrupt-fabric survey.
 
 ## 9. Per-generation presence
 
-### 9a. The emitter (firmware, `rg -c -a` over carved NX_POOL DRAMs, this session)
+### 9a. The emitter (firmware, `rg -c -a` over carved NX_POOL DRAMs)
 
 | GEN | `Failed bounds check` | `Dispatched error notification` | DGE emit present? |
 |---|---|---|---|
@@ -685,7 +675,7 @@ SUNDA. `[HIGH/OBSERVED]`
 
 ### 9b. The format + gating fields — what is frozen vs per-gen
 
-Census of the four shipped arch-ISA header trees this session:
+Census of the four shipped arch-ISA header trees:
 
 | Artifact | SUNDA | CAYMAN | MARIANA | MAVERICK |
 |---|---|---|---|---|
@@ -696,17 +686,16 @@ Census of the four shipped arch-ISA header trees this session:
 | `local_reg_defines.h` → `NEURON_FEATURE_FLAGS` reg 38 bit-1 | **absent** | present | present | present |
 
 > **CORRECTION — the *record format and the ISA gating fields* are arch-common (all 4); the
-> *engine feature-flag definition* is CAYMAN-onward.** The backing survey (§9b) says the
-> `NEURON_FEATURE_FLAGS` bit-1 definition is "present even in the sunda header." Re-checked this
-> session: **SUNDA's ISA tree has no `local_reg_defines.h`** at all (the only file in its
+> *engine feature-flag definition* is CAYMAN-onward.** A prior survey says the
+> `NEURON_FEATURE_FLAGS` bit-1 definition is "present even in the sunda header." In fact
+> **SUNDA's ISA tree has no `local_reg_defines.h`** at all (the only file in its
 > `common/` is `aws_neuron_isa_notification.h`), so `NEURON_FEATURE_FLAGS` is **not** defined for
 > SUNDA. What *is* arch-common in SUNDA is the **record format** (`TPB_ERROR_NOTIFICATION`,
 > `SEQUENCER_FATAL`, `TPB_DGE_METADATA_NOTIFICATION`) **and** the **gating fields**
 > (`BOUND_CHECK_REG.bc_disable_oob_error_notif` `sizeof==1`, the `has_valid_idx_bound_check_reg`
 > predicate) — all present in SUNDA's headers. So: the FORMAT and the ISA-level suppress field
 > are frozen across all four; the **engine-level feature flag (reg 38) and the EMITTER are
-> CAYMAN-onward** — both tracking the DGE emit path's arrival. `[HIGH/OBSERVED]` (per-arch
-> `fd`/`rg` census).
+> CAYMAN-onward** — both tracking the DGE emit path's arrival.
 >
 > *(SUNDA's notification header is additionally name-ciphered — type names render as
 > `NEURON_ISA_…_ln` — a string-pool obfuscation artifact; the values still decode, e.g.
@@ -716,14 +705,13 @@ Census of the four shipped arch-ISA header trees this session:
 
 The `notific_*_queue` block + the 16-B record + the errors_NT route ship under all arch dirs; the
 10-queue variant (`notific_10_queue`) is the production instantiation. `[CARRIED]` from the
-notification-queue survey (CSR-06); the 10-queue `NUM_SW_Q` + ring regs were re-grounded this
-session (§4b).
+notification-queue survey (CSR-06); the 10-queue `NUM_SW_Q` + ring regs are grounded in §4b.
 
 ---
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED** (direct disasm / byte read / compiled header this session):
+**HIGH / OBSERVED** (direct disasm / byte read / compiled header):
 
 - Carve reproduced; all 8 image sha256 prefixes match the FW-23/09 anchors (`CAYMAN_NX_POOL`
   IRAM `8e4412b9…` / DRAM `7bdf6ed7…`).
@@ -766,26 +754,12 @@ flow (§7b).
 **CARRIED:** the `errors_NT == sw_queue_num3` route name (§4c, from CSR-06); the apex→Q7/GIC hop
 for a NOTIFIC-transport fault (§8, from the interrupt-fabric survey, `[LOW]`).
 
-**Divergences flagged for the per-Part reconcile:**
-
-1. **`0xa2f8` call count** — the DGE region calls it **4×** (`0xf1e0`/`0xf685`/`0xfba0`/`0x10040`),
-   not the survey's `3×` (§4a CORRECTION).
-2. **`bc_disable_oob_error_notif` gloss** — derived from the field name + the §5c/§5d predicate,
-   **not** an inline header comment at line 709 (which is empty) (§5b CORRECTION).
-3. **Per-gen format/gating** — the record format **and** the ISA suppress field/predicate are
-   arch-common across all four (incl. SUNDA); the **`NEURON_FEATURE_FLAGS` reg-38 definition** is
-   CAYMAN-onward (SUNDA has no `local_reg_defines.h`) (§9b CORRECTION). The survey's
-   "present even in the sunda header" applies to the FORMAT, not the feature flag.
-4. **`SEQUENCER_GENERIC_ERROR_METADATA_HI`** — full union arm is `{block_id:4, program_counter:12,
-   info:8}`, not just `info:8` (§3c CORRECTION).
-
 ---
 
 ## 11. Cross-references
 
 - **[DGE Descriptor Emit](dge-emit.md)** — the per-descriptor src/dst bounds check that is the
-  primary error TRIGGER; this page picks up at the detected OOB. *(sibling, concurrently
-  authored — link forward.)*
+  primary error TRIGGER; this page picks up at the detected OOB.
 - **[SEQ Error-Handler / Fault Reporting](../seq/error-handler.md)** — the committed SEQ TU whose
   `build_error_record@0x13e40` / `raise_error@0x13e18` (`wur UR#0x15` + `call8 0xa450`) /
   `0xa2f8` notify primitive the DGE delivery **shares**, and against which §6 reconciles the
@@ -795,14 +769,12 @@ for a NOTIFIC-transport fault (§8, from the interrupt-fabric survey, `[LOW]`).
   emitter-presence anchor (§9a).
 - **[DGE Setup + Context Init](dge-setup.md)** — the carve, addressing model, and the
   `dge_decode_fast` → backend-select spine upstream of this page.
-- **NOTIFIC instruction-notification queue** (`../../control/csr/notific-queue.md`) — **forward
-  link, Part 13, not yet authored.** Will fully decode the `notific_10_queue` block (the SW NQ
-  ring regs, `errors_NT` route, coalescing/overflow) this page delivers into. *(planned path —
-  NOTE: target file does not yet exist; the `NUM_SW_Q=10` + ring regs are grounded here §4b, the
-  `errors_NT` route is CARRIED §4c.)*
+- **NOTIFIC instruction-notification queue** (`../../control/csr/notific-queue.md`) — **Part 13.**
+  Decodes the `notific_10_queue` block (the SW NQ ring regs, `errors_NT` route,
+  coalescing/overflow) this page delivers into. *(The `NUM_SW_Q=10` + ring regs are grounded here
+  §4b, the `errors_NT` route is CARRIED §4c.)*
 - **Device→host notification fabric** (`../../control/interrupt/device-host-notification.md`) —
-  **forward link, Part 13, not yet authored.** Will decode the firmware→host notification
-  transport (the `0xa2f8`/`0xa450` egress → NOTIFIC → MSI-X chain) and the errtrig crossover of
-  §8. *(planned path — NOTE: target file does not yet exist.)*
+  **Part 13.** Decodes the firmware→host notification transport (the `0xa2f8`/`0xa450` egress →
+  NOTIFIC → MSI-X chain) and the errtrig crossover of §8.
 - **[The Confidence & Walls Model](../../reference/confidence-model.md)** — the normative
   definition of the `[CONF/PROV]` tags and the FLIX-desync MED ceiling cited throughout.

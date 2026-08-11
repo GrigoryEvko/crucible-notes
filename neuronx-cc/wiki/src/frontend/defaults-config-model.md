@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Inbound option source** | `sys.argv` only — `CommandDriver.main` @ `0x17a90` → `parse_known_args` |
 | **Top parser** | `InterceptingArgumentParser` (`driver/Arguments.so`); defaults via argparse `default=` |
-| **Default store (introspection)** | `_ArgumentRegistry.arguments_by_context` (`OrderedDict`, literal confirmed) |
+| **Default store (introspection)** | `_ArgumentRegistry.arguments_by_context` (`OrderedDict`; the literal is in the pool) |
 | **Penguin backend parser** | `CommandLineParser` singleton (`penguin/Options.so`); flat-string `parseOptions` |
 | **Config-file readers** | **none** (no `.cfg`/`.ini`/`.rc`/`.json`/`configparser`) |
 | **Response-file (`@file`)** | **none** (no `fromfile_prefix_chars`, no `_read_args_from_files`) |
@@ -67,7 +67,7 @@ function resolve_options(argv):                                     // CommandDr
     return driver_ns, delegated                                    // sole inputs: argv + the seeded defaults
 ```
 
-> **QUIRK — defaults are distributed, not a dataclass.** The AF-strand brief hypothesised a single "Options defaults object." There is none. Each flag carries its own `default=`; the only aggregate view is `_ArgumentRegistry.arguments_by_context` (an `OrderedDict`, literal `arguments_by_context` confirmed in `Arguments.so`), which mirrors each `(argument, kind, job, default)` record purely for help/introspection — it is a *read model* for `print_help_hidden`, not the resolution mechanism. `RecordUsedAction` (`driver/Actions.so`) exists only because defaults are pre-seeded: it marks a flag as explicitly-set so downstream code can tell a real user value from a seeded default. See [3.2 Two-Parser Architecture](two-parser-architecture.md).
+> **QUIRK — defaults are distributed, not a dataclass.** There is no single "Options defaults object" to find. Each flag carries its own `default=`; the only aggregate view is `_ArgumentRegistry.arguments_by_context` (an `OrderedDict`, literal `arguments_by_context` confirmed in `Arguments.so`), which mirrors each `(argument, kind, job, default)` record purely for help/introspection — it is a *read model* for `print_help_hidden`, not the resolution mechanism. `RecordUsedAction` (`driver/Actions.so`) exists only because defaults are pre-seeded: it marks a flag as explicitly-set so downstream code can tell a real user value from a seeded default. See [3.2 Two-Parser Architecture](two-parser-architecture.md).
 
 ## The exhaustive absence scan
 
@@ -99,21 +99,25 @@ Three plausible config surfaces were checked explicitly, each resolving to an ar
 - **A backend options file**: `penguin/Options.so`'s `CommandLineParser.parseOptions` (`@0xbf40`) does take a *string* of flags — but it is a string passed in memory (e.g. the value of a backend-options flag), split with `str.split()` and fed to `parse_args`. There is no `open()` of a settings file; `Options.so` is pure in-memory argparse over a passed-in string.
 - **An env-driven defaults override**: would need `getenv` / `os.environ.get(KEY)` in the option path. The PLT has no `getenv` in any of the three; the one `environ` name is the fork env. The compiler's env-sensitivity is entirely upstream of the wheel ([3.11](env-var-catalog.md)).
 
-## Adversarial self-verification
+## Evidence summary
 
-Each strongest claim below is an *absence*; the verification challenges it by trying to find a counter-example in the binary. Where a counter-example cannot be exhaustively ruled out, the claim is tagged `INFERRED` rather than `CONFIRMED`.
+Every claim on this page is an *absence*, so each one is stated with the specific token that would have betrayed a counter-example.
 
-1. **"No `fromfile_prefix_chars` / `@`-response file anywhere."** Challenge: argparse's fromfile is opt-in via the constructor *and* via the `_read_args_from_files` method — either token would betray it. Both return `0` across `Options.so`, `Arguments.so`, `CommandDriver.so`, and a wheel-wide `grep -rIl '_read_args_from_files' --include='*.so'` (0 files). The `InterceptingArgumentParser.__init__` (`@0x146a0`) does not pass `fromfile_prefix_chars`. **CONFIRMED.**
+| Claim | How it was tested |
+|---|---|
+| No `fromfile_prefix_chars` / `@`-response file | argparse's fromfile support is opt-in through the constructor *and* through the `_read_args_from_files` method — either token would show. Both return zero across `Options.so`, `Arguments.so`, `CommandDriver.so`, and wheel-wide across every `*.so`. `InterceptingArgumentParser.__init__` (`@0x146a0`) passes no `fromfile_prefix_chars`. |
+| No `configparser` / `.cfg` / `.ini` / `.rc` reader | scanned for the parser name, the file extensions, and the verbs `read_config` / `load_config`; all zero. The only `ini` substring hits are the ELF `.init` / `.init_array` sections, excluded by token-exact matching. |
+| No `getenv` / env read in the option path | the PLT carries no `getenv` import in any of the three modules. The single Python `environ` name sits in `CommandDriver`'s `run_subcommand_in_process`, next to `multiprocessing`/`Process`/`argv` — the child-fork environment, not an option key. |
+| `sys.argv` is the only inbound option source | a second source would surface as a file read or an env read feeding the parser; both are ruled out above. Positively, `argv`, `parse_known_args`, `known_args`, and `delegated_args` are all present and form the inbound chain documented here. |
+| Defaults are bound at registration | a defaults file would need a `set_defaults`-from-file or a post-parse merge. `Arguments.so` exposes `add_argument`, `default`, `get_default`, and `arguments_by_context`, but no file-backed `set_defaults` and no second resolution pass. |
 
-2. **"No `configparser` / `.cfg` / `.ini` / `.rc` config reader."** Challenge: a config reader could hide behind a renamed helper. Scanned for the parser (`configparser`), the file extensions, and the verbs (`read_config` / `load_config`); all `0`. The only `ini` substring hits are the ELF `.init` / `.init_array` sections (excluded by token-exact matching). Wheel-wide `configparser` grep: 0 files. **CONFIRMED.**
+## Limits of this reading
 
-3. **"No `getenv` / env read in the option path."** Challenge: env reads can be C-level (`getenv@plt`) or Python-level (`os.environ`). The PLT carries no `getenv` import in any of the three modules. The single Python `environ` name is in `CommandDriver`'s `run_subcommand_in_process`, paired with `multiprocessing`/`Process`/`argv` — the child-fork environment, not an option key. I could not trace the exact opcode that touches `environ`, only its pool co-residence and the absence of any option-key string near it; the *option-source* claim is therefore **STRONG**, the broader "no env read at all in CommandDriver" is **INFERRED** (the name exists; its use as fork-env is the best-supported reading, but the precise call was not disassembled).
+- The exact instruction that touches `environ` in `run_subcommand_in_process` was not disassembled. Its use as the fork environment rests on pool co-residence with `multiprocessing`/`Process`/`argv` and the absence of any option-key string nearby; the narrower claim (it is not an option source) is firmer than the broader one (nothing in `CommandDriver` reads the environment at all).
+- The registration-time binding of defaults is read directly. That *no* downstream code anywhere re-reads or overrides a default from a file is proven only for the three option modules — an override buried in an unrelated module cannot be excluded outright, though the wheel-wide config and fromfile scans returning zero make it unlikely.
+- Input *model* files — the `.hlo`/`.pb` the compiler reads — are positional argv values, not an option config, and are out of scope here.
 
-4. **"The only inbound option source is `sys.argv`."** Challenge: a second source would surface as a file-read or env-read feeding the parser; both ruled out by (1)–(3). Positive evidence: `argv`, `parse_known_args`, `known_args`, `delegated_args` are all present and form the documented inbound chain. **CONFIRMED** for the option vector itself. (Input *model* files — the `.hlo`/`.pb` the compiler reads — are positional argv values, not an option config; out of scope.)
-
-5. **"Defaults are bound at registration, with no override file."** Challenge: a defaults file would need `set_defaults`-from-file or a post-parse merge. `Arguments.so` exposes `add_argument`, `default`, `get_default` (registration-time) and `arguments_by_context` (the mirror), but no file-backed `set_defaults` and no second resolution pass. The registration-time binding is **CONFIRMED**; that *no* downstream code re-reads or overrides a default from a file is **STRONG** (proven for the option modules; a defaults override buried in an unrelated module cannot be exhaustively excluded, though the wheel-wide config/fromfile scans returning zero make it very unlikely).
-
-> **CORRECTION (AF05) —** an earlier framing of this strand expected `penguin/Options.so` to be the resolved top-level "defaults object" holding the `-O{0..3}` map. It is not. `Options.so` is a *separate* backend lane — the Penguin `CommandLineParser` singleton — with per-flag defaults supplied at `addOption` time and no opt-level table. The top-level CLI and its defaults live in `driver/Arguments.so`. The two parsers are independent; see [3.2 Two-Parser Architecture](two-parser-architecture.md).
+> **GOTCHA —** the name `penguin/Options.so` suggests the resolved top-level options object holding the `-O{0..3}` map. It is not that. `Options.so` is a *separate* backend lane — the Penguin `CommandLineParser` singleton — with per-flag defaults supplied at `addOption` time and no opt-level table at all. The top-level CLI and its defaults live in `driver/Arguments.so`, and the two parsers are independent; see [3.2 Two-Parser Architecture](two-parser-architecture.md).
 
 ## Related Components
 

@@ -158,11 +158,11 @@ The dependence walk stops at any of `{AllGatherOp, ReduceScatterOp, AllReduceOp,
 
 The only signal exported to the backend is the `FusionKind="ScheduleFusion"` grouping plus the now-adjacent body order. `MhloToPythonPrinter::print<mhlo::FusionOp>` reads `FusionKind` and routes `"ScheduleFusion"` to `printScheduleFusionOp` @`0x20f4ce0` (xref @`0x20f5261`), which walks the fusion body (skipping `mhlo.return`, `TypeID<mhlo::ReturnOp>` @`0x20f4da0`) and emits each inner op as an **ordinary Penguin op** in its rescheduled order via the shared `printOperation` @`0x20ee320`, then `defScalar`s the fusion results. Diagnostic `NCC_PYP052` (@`0x262919`) fires on a malformed body. The ScheduleFusion composite therefore prints **transparently** — there is no special Penguin op; the overlap is carried by collective adjacency, which the Penguin/Walrus scheduler later turns into actual semaphore-pipelined comm-compute overlap.
 
-> **CORRECTION (D-C12) —** do **not** conflate `hilo::AnalyzeSchedule` (CLI `live-range-analysis`, `runOnOperation` @`0x2071a80`, diagnostic `" Liverange ="` @`0x2830c1`) with `ScheduleFusion`. The former is an independent live-range/scheduling *analysis*, not the comm-overlap producer.
+> **GOTCHA —** `hilo::AnalyzeSchedule` (CLI `live-range-analysis`, `runOnOperation` @`0x2071a80`, diagnostic `" Liverange ="` @`0x2830c1`) is a separate live-range analysis, not a second name for `ScheduleFusion`. It produces no comm-overlap fusion.
 
 ### MHLO vs StableHLO divergence
 
-A StableHLO twin, `hilo::StableHLOScheduleFusion` (CLI `stablehlo-schedule-fusion` @`0x27af08`), implements the same idiom on `stablehlo` ops. The `getTypeName` class string @`0x3a9a78` confirms `hilo::StableHLOScheduleFusion`.
+A StableHLO twin, `hilo::StableHLOScheduleFusion` (CLI `stablehlo-schedule-fusion` @`0x27af08`), implements the same idiom on `stablehlo` ops. Its `getTypeName` class string @`0x3a9a78` reads `hilo::StableHLOScheduleFusion`.
 
 | Aspect | MHLO `ScheduleFusion` | StableHLO `StableHLOScheduleFusion` |
 |---|---|---|
@@ -337,7 +337,7 @@ There is **no** `CompositeToFusion` inverse pass in hlo2penguin. The only other 
 | Dot/elementwise fusions (4.35) | the other six C-strand `FusionKind`s that FusionToComposite also lowers |
 | `MhloToPythonPrinter::print<mhlo::FusionOp>` | MHLO-side dispatcher routing `FusionKind` to per-kind Penguin emitters |
 | `StableHLOToPythonPrinter::print<CompositeOp>` @`0x21947e0` | the actual fusion-name registry (`CompositeKind` 7-way dispatch) |
-| `hilo::AnalyzeSchedule` (`live-range-analysis`) | a *separate* live-range analysis — not the ScheduleFusion producer (see CORRECTION) |
+| `hilo::AnalyzeSchedule` (`live-range-analysis`) | a *separate* live-range analysis — not the ScheduleFusion producer |
 
 ## Cross-References
 

@@ -25,7 +25,7 @@ the interrupt/trigger plumbing in
 > **WALL — MAVERICK (v5, this DB) vs CAYMAN (NC-v3, cross-check).** The DB lives at
 > `arch-headers/`**`maverick`**`/ext/al_address_map_db.pkl`; every record's `json`
 > schema path is rooted under `/proj/maverick/…`. So **the DB structure, record names,
-> bases, sizes, counts and schema bindings below are `[HIGH · OBSERVED]`** — they are
+> bases, sizes, counts and schema bindings below are `HIGH · OBSERVED`** — they are
 > read structurally out of the shipped pkl/json (both *are* binary-derived,
 > RTL-generated vendor data, and are citeable). **Any claim about what the v5 silicon
 > *does* behind one of these addresses is `[* · INFERRED]`.** The byte-grounded
@@ -43,16 +43,16 @@ A `.pkl` is a program. This 216 MB file must **never** hit `pickle.load()` /
 `pickle.loads()` (arbitrary code execution + a 514 MB-graph OOM). Use the
 [`pkl-db.md`](./pkl-db.md) primitive: either `pickletools.genops()` (opcode-stream
 scan, *no* object construction, *never* calls `find_class`) or stream the `.json`
-mirror line-by-line. **This page re-ran both as an independent safety gate** before any
-HBM analysis:
+mirror line-by-line. Both gates hold for this file (every row below is
+`[HIGH · OBSERVED]`):
 
-| check | value | `[conf · prov]` |
-|-------|-------|-----------------|
-| header bytes | `80 04 95 08 00 01 00 00 00 00 5d` = PROTO 4 · FRAME · `EMPTY_LIST` | `[HIGH · OBSERVED]` |
-| `genops()` opcodes scanned | **33,065,559** | `[HIGH · OBSERVED]` |
-| dangerous opcodes `{GLOBAL, STACK_GLOBAL, REDUCE, INST, OBJ, NEWOBJ*, BUILD, EXT*, PERSID, BINPERSID}` | **0** | `[HIGH · OBSERVED]` |
-| top opcodes | `MEMOIZE` 10,141,891 · `BINGET` 8,024,869 · `SHORT_BINUNICODE` 7,894,409 | `[HIGH · OBSERVED]` |
-| total records (root list `len`) | **323,198** | `[HIGH · OBSERVED]` |
+| check | value |
+|-------|-------|
+| header bytes | `80 04 95 08 00 01 00 00 00 00 5d` = PROTO 4 · FRAME · `EMPTY_LIST` |
+| `genops()` opcodes scanned | **33,065,559** |
+| dangerous opcodes `{GLOBAL, STACK_GLOBAL, REDUCE, INST, OBJ, NEWOBJ*, BUILD, EXT*, PERSID, BINPERSID}` | **0** |
+| top opcodes | `MEMOIZE` 10,141,891 · `BINGET` 8,024,869 · `SHORT_BINUNICODE` 7,894,409 |
+| total records (root list `len`) | **323,198** |
 
 > **NOTE — no drift.** Opcode total (33,065,559), record count (323,198), file size
 > (216,631,794 B) and the zero-dangerous-opcode result are byte-identical to the
@@ -72,8 +72,7 @@ controller plane**.
 Each of the four SENG (Scalar Engine) cores carries exactly one engine-view HBM node,
 parent chain `['ADDRESS_MAP','user_int','seng_n']`. All four are `NODE`, `count=1`,
 bind `address_map/reserved.json`, and have **zero descendants** — they are pure decode
-placeholders, *not* the controllers. `[HIGH · OBSERVED]`
-
+placeholders, *not* the controllers.
 | node | base | size | meaning |
 |------|------|------|---------|
 | `USER_INT_SENG_0_HBM` | `0x8000000000` | `0x2000000000` (**128 GiB**) | engine-view HBM window stub |
@@ -82,14 +81,13 @@ placeholders, *not* the controllers. `[HIGH · OBSERVED]`
 | `USER_INT_SENG_3_HBM` | `0x308000000000` | `0x2000000000` | `= SENG_0 + 3·stride` |
 
 SENG stride = **`0x100000000000`** (16 TiB, the engine-aperture stride). The window is
-`0x2000000000` = **128 GiB** per SENG. `[HIGH · OBSERVED]`
-
+`0x2000000000` = **128 GiB** per SENG.
 > **GEN-CHANGE — v5 doubles the engine-view aperture.** The Cayman (v3) flat band
 > exposes 4 × **64 GiB** HBM stacks (`soc-master-map.md` L66/L107). The Maverick
 > engine-view stub is **128 GiB** per SENG. The DRAM *size* itself is not proven by
 > this control DB (the node binds `reserved.json`); 128 GiB is the *decode aperture*
 > the v5 engine view reserves. v5 interior DRAM geometry `[MED · INFERRED]`; the
-> 128 GiB aperture value `[HIGH · OBSERVED]`.
+> 128 GiB aperture value is OBSERVED.
 
 > **GOTCHA — the user_int "HBM" keyword count (1,988) is *not* these four stubs.** It
 > is dominated by the host-visible FIS/SPROT protection surface and the user-view
@@ -101,8 +99,7 @@ SENG stride = **`0x100000000000`** (16 TiB, the engine-aperture stride). The win
 The real HBM CSRs live in the **secure_int** view, reached through the **PEB aperture**
 on the **HBM die** (`H_DIE`). Parent chain
 `['ADDRESS_MAP','secure_int','seng_n','h_die','PEB_APB_IO','amzn_hbm_0'|'amzn_hbm_1', …]`.
-Two stack controllers per die: `[HIGH · OBSERVED]`
-
+Two stack controllers per die:
 | node (SENG_0, plain aperture) | base | size | type | `self_array_size` |
 |-------------------------------|------|------|------|-------------------|
 | `…PEB_APB_IO_AMZN_HBM_0` | `0x2000048010a00000` | `0x3500000` (**53 MiB**) | `NODE` | `2` |
@@ -110,35 +107,26 @@ Two stack controllers per die: `[HIGH · OBSERVED]`
 
 The top view nibble `bits[63:60] = 0x2` selects the **secure_int** view. `AMZN_HBM`
 lives **only** on `H_DIE` (HBM die); `C_DIE` carries zero `AMZN_HBM` nodes.
-`[HIGH · OBSERVED]`
 
 **Dual aperture.** Each `AMZN_HBM_n` surfaces in **two** PEB sub-apertures per SENG —
 `PEB_APB_IO` (plain privileged) and `PEB_APB_IO_BCAST` (privileged APB-broadcast). The
-BCAST aperture is `+0x20000000` (bit 29) from the plain one: `[HIGH · OBSERVED]`
-
+BCAST aperture is `+0x20000000` (bit 29) from the plain one:
 ```
 plain  …PEB_APB_IO_AMZN_HBM_0        @ 0x2000048010a00000
 bcast  …PEB_APB_IO_BCAST_AMZN_HBM_0  @ 0x2000048030a00000   (= plain + 0x20000000)
 ```
 
-So **`AMZN_HBM_0` appears 8 times = 4 SENG × {plain, BCAST}** — verified:
-`rg -c '"name": "[^"]*_AMZN_HBM_0"'` = **8**; same for `AMZN_HBM_1`. The bulk
+So **`AMZN_HBM_0` appears 8 times = 4 SENG × {plain, BCAST}** — the `name`-keyed
+`_AMZN_HBM_0` count is **8**; same for `AMZN_HBM_1`. The bulk
 controller CSRs are SECURE-only and replicated ×2 apertures, which is why secure_int
-HBM records outnumber user_int ~15× (§5). `[HIGH · OBSERVED]`
-
-> **CORRECTION vs SX-ADDR-13 §2b base.** The report cites the `AMZN_HBM_0` plain base
-> as `0x2000048010a00000` and the BCAST as `0x2000048030a00000`; both reconfirmed
-> byte-exact here (the `AMZN_HBM_1` base `0x2000048013f00000` is added — it was implied
-> but not tabulated in the report). No discrepancy; geometry holds.
-
+HBM records outnumber user_int ~15× (§5).
 ---
 
 ## 2. The stack controller — `AMZN_HBM_0` internal layout
 
 Sample = `SECURE_INT_SENG_0_H_DIE_PEB_APB_IO_AMZN_HBM_0` (base `0x2000048010a00000`,
 size `0x3500000` = 53 MiB, `NODE`). `AMZN_HBM_0` and `AMZN_HBM_1` are
-**byte-identical in structure** — the two HBM stacks per die. `[HIGH · OBSERVED]`
-
+**byte-identical in structure** — the two HBM stacks per die.
 | offset in stack | block | type | size | schema (`json`) | role |
 |-----------------|-------|------|------|-----------------|------|
 | `+0x0000000` | `MISC_FIS_0` | `NODE` | `0x010000` | `fis_type_1000_amzn.json` | misc fabric-interface slice |
@@ -155,15 +143,12 @@ size `0x3500000` = 53 MiB, `NODE`). `AMZN_HBM_0` and `AMZN_HBM_1` are
 | `+0x3490000` | `HBM_XBAR_8X32` | `NODE` | `0x020000` | `hbm_xbar_8x32_amzn.json` | the 8×32 crossbar |
 
 The 32 `HBM_CTRL_DP` nodes tile contiguously from `+0x2100000` at a **`0x80000`
-(512 KiB) stride**; the `HBM_XBAR_8X32_FIS_n` indices run **0..7** (eight slices,
-verified). `[HIGH · OBSERVED]`
-
+(512 KiB) stride**; the `HBM_XBAR_8X32_FIS_n` indices run **0..7** (eight slices).
 ### 2a. The `HBM_CTRL_DP` datapath controller (per-channel DDR controller)
 
 Sample = `…AMZN_HBM_0_HBM_CTRL_DP_0` (`NODE`, size `0x80000` = 512 KiB; `count=2` is
 the 2-stack multiplicity, `self_array_size="32"` is the 32-datapath array). Direct
-children: `[HIGH · OBSERVED]`
-
+children:
 | offset in DP | block | type | size | schema | role |
 |--------------|-------|------|------|--------|------|
 | `+0x00000` | `DP_FIS_0` | `NODE` | `0x010000` | `fis_type_1000_amzn.json` | datapath fabric-interface slice |
@@ -179,26 +164,19 @@ children: `[HIGH · OBSERVED]`
 
 - **`RMBS`** = the `ddr_csr_apb` DDR controller — `GenFlavor=EXTERNAL_IP`,
   `SizeInBytes=0x10000`, a Cadence/Denali-class APB DDR controller (the
-  ECC/parity/thermal/DFI surface). `[HIGH · OBSERVED]`
-- **`SCBR`** = the `hbm_scbr` March/BIST scrubber (per datapath). `[HIGH · OBSERVED]`
-- **`ERG_0`/`ERG_1`** = the `erg_ecc_model` ECC engines (2 per datapath).
-  `[HIGH · OBSERVED]`
-- **`AXTG`** = the `trfc_gen_wrapper` traffic generator. Its interior carries a full
+  ECC/parity/thermal/DFI surface).- **`SCBR`** = the `hbm_scbr` March/BIST scrubber (per datapath).- **`ERG_0`/`ERG_1`** = the `erg_ecc_model` ECC engines (2 per datapath).
+ - **`AXTG`** = the `trfc_gen_wrapper` traffic generator. Its interior carries a full
   `CFG_APB_CFG_ENG_SEQ_TABLE`, `AXI_OS_SHAPER`, `USER_DATA_TABLE`, an `INTC` and a
-  `RAS` (access/security/parity violation) sub-surface. `[HIGH · OBSERVED]`
-- **`ELA`** = the `cxela500` CoreSight Embedded Logic Analyzer (debug). `[HIGH · OBSERVED]`
-
+  `RAS` (access/security/parity violation) sub-surface.- **`ELA`** = the `cxela500` CoreSight Embedded Logic Analyzer (debug).
 The block→schema name mapping (`RMBS`/`SCBR`/`AXTG`/`ELA` → the same schema basenames)
 matches the CSR catalogue in [`../csr/hbm-d2d-pcie-blocks.md`](../csr/hbm-d2d-pcie-blocks.md)
-exactly. `[HIGH · OBSERVED]`
-
+exactly.
 ### 2b. The `HBM_XBAR_8X32` crossbar — geometry is byte-grounded
 
 Sample = `…AMZN_HBM_0_HBM_XBAR_8X32` (`NODE`, size `0x20000` = 128 KiB,
 `hbm_xbar_8x32_amzn.json`). Its `AMZN` child enumerates the actual port array, which
 **resolves the "8X32" name to silicon-side port counts** rather than leaving it as a
-name inference: `[HIGH · OBSERVED]`
-
+name inference:
 | port family | indices present | count | side |
 |-------------|-----------------|-------|------|
 | `…_AMZN_PORT_FAB_RD_n` | 0..7 | **8** | fabric (client) read |
@@ -209,13 +187,12 @@ name inference: `[HIGH · OBSERVED]`
 So **`8X32` = 8 fabric-side client ports × 32 HBM-side datapath ports** — the crossbar
 fans 8 SoC clients onto the 32 `HBM_CTRL_DP` datapaths (the address-hash /
 channel-interleave remapper). The `AMZN` block also carries `F2H_CTRL` (fabric→HBM) and
-`H2F_CTRL` (HBM→fabric) direction-control regfiles. `[HIGH · OBSERVED]`
-
-> **CORRECTION (upgrade) vs SX-ADDR-13 §3b.** The report tagged the
-> "8 client ports × 32 datapaths" routing as `[MED]` — *"read from the name + the
-> 32-datapath count"*. Re-streaming the `HBM_XBAR_8X32_AMZN` port array shows
+`H2F_CTRL` (HBM→fabric) direction-control regfiles.
+> **CORRECTION — the 8×32 geometry is enumerated, not inferred.** Reading
+> "8 client ports × 32 datapaths" off the *name* plus the 32-datapath count would rate
+> only `[MED]`. The `HBM_XBAR_8X32_AMZN` port array shows
 > `PORT_FAB_{RD,WR}_0..7` (8) and `PORT_HBM_{RD,WR}_0..31` (32) **explicitly enumerated
-> in the address map**, so the 8×32 geometry is `[HIGH · OBSERVED]`, not inferred. The
+> in the address map**, so the 8×32 geometry is **HIGH · OBSERVED**. The
 > *routing policy* (which client maps to which datapath) remains a firmware/RTL
 > question, but the port topology is byte-grounded.
 
@@ -223,13 +200,13 @@ channel-interleave remapper). The `AMZN` block also carries `F2H_CTRL` (fabric�
 
 ## 3. Channel / stack geometry + block census
 
-**Stack model** `[HIGH · OBSERVED]`:
+**Stack model:**
 
 - **2 HBM stacks per die**: `AMZN_HBM_0` + `AMZN_HBM_1`, byte-identical structure, on
   `H_DIE` only.
 - **4 SENG × 2 apertures = 8 container instances** of each stack node.
 - **Per stack: 32 `HBM_CTRL_DP` datapath controllers** (`self_array_size="32"`,
-  512 KiB stride). DP indices run **0..31** (verified `max = 31`); no `_32` exists.
+  512 KiB stride). DP indices run **0..31** (`max = 31`); no `_32` exists.
 - The "channel" dimension that Cayman expressed as a CSR array
   (`hbm_cfg.hbm_ctrl_debug ArraySize=16`) is, in Maverick, the **32 explicit
   `HBM_CTRL_DP` address-map nodes** per stack — the channel array migrated from a CSR
@@ -239,8 +216,7 @@ channel-interleave remapper). The `AMZN` block also carries `F2H_CTRL` (fabric�
 avoid a double-counting trap: *stack-scoped* (record `name` contains `AMZN_HBM` — the
 real per-stack controllers) vs *HBM-family-wide* (record `name` contains `HBM` —
 includes the user-plane crossbar + FIS/SPROT). Counts are streamed from the `.json`
-mirror by the record's `json` schema field: `[HIGH · OBSERVED]`
-
+mirror by the record's `json` schema field:
 | schema (`json` basename) | binds → | stack-scoped (`AMZN_HBM`) | what |
 |--------------------------|---------|---------------------------|------|
 | `ddr_csr_apb.json` | `RMBS` | **512** | DDR memory controller (EXTERNAL_IP) |
@@ -256,7 +232,7 @@ mirror by the record's `json` schema field: `[HIGH · OBSERVED]`
 | `a2i_model.json` | `A2I` | **16** | APB-to-internal bridge (1/stack) |
 | `hbm_xbar_4x2_amzn.json` | `HBM_XBAR_4X2` | **0** (HBM-family-wide: **64**) | user/tile-fabric 4×2 crossbar |
 
-**Controller-count arithmetic** `[HIGH · OBSERVED]`:
+**Controller-count arithmetic:**
 
 ```
 512 RMBS (ddr_csr_apb) = 32 datapaths × 16 AMZN_HBM container-instances
@@ -265,16 +241,16 @@ mirror by the record's `json` schema field: `[HIGH · OBSERVED]`
              = 2 stacks × 8 apertures = 1 per (stack × aperture)
 ```
 
-> **CORRECTION vs SX-ADDR-13 §4 census (two scoping fixes).** The report's §4 table
-> mixes the two scopes for two rows. (1) `cxela500.json` is listed as **704**
-> *"datapaths + xbar + stack"* — that is the HBM-family total; the **AMZN_HBM
+> **CORRECTION — two census rows need explicit scoping.** It is easy to mix the two
+> scopes on these two rows. (1) `cxela500.json` counted as **704**
+> (*"datapaths + xbar + stack"*) is the HBM-family total; the **AMZN_HBM
 > stack-subtree carries exactly 512** (one ELA per datapath, `512 = 32 × 16`). The
 > remaining 192 ELAs (704 − 512) live in the FIS/SPROT orphan surface (§5), not under
-> `AMZN_HBM`. (2) `hbm_xbar_4x2_amzn.json` is listed as **64** in the census; that count
-> is correct **only HBM-family-wide** — **zero** of those 64 carry `AMZN_HBM` in their
+> `AMZN_HBM`. (2) `hbm_xbar_4x2_amzn.json` counted as **64** is correct
+> **only HBM-family-wide** — **zero** of those 64 carry `AMZN_HBM` in their
 > name. The 4×2 crossbar is the **user/tile-fabric** crossbar under
 > `amzn_tile_fabric_0..3` (one per tile fabric), *not* part of the per-stack
-> `AMZN_HBM` controller. Both numbers from the report are reproducible; the page above
+> `AMZN_HBM` controller. Both numbers are reproducible; the table above
 > labels each with its correct scope so the two cannot be conflated.
 
 > **GOTCHA — `trfc_gen_wrapper`/`erg_ecc_model`/`cxela500` are shared schemas.** Counted
@@ -289,8 +265,7 @@ mirror by the record's `json` schema field: `[HIGH · OBSERVED]`
 Of the 29,616 secure-plane HBM records, **5,088 are *not* under `AMZN_HBM_*`** — they
 are the per-stack Fabric-Interface-Slice (FIS) protection plus the user-visible
 `HBM_XBAR_4X2` crossbar, the same 3-view (host-FIS / priv-FIS / priv-BCAST-FIS)
-protection decomposition the DMA subtree exhibits. By context: `[HIGH · OBSERVED]`
-
+protection decomposition the DMA subtree exhibits. By context:
 | parent context | records | what |
 |----------------|---------|------|
 | `PEB_APB_IO.user.fis_hbm_0` | 928 | priv FIS, HBM stack 0 |
@@ -304,15 +279,13 @@ Top `short_name`s in this orphan set: `PAPB_BCAST` 672, `RESERVED_REGION0` 544,
 `DP_FIS_0` 512, `DP_DEBUG_FIS_0` 512, `FIS_0` 152, `HBM_XBAR_4X2` 128, `NTS` 128,
 `QOS` 128, `ELA` 128. This FIS/SPROT layer is the access-protection wrapper around the
 HBM CSR aperture; its `RAS` (access/security/parity violation) registers are the same
-family seen inside `AXTG` (§2a). `[HIGH · OBSERVED]`
-
+family seen inside `AXTG` (§2a).
 ---
 
 ## 5. Record-arithmetic closure (closes to the byte)
 
-Whole-DB HBM family = **31,604** records (pkl == JSON mirror, both verified by
-`rg -c '"name": "[^"]*HBM'`). `[HIGH · OBSERVED]`
-
+Whole-DB HBM family = **31,604** records (pkl == JSON mirror, both by the `name`-keyed
+`HBM` count).
 ```
 SECURE_INT  (29,616) — the real controllers + protection
    AMZN_HBM_0 subtree    12,264   (8 container-instances × 1,533 records/inst)
@@ -342,9 +315,8 @@ A2I / HBM_TOP_CFG / DWC_HBMPHY   1 each
    1408 + 84 + 29 + 4 + 2 + 2 + 1 + 1 + 1 = 1,532 desc;  + 1 container = 1,533   EXACT
 ```
 
-Both top-level scopes reproduced live: `rg -c '"name": "SECURE_INT[^"]*HBM'` = 29,616;
-`rg -c '"name": "USER_INT[^"]*HBM'` = 1,988; sum 31,604. `[HIGH · OBSERVED]`
-
+Both top-level scopes reproduce live: `name`-keyed `SECURE_INT…HBM` = 29,616;
+`USER_INT…HBM` = 1,988; sum 31,604.
 ### JSON-sibling equivalence (representative record)
 
 | field | pkl record | JSON mirror | match |
@@ -358,8 +330,7 @@ Both top-level scopes reproduced live: `rg -c '"name": "SECURE_INT[^"]*HBM'` = 2
 
 The Maverick `ddr_csr_apb.json` schema confirms `GenFlavor=EXTERNAL_IP`,
 `SizeInBytes=0x10000`, **19 register-bundle arrays, no PS0/PS1 pseudo-channel bundles**
-(the Cayman schema has **27** bundle arrays). `[HIGH · OBSERVED]`
-
+(the Cayman schema has **27** bundle arrays).
 ---
 
 ## 6. Maverick (v5) vs Cayman (v3) — the generational delta
@@ -392,8 +363,7 @@ DB. `[HIGH where byte-exact; the `hbm_hpr` absent-vs-relocated reading is MED]`
 > not HBM, and never appear in this subtree. This DB's "memory subtree" is the HBM
 > **control** plane only; the on-chip SRAM and the HBM DRAM heap are accounted
 > elsewhere ([`unified-soc-memory-map.md`](./unified-soc-memory-map.md)).
-> `[HIGH · OBSERVED]`
-
+>
 ---
 
 ## 7. Reimplementation — carve + per-controller base derivation
@@ -434,7 +404,7 @@ def stream_records(path):
         if rec is not None and "HBM" in rec.get("name", ""):
             yield rec
 
-# --- counts (re-grounded by streaming, never grep-from-decompile) ---
+# --- counts (streamed) ---
 hbm_total      = 0
 by_schema      = Counter()          # AMZN_HBM-scoped schema census
 secure, user   = 0, 0
@@ -471,15 +441,15 @@ assert rmbs_base(STACK_BASE, 0)  == 0x2000048012b10000   # == the OBSERVED §5 r
 assert rmbs_base(STACK_BASE, 0, bcast=True) == 0x2000048032b10000
 ```
 
-The `assert`s are the page's self-test: every constant is `[HIGH · OBSERVED]` from the
-streamed DB, and `rmbs_base(STACK_BASE, 0)` reproduces the byte-exact `RMBS` base
-recorded in the JSON mirror (§5). `[HIGH · OBSERVED]`
+The `assert`s are the page's self-test: every constant is read from the streamed DB, and
+`rmbs_base(STACK_BASE, 0)` reproduces the byte-exact `RMBS` base recorded in the JSON
+mirror (§5).
 
 ---
 
 ## 8. Confidence ledger
 
-**`[HIGH · OBSERVED]`** — read byte-exact from the shipped pkl/json + on-disk schemas:
+**HIGH · OBSERVED** — read byte-exact from the shipped pkl/json + on-disk schemas:
 
 - Safe-load inert (0 dangerous opcodes / 33,065,559 scanned / `len` 323,198; no drift).
 - HBM family **31,604** (secure 29,616 + user 1,988); pkl == JSON mirror.

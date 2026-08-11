@@ -6,11 +6,11 @@
 
 This page documents the ~30 **tensor-op forward builders** of the NKI `KernelBuilder` module — the methods that take nl/nisa-Python arguments and **construct** a Penguin-IR `<Op>` node, then append it to the current basic block. This is the *forward* (build) direction. It is the exact inverse of the re-emit **printer** documented in [6.5.9](./nkicodegen-printer.md), which walks an existing Penguin node back out to `nisa.<prim>(...)` text. The two surfaces marshal the same enums in opposite directions, and confusing them is the single largest hazard in this part of the compiler.
 
-Each builder follows one fixed shape: parse kwargs, validate, normalize operand tiles through `combine_tiles`, read the tile's access pattern as `(par, free)` index pairs, construct **one** `penguin.ir.<Op>` Python object with named kwargs, and append it through `self.insert` — which reaches `IRBuilder.add_named_instruction` after stamping predicates, dependency edges, bookkeeping, and a source location. The op-selector **enums are passed through verbatim**: the builder stores the Python `np.ufunc` / `ALUOpcode` / `TSOpcode` / `EngineAccumulationType` object on the node as-is. Numeric ISA-enum renumbering happens one layer down at `BirCodeGenLoop` (strands I04/I05), **not** here.
+Each builder follows one fixed shape: parse kwargs, validate, normalize operand tiles through `combine_tiles`, read the tile's access pattern as `(par, free)` index pairs, construct **one** `penguin.ir.<Op>` Python object with named kwargs, and append it through `self.insert` — which reaches `IRBuilder.add_named_instruction` after stamping predicates, dependency edges, bookkeeping, and a source location. The op-selector **enums are passed through verbatim**: the builder stores the Python `np.ufunc` / `ALUOpcode` / `TSOpcode` / `EngineAccumulationType` object on the node as-is. Numeric ISA-enum renumbering happens one layer down at `BirCodeGenLoop`, **not** here.
 
-The one-to-one and many-to-one builder→Op mapping is the payload of this page. Most builders own exactly one Op; a few interesting cases collapse multiple builders onto a single Op (`tensorscalar` + `tensorvectorscalar` → one `TensorScalarPtrOp`), decompose into several nodes (`tensorscalar` of `np.power`), or split on a runtime property (`select` → `TensorSelect` *or* `AffSelTensorScalarOp`). The MX-quantize builder `quantize_mx` → `QuantizeMXOp` lives **here**, correcting an earlier strand that placed it only in `BirCodeGenLoop`.
+The one-to-one and many-to-one builder→Op mapping is the payload of this page. Most builders own exactly one Op; a few interesting cases collapse multiple builders onto a single Op (`tensorscalar` + `tensorvectorscalar` → one `TensorScalarPtrOp`), decompose into several nodes (`tensorscalar` of `np.power`), or split on a runtime property (`select` → `TensorSelect` *or* `AffSelTensorScalarOp`). The MX-quantize builder `quantize_mx` → `QuantizeMXOp` lives **here**, in the forward builder, not only in `BirCodeGenLoop`.
 
-> **CORRECTION — the Cython class is `GeneratedNeuronCodegen`, not bare `NeuronCodegen`.** Sibling strand P01 (and the `S2-09` source survey) name the owning class `NeuronCodegen`. The symbol mangling in *this* binary is unambiguous: every method wrapper is `__pyx_pw_9neuronxcc_9generated_3nki_8compiler_8backends_6neuron_13KernelBuilder_22GeneratedNeuronCodegen_<idx><name>`. The `22` length-prefix decodes to the 22-character identifier `GeneratedNeuronCodegen` — the Cython-emitted concrete class that the methods actually compile into (a generated subclass; `NeuronCodegen` is the hand-written base). This page uses `GeneratedNeuronCodegen` when citing symbols and `NeuronCodegen` when speaking of the logical surface; they are the same builder. [CONFIRMED — symbol mangling, `names.json`]
+> **NOTE — the compiled class is `GeneratedNeuronCodegen`; `NeuronCodegen` is its base.** Every method wrapper mangles as `__pyx_pw_9neuronxcc_9generated_3nki_8compiler_8backends_6neuron_13KernelBuilder_22GeneratedNeuronCodegen_<idx><name>`, whose `22` length-prefix decodes to the 22-character `GeneratedNeuronCodegen` — the Cython-emitted concrete subclass the methods actually compile into. `NeuronCodegen` is the hand-written base, and is the name you will see in source-level material. This page cites symbols as `GeneratedNeuronCodegen` and speaks of the logical surface as `NeuronCodegen`; they are one builder.
 
 | | |
 |---|---|
@@ -23,7 +23,7 @@ The one-to-one and many-to-one builder→Op mapping is the payload of this page.
 | **Builder count** | ~30 tensor-op methods (of 194 total `__pyx_mdef_…GeneratedNeuronCodegen_<N><name>`) |
 | **MX builder** | `quantize_mx` (idx 161, `@0x1f9390`) → `QuantizeMXOp` — lives here, not only in `BirCodeGenLoop` |
 
-> **NOTE — evidence base and its limits.** Method addresses, mdef indices, and `KernelBuilder.py` source lines below are read from the binary's `nm` symbol table (`__pyx_pw`/`__pyx_mdef` per method) and DWARF `decodedline`, the Op-class names from the constructed `pyx_n_s_<Op>` body locals and `.rodata`. The IDA JSON export checked into this tree captured a **tail window** of the class (the high-index methods `rand2`/`rng`/`exponential`/`activate2`/`nonzero_with_count`/`*_read_accumulator`, idx 1–17 — confirming the class name, the import modules, and `EngineAccumulationType`/`combine_tiles`/`insert` strings), but does not individually re-confirm each tensor-op method body. Method-level facts are therefore tagged **STRONG** unless a string is directly present in this export, in which case they are **CONFIRMED**.
+> **NOTE — evidence base and its limits.** Method addresses, mdef indices, and `KernelBuilder.py` source lines below come from the binary's `nm` symbol table (`__pyx_pw`/`__pyx_mdef` per method) and DWARF `decodedline`; the Op-class names come from the constructed `pyx_n_s_<Op>` body locals and `.rodata`. The disassembly export available here covers a **tail window** of the class — the high-index methods `rand2`/`rng`/`exponential`/`activate2`/`nonzero_with_count`/`*_read_accumulator`, idx 1–17, which pin the class name, the import modules, and the `EngineAccumulationType`/`combine_tiles`/`insert` strings — but does not re-read each tensor-op body individually. Treat a per-method fact as directly pinned when a string for it appears in that window, and as symbol-table-level otherwise.
 
 ---
 
@@ -42,7 +42,7 @@ PyObject *build_tensor_op(self, /* op-specific kwargs */) {
     validate(operands, dtype);                       // e.g. check_tensor_int32_ops_supported
 
     // (c) normalize / broadcast / align operand tiles
-    tiles = self.combine_tiles(operands);            // @0x16ad90  (shared w/ P01 matmul, P03 memory)
+    tiles = self.combine_tiles(operands);            // @0x16ad90  (shared with the matmul and memory families)
 
     // (d) read the access pattern off each tile as (stride,size) APPairs
     par  = tile.canonical_par_indices;               // partition-axis index
@@ -59,7 +59,7 @@ PyObject *build_tensor_op(self, /* op-specific kwargs */) {
 
 ### `self.insert` — the append wrapper
 
-`self.insert` (`@0x165f00`, shared verbatim with the matmul and memory families) does, in order [CONFIRMED — `.rodata` strings `insert` + cross-strand P03]:
+`self.insert` (`@0x165f00`, shared verbatim with the matmul and memory families) does, in order:
 
 ```c
 self.insert(inst, ...) {
@@ -71,26 +71,26 @@ self.insert(inst, ...) {
 }
 ```
 
-> **GOTCHA — `add_named_instruction` is never called raw at a build site.** The "IRBuilder.add_named_instruction → penguin.ir.<Op>" pairing is the *ctor-then-insert* pair: the method constructs the node, then `self.insert` reaches `add_named_instruction` for it. A reimplementer who hunts for a direct `add_named_instruction(...)` at each builder will not find one — it is always behind `self.insert`. [CONFIRMED — `add_named_instruction` symbol present; `insert` string present in this export]
+> **GOTCHA — `add_named_instruction` is never called raw at a build site.** The "IRBuilder.add_named_instruction → penguin.ir.<Op>" pairing is the *ctor-then-insert* pair: the method constructs the node, then `self.insert` reaches `add_named_instruction` for it. A reimplementer who hunts for a direct `add_named_instruction(...)` at each builder will not find one — it is always behind `self.insert`.
 
 ### Enum marshalling is pass-through
 
-The three op-selector enums are stored as Python objects on the Op node. The builder does **not** assign a numeric ISA value — that is deferred to `BirCodeGenLoop.codegenAluOp` / `codegenAccumCmd` (strands I04/I05). The `.rodata` type-hint literals pin the parameter types:
+The three op-selector enums are stored as Python objects on the Op node. The builder does **not** assign a numeric ISA value — that is deferred to `BirCodeGenLoop.codegenAluOp` / `codegenAccumCmd`. The `.rodata` type-hint literals pin the parameter types:
 
 | Selector | kwarg(s) | Type hint (`.rodata`) | Carried on | Confidence |
 |---|---|---|---|---|
-| ALU op | `op` | `Union[np.ufunc, ALUOpcode]` | `TensorTensorOp` / `TensorReduceOp` / `ActivationOp` | STRONG (type-hint) |
-| TensorScalar op | `op0` / `op1` | `TSOpcode` | `TensorScalarPtrOp` | STRONG (type-hint) |
-| Accumulate cmd | `reduce_cmd` | `Optional[EngineAccumulationType]` (default `Idle`; reset member `ResetReduce`) | activation / select-reduce / tensor-scalar-cache | **CONFIRMED** — `EngineAccumulationType` string present `@0x24870` |
-| Activation func | `op` (of `activation`) | `np.ufunc` | `ActivationOp` | STRONG (type-hint) |
+| ALU op | `op` | `Union[np.ufunc, ALUOpcode]` | `TensorTensorOp` / `TensorReduceOp` / `ActivationOp` | HIGH (type-hint) |
+| TensorScalar op | `op0` / `op1` | `TSOpcode` | `TensorScalarPtrOp` | HIGH (type-hint) |
+| Accumulate cmd | `reduce_cmd` | `Optional[EngineAccumulationType]` (default `Idle`; reset member `ResetReduce`) | activation / select-reduce / tensor-scalar-cache | CERTAIN — `EngineAccumulationType` string @ `0x24870` |
+| Activation func | `op` (of `activation`) | `np.ufunc` | `ActivationOp` | HIGH (type-hint) |
 
-> **NOTE — this builder is the source the printer reads.** The [6.5.9 printer](./nkicodegen-printer.md) `opcode()`/`reduce_cmd()` name-mappers (sigmoid→expit, erf→erf, etc.) read back exactly the `np.ufunc`/enum objects this builder stores verbatim. Builder = store; printer = name-map; `BirCodeGenLoop` = numeric ISA renumber (`codegenAluOp` 1→29; `codegenAccumCmd` Idle/Zero/AddAccum/ZeroAccum). [STRONG cross-ref I04/I05]
+> **NOTE — this builder is the source the printer reads.** The [6.5.9 printer](./nkicodegen-printer.md) `opcode()`/`reduce_cmd()` name-mappers (sigmoid→expit, erf→erf, etc.) read back exactly the `np.ufunc`/enum objects this builder stores verbatim. Builder = store; printer = name-map; `BirCodeGenLoop` = numeric ISA renumber (`codegenAluOp` 1→29; `codegenAccumCmd` Idle/Zero/AddAccum/ZeroAccum).
 
 ---
 
 ## 2. The complete builder → `penguin.ir.<Op>` map
 
-All ~30 tensor-op builders, grouped by family. **mdef idx** is the `__pyx_mdef_…GeneratedNeuronCodegen_<N><name>` index; **pw addr** is the `nm` `__pyx_pw` wrapper address; **py** is the `KernelBuilder.py` source line from DWARF; **Op** is the constructed `pyx_n_s_<Op>` body local. Method addresses/lines are STRONG (from the report's nm/DWARF, not re-confirmed by this partial IDA export); Op-class names are CONFIRMED at the named-local level.
+All ~30 tensor-op builders, grouped by family. **mdef idx** is the `__pyx_mdef_…GeneratedNeuronCodegen_<N><name>` index; **pw addr** is the `nm` `__pyx_pw` wrapper address; **py** is the `KernelBuilder.py` source line from DWARF; **Op** is the constructed `pyx_n_s_<Op>` body local. Method addresses and lines come from `nm`/DWARF rather than from a re-read of each body; Op-class names are pinned at the named-local level.
 
 | Family | idx | builder | pw addr | py | → `penguin.ir.<Op>` |
 |---|---|---|---|---|---|
@@ -128,9 +128,9 @@ All ~30 tensor-op builders, grouped by family. **mdef idx** is the `__pyx_mdef_�
 | | 267 | `tensor_copy_dynamic_src` | `0x1187d0` | — | `TensorCopyDynamicSrc` |
 | | 269 | `tensor_copy_dynamic_dst` | `0xef890` | — | `TensorCopyDynamicDst` |
 
-> **NOTE — ISA-inst module path.** The Op nodes for the DVE/stats family derive from a target-ISA inst base. This binary's string table shows the import `neuronxcc.starfish.penguin.targets.tonga.TongaISAInst` and `…tonga.TongaEnums`, and per-op codegen classes under `neuronxcc.starfish.penguin.targets.generated.<Op>` (e.g. `…generated.Exponential`, `…generated.Activate2`). The `Sunda…` node names in the table are the constructed-class locals; the import path that backs them in *this* export is the Tonga/generated target. [CONFIRMED strings `tonga.TongaISAInst`, `targets.generated.*`]
+> **NOTE — ISA-inst module path.** The Op nodes for the DVE/stats family derive from a target-ISA inst base. This binary's string table shows the import `neuronxcc.starfish.penguin.targets.tonga.TongaISAInst` and `…tonga.TongaEnums`, and per-op codegen classes under `neuronxcc.starfish.penguin.targets.generated.<Op>` (e.g. `…generated.Exponential`, `…generated.Activate2`). The `Sunda…` node names in the table are the constructed-class locals; the import path backing them here is the Tonga/generated target, per the `tonga.TongaISAInst` and `targets.generated.*` strings.
 
-> **QUIRK — three builders own no Op of their own (pure delegates).** `binop` routes a binary op through `tensortensor`; `unary_op` resolves a unary func and calls `activation`; `reciprocal` calls `simple_unary` with `cls=ReciprocalOp`. They appear in the roster but never `self.insert` directly — they exist for call-site ergonomics. [STRONG — decompile]
+> **QUIRK — three builders own no Op of their own (pure delegates).** `binop` routes a binary op through `tensortensor`; `unary_op` resolves a unary func and calls `activation`; `reciprocal` calls `simple_unary` with `cls=ReciprocalOp`. They appear in the roster but never `self.insert` directly — they exist for call-site ergonomics.
 
 ---
 
@@ -154,7 +154,7 @@ PyObject *activation(...) {
 }
 ```
 
-`activation_accu` (`@0x9f810`, py2960) builds `ActivationAccumulationOp` — the running-sum form, accumulating into `reduce_res` under `reduce_cmd ∈ EngineAccumulationType`. It shares `create_activation_bias_ap` and the scale guard. The pair `ActivationOp` / `ActivationAccumulationOp` is the **non-accumulate vs accumulate** split of the same activation→reduce; `reduce_cmd` selects Idle/Zero/AddAccumulate/ZeroAccumulate downstream (I04). [CONFIRMED Op names; STRONG accum semantics; `EngineAccumulationType` string CONFIRMED in this binary]
+`activation_accu` (`@0x9f810`, py2960) builds `ActivationAccumulationOp` — the running-sum form, accumulating into `reduce_res` under `reduce_cmd ∈ EngineAccumulationType`. It shares `create_activation_bias_ap` and the scale guard. The pair `ActivationOp` / `ActivationAccumulationOp` is the **non-accumulate vs accumulate** split of the same activation→reduce; `reduce_cmd` selects Idle/Zero/AddAccumulate/ZeroAccumulate downstream. The Op names and the `EngineAccumulationType` string are pinned in this binary; the accumulate semantics are read from the pairing.
 
 ---
 
@@ -182,7 +182,7 @@ inst = TensorTensorScanOp(data0=data0, data1=data1, initial=initial,
                           op0=op0, op1=op1, reverse0=reverse0, reverse1=reverse1, dtype=dtype);
 ```
 
-`op0`/`op1` are the two chained ALU ops; `reverse0`/`reverse1` flip operand order per chained op. [CONFIRMED args + Op]
+`op0`/`op1` are the two chained ALU ops; `reverse0`/`reverse1` flip operand order per chained op.
 
 ---
 
@@ -217,12 +217,12 @@ PyObject *tensorvectorscalar(...) {
 }
 ```
 
-> **QUIRK — `np.power` and `mod` are decomposed, not emitted as one op.** `tensorscalar(op0=np.power, ...)` routes to `power_tensorscalar` and carries the guard *"Schedule is not supported for np.power, use nisa.tensortensor or nisa.activation explicitly with schedule tuple!"*; `mod`/`fmod`/`remainder` route to `mod_from_remainder` (`a − floor(a/b)·b`). Both lower to one-or-more `TensorScalarPtrOp`/`TensorTensorOp` nodes — there is no single hardware power/mod scalar op. [CONFIRMED guard strings]
+> **QUIRK — `np.power` and `mod` are decomposed, not emitted as one op.** `tensorscalar(op0=np.power, ...)` routes to `power_tensorscalar` and carries the guard *"Schedule is not supported for np.power, use nisa.tensortensor or nisa.activation explicitly with schedule tuple!"*; `mod`/`fmod`/`remainder` route to `mod_from_remainder` (`a − floor(a/b)·b`). Both lower to one-or-more `TensorScalarPtrOp`/`TensorTensorOp` nodes — there is no single hardware power/mod scalar op.
 
 The two **cache** variants are the accumulate/reduce-fused forms of the same op:
 
 - `tensorscalarcumulative` (`@0x1f59b0`, py3131) → `TensorScalarCacheCumulative` — running (cumulative) tensor-scalar under `EngineAccumulationType reduce_cmd`; inner helper `process_operand` (mdef idx 22). Keeps a running PSUM accumulate.
-- `tensorscalarreduce` (`@0x1ca7f0`, py3184) → `TensorScalarCacheReduce` — tensor-scalar fused with a reduce into `reduce_res` (partition_size-tiled). [CONFIRMED Op names; STRONG cmd]
+- `tensorscalarreduce` (`@0x1ca7f0`, py3184) → `TensorScalarCacheReduce` — tensor-scalar fused with a reduce into `reduce_res` (partition_size-tiled).
 
 ---
 
@@ -238,13 +238,15 @@ inst = TensorReduceOp(op=op, reduce_dims=reduce_dims, npartitions=npartitions,
 //   keepdims     = preserve reduced axes
 ```
 
-`tensor_partition_reduce` (`@0x24b420`, py2162) → `PartitionReduceOp` is the **cross-partition** reduce (over the 128-partition axis, not free axes), carrying a `reduce_all_axis` flag + `partition_size`. The free-axis reduce (`TensorReduceOp`) and the partition-axis reduce (`PartitionReduceOp`) are **distinct Penguin nodes** — a reimplementer must not collapse them. [CONFIRMED both Ops]
+`tensor_partition_reduce` (`@0x24b420`, py2162) → `PartitionReduceOp` is the **cross-partition** reduce (over the 128-partition axis, not free axes), carrying a `reduce_all_axis` flag + `partition_size`. The free-axis reduce (`TensorReduceOp`) and the partition-axis reduce (`PartitionReduceOp`) are **distinct Penguin nodes** — a reimplementer must not collapse them.
 
 ---
 
-## 7. `quantize_mx` → `QuantizeMXOp` — the MX correction
+## 7. `quantize_mx` → `QuantizeMXOp` — the MX builder
 
-> **CORRECTION — the forward-build `QuantizeMXOp` lives *here*, in `GeneratedNeuronCodegen`.** An earlier strand (P02 §10) found `quantize_mx` only as a `BirCodeGenLoop` macro re-trace and noted the printer (`NkiCodegen`) has no `quantize_mx`. Both observations are correct for *those* surfaces — but the genuine **forward builder** `quantize_mx` (mdef idx 161, `@0x1f9390`, py1837) is in this module and constructs a first-class `QuantizeMXOp` Penguin node. `QuantizeMXOp` is a first-class inline op, **not** a kernel-registry macro (consistent with P06). [CONFIRMED — ctor + `self.insert` in body]
+The forward builder for MX quantization is `quantize_mx` (mdef idx 161, `@0x1f9390`, py1837), and it lives in this module: its body constructs a first-class `QuantizeMXOp` Penguin node and hands it to `self.insert`.
+
+> **GOTCHA — `quantize_mx` is easy to mislocate.** `BirCodeGenLoop` carries a `quantize_mx` macro re-trace, and the `NkiCodegen` printer has no `quantize_mx` at all. Neither of those is the origin: the node is minted here, as a first-class inline op, **not** as a kernel-registry macro.
 
 ```c
 // quantize_mx(self, src, dst, dst_scale, mask, deps, name, scale_mask)  @0x1f9390 py1837
@@ -254,7 +256,7 @@ PyObject *quantize_mx(...) {
     //   dst       = x4-packed quantized data: float8_e4m3fn_x4 / float8_e5m2_x4
     //   dst_scale = E8M0 per-block scale, dtype uint8
     self.check_mx_scale(...);                         // [P/8, F/4] / block=32 OCP-MXFP E8M0 validator
-                                                      // (same validator as matmult_mx, P01 §3.3)
+                                                      // (same validator as matmult_mx)
     // build the block-scale access pattern:
     scale_ap = NeuronIndicesAP(generate_subst_map, substituteApIndices,
                                generate_ap_index, set_shape);   // over partition_dim, n_elts/div_ceil block sizing
@@ -265,7 +267,7 @@ PyObject *quantize_mx(...) {
 }
 ```
 
-`quantize_mx` is the **online activation-quantize-to-MXFP** builder: it lowers an fp16/bf16 tile to a `{x4-packed-fp8 data, E8M0 scale}` pair that feeds `nc_matmul_mx` (`MatMulMXOp`, also built here). The MX path therefore *originates* in this builder and is read downstream by `BirCodeGenLoop.codegenQuantizeMX`. The `check_mx_scale` geometry validator (`[P/8, F/4]`, block=32) is shared verbatim with the matmul-MX builder. [CONFIRMED — dtype locals, `check_mx_scale` local]
+`quantize_mx` is the **online activation-quantize-to-MXFP** builder: it lowers an fp16/bf16 tile to a `{x4-packed-fp8 data, E8M0 scale}` pair that feeds `nc_matmul_mx` (`MatMulMXOp`, also built here). The MX path therefore *originates* in this builder and is read downstream by `BirCodeGenLoop.codegenQuantizeMX`. The `check_mx_scale` geometry validator (`[P/8, F/4]`, block=32) is shared verbatim with the matmul-MX builder.
 
 ---
 
@@ -283,12 +285,12 @@ PyObject *select(...) {
 }
 ```
 
-> **QUIRK — `select` is a hybrid that builds two different Op classes.** A *data* predicate (a runtime tensor mask) builds `TensorSelect` directly. An *affine* iteration-space mask delegates to `affine_select`, which builds `AffSelTensorScalarOp` — a TensorScalar-class node, not a select node. Both ctor sites and the delegate call are present in the `select` body. A reimplementer who assumes `select` always yields a single node type will miss the affine fast-path. [CONFIRMED — both paths in body]
+> **QUIRK — `select` is a hybrid that builds two different Op classes.** A *data* predicate (a runtime tensor mask) builds `TensorSelect` directly. An *affine* iteration-space mask delegates to `affine_select`, which builds `AffSelTensorScalarOp` — a TensorScalar-class node, not a select node. Both ctor sites and the delegate call are present in the `select` body. A reimplementer who assumes `select` always yields a single node type will miss the affine fast-path.
 
 The rest of the family:
 
-- `affine_select` (`@0x18cf70`, py2312) → `AffSelTensorScalarOp` — affine-predicate select expressed as an iteration-space mask, lowered through the `predicates` list. [CONFIRMED]
-- `select_reduce` (`@0x229540`, py2619) → `SelectReduce` — predicated select **fused with a reduce** (`reduce_op` ALU + `reduce_cmd` EngineAccumulationType + `reduce_res`; `reverse_pred` inverts the predicate). A cp311 docstring leak names it: *"Implementation of the SelectReduce (formerly CopyPredicatedReduce) instruction."* [CONFIRMED]
+- `affine_select` (`@0x18cf70`, py2312) → `AffSelTensorScalarOp` — affine-predicate select expressed as an iteration-space mask, lowered through the `predicates` list.
+- `select_reduce` (`@0x229540`, py2619) → `SelectReduce` — predicated select **fused with a reduce** (`reduce_op` ALU + `reduce_cmd` EngineAccumulationType + `reduce_res`; `reverse_pred` inverts the predicate). A cp311 docstring leak names it: *"Implementation of the SelectReduce (formerly CopyPredicatedReduce) instruction."*
 - `range_select` (`@0x1544c0`, py2414) → `RangeSelect` / `RangeSelectReduce`:
 
 ```c
@@ -302,7 +304,7 @@ inst = reduce_op ? RangeSelectReduce(... reduce_cmd=EngineAccumulationType.Reset
                                bound0=bound0, bound1=bound1);
 ```
 
-- `tensor_copy_predicated` (`@0x193c50`, py2574) → `TensorCopyPredicated` — conditional copy under a predicate; the non-reducing sibling of `select_reduce`. [CONFIRMED]
+- `tensor_copy_predicated` (`@0x193c50`, py2574) → `TensorCopyPredicated` — conditional copy under a predicate; the non-reducing sibling of `select_reduce`.
 
 ---
 
@@ -320,7 +322,7 @@ These build target-ISA inst nodes (from `…penguin.targets.tonga.TongaISAInst`)
 | `bn_aggr_inst` (`@0xd5aa0`) | `SundaBNAggr` | Welford **aggregate** (combine partial stats across tiles → global mean/var) |
 | `index_value_inst` (`@0x13bfc0`) | `IndexValueInst` (+ `IndexValueTile`) | index↔value paired tile op (`promote_to_tile_index`); pairs a value with its argmax index — the (index,value) bundle the top-k family threads through |
 
-[CONFIRMED Op-class locals; STRONG cross-ref O21/I12 (DVE top-k), I16/O12 (Welford). DVE inst struct field layouts not read — Op names only.]
+*Op-class locals are pinned; the DVE instruction struct field layouts were not read, so this table gives Op names only.*
 
 ---
 
@@ -341,27 +343,25 @@ require(engine in {Vector, GpSIMD, Unknown},
 inst = MemsetOp(shape=tile_shape, value=sv, engine=engine, dtype=dtype);
 ```
 
-> **GOTCHA — `memset` is a compute-engine fill, not a DMA.** The guard restricts the engine to `Vector`/`GpSIMD`/`Unknown` — there is no DMA path here. DMA-class moves live in the memory family ([6.5.x / P03](./neuroncodegen-forward-builder.md)). [CONFIRMED guard string]
+> **GOTCHA — `memset` is a compute-engine fill, not a DMA.** The guard restricts the engine to `Vector`/`GpSIMD`/`Unknown` — there is no DMA path here. DMA-class moves live in the memory family ([the forward builder page](./neuroncodegen-forward-builder.md)).
 
 The copy variants:
 
 - `copy` (`@0x226860`, py3296) → `TensorCopyOp` — plain tile copy.
 - `tensor_copy` (`@0x227b10`, py3311) → `TensorCopyOp` — near-duplicate of `copy` adding explicit `NeuronEngine` selection.
-- `tensor_copy_dynamic_src` (`@0x1187d0`) → `TensorCopyDynamicSrc`; `tensor_copy_dynamic_dst` (`@0xef890`) → `TensorCopyDynamicDst` — the runtime register-addressed copies (src/dst address from a register; the DynamicScalar/offset family at copy granularity). [CONFIRMED Op names]
+- `tensor_copy_dynamic_src` (`@0x1187d0`) → `TensorCopyDynamicSrc`; `tensor_copy_dynamic_dst` (`@0xef890`) → `TensorCopyDynamicDst` — the runtime register-addressed copies (src/dst address from a register; the DynamicScalar/offset family at copy granularity).
 
 ---
 
-## 11. Adversarial self-verification
+## 11. What pins the five strongest claims
 
-The five strongest claims on this page, re-challenged against the binary:
+1. **The class is `GeneratedNeuronCodegen`.** The wrapper symbols are `__pyx_pw_…KernelBuilder_22GeneratedNeuronCodegen_<idx><name>`, and the `22` length prefix decodes to the 22-character name. `NeuronCodegen` is the logical base; the compiled subclass is what the methods live in.
+2. **`quantize_mx` → `QuantizeMXOp` is a forward builder in this module.** idx 161 at `0x1f9390`, with a `QuantizeMXOp` ctor followed by `self.insert`. The MatMulMX consumer and the `check_mx_scale` validator corroborate it. The body is read; the address itself comes from the symbol table.
+3. **`tensorscalar` and `tensorvectorscalar` both build the single `TensorScalarPtrOp`.** Both bodies construct it; the difference is one versus two `(op, operand)` pairs — `update_op_and_ptr` called once or twice.
+4. **Enum marshalling is pass-through; renumbering is downstream.** The type-hint strings `Union[np.ufunc, ALUOpcode]`, `TSOpcode`, and `Optional[EngineAccumulationType]` pin the kwarg types, and `EngineAccumulationType` is present at `0x24870`. Numeric ISA mapping happens in `BirCodeGenLoop.codegenAluOp` / `codegenAccumCmd`.
+5. **`self.insert` (`@0x165f00`) reaches `IRBuilder.add_named_instruction`.** Both the `add_named_instruction` symbol and the `insert` string are present; the wrap order (add_named_instruction → predicates → deps → bookkeeping → debugloc) is read from `.rodata` and the sibling forward-builder page.
 
-1. **Class is `GeneratedNeuronCodegen`, not bare `NeuronCodegen`.** ✅ The wrapper symbols in `names.json` are `__pyx_pw_…KernelBuilder_22GeneratedNeuronCodegen_<idx><name>`; the `22` length prefix = the 22-char `GeneratedNeuronCodegen`. P01/S2-09's "NeuronCodegen" is the logical base; the compiled subclass is `GeneratedNeuronCodegen`. Issued as an in-place CORRECTION. [CONFIRMED]
-2. **`quantize_mx` → `QuantizeMXOp` is a forward builder in this module.** ✅ idx 161 @0x1f9390 with a `QuantizeMXOp` ctor + `self.insert` (report body read); corrects P02 §10's "only in BirCodeGenLoop". The MatMulMX consumer and `check_mx_scale` validator corroborate it. [CONFIRMED — body; the partial IDA export does not re-read this body, so the *address* is STRONG]
-3. **`tensorscalar` and `tensorvectorscalar` both build the single `TensorScalarPtrOp`.** ✅ Both bodies construct `TensorScalarPtrOp`; the difference is one vs two `(op, operand)` pairs (`update_op_and_ptr` called once vs twice). [CONFIRMED both bodies]
-4. **Enum marshalling is pass-through; renumbering is downstream.** ✅ Type-hint strings `Union[np.ufunc, ALUOpcode]`/`TSOpcode`/`Optional[EngineAccumulationType]` pin the kwarg types; `EngineAccumulationType` is a CONFIRMED string in this binary (`@0x24870`). Numeric ISA mapping is `BirCodeGenLoop.codegenAluOp`/`codegenAccumCmd` (I04/I05). [STRONG]
-5. **`self.insert` (`@0x165f00`) reaches `IRBuilder.add_named_instruction`.** ✅ `add_named_instruction` symbol + `insert` string present; the wrap order (add_named_instruction → predicates → deps → bookkeeping → debugloc) is from `.rodata` + cross-strand P03. [CONFIRMED symbols; STRONG order]
-
-**Tagged uncertainties.** The per-method addresses, mdef indices, and py-lines in §2 are read from the report's `nm`/DWARF; the IDA JSON export checked into this tree only re-confirms the *tail* window (idx 1–17) plus the class name, import modules, and the `EngineAccumulationType`/`combine_tiles`/`insert` strings — so per-method facts are **STRONG**, not independently re-CONFIRMED here. The `Sunda…` Op-class names are constructed-local names; the import path this export shows is `targets.tonga.TongaISAInst` / `targets.generated.<Op>`. The exact positional kwarg order at each `<Op>(...)` ctor is mstate-routed and **not** byte-traced (kwarg *names* are confirmed; *order* is INFERRED). DVE inst struct field layouts are not read.
+**What is not pinned.** The per-method addresses, mdef indices, and py-lines in §2 come from `nm`/DWARF rather than from a re-read of each body; the disassembly window available here covers only idx 1–17 plus the class name, import modules, and the `EngineAccumulationType`/`combine_tiles`/`insert` strings. The `Sunda…` Op-class names are constructed-local names, and the import path shown is `targets.tonga.TongaISAInst` / `targets.generated.<Op>`. The exact *positional* kwarg order at each `<Op>(...)` ctor is mstate-routed and was not byte-traced — kwarg names are pinned, order is [INFERRED]. DVE instruction struct field layouts were not read at all.
 
 ---
 
@@ -370,4 +370,4 @@ The five strongest claims on this page, re-challenged against the binary:
 - [6.5.1 NeuronCodegen Forward Builder — overview & matmul](./neuroncodegen-forward-builder.md) — the same class, the matmul/memory halves, and `self.insert` in detail.
 - [6.5.9 NeuronCodegen Re-emit Printer](./nkicodegen-printer.md) — the **inverse** surface (Penguin node → `nisa.<prim>` text); reads back the enums this builder stores.
 - [5.6 Penguin Tensor-Op Family](../penguin/tensor-op-family.md) — the Penguin-IR `<Op>` nodes these builders construct.
-- **BIR codegen loop (strands I04/I05)** — `BirCodeGenLoop.codegenAluOp`/`codegenAccumCmd` numeric ISA renumbering, one layer below this builder.
+- **BIR codegen loop** — `BirCodeGenLoop.codegenAluOp`/`codegenAccumCmd` numeric ISA renumbering, one layer below this builder.

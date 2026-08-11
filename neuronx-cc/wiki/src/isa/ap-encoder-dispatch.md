@@ -85,19 +85,19 @@ AXIS-A is the *type* decision. It is invisible at runtime because it has already
 
 ### The witnessed instantiations
 
-Each `generate*`/`visit*` body names the literal template type for each operand slot. Witnessed (CONFIRMED from the decompiled bodies + the `objdump` PLT-call args):
+Each `generate*`/`visit*` body names the literal template type for each operand slot. Each row below is read from the decompiled body plus the `objdump` PLT-call arguments:
 
 | Op / Role | Descriptor type | Encoder evidence | Confidence |
 |---|---|---|---|
-| Matmul (CoreV2) src Ifmap | `TENSOR3D` | `generateMatMul` @ `0x1248650`, line 1023 | CONFIRMED |
-| Matmul (CoreV2) moving / weights | `TENSOR3D` | `generateMatMul`, line 1025 | CONFIRMED |
-| Matmul (CoreV2) dst (perf arm) | `TENSOR3D` | `generateMatMul`, lines 473/475 | CONFIRMED |
-| TensorCopy (CoreV2) src + dst | `TENSOR4D` ×2 | `visitInstTensorCopy` @ `0x1237f50`, lines 122/123 | CONFIRMED |
-| Matmul-MX (CoreV4) data + scale pair | `MXMEM_PATTERN1D` | `generateMatmultMx` @ `0x143ebd0`, lines 148/242 | CONFIRMED |
-| Matmul-MX (CoreV4) moving operand | `MEM_PATTERN3D` | `generateMatmultMx`, lines 149/243 | CONFIRMED |
-| Indirect DMA load/save (CoreV2) | `ADDR8` (DMA twin) | `generateIndirectLoadSave` @ `0x1268c00` | CONFIRMED |
-| (generic) on-engine dst → SBUF/PSUM | `MEM_PATTERN2D/3D` | N07 dst variants @ `0x1509b80`/`0x15092b0` | CONFIRMED |
-| act / pool / dve / reduce | per-role template | not exhaustively swept — STRONG by homology | STRONG |
+| Matmul (CoreV2) src Ifmap | `TENSOR3D` | `generateMatMul` @ `0x1248650`, line 1023 | CERTAIN |
+| Matmul (CoreV2) moving / weights | `TENSOR3D` | `generateMatMul`, line 1025 | CERTAIN |
+| Matmul (CoreV2) dst (perf arm) | `TENSOR3D` | `generateMatMul`, lines 473/475 | CERTAIN |
+| TensorCopy (CoreV2) src + dst | `TENSOR4D` ×2 | `visitInstTensorCopy` @ `0x1237f50`, lines 122/123 | CERTAIN |
+| Matmul-MX (CoreV4) data + scale pair | `MXMEM_PATTERN1D` | `generateMatmultMx` @ `0x143ebd0`, lines 148/242 | CERTAIN |
+| Matmul-MX (CoreV4) moving operand | `MEM_PATTERN3D` | `generateMatmultMx`, lines 149/243 | CERTAIN |
+| Indirect DMA load/save (CoreV2) | `ADDR8` (DMA twin) | `generateIndirectLoadSave` @ `0x1268c00` | CERTAIN |
+| (generic) on-engine dst → SBUF/PSUM | `MEM_PATTERN2D/3D` | N07 dst variants @ `0x1509b80`/`0x15092b0` | CERTAIN |
+| act / pool / dve / reduce | per-role template | not exhaustively swept; read by homology | HIGH |
 
 The matmul `TENSOR3D` calls were cross-checked in `objdump`: the PLT calls land at `0x1248f33`/`0x1248f4b`, and the dst call passes `a4 = xor ecx,ecx = 0` — i.e. the dst slot is *not* a scale slot.
 
@@ -105,7 +105,7 @@ The matmul `TENSOR3D` calls were cross-checked in `objdump`: the PLT calls land 
 
 `TENSOR3D` and `MEM_PATTERN3D` are the *same field math* — the 4+4N rule of [2.3](tensor-descriptors.md) — under two different wire-struct names with two different role validators: `TENSOR` is the **src / engine-input** variant; `MEM_PATTERN` is the **dst / PSUM-write** variant (see [2.5](mempattern-2d-3d.md)). They are chosen by which template the op names for that slot, never recomputed at runtime. The proof is structural:
 
-> **NOTE — `TENSOR3D` and `MEM_PATTERN3D` share their packer leaf.** `assignAccess<core_v4::TENSOR3D>` @ `0x150a450` and `assignAccess<core_v4::MEM_PATTERN3D>` @ `0x15092b0` *both* tail-call the same arch vtable slot (`a1 + 0x48`, the `CoreV4GenImpl::assignAccess3D` leaf @ `0x150ccf0`). The two wrappers differ only in their compile-time guards (§2.1) and the "16 bytes to encode" assert wording. The bytes they emit are identical. (CONFIRMED — both bodies end `(*(…)(a1 + 0x48LL))(a1,a2,a3,a4)`.)
+> **NOTE — `TENSOR3D` and `MEM_PATTERN3D` share their packer leaf.** `assignAccess<core_v4::TENSOR3D>` @ `0x150a450` and `assignAccess<core_v4::MEM_PATTERN3D>` @ `0x15092b0` *both* tail-call the same arch vtable slot (`a1 + 0x48`, the `CoreV4GenImpl::assignAccess3D` leaf @ `0x150ccf0`). The two wrappers differ only in their compile-time guards (§2.1) and the "16 bytes to encode" assert wording. The bytes they emit are identical — both bodies end `(*(…)(a1 + 0x48LL))(a1,a2,a3,a4)`.
 
 ### Slot width ↔ type
 
@@ -120,11 +120,11 @@ The `_Znwm` (operator `new`) allocation sizes inside the dormant `assignAccessTo
 | `MXMEM_PATTERN1D` | 16 B | data `ADDR4` @+0 / scale `ADDR4` @+4 / `K` @+8 / step-dir @+0xA / base-part @+0xB | [2.6](mxmem-pattern1d.md), J26 |
 | `INDIRECT16B` / `MXINDIRECT16B` | 16 B | indices @+0 / data @+4 [/ scale @+8] / `+3` indirect bit | §3 |
 
-[CONFIRMED — the `mov edi,0x8` / `0xc` / `0x10` / `0x14` immediates bracket the four `std::string::compare` calls in `assignAccessToType` @ `0x1237b97`/`0x1237c29`/.../`0x1237cc4`, each immediately preceding a `_Znwm@plt` at `0x1237baa`/`0x1237c3c`/...]
+*Anchors: the `mov edi,0x8` / `0xc` / `0x10` / `0x14` immediates bracket the four `std::string::compare` calls in `assignAccessToType` (`0x1237b97`, `0x1237c29`, … `0x1237cc4`), each immediately preceding a `_Znwm@plt`.*
 
 ### 2.1 The operand-encoder funnel — `assignAccess<T>` guards
 
-Every plain on-engine operand reaches its leaf through `Generator::assignAccess<T>` (T = `TENSOR{1..4}D` or `MEM_PATTERN{2,3}D`). The wrapper runs four compile-time-uniform guards, then tail-calls the arch vtable leaf. All four guards are CONFIRMED across the four wrapper bodies as verbatim rodata strings:
+Every plain on-engine operand reaches its leaf through `Generator::assignAccess<T>` (T = `TENSOR{1..4}D` or `MEM_PATTERN{2,3}D`). The wrapper runs four compile-time-uniform guards, then tail-calls the arch vtable leaf. All four guards appear across the four wrapper bodies as verbatim rodata strings:
 
 ```c
 function assignAccess_T(slot, AP, a4):          // e.g. <core_v4 TENSOR3D> @0x150a450
@@ -144,9 +144,9 @@ function assignAccess_T(slot, AP, a4):          // e.g. <core_v4 TENSOR3D> @0x15
     return (*(this->vtbl + 0x48))(this, slot, AP, a4)        // TENSOR3D & MEM_PATTERN3D → +0x48
 ```
 
-> **GOTCHA — the indirect-field reject is asymmetric.** The `TENSOR3D`/`TENSOR4D` wrappers reject an access pattern that carries tensor-indirect metadata ("static tensor pattern but has indirect field"); the `MEM_PATTERN2D`/`MEM_PATTERN3D` wrappers do **not** (the string is absent from their bodies). A reimplementer who copies the guard set uniformly will wrongly reject a legal indirect dst. The dst path tolerates the indirect field because the dst of a gather is a normal contiguous write. (CONFIRMED — string present in `TENSOR3D`@49 / `TENSOR4D`@50, absent in `MEM_PATTERN3D`.)
+> **GOTCHA — the indirect-field reject is asymmetric.** The `TENSOR3D`/`TENSOR4D` wrappers reject an access pattern that carries tensor-indirect metadata ("static tensor pattern but has indirect field"); the `MEM_PATTERN2D`/`MEM_PATTERN3D` wrappers do **not** (the string is absent from their bodies). A reimplementer who copies the guard set uniformly will wrongly reject a legal indirect dst. The dst path tolerates the indirect field because the dst of a gather is a normal contiguous write. The string is present in `TENSOR3D`@49 and `TENSOR4D`@50, absent in `MEM_PATTERN3D`.
 
-The tail dispatch picks the vtable slot by descriptor type (CONFIRMED — the `(*(a1 + 0xNN))(a1,a2,a3,a4)` tails):
+The tail dispatch picks the vtable slot by descriptor type, read off the `(*(a1 + 0xNN))(a1,a2,a3,a4)` tails:
 
 | Wrapper | vtbl slot | Arch leaf |
 |---|---|---|
@@ -168,7 +168,7 @@ AXIS-C is a runtime decision made *inside* the chosen leaf, not a separate dispa
 ### (i) Non-MX gather — the CoreV4 `assignAccess3D` leaf
 
 ```c
-function CoreV4_assignAccess3D(this, slot, AP, a4):     // @0x150ccf0 [CONFIRMED full body]
+function CoreV4_assignAccess3D(this, slot, AP, a4):     // @0x150ccf0
     if !AP.vtbl[0x80](AP):                              // NOT tensor-indirect-dynamic
         return assignStaticPattern_TENSOR3D(this, slot, AP, a4)   // the static 16-byte path (§4)
     // else — tensor-indirect (gather): emit INDIRECT16B in place
@@ -182,12 +182,14 @@ function CoreV4_assignAccess3D(this, slot, AP, a4):     // @0x150ccf0 [CONFIRMED
     *((byte*)slot + 3) |= 0x20                          // ADDR4 +3.bit5 = indirect-mode marker
 ```
 
-A single `TENSOR3D` slot therefore self-promotes to `INDIRECT16B` when the access pattern is a tensor-indirect-dynamic AP. (CONFIRMED — `objdump` shows `call [rax+0x80]` at `0x150cd35`/`0x150cd79`, `call [rax+0x68]` at `0x150cdbf`, `call [rax+0x90]` at `0x150cdef`, the `or BYTE PTR [rax+0x3],0x20` stamp at `0x150ced8`, and the strings "must be a Tensor Indirect AP" @ `0x1c8639e`, the two dynamic-offset asserts @ `0x1d71ee0`/`0x1d71f20`.)
+A single `TENSOR3D` slot therefore self-promotes to `INDIRECT16B` when the access pattern is a tensor-indirect-dynamic AP.
+
+*Anchors: `call [rax+0x80]` @ `0x150cd35`/`0x150cd79`, `call [rax+0x68]` @ `0x150cdbf`, `call [rax+0x90]` @ `0x150cdef`, the `or BYTE PTR [rax+0x3],0x20` stamp @ `0x150ced8`, the string "must be a Tensor Indirect AP" @ `0x1c8639e`, and the two dynamic-offset asserts @ `0x1d71ee0`/`0x1d71f20`.*
 
 ### (ii) MX gather — the CoreV4 `assignAccessForMX` leaf
 
 ```c
-function CoreV4_assignAccessForMX_MXMEM_PATTERN1D(this, slot, dataAP, scaleAP):  // @0x150e2f0 [CONFIRMED]
+function CoreV4_assignAccessForMX_MXMEM_PATTERN1D(this, slot, dataAP, scaleAP):  // @0x150e2f0
     if dataAP.vtbl[0x80](dataAP):                       // data is tensor-indirect-dynamic
         return assignIndirectPatternForMX_MXINDIRECT16B(this, slot, dataAP, scaleAP)  // @0x150de90 (gather)
     // else — static MX pair:
@@ -200,11 +202,11 @@ function CoreV4_assignAccessForMX_MXMEM_PATTERN1D(this, slot, dataAP, scaleAP): 
     slot.K_extent[+8] = NumElementsPerPartition × 4              // ×4 iff packed-MX dtype (vtbl+0x90)
 ```
 
-(CONFIRMED — `objdump` shows `call [rax+0x80]` at `0x150e427`/`0x150e4f7`, the two `assignStartAddr<ADDR4>` calls distinguished by `xor ecx,ecx` (a4=0) at `0x150e544` then `mov ecx,0x1` (a4=1) at `0x150e554`, and the "DataAP and ScaleAP not from same parent inst" / "must not be Tensor Indirect AP when use assignStaticPatternForMX" strings.)
+*Anchors: `call [rax+0x80]` @ `0x150e427`/`0x150e4f7`; the two `assignStartAddr<ADDR4>` calls distinguished by `xor ecx,ecx` (a4=0) @ `0x150e544` and `mov ecx,0x1` (a4=1) @ `0x150e554`; the strings "DataAP and ScaleAP not from same parent inst" and "must not be Tensor Indirect AP when use assignStaticPatternForMX".*
 
 ### Operand-role selection within a multi-operand inst
 
-A single inst's operands each receive the right descriptor by argument index plus template, chosen in the op's `generate*` function. For MX matmul (`generateMatmultMx` @ `0x143ebd0`, CONFIRMED `getArgument` indices):
+A single inst's operands each receive the right descriptor by argument index plus template, chosen in the op's `generate*` function. For MX matmul (`generateMatmultMx` @ `0x143ebd0`, with the `getArgument` indices read off the body):
 
 ```c
 arg0 = getArgument<AccessPattern>(inst, 0)            → DATA  (Ifmap)
@@ -228,7 +230,7 @@ AXIS-B is the *base-address mode* decision, and it is the single point where the
 ### Algorithm
 
 ```c
-function assignStartAddr_ADDR4(this, slot, AP, a4):       // @0x1508df0 [CONFIRMED full decompile]
+function assignStartAddr_ADDR4(this, slot, AP, a4):       // @0x1508df0
     kind = *(DWORD*)(AP + 0x18)                           // read once: mov eax,[rsi+0x18]
 
     if kind == 1:                                          // PhysicalAccessPattern — STATIC byte addr
@@ -251,11 +253,11 @@ function assignStartAddr_ADDR4(this, slot, AP, a4):       // @0x1508df0 [CONFIRM
                        "no SymbolicAP is allowed")
 ```
 
-(CONFIRMED — `objdump`: `mov eax,[rsi+0x18]` at `0x1508e24`; `cmp eax,0x1` at `0x1508e2f`; `mov rdi,[rdi+0x260]` (Hwm @ +608) at `0x1508e38`; `call [rax+0x20]` at `0x1508e4c` and `call [rax+0x28]` at `0x1508ed0`; `cmp eax,0x3` at `0x1508ee0`; `movzx eax,[r15+0x114]` (is_regloc_offset) at `0x1508f15`; `or BYTE PTR [rbx+0x3],0x80` (bit-31) at `0x1508f58`; `mov rdi,[r15+0xe8]` (RegId source) at `0x1508f5c`; the SymbolicAP-reject string @ `0x1d51e48`.)
+*Anchors: `mov eax,[rsi+0x18]` @ `0x1508e24`; `cmp eax,0x1` @ `0x1508e2f`; `mov rdi,[rdi+0x260]` (Hwm @ +608) @ `0x1508e38`; `call [rax+0x20]` @ `0x1508e4c` and `call [rax+0x28]` @ `0x1508ed0`; `cmp eax,0x3` @ `0x1508ee0`; `movzx eax,[r15+0x114]` (is_regloc_offset) @ `0x1508f15`; `or BYTE PTR [rbx+0x3],0x80` @ `0x1508f58`; `mov rdi,[r15+0xe8]` (RegId source) @ `0x1508f5c`; the SymbolicAP-reject string @ `0x1d51e48`.*
 
 ### The `a4` bit is the operand-role (data / scale) resolver
 
-> **QUIRK — `a4` selects the address resolver, not "includePartition".** In the `ADDR4` writer, `a4==0` → DATA stream (`getStartAddress`, Hwm vtbl `+0x20`); `a4==1` → SCALE stream (`getStartAddressForMXScale`, Hwm vtbl `+0x28`). A binary sweep shows `a4=1` is passed *only* by the two MX leaves (the `assignAccessForMX` scale slot @+4 and the `MXINDIRECT` scale slot @+8). Every plain `TENSOR`/`MEM_PATTERN`/indices/data slot passes `a4=0`. So "scale" is literally the boolean arg to `assignStartAddr<ADDR4>`. Do **not** conflate this with the *other* documented `a4` bool — the `includePartition` flag on `assignStaticPattern`'s own `a4` (J25 §3.4) — they are distinct booleans on different functions. (CONFIRMED — the `if(a4) vtbl+0x28 else vtbl+0x20` branch; the `a4=0`/`a4=1` MX call sites at `0x150e544`/`0x150e554`; the non-MX leaves all pass 0.)
+> **QUIRK — `a4` selects the address resolver, not "includePartition".** In the `ADDR4` writer, `a4==0` → DATA stream (`getStartAddress`, Hwm vtbl `+0x20`); `a4==1` → SCALE stream (`getStartAddressForMXScale`, Hwm vtbl `+0x28`). A binary sweep shows `a4=1` is passed *only* by the two MX leaves (the `assignAccessForMX` scale slot @+4 and the `MXINDIRECT` scale slot @+8). Every plain `TENSOR`/`MEM_PATTERN`/indices/data slot passes `a4=0`. So "scale" is literally the boolean arg to `assignStartAddr<ADDR4>`. Do **not** conflate this with the *other* documented `a4` bool — the `includePartition` flag on `assignStaticPattern`'s own `a4` (J25 §3.4) — they are distinct booleans on different functions. The `if(a4) vtbl+0x28 else vtbl+0x20` branch, the `a4=0`/`a4=1` MX call sites at `0x150e544`/`0x150e554`, and the all-zero non-MX leaves settle it.
 
 ### Static / dynamic / symbolic routing
 
@@ -281,7 +283,7 @@ function assignStaticPattern_T(this, slot, AP, a4):        // e.g. <core_v4 TENS
 
 The partition dimension `Pattern[0] = W` is folded into the `ADDR4 @+0` band bits (the loop skips index 0); the free dims become *separate* stride and num arrays (the 4+4N rule, [2.5](mempattern-2d-3d.md)). Every dim of the fixed template beyond the access pattern's active count is unit-filled, never zeroed:
 
-> **NOTE — unused free dims are `{step=1, num=1}`, not zero.** A 1-D access pattern packed into a `TENSOR4D` slot becomes `{real dim} + {1,1} + {1,1} + {1,1}`. A `num=0` word reads as a decode error downstream, not a no-op, so the degenerate dim must iterate exactly once. (CONFIRMED — `objdump` shows `mov DWORD PTR [rax+0x4],0x10001` at `0x150cb51` and `mov DWORD PTR [rax+0xa],0x10001` at `0x150cb58` inside `assignStaticPattern<core_v4::TENSOR3D>` @ `0x150c390`.)
+> **NOTE — unused free dims are `{step=1, num=1}`, not zero.** A 1-D access pattern packed into a `TENSOR4D` slot becomes `{real dim} + {1,1} + {1,1} + {1,1}`. A `num=0` word reads as a decode error downstream, not a no-op, so the degenerate dim must iterate exactly once. `assignStaticPattern<core_v4::TENSOR3D>` @ `0x150c390` writes `mov DWORD PTR [rax+0x4],0x10001` @ `0x150cb51` and `mov DWORD PTR [rax+0xa],0x10001` @ `0x150cb58`.
 
 So `Pattern.size` (the "dim-count") drives **only** the unit-fill loop bound — it does *not* select the descriptor type. That selection was AXIS-A, fixed at compile time. Every `APPair` access is bounds-checked (`idx < size()`; `SmallVector.h:0x128 __assert_fail`), and `Pattern.size` is range-checked `[1,4]` by guard (G-b).
 
@@ -292,7 +294,7 @@ So `Pattern.size` (the "dim-count") drives **only** the unit-fill loop bound —
 `CoreV2GenImpl::assignAccessToType(string typeName, AP&)` @ `0x1237a50` is a literal type-NAME → encoder dispatcher: it builds an `" AP…"` prefix, then `std::string::compare` against the four `NEURON_ISA_TPB_TENSOR{1,2,3,4}D` names and an `IMM_VAL_INST_FIELD` arm, allocating `8`/`12`/`16`/`20` bytes respectively and tail-calling `assignAccess<T>`; an unknown name `reportError`s.
 
 ```c
-function assignAccessToType(typeName, AP):                 // @0x1237a50 [CONFIRMED full disasm]
+function assignAccessToType(typeName, AP):                 // @0x1237a50
     if typeName.compare("NEURON_ISA_TPB_TENSOR1D") == 0:  buf = new(8);  assignAccess<TENSOR1D>(buf, AP)
     if typeName.compare("NEURON_ISA_TPB_TENSOR2D") == 0:  buf = new(12); assignAccess<TENSOR2D>(buf, AP)
     if typeName.compare("NEURON_ISA_TPB_TENSOR3D") == 0:  buf = new(16); assignAccess<TENSOR3D>(buf, AP)
@@ -302,9 +304,11 @@ function assignAccessToType(typeName, AP):                 // @0x1237a50 [CONFIR
     else:  reportError("unknown type")
 ```
 
-> **CORRECTION (N06) — `assignAccessToType` is *not* the live dispatch.** This CoreV2 variant has no `MEM_PATTERN`/MX/`INDIRECT` branch (those are the CoreV4 `generate*` paths, §2), and `xrefs.json` shows its **only** caller is its own PLT thunk (`0x5ea7e0 → 0x1237a50`, type-19 self-ref) — no live internal caller. It is a string-driven helper (a JSON/replay or debug surface), not the runtime encoder dispatch. The live "dispatch" is the per-op `generate*`/`visit*` template instantiation (§2, AXIS-A). Its analytic value is that it enumerates, in one place, the type→width table and the type-name strings the rest of the encoder uses — the canonical declarative index of the descriptor types, even though dead at runtime.
+Despite reading like the encoder's front door, this function is **dormant**. The CoreV2 variant has no `MEM_PATTERN`, MX, or `INDIRECT` branch — those live on the CoreV4 `generate*` paths (§2) — and its only caller is its own PLT thunk (`0x5ea7e0 → 0x1237a50`, a type-19 self-reference). No live internal caller exists. It is a string-driven helper, most likely a JSON/replay or debug surface, not the runtime encoder dispatch; the real dispatch is the per-op `generate*`/`visit*` template instantiation of §2.
 
-(CONFIRMED — the `mov edi,0x8`/`0xc`/`0x10`/`0x14` allocs bracketing the four `std::string::compare@plt` calls; the allocs match the 4+4N width table. STRONG on the dormancy — a Python or cross-`.so` dynamic caller cannot be fully excluded, but no internal libwalrus xref exists.)
+Its value to a reader is declarative: it enumerates, in one place, the type→width table and the type-name strings the rest of the encoder uses. The `mov edi,0x8`/`0xc`/`0x10`/`0x14` allocations bracketing the four `std::string::compare@plt` calls match the 4+4N width table exactly. The dormancy holds for `libwalrus` internals; a Python or cross-`.so` dynamic caller cannot be fully excluded.
+
+> **GOTCHA —** do not model the encoder as a string-keyed router on `assignAccessToType`. It is the wrong mental model *and* dead code; the descriptor type is bound at compile time per (op, operand-slot).
 
 ---
 
@@ -322,15 +326,17 @@ runSingleISACheck @0x1435010
 
 | Descriptor type | Validator (core_v4) | Format gate (caller) | Confidence |
 |---|---|---|---|
-| `ADDR4` (@+0 word) | `tensor_start_addr_valid` @ `0x127f590` | `is_valid_smx1d3_mm`:218/221 | CONFIRMED |
-| `TENSOR1D` | `tensor1d_valid` @ `0x1447330` | per-engine tensor gates | CONFIRMED |
-| `MEM_PATTERN2D` | `mem2d_valid` @ `0x14468c0` | dst format gates | CONFIRMED |
-| `MEM_PATTERN3D` (dst) | `mm_dst_mem3d_valid_nc_v4` @ `0x1447fe0` | `is_valid_matmul_regular` @ `0x14b5c60`; `is_valid_smx1d3_mm`:228/233 | CONFIRMED |
-| `MEM_PATTERN3D` (generic) | `mem3d_valid` @ `0x14467d0` | dbg path | CONFIRMED |
-| `MEM_PATTERN4D` | `mem4d_valid` @ `0x1446550` | dst 4D gates | CONFIRMED |
-| `MXMEM_PATTERN1D` | `mxmem1d_valid` @ `0x1447190` | `is_valid_s3dmx1_quant` @ `0x14c78f0`; `is_valid_smx1_lw` @ `0x14fef30`; `smx1d3_mm`:210 | CONFIRMED |
+| `ADDR4` (@+0 word) | `tensor_start_addr_valid` @ `0x127f590` | `is_valid_smx1d3_mm`:218/221 | CERTAIN |
+| `TENSOR1D` | `tensor1d_valid` @ `0x1447330` | per-engine tensor gates | CERTAIN |
+| `MEM_PATTERN2D` | `mem2d_valid` @ `0x14468c0` | dst format gates | CERTAIN |
+| `MEM_PATTERN3D` (dst) | `mm_dst_mem3d_valid_nc_v4` @ `0x1447fe0` | `is_valid_matmul_regular` @ `0x14b5c60`; `is_valid_smx1d3_mm`:228/233 | CERTAIN |
+| `MEM_PATTERN3D` (generic) | `mem3d_valid` @ `0x14467d0` | dbg path | CERTAIN |
+| `MEM_PATTERN4D` | `mem4d_valid` @ `0x1446550` | dst 4D gates | CERTAIN |
+| `MXMEM_PATTERN1D` | `mxmem1d_valid` @ `0x1447190` | `is_valid_s3dmx1_quant` @ `0x14c78f0`; `is_valid_smx1_lw` @ `0x14fef30`; `smx1d3_mm`:210 | CERTAIN |
 
-> **NOTE — one format gate validates every descriptor the encoder emitted, in slot order.** `is_valid_smx1d3_mm` @ `0x1501ac0` calls, in slot order, `mxmem1d_valid` (the MX data+scale pair), `tensor_start_addr_valid` ×2 (the `ADDR4` bases), and `mm_dst_mem3d_valid_nc_v4` ×2 (the `MEM_PATTERN3D` dst) — the exact type↔validator pairing the matmul-MX encoder chose. (CONFIRMED — `objdump`: `call …mxmem1d_valid@plt` at `0x1501e12`; `call …tensor_start_addr_valid@plt` at `0x1501e5f`/`0x15020b8`; `call …mm_dst_mem3d_valid_nc_v4@plt` at `0x1501e9c`/`0x1501ec2`.)
+> **NOTE — one format gate validates every descriptor the encoder emitted, in slot order.** `is_valid_smx1d3_mm` @ `0x1501ac0` calls, in slot order, `mxmem1d_valid` (the MX data+scale pair), `tensor_start_addr_valid` ×2 (the `ADDR4` bases), and `mm_dst_mem3d_valid_nc_v4` ×2 (the `MEM_PATTERN3D` dst) — the exact type↔validator pairing the matmul-MX encoder chose.
+
+*Anchors: `call …mxmem1d_valid@plt` @ `0x1501e12`; `call …tensor_start_addr_valid@plt` @ `0x1501e5f`/`0x15020b8`; `call …mm_dst_mem3d_valid_nc_v4@plt` @ `0x1501e9c`/`0x1501ec2`.*
 
 Each validator re-reads the same wire fields the encoder wrote: `mem{2,3}d_valid` check the region nibble (`byte3 & 0x60 == 0x20` PSUM), bank `≤ 0x3FFFFF`, and the `(step, num)` arrays; `mxmem1d_valid` checks the `+3.bit5 = 0x20` indirect marker the gather arm stamped (§3).
 
@@ -373,16 +379,16 @@ L2 VALIDATE: runSingleISACheck → is_valid_neuron_engine_instruction →
 
 ---
 
-## 9. Corrections & cross-checks
+## 9. Cross-checks
 
-> **CORRECTION (N06) — there is no runtime dim-count selector.** Prior strands implied a `getMemPattern`-style runtime "if dims==3 emit `TENSOR3D`" switch. Decompilation shows the descriptor type is a **compile-time template instantiation per operand role** (AXIS-A); `Pattern.size` only feeds the unit-fill loop (§5). The one string→type switch that does exist (`assignAccessToType`, §6) is dormant (self-PLT xref only). The live dispatch is structural, not a switch.
+> **GOTCHA — there is no runtime dim-count selector.** A `getMemPattern`-style "if dims==3 emit `TENSOR3D`" switch does not exist. The descriptor type is a compile-time template instantiation per operand role (AXIS-A); `Pattern.size` only feeds the unit-fill loop (§5).
 
-Re-confirmed against the sibling descriptor pages and earlier strands:
+How the three axes line up against the sibling descriptor pages:
 
-- **AXIS-B kind dispatch** re-confirmed byte-for-byte on the core_v4 body @ `0x1508df0` (`kind@+0x18 == 1/3/else`; same three reject strings). This page extends the prior finding by showing the `a4` bool is the data/scale resolver (`Hwm` vtbl `+0x20` vs `+0x28`), not `includePartition`, in the MX context. [OK]
-- **src `TENSOR` vs dst `MEM_PATTERN`** share the vtbl leaf + field math (both tail vtbl `+0x48`). This page adds the guard asymmetry: `TENSOR` wrappers reject the indirect field, `MEM_PATTERN` wrappers do not; the CoreV4 `assignAccess3D` leaf is the inline `TENSOR3D ↔ INDIRECT16B` router. [OK]
-- **MX self-route** (`assignAccessForMX` → `MXINDIRECT16B` on vtbl `+0x80`; data `a4=0` / scale `a4=1`; `% PE` base-part) confirmed verbatim. [OK]
-- The non-MX `INDIRECT16B` string appears only in the CoreV4 `assignAccess3D`/`4D` leaves and the MX leaves; whether the thin CoreV2/V3 `assignAccess1D/2D/4D` forwarders also carry an inline indirect arm was not individually swept (STRONG: the string is absent from them).
+- **AXIS-B kind dispatch** reads byte-for-byte on the core_v4 body @ `0x1508df0` (`kind@+0x18 == 1/3/else`, with the same three reject strings). This page adds that in the MX context the `a4` bool is the data/scale resolver (`Hwm` vtbl `+0x20` vs `+0x28`), not `includePartition`.
+- **src `TENSOR` vs dst `MEM_PATTERN`** share both the vtbl leaf and the field math (both tail vtbl `+0x48`). This page adds the guard asymmetry: `TENSOR` wrappers reject the indirect field, `MEM_PATTERN` wrappers do not, and the CoreV4 `assignAccess3D` leaf is the inline `TENSOR3D ↔ INDIRECT16B` router.
+- **MX self-route** — `assignAccessForMX` → `MXINDIRECT16B` on vtbl `+0x80`, data `a4=0` / scale `a4=1`, `% PE` base-part — reads verbatim.
+- The non-MX `INDIRECT16B` string appears only in the CoreV4 `assignAccess3D`/`4D` leaves and the MX leaves. Whether the thin CoreV2/V3 `assignAccess1D/2D/4D` forwarders also carry an inline indirect arm was not swept individually; the string is absent from them, which is suggestive but not conclusive.
 
 ---
 

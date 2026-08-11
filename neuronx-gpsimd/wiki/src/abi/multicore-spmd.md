@@ -25,9 +25,10 @@ Model](q7-elf-vaddr.md) (the address-space backdrop), and the **External-Lib Pre
 Validation** page ([../firmware/pool/prelink-validation.md](../firmware/pool/prelink-validation.md))
 (the firmware-side `NUM_POOL_CORES = 8` invariant that the *device* enforces at load).
 The host-side runtime teardown that joins the 8 cores after a custom op — DRAIN +
-completion-semaphore — belongs to the 8-core SPMD execution model
-(`runtime/spmd-teardown.md`, Part 8 — not yet authored) and the device collective barrier
-to the NCFW management core (Part 10 — not yet authored).
+completion-semaphore — belongs to
+[The 8-Core SPMD Execution Model + Teardown](../runtime/spmd-teardown.md), and the device
+collective barrier to the NCFW management core
+([NEFF Device Barrier](../collectives/ncfw/neff-device-barrier.md)).
 
 ---
 
@@ -470,8 +471,10 @@ interrupt pins — but `libneuroncustomop.a` never touches them.)
   barrier that brackets collective (ring/mesh) phases across **engines** and
   **ranks/dies**, driven by DMA-broadcast + semaphore-wait-GE over SoC semaphore CSRs. It
   is **not** the intra-POOL-cluster Q7 sync, does **not** appear in the custom-op kernel
-  ABI, and the 8 Q7 cores running a custom op do **not** invoke it. (NCFW, Part 10 — not
-  yet authored.) `[HIGH that it is absent from this lib.]`
+  ABI, and the 8 Q7 cores running a custom op do **not** invoke it. (See
+  [NEFF Device Barrier](../collectives/ncfw/neff-device-barrier.md) and
+  [PSEUDO_CORE_BARRIER](../collectives/ops/core-barrier.md).)
+  `[HIGH that it is absent from this lib.]`
 - If a custom op needed the 8 cores to rendezvous, the synchronization would have to be
   supplied by the kernel/firmware **outside** this library (e.g. the POOL per-core
   `run_state_0..7` CSRs, or the TPB event/semaphore unit, or the SoC inter-core interrupt
@@ -479,8 +482,8 @@ interrupt pins — but `libneuroncustomop.a` never touches them.)
   the HW rendezvous facilities exist but `libneuroncustomop.a` does not touch them.]`
 
 The **host-side** join after a custom op (DRAIN + completion-semaphore wait) is the
-runtime's responsibility, not the device library's; it belongs to the 8-core SPMD
-execution model (`runtime/spmd-teardown.md`, Part 8 — not yet authored).
+runtime's responsibility, not the device library's; it belongs to
+[The 8-Core SPMD Execution Model + Teardown](../runtime/spmd-teardown.md).
 
 ---
 

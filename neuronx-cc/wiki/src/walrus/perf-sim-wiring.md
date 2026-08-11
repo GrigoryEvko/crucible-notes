@@ -16,7 +16,7 @@ The recovery target is reimplementation grade: a reader should be able to rebuil
 | **Factory — `perf_sim`** | `register_generator_perf_sim__` invoke @ `0x166ffd0` (BSS flag `0x3e05412`) |
 | **Factory — `perf_sim_at_end`** | `register_generator_perf_sim_at_end__` invoke @ `0x1670100` (BSS flag `0x3e05411`) |
 | **Factory — `perf_sim_package_pass`** | `register_generator_perf_sim_package_pass__` (BSS flag `0x3e05414`) |
-| **Pipeline ordinals** | order **88** (pre-RA), **99** (post-RA), **106** (`perf_sim_at_end`) — driver ordinals, STRONG |
+| **Pipeline ordinals** | order **88** (pre-RA), **99** (post-RA), **106** (`perf_sim_at_end`) — driver-side, not library constants |
 | **Trace serializer (run A)** | `PerfSim::dump_chrome_trace(std::string)` @ `0x165dc90` |
 | **Trace serializer (run B)** | `PerfSim::dump_trace(std::string, Module&, Function&, BasicBlock&)` @ `0x1661090` |
 | **Reward metric** | `addMetric(42 …)` @ `0x1742020`; `BackendMetricType2String(42)` = `"backend::PostSchedEstLatency"` @ `0x173b490` |
@@ -30,16 +30,14 @@ The recovery target is reimplementation grade: a reader should be able to rebuil
 
 The string evidence is direct: `grep -abo` over `_rodata.bin` resolves the three pass-name literals (`perf_sim` `0x1dc6ef1`, `perf_sim_at_end` `0x1dc6f7e`, `perf_sim_package_pass` `0x1dc6f8e`), the discovery regex `perf_sim\..*\.json` (`0x1c88e2e`), the tar name `file.perf-sim` (`0x1c88e6f`), the NEFF member family `debug_info_{pttf,hlo,penguin,backend,asm}` (`0x1c84377`+), and every Catapult JSON format fragment (`0x1c88b70`+).
 
-> **CORRECTION (vs backing report D-H26):** that report cited the `enable-perf-sim` CLI string at VA `0x1dc4823`. The literal `enable-perf-sim` actually sits at **`0x1dc3923`** in this build (`grep -abo` over `_rodata.bin`); `0x1dc4823` does not hold that string. Address corrected here.
-
 ---
 
 ## 1. Three factories, one class, three pipeline slots
 
-`perf_sim` is registered through the same `GeneratorRegistration` mechanism every backend pass uses: a `std::function<unique_ptr<BackendPass>(PassOptions const&)>` whose `_M_invoke` thunk constructs the concrete pass. **Three** registrations all instantiate the *identical* `PerfSimPass` class — the only difference is the name string handed to the constructor. [CONFIRMED — both invoke bodies read firsthand.]
+`perf_sim` is registered through the same `GeneratorRegistration` mechanism every backend pass uses: a `std::function<unique_ptr<BackendPass>(PassOptions const&)>` whose `_M_invoke` thunk constructs the concrete pass. **Three** registrations all instantiate the *identical* `PerfSimPass` class — the only difference is the name string handed to the constructor.
 
 ```c
-// register_generator_perf_sim__  _M_invoke  @0x166ffd0  (CONFIRMED)
+// register_generator_perf_sim__  _M_invoke  @0x166ffd0
 unique_ptr<BackendPass> perf_sim_factory(PassOptions const &opts) {
     std::string name;
     sub_166BAC0(&name, "perf_sim", "");        // .rodata "perf_sim" @0x1dc6ef1
@@ -48,14 +46,14 @@ unique_ptr<BackendPass> perf_sim_factory(PassOptions const &opts) {
     return p;
 }
 
-// register_generator_perf_sim_at_end__  _M_invoke  @0x1670100  (CONFIRMED)
+// register_generator_perf_sim_at_end__  _M_invoke  @0x1670100
 // BYTE-IDENTICAL except the literal:
 //    sub_166BAC0(&name, "perf_sim_at_end", "");  // .rodata @0x1dc6f7e
 ```
 
 The constructor stores the name at `this+1` (a `std::string`), builds a `logging::Logger` at `this+5` (its channel is the demangled `neuronxcc::backend::PerfSimPass` with the `neuronxcc::backend::` prefix stripped), and stashes the `PassOptions*` at `this[12]`. The name flows into the trace-file prefix (§4) and the log channel, so the three instances are byte-identical `PerfSimPass` objects placed at three different points in the driver's pass list.
 
-**The pipeline ordinals 88 / 99 / 106 are the Python `WalrusDriver` default-pipeline ordinals, not constants stored in `libwalrus.so`.** The library stores pass *names*; the ordering is built by the driver's pass list. The bracketing is STRONG from the neighbour pass names:
+**The pipeline ordinals 88 / 99 / 106 are the Python `WalrusDriver` default-pipeline ordinals, not constants stored in `libwalrus.so`.** The library stores pass *names*; the ordering is built by the driver's pass list. The neighbouring pass names bracket each slot tightly:
 
 | Ordinal | Pass name | Position | Gate | Purpose |
 |---|---|---|---|---|
@@ -63,18 +61,18 @@ The constructor stores the name at `this+1` (a `std::string`), builds a `logging
 | **99** | `perf_sim` | after `post_sched` (92) + `arch_legalize` (93) / `legalize_mm_accumulation_groups` (94) / `insert_ptcom` (95) / `expand_scheduling_units` (96) | `--enable-perf-sim` | **post-final-schedule / post-RA** estimate — the schedule actually handed to codegen |
 | **106** | `perf_sim_at_end` | final read-out after the mid-level pipeline | always (no separate CLI flag) | pure read-out; emits the `perf_sim_at_end_trace.*` family only |
 
-Orders 88 and 99 write the **same** `MetricStore` key (`type=42`, `module_name`, agg-name), so **99 overwrites 88** under last-wins aggregation: the published reward is the post-RA number, and the order-88 write is the pre-RA snapshot read by intervening native consumers (`separate_load_and_compute` / `dep_opt`). There is **no fixed-point iteration** inside walrus — "twice" is literally the count of pipeline slots that share a key. [STRONG — single key, two writes; ordinals STRONG from neighbour names, INFERRED on the exact integers since they are driver-side.]
+Orders 88 and 99 write the **same** `MetricStore` key (`type=42`, `module_name`, agg-name), so **99 overwrites 88** under last-wins aggregation: the published reward is the post-RA number, and the order-88 write is the pre-RA snapshot read by intervening native consumers (`separate_load_and_compute` / `dep_opt`). There is **no fixed-point iteration** inside walrus — "twice" is literally the count of pipeline slots that share a key. (The single key and its two writes are read directly; the exact integers 88/99/106 are [INFERRED] from the bracketing, since they live driver-side.)
 
-> **No separate `perf-sim-at-end` CLI string.** `grep -abo perf-sim-at-end` over `_rodata.bin` returns nothing; the order-106 instance is selected by the driver appending the `perf_sim_at_end`-named pass to the list, not by a library-resident `cl::opt`. (D-H26 named a `--perf-sim-at-end` flag; the gating is the registered pass name, not a string in this binary.)
+> **GOTCHA — there is no `--perf-sim-at-end` CLI flag.** `perf-sim-at-end` does not appear anywhere in `.rodata`. The order-106 instance is selected purely by the driver appending the `perf_sim_at_end`-named pass to the list; unlike `perf_sim`, it has no library-resident `cl::opt` gating it.
 
 ---
 
 ## 2. `PerfSimPass::run` — the per-BB double invocation
 
-`run(PerfSimPass*, bir::Module&)` @ `0x166d380` walks every function → every basic block and, **per block, runs the simulator twice**. The two runs differ in exactly one constructor argument: whether anti-dependency (WAR/WAW) edges are modeled as stalls. [CONFIRMED — both `PerfSim` ctor sites and both `perf_estimation` sites read firsthand.]
+`run(PerfSimPass*, bir::Module&)` @ `0x166d380` walks every function → every basic block and, **per block, runs the simulator twice**. The two runs differ in exactly one constructor argument: whether anti-dependency (WAR/WAW) edges are modeled as stalls.
 
 ```c
-// PerfSimPass::run(this, bir::Module &mod)   @0x166d380   (CONFIRMED)
+// PerfSimPass::run(this, bir::Module &mod)   @0x166d380
 int modular_flow_runs =
     get_modular_flow_runs(this,
         *(uint32_t *)(*((uint64_t *)mod_field + 12) + 420));  // module field +420 = flow descriptor
@@ -106,9 +104,9 @@ for (Function &fn : mod) {
 }
 ```
 
-The `PerfSim` constructor signature `PerfSim(bool cycle_accurate, float bw_scale, bool b3, bool model_antideps, logging::Logger&)` @ `0x165a7f0` is CONFIRMED; defaults are `this+1 = 500` (fixed pipeline-overhead cycles), `this+44 = 1.0f` (HBM-bandwidth scale = `a3`), `this+12 = 20` (log severity). Run A is the conservative estimate (anti-deps honored) that becomes `PostSchedEstLatency`; run B is the optimistic lower bound logged for diagnostics. [CONFIRMED.]
+The `PerfSim` constructor signature `PerfSim(bool cycle_accurate, float bw_scale, bool b3, bool model_antideps, logging::Logger&)` @ `0x165a7f0` carries defaults `this+1 = 500` (fixed pipeline-overhead cycles), `this+44 = 1.0f` (HBM-bandwidth scale = `a3`), `this+12 = 20` (log severity). Run A is the conservative estimate (anti-deps honored) that becomes `PostSchedEstLatency`; run B is the optimistic lower bound logged for diagnostics.
 
-**Why the double invocation matters for a reimplementer:** run A is the *metric* path (it feeds `addMetric(42)` and the tarred trace via `dump_chrome_trace`); run B exists purely to print the no-anti-dependency floor and to emit the richer dependency-graph trace via `dump_trace`. The two traces share one filename stem `<mod>.<fn>.<bb>.json`, and **both** consume the same BIR accessors (`InstructionType2string`, `getInputShapes`, `getInputAccessPatterns`, `EdgeKind2string` — confirmed in both `0x165dc90` and `0x1661090`). The per-module total handed to the metric is `PostSchedEstLatency = modular_flow_runs * v189`, i.e. estimated cycles per inference run. `get_modular_flow_runs` @ `0x109c360` reads the module's flow descriptor at field `+420`; its exact trip-count derivation is a cost-model concern (deferred to 8.45). [CONFIRMED on the multiply + `addMetric`.]
+**Why the double invocation matters for a reimplementer:** run A is the *metric* path (it feeds `addMetric(42)` and the tarred trace via `dump_chrome_trace`); run B exists purely to print the no-anti-dependency floor and to emit the richer dependency-graph trace via `dump_trace`. The two traces share one filename stem `<mod>.<fn>.<bb>.json`, and **both** consume the same BIR accessors (`InstructionType2string`, `getInputShapes`, `getInputAccessPatterns`, `EdgeKind2string`, present in both `0x165dc90` and `0x1661090`). The per-module total handed to the metric is `PostSchedEstLatency = modular_flow_runs * v189`, i.e. estimated cycles per inference run. `get_modular_flow_runs` @ `0x109c360` reads the module's flow descriptor at field `+420`; its exact trip-count derivation is a cost-model concern (deferred to 8.45).
 
 ---
 
@@ -119,7 +117,7 @@ The published number is one entry in a process-global singleton. `addMetric` @ `
 ```c
 // neuronxcc::backend::addMetric(BackendMetricType type, const string &module_name,
 //                               variant<float,uint,long,ulong> value,
-//                               const MetricAggregationType &agg)   @0x1742020 (CONFIRMED)
+//                               const MetricAggregationType &agg)   @0x1742020
 tuple<string,string,string> key = {
     BackendMetricType2String(type),   // 42 → "backend::PostSchedEstLatency"  @0x173b490
     module_name,
@@ -135,13 +133,13 @@ The `PerfSimPass::run` call site passes `type = 42`, `value = modular_flow_runs 
 
 `PostSchedEstLatency` is index 42 of the 54-entry `BackendMetricType` enum (0..53). **`perf_sim` produces only type 42** — the per-engine instruction counts (`NumPEInstructions` 50, `NumPoolInstructions` 48, `NumActivationInstructions` 49, `NumDMAInstructions` 51, `NumDVEInstructions` 52, `NumSPInstructions` 53) and the DRAM/DMA size counters are co-located in the same store but emitted by `PostSched` / codegen / the allocators, not by `perf_sim`. The full enum and the 44-site producer map are the subject of the cost-model / metrics siblings; here the relevant fact is the single key and the last-wins overwrite.
 
-This store is the autotuner reward surface: it is serialized via `NeffFileWriter::addMetricMetadata` (NEFF metric-metadata) and read back cross-process via `MetricStore::readNestedMetricStoreFromFile`; the parent autotuner process reads exactly the type-42 entry as its `nc_latency` reward. [STRONG — reward identity; the autotuner-side parse is Python territory, named not opened.]
+This store is the autotuner reward surface: it is serialized via `NeffFileWriter::addMetricMetadata` (NEFF metric-metadata) and read back cross-process via `MetricStore::readNestedMetricStoreFromFile`; the parent autotuner process reads exactly the type-42 entry as its `nc_latency` reward. The autotuner-side parse is Python and was not opened here.
 
 ---
 
 ## 4. The Catapult trace-event schema (run A: `dump_chrome_trace`)
 
-`PerfSim::dump_chrome_trace(std::string output_name)` @ `0x165dc90` writes one file in the **legacy Chrome/Catapult "JSON Array Format"** — a bare top-level array `[ … ]`, *not* the `{"traceEvents":[…]}` object form. The serializer is a single pass: an open bracket, eleven `"ph":"M"` thread-name metadata events (one per engine lane, written once as a header), then one `"ph":"X"` complete-duration event per `SimEvent`, then a close bracket. Every literal below was decoded byte-exact from `_rodata.bin`. [CONFIRMED — full body + every fragment.]
+`PerfSim::dump_chrome_trace(std::string output_name)` @ `0x165dc90` writes one file in the **legacy Chrome/Catapult "JSON Array Format"** — a bare top-level array `[ … ]`, *not* the `{"traceEvents":[…]}` object form. The serializer is a single pass: an open bracket, eleven `"ph":"M"` thread-name metadata events (one per engine lane, written once as a header), then one `"ph":"X"` complete-duration event per `SimEvent`, then a close bracket. Every literal below was decoded byte-exact from `_rodata.bin`.
 
 ### 4.1 File structure
 
@@ -195,7 +193,7 @@ Each **dep** element (one per scheduling predecessor whose simulated event exist
 
 Predecessors are walked, `get_event(pred)` is asserted non-null (`pred_event != nullptr`, `perf_sim.cpp:816`), cross-engine deps carry an `"Engine"`+id tag, and the list is de-duplicated, sorted, and comma-separated (first dep has no leading comma). The `inst == nullptr` placeholder branch emits a degenerate `{"bir_id":…}` record (`0x1c88bab`) named `"null"` / `"dma_transfer_inst"` (`0x1c88c9d`) with `ts`/`dur`/`tid` only (string `"Null instruction in trace"` @ `0x1c88caf`).
 
-> `ph:"X"` = Complete (duration) event; `ph:"M"` = Metadata. The file loads directly in `chrome://tracing` / Perfetto. `ts`/`dur` are **simulated** cycles/ns from the cost model, **not** measured hardware time. [STRONG — Chrome Trace Event Format identification from the `ph` literals.]
+> `ph:"X"` = Complete (duration) event; `ph:"M"` = Metadata. The file loads directly in `chrome://tracing` / Perfetto. `ts`/`dur` are **simulated** cycles/ns from the cost model, **not** measured hardware time.
 
 ### 4.3 Filename families
 
@@ -207,16 +205,16 @@ All three are produced by the same serializer; the caller's pass name picks the 
 | `perf_sim_at_end_trace.` (`0x1c88d90`) | `PerfSimPass::run` named `perf_sim_at_end` (order 106) | always-at-end |
 | `ps_trace.` (`0x1c77653`) | `post_scheduler::schedule` @ `0xc36010` (embedded sim) | `--dump-postsched-trace` (`0x1c776da`) |
 
-The filename is built by `<pass_name> + "." + Module::getName() + "." + … + ".json"`, then sanitized by a `std::regex` that replaces illegal path characters. **Only the `perf_sim.*.json` family is tarred** (§5) — the regex in §5 requires a literal `perf_sim.` substring, which `perf_sim_at_end_trace.*` and `ps_trace.*` do not contain. [STRONG — regex literal + `regex_search` semantics.]
+The filename is built by `<pass_name> + "." + Module::getName() + "." + … + ".json"`, then sanitized by a `std::regex` that replaces illegal path characters. **Only the `perf_sim.*.json` family is tarred** (§5) — the regex in §5 requires a literal `perf_sim.` substring, which `perf_sim_at_end_trace.*` and `ps_trace.*` do not contain.
 
 ---
 
 ## 5. `collectTraceFiles → createTarball → file.perf-sim`
 
-`PerfSimPackagePass` is a fourth registration (`register_generator_perf_sim_package_pass__`, BSS flag `0x3e05414`). Its `run(bir::Module&)` @ `0x1670c40` is a stub (`"… should not be called"`); the real entry is `run(vector<unique_ptr<Module>>&)` @ `0x1672530`, which reads the artifacts directory member, discovers traces, and tars them. [CONFIRMED — full run-vector decompile.]
+`PerfSimPackagePass` is a fourth registration (`register_generator_perf_sim_package_pass__`, BSS flag `0x3e05414`). Its `run(bir::Module&)` @ `0x1670c40` is a stub (`"… should not be called"`); the real entry is `run(vector<unique_ptr<Module>>&)` @ `0x1672530`, which reads the artifacts directory member, discovers traces, and tars them.
 
 ```c
-// PerfSimPackagePass::run(vector<unique_ptr<bir::Module>> &mods)  @0x1672530  (CONFIRMED)
+// PerfSimPackagePass::run(vector<unique_ptr<bir::Module>> &mods)  @0x1672530
 path dir = path(this->artifacts_dir);                  // this+8 std::string member
 LOG_INFO("Searching for perf_sim trace files in: " + dir);  // 0x1d840a8
 
@@ -235,7 +233,7 @@ if (collectTraceFiles(dir, files)) {                   // @0x1671d40 — true if
 ### 5.1 Discovery — `collectTraceFiles`
 
 ```c
-// PerfSimPackagePass::collectTraceFiles(path const &dir, vector<path> &out)  @0x1671d40 (CONFIRMED)
+// PerfSimPackagePass::collectTraceFiles(path const &dir, vector<path> &out)  @0x1671d40
 std::regex re("perf_sim\\..*\\.json");                  // literal @0x1c88e2e
 if (!boost::filesystem::exists(dir)) {
     LOG_ERROR("Directory does not exist: " + dir);      // 0x1c88e41
@@ -255,10 +253,10 @@ return out.begin() != out.end();                         // → "Found N perf_si
 
 ### 5.2 Packaging — `createTarball` (libarchive PAX + gzip)
 
-`createTarball` uses **libarchive directly** (not the system `tar`): PAX (POSIX.1-2001) format with a gzip filter, copying each file in 8 KiB chunks. The output `file.perf-sim` therefore has `.tar.gz` semantics. [CONFIRMED — full decompile @ `0x1670ed0`.]
+`createTarball` uses **libarchive directly** (not the system `tar`): PAX (POSIX.1-2001) format with a gzip filter, copying each file in 8 KiB chunks. The output `file.perf-sim` therefore has `.tar.gz` semantics.
 
 ```c
-// PerfSimPackagePass::createTarball(vector<path> const &files, path const &out)  @0x1670ed0 (CONFIRMED)
+// PerfSimPackagePass::createTarball(vector<path> const &files, path const &out)  @0x1670ed0
 archive *a = archive_write_new();
 archive_write_set_format_pax(a);                 // PAX tar
 archive_write_add_filter_gzip(a);                // gzip filter
@@ -288,16 +286,16 @@ archive_write_close(a); archive_write_free(a);
 return true;
 ```
 
-`libwalrus.so`'s job ends at producing the `file.perf-sim` file on disk in the compile artifacts directory; the only xref that constructs the `"file.perf-sim"` literal is this run-vector. The NEFF embedding is downstream (§6). [CONFIRMED — single xref.]
+`libwalrus.so`'s job ends at producing the `file.perf-sim` file on disk in the compile artifacts directory; the only xref that constructs the `"file.perf-sim"` literal is this run-vector. The NEFF embedding is downstream (§6).
 
 ---
 
 ## 6. The `debug_info_pttf` NEFF member
 
-The NEFF member *name* is produced by `DebugInfoWriter::getFullDebugFn(IRLayer layer, bir::EngineType eng, std::string ext)` @ `0x11fc070` — a switch on the IR layer that the `debuginfo-writer.md` sibling documents in full for the other four layers. Layer **0** is the perf-sim trace tar. [CONFIRMED — full switch read.]
+The NEFF member *name* is produced by `DebugInfoWriter::getFullDebugFn(IRLayer layer, bir::EngineType eng, std::string ext)` @ `0x11fc070` — a switch on the IR layer that the `debuginfo-writer.md` sibling documents in full for the other four layers. Layer **0** is the perf-sim trace tar.
 
 ```c
-// DebugInfoWriter::getFullDebugFn(IRLayer layer, EngineType eng, string ext)  @0x11fc070 (CONFIRMED)
+// DebugInfoWriter::getFullDebugFn(IRLayer layer, EngineType eng, string ext)  @0x11fc070
 switch (layer) {
   case 0: base = "debug_info_pttf";    break;   // 0x1c84377  ← Perf-sim Trace Tar File
   case 1: base = "debug_info_hlo";     break;   // 0x1c84387
@@ -309,9 +307,9 @@ switch (layer) {
 // full member = base + (eng != 0 ? EngineType2string(eng) : "") + counterSuffix + "." + ext;
 ```
 
-For the whole-module perf-sim tarball, `eng = 0` and there is no counter suffix, so the member is simply **`debug_info_pttf`**. The five `debug_info_*` member names are a contiguous `.rodata` block at `0x1c84377`, and `getFullDebugFn` is the only producer of all five. The actual append of `file.perf-sim`'s bytes into the NEFF container is performed by the NEFF packager (Part 12 — NEFF Container, planned), using this member-name scheme; `libwalrus.so` contributes the *name* (via `getFullDebugFn`) and the *payload* (via `createTarball`), but not the container write. [STRONG — member name + `IRLayer` enum CONFIRMED here; the container append is downstream.]
+For the whole-module perf-sim tarball, `eng = 0` and there is no counter suffix, so the member is simply **`debug_info_pttf`**. The five `debug_info_*` member names are a contiguous `.rodata` block at `0x1c84377`, and `getFullDebugFn` is the only producer of all five. The actual append of `file.perf-sim`'s bytes into the NEFF container is performed by the NEFF packager (Part 12 — NEFF Container, planned), using this member-name scheme; `libwalrus.so` contributes the *name* (via `getFullDebugFn`) and the *payload* (via `createTarball`), but not the container write.
 
-> **`pttf` = "Perf-sim Trace Tar File".** The expansion is inferred from the artifact chain (perf-sim → trace JSON → tar), not a literal in the binary; the `debug_info_pttf` member string itself is CONFIRMED at `0x1c84377`. [INFERRED on the acronym expansion only.]
+> **NOTE — `pttf` expands to "Perf-sim Trace Tar File".** [INFERRED] The expansion is read off the artifact chain (perf-sim → trace JSON → tar); only the `debug_info_pttf` member string itself is a literal in the binary, at `0x1c84377`.
 
 ---
 
@@ -331,21 +329,13 @@ Both describe the same engine lanes (DMA / PE / POOL / ACT / SP / DVE / CC-strea
 
 ---
 
-## 8. Confidence ledger
+## 8. Limits of this reading
 
-**CONFIRMED (full decompile or byte-exact string/disasm):**
+The wiring (three factories, the per-BB double invocation, the `addMetric` key) and the packaging (discovery regex → libarchive → member name) are read directly out of `libwalrus.so`, down to the eleven thread-name lanes and every per-event format fragment. Four things on this page are softer:
 
-- The three factory `_M_invoke` bodies (`0x166ffd0` `perf_sim`, `0x1670100` `perf_sim_at_end`) — both `tc_new(104)` the same `PerfSimPass` class, differ only in the name literal.
-- The per-BB double invocation in `run` @ `0x166d380`: `PerfSim(…,0,1,…)` (a5=1, anti-deps) vs `PerfSim(…,0,0,…)` (a5=0), both `perf_estimation`, the `modular_flow_runs * v189` multiply, the two log strings.
-- `addMetric(42, …)` @ `0x1742020`; `BackendMetricType2String(42)` = `"backend::PostSchedEstLatency"` @ `0x173b490`.
-- The full Catapult schema: the array brackets, all 11 thread-name metadata lanes (byte-exact at `0x1d83870`+), and every per-event format fragment (`0x1c88b70`+) including `deps`/`edge_type`/`end_time`.
-- `collectTraceFiles` @ `0x1671d40` (regex `perf_sim\..*\.json` @ `0x1c88e2e`, dir-exists check, `directory_iterator`, `regex_search`, `push_back`, return-non-empty).
-- `createTarball` @ `0x1670ed0` (libarchive `set_format_pax` + `add_filter_gzip` + 8 KiB `fread`/`archive_write_data` loop) and the run-vector chain `collectTraceFiles → "file.perf-sim" → createTarball → "Successfully created"`.
-- `getFullDebugFn` @ `0x11fc070` `IRLayer 0 → "debug_info_pttf"` (and 1..4 → hlo/penguin/backend/asm).
-- Pass-name literals, the `enable-perf-sim` option string @ `0x1dc3923`, the `dump-postsched-trace` flag @ `0x1c776da`, the `perf_sim.cpp` source path @ `0x1d8336e`.
+- **The integer ordinals 88 / 99 / 106.** [INFERRED] They live in the Python driver's pass list, not as constants in `libwalrus.so`, so they can only be bracketed by the neighbouring pass names — never cross-checked against a numeric literal here.
+- **The `pttf` acronym expansion.** [INFERRED] from the artifact chain, as noted in §6.
+- **The `ext` on the pttf member name.** `getFullDebugFn` takes `ext` from its caller, and no literal in this library pins it.
+- **Whether `perf_sim_at_end` traces are embedded at all.** Only `perf_sim.*.json` is shown to be tarred; if those traces reach the NEFF under some other member, this binary does not say so.
 
-**STRONG (logically forced):** only `perf_sim.*.json` (not `perf_sim_at_end_trace.*` / `ps_trace.*`) is tarred (from the regex literal + `regex_search`); `file.perf-sim` becomes NEFF member `debug_info_pttf` via the `DebugInfoWriter` scheme (member name + `IRLayer` enum CONFIRMED here; the container append is in the NEFF packager).
-
-**INFERRED (flagged):** the integer ordinals 88/99/106 are driver-side, not constants in `libwalrus.so` (the bracketing is STRONG from neighbour pass names); the `pttf` acronym expansion; the exact `ext` on the pttf member name (the `getFullDebugFn` `ext` arg is set by the caller, not pinned to a literal in this lib); whether `perf_sim_at_end` traces are *also* embedded under a different member (not evidenced — only `perf_sim.*.json` is shown to be tarred).
-
-**Re-verify ceiling:** the wiring (factories, double invocation, addMetric key) and the packaging (regex → libarchive → member name) are firsthand and unlikely to be wrong. The weakest links are the *driver-side ordinals* (cannot be cross-checked against a numeric constant in this binary) and the *NEFF container append* (lives in the packager, not `libwalrus.so`); both are tagged accordingly and neither is fabricated.
+The NEFF container append itself is out of scope — `libwalrus.so` contributes the member *name* and the *payload*, and the packager (Part 12) performs the write.

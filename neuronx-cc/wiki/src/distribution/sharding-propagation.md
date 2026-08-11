@@ -64,9 +64,8 @@ For reimplementation, the contract is:
 > per-function `context/*.md` sidecars (demangled signatures, callee tables with
 > sizes/bb-counts, caller lists, referenced strings, and the extracted switch jump
 > tables) and in `function_addresses.json`/`callgraph.json` — not statement-level
-> decompilation. Confidence tags: **CONFIRMED** = symbol/signature/switch/string
-> present in the sidecars; **STRONG** = callgraph + strings strongly imply; **INFERRED**
-> = upstream-XLA knowledge filling a gap the evidence is consistent with.
+> decompilation. Where a claim rests on upstream-XLA knowledge filling a gap the local
+> evidence is merely consistent with, it is marked **[INFERRED]** at the point of use.
 
 ---
 
@@ -99,7 +98,7 @@ ShardingPropagation::Run (0x2b2a140)            ── driver, StatusOr<bool>
 ### Signature
 
 ```c
-// CONFIRMED demangled @ 0x2b2a140
+// demangled @ 0x2b2a140
 StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const flat_hash_set<string_view>& execution_threads);
@@ -113,15 +112,15 @@ function Run(module, execution_threads):
 
     // (1) optional provenance stamping — ctor flag propagate_metadata_
     if propagate_metadata_:
-        AssignShardingMetadata(module, execution_threads)   // CONFIRMED callee
+        AssignShardingMetadata(module, execution_threads)   // stock XLA callee
 
     // (2) call graph: needed to cross while/conditional/call boundaries
-    call_graph = CallGraph::Build(module, execution_threads) // CONFIRMED callee
+    call_graph = CallGraph::Build(module, execution_threads) // stock XLA callee
 
     // (3) SEEDING: canonicalize user Sharding custom-calls onto operands,
     //     record ShardBarrierFrom/To, build Shard-As / Shard-Like groups,
     //     and save the user-annotated entry-param / root shardings.
-    ProcessShardingInstruction(module, execution_threads,    // CONFIRMED @ 0x2b27ff0
+    ProcessShardingInstruction(module, execution_threads,    // @ 0x2b27ff0
         &unspecified_dims, &saved_root_shardings, &saved_param_shardings,
         &instruction_to_shard_group_id,
         &shard_group_id_to_shard_as_group,
@@ -130,42 +129,42 @@ function Run(module, execution_threads):
         allow_spmd_sharding_propagation_to_output_)          // ctor vector<bool> mask
 
     // (4) align each explicit shard-group to one representative sharding
-    for group in shard_groups:                               // "Aligning shard group: " (CONFIRMED string)
-        rep = hlo_sharding_util::FindCommonSharding(group)   // CONFIRMED callee
+    for group in shard_groups:                               // "Aligning shard group: " (verbatim)
+        rep = hlo_sharding_util::FindCommonSharding(group)   // stock XLA callee
         for member in group:
-            MergeShardingIfCompatible(rep, &member.sharding) // CONFIRMED callee
+            MergeShardingIfCompatible(rep, &member.sharding) // stock XLA callee
 
     // (5) the fixpoint — see RunToFixPoint. Run drives the aggressiveness ladder
     //     and re-invokes after CSE-prevention copies are inserted.
     int64 iterations = 0;
-    for aggressiveness in 0..3:                              // [INFERRED ladder span; arg is CONFIRMED int64]
+    for aggressiveness in 0..3:                              // arg is an int64; [INFERRED] ladder span
         RunToFixPoint(aggressiveness, propagate_metadata_, computation_map,
                       provided_shardings, *call_graph, module, execution_threads,
                       unspecified_dims, instruction_to_shard_group_id,
-                      shard_group_id_to_group, /*...*/, &iterations) // CONFIRMED @ 0x2b24ec0
+                      shard_group_id_to_group, /*...*/, &iterations) // @ 0x2b24ec0
 
     // (6) tie shardings across computation in/out boundaries once local fixpoint settles
-    GetRelatedInstructions(inst, computation_map)            // CONFIRMED @ 0x2b147d0
-    MaybeComputationPropagation(computation_map, ..., &changed_set) // CONFIRMED @ 0x2b156a0
+    GetRelatedInstructions(inst, computation_map)            // @ 0x2b147d0
+    MaybeComputationPropagation(computation_map, ..., &changed_set) // @ 0x2b156a0
 
     // (7) CSE-prevention: tag divergently-sharded values with kCopy so the later
     //     CSE pass will not collapse them; folded back after the fixpoint re-converges.
-    copy = HloInstruction::CreateUnary(shape, kCopy, value)  // CONFIRMED callee
-    copy.set_name(value.name() + "_sharding_propagation_cse_prevention") // CONFIRMED string
+    copy = HloInstruction::CreateUnary(shape, kCopy, value)  // stock XLA callee
+    copy.set_name(value.name() + "_sharding_propagation_cse_prevention") // verbatim string
     // ... rerun fixpoint so the new copies get sharded ...
-    HloComputation::ReplaceInstruction(copy, value)          // CONFIRMED callee (fold back)
+    HloComputation::ReplaceInstruction(copy, value)          // stock XLA callee (fold back)
 
     // (8) force entry params / root tuple layout to agree with propagated sharding,
     //     but ONLY for the elements whose mask bit is set.
-    hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(  // CONFIRMED @ 0x90ebee0
+    hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(  // @ 0x90ebee0
         module, allow_spmd_sharding_propagation_to_parameters_,
                 allow_spmd_sharding_propagation_to_output_)
 
     // (9) strip bookkeeping metadata if it was added in (1)
     if propagate_metadata_:
-        RemoveShardingMetadata(module, execution_threads)    // CONFIRMED callee
+        RemoveShardingMetadata(module, execution_threads)    // stock XLA callee
 
-    // (10) "Sharding propagation completed after " << iterations << " iterations"  (CONFIRMED strings)
+    // (10) "Sharding propagation completed after " << iterations << " iterations"  (verbatim)
     return changed   // any sharding added or refined
 ```
 
@@ -180,18 +179,18 @@ function Run(module, execution_threads):
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `ShardingPropagation::Run` | `0x2b2a140` | Driver | CONFIRMED |
-| `ShardingPropagation::name` | `0x2b0fb30` | Returns `"sharding-propagation"` | CONFIRMED |
-| `ShardingPropagation` ctor | `0x2038370` | Captures flags + masks + helper | CONFIRMED |
-| `ProcessShardingInstruction` | `0x2b27ff0` | Seeding | CONFIRMED |
-| `GetRelatedInstructions` | `0x2b147d0` | Computation-boundary counterpart lookup | CONFIRMED |
-| `MaybeComputationPropagation` | `0x2b156a0` | Push sharding across one boundary | CONFIRMED |
-| `CanonicalizeLayoutAfterShardingPropagation` | `0x90ebee0` | Entry-layout canonicalization | CONFIRMED |
+| `ShardingPropagation::Run` | `0x2b2a140` | Driver | CERTAIN |
+| `ShardingPropagation::name` | `0x2b0fb30` | Returns `"sharding-propagation"` | CERTAIN |
+| `ShardingPropagation` ctor | `0x2038370` | Captures flags + masks + helper | CERTAIN |
+| `ProcessShardingInstruction` | `0x2b27ff0` | Seeding | CERTAIN |
+| `GetRelatedInstructions` | `0x2b147d0` | Computation-boundary counterpart lookup | CERTAIN |
+| `MaybeComputationPropagation` | `0x2b156a0` | Push sharding across one boundary | CERTAIN |
+| `CanonicalizeLayoutAfterShardingPropagation` | `0x90ebee0` | Entry-layout canonicalization | CERTAIN |
 
 ### The constructor and its masks
 
 ```c
-// CONFIRMED demangled @ 0x2038370
+// demangled @ 0x2038370
 ShardingPropagation::ShardingPropagation(
     bool is_spmd,
     bool propagate_metadata,
@@ -209,15 +208,15 @@ non-SPMD inference rules. `cse_prevention_only` selects a degenerate mode where 
 inserts the tagged copies but does *not* run the full ladder — used as a late mini-pass
 purely to stop CSE from collapsing divergently-sharded values. The strings
 `"allow_spmd_sharding_propagation_to_parameters"` and
-`"allow_spmd_sharding_propagation_to_output"` are present in the binary (CONFIRMED).
+`"allow_spmd_sharding_propagation_to_output"` are present in the binary.
 
-> **NOTE —** the ctor at `0x2038370` has exactly **one** caller (CONFIRMED in the ctor
-> sidecar): `xla::cpu::CpuCompiler::RunHloPassesThroughLayoutAssn`. That same compiler
+> **NOTE —** the ctor at `0x2038370` has exactly **one** caller:
+> `xla::cpu::CpuCompiler::RunHloPassesThroughLayoutAssn`. That same compiler
 > stage also constructs `xla::spmd::SpmdPartitioner`, which binary-grounds the pipeline
 > ordering "ShardingPropagation runs first, then SpmdPartitioner consumes its output."
-> The `is_spmd=true` value is set at that call site (it is a bool argument, not a
-> string, so `is_spmd=true` is **STRONG** from the `SpmdPartitioner` co-construction
-> rather than read off a literal). The linkage through the *CPU* compiler is an artifact
+> The `is_spmd=true` value is set at that call site; because it is a bool argument rather
+> than a string, that value is **[INFERRED]** from the `SpmdPartitioner` co-construction
+> rather than read off a literal. The linkage through the *CPU* compiler is an artifact
 > of how Neuron reuses XLA's host-compiler scaffolding; the partitioner that follows is
 > where Neuron customization lives.
 
@@ -236,7 +235,7 @@ many shardings it inferred from each source, and stops when an entire sweep adds
 ### Signature
 
 ```c
-// CONFIRMED demangled @ 0x2b24ec0 (maps simplified)
+// demangled @ 0x2b24ec0 (maps simplified)
 void ShardingPropagation::RunToFixPoint(
     int64 aggressiveness,
     bool propagate_metadata,
@@ -262,40 +261,40 @@ function RunToFixPoint(aggressiveness, ..., &iterations):
     while (changed):
         changed = false;
         ++iterations;
-        VLOG("Sharding propagation iteration " << iterations)          // CONFIRMED string
+        VLOG("Sharding propagation iteration " << iterations)          // verbatim string
 
         int64 from_operands = 0, from_users = 0, from_shard_group = 0;
 
         // ---- ShardingPropagationIteration (inlined) ----
-        for comp in module->computations(execution_threads):           // CONFIRMED callee
-            VLOG("Consider computation: " << comp->name())             // CONFIRMED string
+        for comp in module->computations(execution_threads):           // stock XLA callee
+            VLOG("Consider computation: " << comp->name())             // verbatim string
 
             // FORWARD: operand -> result, in post-order
-            for inst in comp->MakeInstructionPostOrder():              // CONFIRMED callee
+            for inst in comp->MakeInstructionPostOrder():              // stock XLA callee
                 if InferShardingFromOperands(inst, computation_map,
-                        aggressiveness, call_graph, execution_threads): // CONFIRMED @ 0x2b220f0
+                        aggressiveness, call_graph, execution_threads): // @ 0x2b220f0
                     // "Add sharding (forward-pass): " / "Refined partial sharding (forward-pass): "
                     changed = true; ++from_operands
 
             // BACKWARD: users -> operand, in REVERSE post-order
             for inst in reverse(comp->MakeInstructionPostOrder()):
                 if InferShardingFromUsers(inst, computation_map, aggressiveness,
-                        is_spmd_, sharding_helper_.get(), call_graph):  // CONFIRMED @ 0x2b1ff00
+                        is_spmd_, sharding_helper_.get(), call_graph):  // @ 0x2b1ff00
                     // "Add sharding (backward-pass): " / "Refined partial sharding (backward-pass): "
                     changed = true; ++from_users
 
             // SHARD-GROUP cross-flow (Shard-As / Shard-Like)
             for inst in shard_group_members(comp):
                 group = shard_group_id_to_group[instruction_to_shard_group_id[inst]];
-                if InferShardingFromShardGroup(inst, aggressiveness, group): // CONFIRMED @ 0x2b18380
+                if InferShardingFromShardGroup(inst, aggressiveness, group): // @ 0x2b18380
                     // "Add sharding (shard group): " / "Refined partial sharding (shard group): "
                     changed = true; ++from_shard_group
         // ---- end iteration ----
 
         VLOG("\n  total instructions: " << N                          // all six fragments
-          << "\n  instructions already sharded: " << k                //   CONFIRMED as
-          << "\n  shardings inferred from operands: " << from_operands //   string literals
-          << "\n  shardings inferred from users: " << from_users      //   in this function
+          << "\n  instructions already sharded: " << k                //   appear as string
+          << "\n  shardings inferred from operands: " << from_operands //   literals in this
+          << "\n  shardings inferred from users: " << from_users      //   function
           << "\n  shardings inferred from shard group: " << from_shard_group
           << "\n  aggressiveness: " << aggressiveness)
     // converges when a full forward+backward+shard-group sweep adds nothing
@@ -304,7 +303,7 @@ function RunToFixPoint(aggressiveness, ..., &iterations):
 ### Unspecified-dim handling
 
 Manual-sharding boundaries leave some dims open (the `"?"` dims). Inside the iteration,
-two helpers reconcile them (CONFIRMED callees):
+two helpers reconcile them:
 
 ```c
 InferUnspecifiedDimsFromOperand(inst, unspecified_dims, &operand)
@@ -314,15 +313,15 @@ InferUnspecifiedDimsFromUsers(inst, unspecified_dims, aggressiveness,
 
 These handle the partially-specified shardings produced by the
 `SPMDFullToShardShape` / `SPMDShardToFullShape` manual-sharding boundary custom-calls
-(both strings CONFIRMED in this function) and the `ShardBarrierFrom` / `ShardBarrierTo`
-barriers (strings CONFIRMED). An unspecified dim is never resolved by inference; it stays
+(both strings appear in this function) and the `ShardBarrierFrom` / `ShardBarrierTo`
+barriers. An unspecified dim is never resolved by inference; it stays
 open until the partitioner sees the explicit boundary.
 
 ### Merge primitives
 
 The forward/backward engines do not write a sharding directly; they hand a candidate to
 the merge layer, which accepts it only if it is strictly more specific than what the
-instruction already carries (CONFIRMED callees):
+instruction already carries:
 
 ```c
 hlo_sharding_util::MergeSharding(new_sharding, &existing, may_combine_partial_with_partial)
@@ -357,7 +356,7 @@ op-specific utilities in `hlo_sharding_util` / `dot_as_convolution_util`.
 ### Signature
 
 ```c
-// CONFIRMED demangled @ 0x2b220f0 (527 bb / 102 callees / 80 try-blocks)
+// demangled @ 0x2b220f0 (527 bb / 102 callees / 80 try-blocks)
 bool ShardingPropagation::InferShardingFromOperands(
     HloInstruction* instruction,
     const flat_hash_map<HloComputation*, HloInstruction*>& computation_map,
@@ -373,11 +372,11 @@ bool ShardingPropagation::InferShardingFromOperands(
 function InferShardingFromOperands(instruction, computation_map, aggressiveness, ...):
 
     // PRIORITY GATE: at low aggressiveness only "safe" ops may receive a forward sharding
-    if !CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness): // CONFIRMED @ 0x2b0fc40
+    if !CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness): // @ 0x2b0fc40
         return false
 
     HloSharding candidate;
-    switch (instruction->opcode()):    // CONFIRMED 101-case switch @ 0x2b22241, default 0x2b22580
+    switch (instruction->opcode()):    // 101-case switch @ 0x2b22241, default 0x2b22580
 
       // DEFAULT (0x2b22580): ~80 elementwise / shape-preserving opcodes share this target.
       // Copy the most-specific operand sharding straight through.
@@ -385,7 +384,7 @@ function InferShardingFromOperands(instruction, computation_map, aggressiveness,
           candidate = MostSpecificOperandSharding(instruction)   // IsShardingMoreSpecific picks
           break
 
-      // ~20 dedicated handlers (op identified by the op-specific util it calls — CONFIRMED callees):
+      // ~20 dedicated handlers (each op identified by the op-specific util it calls):
       case kDot:        // also kConvolution via the conv-as-dot view
           dims = dot_as_convolution_util::ParseDotGeneralFromDot(instruction)
           candidate = hlo_sharding_util::InferDotShardingFromOperands(
@@ -403,9 +402,9 @@ function InferShardingFromOperands(instruction, computation_map, aggressiveness,
           candidate = PartiallyReplicateTiledShardingOnDims(operand_sharding, reduced_dims)
       case kReduceWindow:
           // bails on window dilation != 1:
-          // "Not applying sharding to reduce window because dilatation isn't supported yet: " (CONFIRMED)
+          // "Not applying sharding to reduce window because dilatation isn't supported yet: "
       case kSelectAndScatter:
-          // "Not applying sharding to select-and-scatter because base dilation isn't supported yet: " (CONFIRMED)
+          // "Not applying sharding to select-and-scatter because base dilation isn't supported yet: "
       case kTranspose:  candidate = TransposeSharding(operand_sharding, permutation)
       case kReshape:    candidate = PropagateShardingThroughReshape(in_shape, out_shape, operand_sharding)
       case kReverse:    candidate = ReverseSharding(operand_sharding, dims)
@@ -415,18 +414,18 @@ function InferShardingFromOperands(instruction, computation_map, aggressiveness,
           // for added/dropped dims
 
     // MERGE: accept only if strictly more specific than the existing sharding
-    if MergeSharding(candidate, &instruction->sharding, may_combine_partial)   // CONFIRMED
-       && IsShardingMoreSpecific(candidate, old):                              // CONFIRMED
-        instruction->set_sharding(candidate)                                   // CONFIRMED
+    if MergeSharding(candidate, &instruction->sharding, may_combine_partial)   // stock XLA callee
+       && IsShardingMoreSpecific(candidate, old):                              // stock XLA callee
+        instruction->set_sharding(candidate)                                   // stock XLA callee
         return true
     return false
 ```
 
 > **QUIRK —** IDA labels the switch by integer case, not by opcode name; the
-> opcode→case-number mapping is **INFERRED** from the op-specific utility each branch
-> calls (each `case kDot`/`case kGather`/… above is identified by its CONFIRMED callee,
-> not by a labelled constant). The **count** of 101 cases, the jump table at `0x486540`,
-> and the default target `0x2b22580` are CONFIRMED directly from the extracted jump
+> opcode→case-number mapping is **[INFERRED]** from the op-specific utility each branch
+> calls — each `case kDot`/`case kGather`/… above is identified by its callee, not by a
+> labelled constant. The **count** of 101 cases, the jump table at `0x486540`, and the
+> default target `0x2b22580` come directly from the extracted jump
 > table (`jmp ds:jpt_2B22241[rax*8]`; bounds `sub eax,0x15; cmp al,0x64; ja default`).
 > The bulk of those
 > 101 cases collapse onto the single default (elementwise) target — only ~20 are
@@ -436,13 +435,13 @@ function InferShardingFromOperands(instruction, computation_map, aggressiveness,
 
 ### Confirmed op-specific callees
 
-| Opcode | Forward utility (CONFIRMED callee) |
+| Opcode | Forward utility (callee) |
 |---|---|
 | `kDot`, `kConvolution` | `InferDotShardingFromOperands` + `ParseDotGeneralFromDot` |
 | `kGather` | `GetGatherParallelBatchDims`, `InferGatherParallelShardingFromOperands`, `GatherOutputShardingFrom*` |
 | `kScatter` | `GetScatterParallelBatchDims`, `InferScatterParallelShardingFromOperands`, `ScatterOutputShardingFromUpdate` |
 | `kReduce` | `PartiallyReplicateTiledShardingOnDims` over reduced dims |
-| `kReduceWindow`, `kSelectAndScatter` | bail on dilation `!= 1` (CONFIRMED guard strings) |
+| `kReduceWindow`, `kSelectAndScatter` | bail on dilation `!= 1` (the guard strings above) |
 | `kTranspose` | `TransposeSharding(perm)` |
 | `kReshape` | `PropagateShardingThroughReshape` |
 | `kReverse` | `ReverseSharding(dims)` |
@@ -464,7 +463,7 @@ sharding onto the operand we are inferring.
 ### Signatures
 
 ```c
-// CONFIRMED demangled @ 0x2b1ff00 (101 bb / 17 callees) — the AGGREGATOR
+// demangled @ 0x2b1ff00 (101 bb / 17 callees) — the AGGREGATOR
 bool ShardingPropagation::InferShardingFromUsers(
     HloInstruction* instruction,
     const flat_hash_map<HloComputation*, HloInstruction*>& computation_map,
@@ -472,7 +471,7 @@ bool ShardingPropagation::InferShardingFromUsers(
     const CustomCallShardingHelper* sharding_helper,
     const CallGraph& call_graph);
 
-// CONFIRMED demangled @ 0x2b1d200 (442 bb / 88 callees) — the per-(op,user) ORACLE
+// demangled @ 0x2b1d200 (442 bb / 88 callees) — the per-(op,user) ORACLE
 HloSharding ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction,
     const HloInstruction& user,
@@ -490,17 +489,17 @@ function InferShardingFromUsers(instruction, computation_map, aggressiveness,
 
     // TILING GATE (orthogonal to aggressiveness): may this op be partitioned at all,
     // or is it replicate-only (some custom-calls / control ops)?
-    if !SupportSpatialPartitioning(instruction, computation_map, is_spmd,    // CONFIRMED @ 0x2b142d0
+    if !SupportSpatialPartitioning(instruction, computation_map, is_spmd,    // @ 0x2b142d0
             allow_partial, may_combine, sharding_helper):
         // default to replicated:
-        candidate = HloSharding(/*replicated*/true, ..., metadata)           // CONFIRMED ctor callee
+        candidate = HloSharding(/*replicated*/true, ..., metadata)           // stock XLA ctor callee
 
     bool changed = false;
     for user in instruction->users():
         HloSharding s = GetShardingFromUser(*instruction, *user, aggressiveness,
                                             is_spmd, call_graph, sharding_helper); // 0x2b1d200
         if s.is_valid():
-            changed |= MaybeImproveInstructionSharding(move(s), instruction,    // CONFIRMED callee
+            changed |= MaybeImproveInstructionSharding(move(s), instruction,    // stock XLA callee
                            may_combine_partial_with_partial, allow_aggressive)
     return changed
 
@@ -510,7 +509,7 @@ function InferShardingFromUsers(instruction, computation_map, aggressiveness,
 // GetWindowedEinsumConfiguration lambda — i.e. the single backward oracle reused
 // throughout SPMD.
 function GetShardingFromUser(instruction, user, aggressiveness, ...):
-    switch (user.opcode()):       // CONFIRMED 100-case switch @ 0x2b1d2bd, default 0x2b1d2c8
+    switch (user.opcode()):       // 100-case switch @ 0x2b1d2bd, default 0x2b1d2c8
 
       default:                    // elementwise/passthrough: user sharding flows straight back
           return user.sharding()
@@ -529,7 +528,7 @@ function GetShardingFromUser(instruction, user, aggressiveness, ...):
       case kReshape:       return PropagateShardingThroughReshape(user_shape, op_shape, user.sharding())
       case kReverse:       return ReverseSharding(user.sharding(), dims)
       case kSlice:
-          // dim-bounds checks (CONFIRMED strings "starts[i] >= 0", "limits[i] <= dim(i)",
+          // dim-bounds checks (strings "starts[i] >= 0", "limits[i] <= dim(i)",
           //                    "limits.size() == num_dimensions()") — copy sharding for full dims
       case kPad: case kBroadcast: case kDynamicSlice: case kDynamicUpdateSlice:
           return PartiallyReplicateTiledShardingOnDims(non_passthrough_dims)  // else ReplicateAllDataDims
@@ -537,8 +536,8 @@ function GetShardingFromUser(instruction, user, aggressiveness, ...):
 ```
 
 > **NOTE —** the backward switch's jump table is **100 entries at `0x486540`'s
-> neighbor `0x486220`** (CONFIRMED), and the forward switch's table is **101 entries at
-> `0x486540`** (CONFIRMED). IDA's `data_tables` exporter groups both tables — plus three
+> neighbor `0x486220`**, and the forward switch's table is **101 entries at
+> `0x486540`**. IDA's `data_tables` exporter groups both tables — plus three
 > unrelated leading slots — into one contiguous 204-pointer `.rodata` block it tags
 > `0x486208`; that tag is an export grouping, **not** a single 204-case switch. Slots
 > `0x486208`–`0x486218` belong to a neighboring `HloCSE` / absl `raw_hash_set` helper
@@ -559,10 +558,10 @@ function GetShardingFromUser(instruction, user, aggressiveness, ...):
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `InferShardingFromUsers` | `0x2b1ff00` | Backward aggregator over all users | CONFIRMED |
-| `GetShardingFromUser` | `0x2b1d200` | Per-(op,user) backward oracle, 100-case switch | CONFIRMED |
-| `SupportSpatialPartitioning` | `0x2b142d0` | Tiling-vs-replicate gate | CONFIRMED |
-| `MaybeImproveInstructionSharding` | — | Merge-and-accept (`MergeShardingIfCompatible` + `set_sharding`) | CONFIRMED callee |
+| `InferShardingFromUsers` | `0x2b1ff00` | Backward aggregator over all users | CERTAIN |
+| `GetShardingFromUser` | `0x2b1d200` | Per-(op,user) backward oracle, 100-case switch | CERTAIN |
+| `SupportSpatialPartitioning` | `0x2b142d0` | Tiling-vs-replicate gate | CERTAIN |
+| `MaybeImproveInstructionSharding` | — | Merge-and-accept (`MergeShardingIfCompatible` + `set_sharding`) | CERTAIN (callee) |
 
 ---
 
@@ -577,14 +576,14 @@ that member's sharding and tries to improve `instruction` toward it.
 ### Algorithm
 
 ```c
-// CONFIRMED demangled @ 0x2b18380
+// demangled @ 0x2b18380
 bool ShardingPropagation::InferShardingFromShardGroup(
         HloInstruction* instruction, int64 aggressiveness,
         const vector<HloInstruction*>& shard_group):
     bool changed = false;
     for member in shard_group:                                  // Shard-As or Shard-Like peers
         if member.has_sharding():
-            changed |= MaybeImproveInstructionSharding(         // CONFIRMED callee
+            changed |= MaybeImproveInstructionSharding(         // stock XLA callee
                            member.sharding(), instruction,
                            may_combine_partial, allow_aggressive)
     return changed   // counted by "shardings inferred from shard group: "
@@ -607,46 +606,47 @@ seeding pass, called once by `Run`.
 ### Algorithm
 
 ```c
-// CONFIRMED demangled @ 0x2b27ff0
+// demangled @ 0x2b27ff0
 function ProcessShardingInstruction(module, execution_threads, ...,
         &unspecified_dims, &saved_root_shardings, &saved_param_shardings,
         &instruction_to_shard_group_id, &shard_as_groups, &shard_like_groups,
         param_mask, output_mask, /*remove_unknown=*/...):
 
     for inst in module->instructions():
-        if inst->IsCustomCall("Sharding"):                      // CONFIRMED callee + "Sharding" string
-            cc = Cast<HloCustomCallInstruction>(inst)           // CONFIRMED
+        if inst->IsCustomCall("Sharding"):                      // stock XLA callee + "Sharding" string
+            cc = Cast<HloCustomCallInstruction>(inst)           // stock XLA callee
             CHECK(cc->has_sharding())                           // "Sharding instruction must have a
-                                                                //  sharding attribute: " (CONFIRMED)
+                                                                //  sharding attribute: " (verbatim)
             // parse the "?" unspecified dims out of the opaque attr string
-            sharding_op_util::ParseAttributes(cc->opaque(), &unspecified_dims[operand]) // CONFIRMED
+            sharding_op_util::ParseAttributes(cc->opaque(), &unspecified_dims[operand]) // stock XLA callee
             // replace the custom-call with its operand, moving the parsed sharding onto it
-            HloComputation::ReplaceInstruction(cc, cc->operand(0))   // CONFIRMED callee
-            cc->operand(0)->set_sharding(parsed_sharding)           // CONFIRMED callee
+            HloComputation::ReplaceInstruction(cc, cc->operand(0))   // stock XLA callee
+            cc->operand(0)->set_sharding(parsed_sharding)           // stock XLA callee
             // record shard-group bookkeeping + ShardBarrierFrom/To
         // save the user-annotated entry-parameter / root shardings for later restoration
-    VLOG("ProcessShardingInstruction: ")                        // CONFIRMED string
+    VLOG("ProcessShardingInstruction: ")                        // verbatim string
 ```
 
 `AssignShardingMetadata` (@ `0x2b29018`) and `RemoveShardingMetadata` (@ `0x2b272ea`)
 bracket the whole `Run` when `propagate_metadata_` is set; they stamp and later strip an
 `OpMetadata` provenance tag on each sharding so that merges can track where a sharding
-originated. Their CHECK strings (`"Check failed: has_sharding() "`,
-`"Sharding instruction expected for: "`) are CONFIRMED.
+originated. Both CHECK strings are present verbatim: `"Check failed: has_sharding() "`
+and `"Sharding instruction expected for: "`.
 
 ### The ToParameters / ToOutput seeding
 
 There is **no** separately-named `...ToParameters` / `...ToOutput` function in this
 build. The entry-parameter and root-tuple seeding is governed entirely by the two ctor
-`vector<bool>` masks (strings `"allow_spmd_sharding_propagation_to_parameters"` and
-`"allow_spmd_sharding_propagation_to_output"` CONFIRMED). The user-annotated entry-param
+`vector<bool>` masks, whose names appear as the strings
+`"allow_spmd_sharding_propagation_to_parameters"` and
+`"allow_spmd_sharding_propagation_to_output"`. The user-annotated entry-param
 shardings and root sharding are taken as ground-truth seeds and counted among
 `"instructions already sharded:"`; for elements whose mask bit is `false`, propagation
 *into* that param/output from the body is forbidden, leaving the user's annotation
 authoritative. After the fixpoint,
 `CanonicalizeLayoutAfterShardingPropagation(module, param_mask, output_mask)`
 (@ `0x90ebee0`) copies the resulting tile layout back onto the entry computation's
-`ShapeLayout` (`ShapeLayout::CopyLayoutFromShape` / `LayoutIsSet` are CONFIRMED callees)
+`ShapeLayout` (via the callees `ShapeLayout::CopyLayoutFromShape` and `LayoutIsSet`)
 for exactly the masked-in elements.
 
 ---
@@ -662,7 +662,7 @@ computation root}` triple propagates to the others.
 // GetRelatedInstructions — 0x2b147d0
 function GetRelatedInstructions(inst, computation_map):
     // uses while_body / while_condition / called_computations /
-    //      parameter_instruction / parameter_number / mutable_operand (all CONFIRMED callees)
+    //      parameter_instruction / parameter_number / mutable_operand (all stock XLA callees)
     // returns the counterpart instruction(s) at the boundary
 
 // MaybeComputationPropagation — 0x2b156a0 (17 bb), calls MaybeImproveInstructionSharding only
@@ -681,8 +681,8 @@ to.
 
 `aggressiveness` is a single `int64` threaded through `RunToFixPoint`,
 `InferShardingFromOperands`, `InferShardingFromUsers`, `GetShardingFromUser`, and
-`InferShardingFromShardGroup`, and logged each iteration (`"aggressiveness: "` string
-CONFIRMED). The dedicated forward admission gate is
+`InferShardingFromShardGroup`, and logged each iteration via the `"aggressiveness: "`
+string. The dedicated forward admission gate is
 `CanPropagateThroughAtAggressiveLevel` (@ `0x2b0fc40`, 14 bb), consulted before the
 opcode switch in `InferShardingFromOperands`.
 
@@ -695,9 +695,9 @@ level 3 : most aggressive — reshapes/transposes/dots may guess;
 ```
 
 > **NOTE —** the single `int64` parameter, its per-iteration log line, and the dedicated
-> `CanPropagateThroughAtAggressiveLevel` gate are **CONFIRMED**. The exact `0..3` ladder
-> *span* is **INFERRED** from upstream XLA — the bound values are not distinct string
-> literals in this binary. `Run` driving the loop `RunToFixPoint` once per level (cheap,
+> `CanPropagateThroughAtAggressiveLevel` gate are all read directly from the binary. The
+> exact `0..3` ladder *span* is **[INFERRED]** from upstream XLA — the bound values are
+> not distinct string literals here. `Run` driving `RunToFixPoint` once per level (cheap,
 > safe inferences before risky ones) is the upstream design the evidence is consistent
 > with.
 
@@ -706,7 +706,7 @@ level 3 : most aggressive — reshapes/transposes/dots may guess;
 ## Provenance — Stock vs Neuron
 
 This entire engine is **stock upstream XLA**, compiled into the Neuron front-end with no
-modification (CONFIRMED):
+modification:
 
 - The file literal `"xla/service/sharding_propagation.cc"` is referenced throughout.
 - Every log/CHECK string is byte-identical to upstream OpenXLA:

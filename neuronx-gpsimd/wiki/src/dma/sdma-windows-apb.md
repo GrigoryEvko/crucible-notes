@@ -14,7 +14,7 @@ full_reg_addr = channel_base(cluster, channel) + engine_offset + register_offset
 resolves with **no residual**. Every base/size/stride below is read directly from
 the RTL-generated address map and the CSR schemas shipped in the
 `cayman-arch-regs` package — these recovered artifacts are the binary-derived
-ground truth, re-grepped and numerically re-verified for this page.
+ground truth, grepped and numerically verified.
 
 > Cross-links: the channel-internal engine behaviour is in
 > [the al_udma HW engine](udma-hw-engine.md); the ring/descriptor layout is in
@@ -42,7 +42,7 @@ path is given):
 | `csrs/{iofabric/iofabric_model,sfabric/sfabric_model,urb/{urb,sfabric_urb}}.json` | the fabric crossbar + router-port chain heads |
 
 Confidence tags: **HIGH** = byte-exact literal from a shipped artifact (grepped +
-numerically re-verified); **MED** = inferred from in-file semantics + cross-file
+numerically verified); **MED** = inferred from in-file semantics + cross-file
 corroboration. **OBSERVED** = read directly; **INFERRED** = reasoned;
 **CARRIED** = imported from a sibling page, attributed. The Cayman address map is
 the only one co-located in this view; v5/MAVERICK interiors are header/yaml-only.
@@ -671,5 +671,5 @@ inputs. **MED — address side is Cayman-only.**
 | end-to-end APB write data-flow direction; bcast fan-out link | MED / INFERRED | block semantics |
 | cross-gen address placement | absence-noted | no non-Cayman map in view |
 
-No vendor source snapshot was used; every figure above is re-grounded to the
-RTL-generated YAML / `.vh` / CSR-schema JSON or to `rg -c` on the flat map.
+No vendor source snapshot was used; every figure above is grounded in the
+RTL-generated YAML / `.vh` / CSR-schema JSON or `rg -c` on the flat map.

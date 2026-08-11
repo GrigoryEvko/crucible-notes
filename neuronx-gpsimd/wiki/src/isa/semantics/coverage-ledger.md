@@ -1,7 +1,7 @@
 # Formal Semantics — Coverage Ledger
 
 This page is the **semantics coverage ledger**. It reconciles the formal-semantics
-reference corpus (the GX-SEM reference slices, rendered on
+reference corpus (the reference slices rendered on
 [Formal Semantics I](./group-semantics-i.md) and
 [Formal Semantics II](./group-semantics-ii.md)) against the full ISA roster, and
 states — per opcode group — the **coverage class** of each mnemonic and the
@@ -22,7 +22,8 @@ the batch-partition definition in
 [`../ref/template-and-partition.md`](../ref/template-and-partition.md).
 
 Every ledger row is double-tagged: **HIGH / MED / LOW** confidence ×
-**OBSERVED / INFERRED / CARRIED** provenance. Counts are nm-grounded against the
+**OBSERVED / INFERRED / CARRIED** provenance; the page default is `[HIGH/OBSERVED]`
+and claims that depart from it carry an explicit tag. Counts are nm-grounded against the
 config DLLs under
 `ncore2gp/config/{libisa-core,libfiss-base,libtie-core,libcas-core,libctype}.so`;
 no count is grepped from a decompile.
@@ -52,7 +53,7 @@ nm libfiss-base.so | rg -o 'opcode__[A-Za-z0-9_]+__stage_[0-9]+' \
 > `libfiss-base.so` — every named datapath module in this config is an `xdref` leaf.
 > The 864 leaves cover **397 distinct datapath families** (the `mov/mul/madd/add/sub/
 > cvt*/pack*/sel*/shfl*/sqz/dcmprs/recip0/rsqrt0/...` families, dimension-suffixed per
-> width). `[HIGH/OBSERVED]`
+> width).
 
 ---
 
@@ -84,7 +85,7 @@ ops with **no datapath stage executor** because a fence has no datapath to execu
 > **QUIRK.** A pipeline fence is COVERED *categorically* (its full semantics are "order
 > the pipeline") yet has **zero** `opcode__…__stage_N` body — the only shipped class
 > where the absence of a datapath leaf is correct, not a gap. The ledger counts these 6
-> as a class of their own, never as a coverage hole. `[HIGH/OBSERVED]`
+> as a class of their own, never as a coverage hole.
 
 ---
 
@@ -135,8 +136,8 @@ those rows **OBSERVED** and records the upgrade here.
 | **SQZ / UNSQZ** | named stage leaves `ivp_sem_sqz_stage1/2` + device-assembler round-trip | `ivp_sqzn v5,a3,vb1 → 325060506040452f` (gathers selected lanes via prefix-popcount); encode thunk `sqzn=0x81000403` read byte-for-byte | MED → **OBSERVED** |
 | **histogram COUNTEQ/COUNTLE** | device-assembler round-trip oracle + encode-thunk byte delta (see below) | `ivp_counteq4nx8 → …48cc83…`; `ivp_countle4nx8 → …48ce83…` (selector LSB EQ→LE); encode thunk `counteq=movl $0x86600000` | MED → **OBSERVED** |
 
-I re-drove two of these independently in-process to confirm the oracle, not just cite
-it: the fp16 ADD leaf returned **out[3] = 0x34cc** under the ABI
+Two of these were driven independently in-process, not merely cited:
+the fp16 ADD leaf returned **out[3] = 0x34cc** under the ABI
 `f(xstate, a_bits, b_bits, RoundMode, *out0..out4)` with RoundMode=0; and the fp32
 seed leaf `module__xdref_recip0_1_1_32f_32f` @ `0x8785f0` returned
 `recip0(1.0) → 0x3f7f0000 (0.99609375)`, whose mantissa byte `0x7f` equals
@@ -148,7 +149,7 @@ seed leaf `module__xdref_recip0_1_1_32f_32f` @ `0x8785f0` returned
 > encode-thunk byte delta** (`opcode__ivp_counteq4nx8__stage_5` @ `0x2db110` is the live
 > ISS executor; the count families do exist as `opcode__…__stage_5` but expose no named
 > `xdref` datapath leaf). The MED→OBSERVED upgrade for histogram stands, via a
-> *different* oracle mechanism than the FMA/permute leaves. `[HIGH/OBSERVED]`
+> *different* oracle mechanism than the FMA/permute leaves.
 
 > **CORRECTION (prompt mis-attribution of `0x34cc`).** The `add(0.1,0.2) → 0x34cc RNE`
 > result is the **fp16 ADD** (the `hp_fma` group / B18 page), driven through
@@ -159,7 +160,7 @@ seed leaf `module__xdref_recip0_1_1_32f_32f` @ `0x8785f0` returned
 > drivable standalone; the fp32-specific live witness is the **fp32 ADD**
 > `add32(0.1,0.2)=0x3e99999a` @ `0x871790`. The two share the identical single-round GRS
 > core, so the fp16 `madd` certificate carries the fp32 FMA. The ledger uses the correct
-> attribution. `[HIGH/OBSERVED]`
+> attribution.
 
 See the per-instruction pages for the full executed tables:
 [B17 spfma](../ref/b17-spfma.md), [B18 hp_fma](../ref/b18-hp-fma.md),
@@ -256,7 +257,7 @@ shipped COVERED ops — there is no MED among the fold-out or the fences.
 > seed-table component is CARRIED-not-MED) plus the divide seed. The ledger keeps ~138
 > as the conservative upper bound but flags that the executed-witness subset
 > (≈74 ops) is no longer inferred. The nm-grounded COVERED/categorical/no-body split
-> (1558/6/43) is exact and unchanged. `[HIGH/OBSERVED]`
+> (1558/6/43) is exact and unchanged.
 
 ---
 
@@ -293,13 +294,13 @@ Therefore:
 > **GUARD (restated).** No silicon generation, codename, or per-gen capability is
 > inferred anywhere on this page. The coverage classes describe the *semantic* presence
 > of a reference body in one Cairo/Vision-Q7 TIE configuration, full stop. Anyone reading
-> a COVERED/OBSERVED tag as a gen-support claim has misread the ledger. `[HIGH]`
+> a COVERED/OBSERVED tag as a gen-support claim has misread the ledger.
 
 ---
 
 ## 8. Adversarial self-verification (5 strongest claims)
 
-Each claim re-checked against the binary; verdict and the command/anchor recorded.
+Each claim is checked against the binary, with the verdict and the command/anchor recorded.
 
 | # | Claim | Check | Verdict |
 |---|---|---|---|
@@ -314,7 +315,7 @@ Each claim re-checked against the binary; verdict and the command/anchor recorde
 > /`table__RSQRT_Data8` reside in **`libfiss-base.so`** `.rodata` @ `0x958fc0`/`0x958dc0`
 > (with mirror copies `CONST_TBL_RECIP_Data8_0`@`0x17bd580` in `libcas-core.so` and
 > `cstub_Xm_ncore2gp_table__RECIP_Data8`@`0x51bc0` in `libctype.so`). This ledger anchors
-> to the `libfiss-base.so` originals. `[HIGH/OBSERVED]`
+> to the `libfiss-base.so` originals.
 
 ---
 

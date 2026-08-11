@@ -8,13 +8,13 @@ After the heavyweight collective, layout, and fusion passes have run, the Neuron
 
 Two registration kinds dominate. Most passes are plain `xla::HloPass`-derived, whose virtual `Run(HloModule*, …)` (vptr+0x18) is the real entry. A second group are `xla::OpExpanderPass` subclasses: they share one `Run` at `0x29f0bb0` and supply two per-pass virtuals — `InstructionMatchesPattern` (vptr+0x28, the matcher) and `ExpandInstruction` (the rewriter). For an OpExpander pass the table below cites the matcher address with the `ExpandInstruction` body in parentheses, since the matcher is what the registry row points at but the `Expand` body is where the algorithm lives.
 
-The pass-order numbers (`#NN`) are the registration index in `RegisterHiloHloPasses` and serve as a strong proxy for default-pipeline order: output/IO shaping runs early (#14–#16, #54, #59), algebraic peepholes and canonicalizers in the middle (#17, #24, #66, #67, #90, #109, #110, #55), and metadata/legalization/debug late (#20–#22, #52, #69, #70). Every Run/matcher address on this page was re-pulled from the per-function disassembly and matched its demangled symbol exactly — all CONFIRMED. Confidence labels below reflect *rewrite-logic* certainty (callee + string evidence strength), not address certainty.
+The pass-order numbers (`#NN`) are the registration index in `RegisterHiloHloPasses` and serve as a strong proxy for default-pipeline order: output/IO shaping runs early (#14–#16, #54, #59), algebraic peepholes and canonicalizers in the middle (#17, #24, #66, #67, #90, #109, #110, #55), and metadata/legalization/debug late (#20–#22, #52, #69, #70). Every Run/matcher address below comes from the per-function disassembly and demangles to the class it is attributed to; the Confidence column therefore grades the *rewrite logic* (how strong the callee and string evidence for the algorithm is), not the address.
 
 For reimplementation, the contract is:
 
 - The OpExpander dispatch split: one shared `Run`, per-pass matcher + `ExpandInstruction`. Drive the pass off the matcher predicate, not the opcode alone.
 - The five passes with real algorithms — `InlineWeights`, `ReplaceRng`, `DeviceAssignmentLegalization`, `DynamicSliceTranspose`, `RewriteScatterPartition`, plus `HiloConditionalToSelect` — given as annotated pseudocode below.
-- The honest gaps: `PartitionEmbedingOps` sharding mechanics and `RewriteModuleDtype`'s from/to dtype pair are not string-anchored.
+- The two open gaps: `PartitionEmbedingOps` sharding mechanics and `RewriteModuleDtype`'s from/to dtype pair are not string-anchored.
 
 | | |
 |---|---|
@@ -29,15 +29,15 @@ For reimplementation, the contract is:
 
 ## 1. The 28-pass table
 
-`Run / matcher addr` is the registry entry point. For OpExpander rows the `ExpandInstruction` body addr follows in parentheses. All class identities are symbol-CONFIRMED; `Conf` is rewrite-logic confidence.
+`Run / matcher addr` is the registry entry point. For OpExpander rows the `ExpandInstruction` body addr follows in parentheses. Every class identity comes from its demangled symbol; the Confidence column grades the rewrite logic.
 
-| Pass (class) | # | Run / matcher addr | Match condition | Rewrite | Conf |
+| Pass (class) | # | Run / matcher addr | Match condition | Rewrite | Confidence |
 |---|---|---|---|---|---|
 | `RemovePassthroughOutputs` | 14 | `0x1f60f40` | root-tuple element that directly passes through an aliased entry-parameter (`GetAliasedParameter`) | drop those outputs, rebuild `CreateTuple`, re-`SetUpAlias`+`Verify` the I/O alias config; WARNING | HIGH |
 | `RemoveGradiantOutputs` | 15 | `0x1f5fdb0` | root-tuple element that `OutputHasAlias` and aliases a parameter (gradient/donated buffer) | remove gradient outputs, rebuild tuple + alias config; WARNING | HIGH |
-| `PartitionEmbedingOps` | 16 | `0x1f59390` | embedding/gather op partitionable across TP (3158 B, 171 bb) | shard the embedding table per-partition and stitch results (mechanics a GAP — §3.6) | MED |
+| `PartitionEmbedingOps` | 16 | `0x1f59390` | embedding/gather op partitionable across TP (3158 B, 171 bb) | shard the embedding table per-partition and stitch results (mechanics unresolved — §3.6) | MEDIUM |
 | `EliminateRedundantCompare` | 17 | `0x1ea1510` | post-order `match::` compare-of-compare whose `comparison_direction()` makes the outer compare redundant | replace redundant compare with its inner operand | HIGH |
-| `ConfigLowering` | 20 | `0x1e90020` | per-computation `HloOpcode` set (`Rb_tree<HloOpcode>`, `HloOpcodeString`) | reports/validates opcode inventory (`"HLO Ops used in computation:"`); 723 B — substantive config lowering is driver-side | MED |
+| `ConfigLowering` | 20 | `0x1e90020` | per-computation `HloOpcode` set (`Rb_tree<HloOpcode>`, `HloOpcodeString`) | reports/validates opcode inventory (`"HLO Ops used in computation:"`); 723 B — substantive config lowering is driver-side | MEDIUM |
 | `MetadataNaming` | 21 | `0x1f484e0` | post-order over entry computation | set each inst's `OpMetadata` name via 3-arg `StrCat` (deterministic `<…>.<op>.<id>`) | HIGH |
 | `HiloConditionalToSelect` | 22 | `0x1eb0dd0` → `DoConditionalToSelect` `0x1eb1160` | `CallGraph::VisitNodes` finds `kConditional` with side-effect-free branches | inline both branches, build per-element `MakeSelectHlo`, re-tuple, replace (§3.3) | HIGH |
 | `ReplaceMinimumConstant` | 24 | `0x1f62990` | scalar `f32` constant feeding a min/clamp/DUS mask whose value is −inf/lowest (`shouldReplaceConstant`) | replace with dtype's largest-negative *finite* value via `hlo_utils::GetMinNonInfValue` → `CreateConstant`+`ReplaceInstruction` (§3.7) | HIGH |
@@ -52,7 +52,7 @@ For reimplementation, the contract is:
 | `InjectNumericalErrors` | 52 | `0x1ed9780` | targeted instruction list (ctor config; `"No targets specified."` if empty) | add constant error (`CreateBroadcast`+`CreateBinary(kAdd)`), rename `<x>.inj_error`, replace; `"Modified N"` | CERTAIN |
 | `ConvertInputsToOptimalShape` | 54 | `0x1e97850` | entry parameter whose layout is not backend-optimal (per-input map; `strtol` config) | insert `CreateReshape`/`CreateTranspose`, `ReplaceAllUsesWithDifferentShape`; rebuild ProgramShape; thread `FrontendAttributes` | HIGH |
 | `DynamicSliceTranspose` | 55 | `0x1ea02d0` (`0x1ea0570`) | OpExpander: `transpose(dynamic-slice(...))` | push transpose below DS via `InversePermutation`+`PermuteDimensions` (§3.4) | HIGH |
-| `RewriteModuleDtype` | 59 | `0x1f644e0` | every instruction/IO shape whose element type matches the from-type (`Shape::Equal` filter) | `ReplaceElementType(shape, from, to)` module-wide + `UpdateEntryComputationLayout`; from/to pair a GAP | HIGH |
+| `RewriteModuleDtype` | 59 | `0x1f644e0` | every instruction/IO shape whose element type matches the from-type (`Shape::Equal` filter) | `ReplaceElementType(shape, from, to)` module-wide + `UpdateEntryComputationLayout`; specific from/to pair unknown | HIGH |
 | `CommonInstructionElimination` | 66 | `0x1f74f20` | `flat_hash_map<inst,inst>` CSE keyed by op + `ShapeUtil::Equal` shape per computation | replace later identical inst with the first; classic GVN/CSE | HIGH |
 | `ResolveSelfComparison` | 67 | `0x20028c0` (`0x2002d00`) | OpExpander: `compare(x, x)` — operands share `unique_id()`, array shape | `HloEvaluator::Evaluate` → `MakeScalarLike<bool>` constant; VLOG `"resolving"` | HIGH |
 | `DeviceAssignmentLegalization` | 69 | `0x1f7c570` | every collective (`neuron::IsCollective`: AG/AR/RS/AllToAll/CP) | recreate with explicit `CollectiveDeviceList` from the device assignment (§3.8) | HIGH |
@@ -80,15 +80,15 @@ xla::OpExpanderPass::Run (0x29f0bb0)          ── shared driver, all OpExpand
 
 > **GOTCHA —** the registry row for an OpExpander pass points at `InstructionMatchesPattern`, not `Run`. A reimplementer who treats that address as the pass driver will model the matcher predicate as the whole pass and miss the `ExpandInstruction` rewrite. The matcher returns a bool; the rewrite lives in the sibling `ExpandInstruction` body cited in §1.
 
-OpExpander members of the closer: `DynamicSliceTranspose` (#55), `ResolveSelfComparison` (#67), `ConstantSliceClampSimplifier` (#90), `RewriteScatterPartition` (#93), `ConstantSliceConvertCanonicalizer` (#109), `DynamicSliceReshapeCanonicalizer` (#110). The `ExpandInstruction` addresses (`0x1ea0570`, `0x2002d00`, `0x1f75b70`, `0x20093c0`, `0x1f77b10`, `0x1f81270`) were each recovered as non-virtual functions reached from the shared Run — all symbol-CONFIRMED.
+OpExpander members of the closer: `DynamicSliceTranspose` (#55), `ResolveSelfComparison` (#67), `ConstantSliceClampSimplifier` (#90), `RewriteScatterPartition` (#93), `ConstantSliceConvertCanonicalizer` (#109), `DynamicSliceReshapeCanonicalizer` (#110). The `ExpandInstruction` addresses (`0x1ea0570`, `0x2002d00`, `0x1f75b70`, `0x20093c0`, `0x1f77b10`, `0x1f81270`) are each a non-virtual function reached from the shared Run, and each carries its own demangled symbol.
 
 ---
 
 ## 3. Algorithm notes — the non-trivial passes
 
-### 3.1 InlineWeights — `Run` `0x1ee8c60` (10176 B, 494 bb) — CERTAIN
+### 3.1 InlineWeights — `Run` `0x1ee8c60` (10176 B, 494 bb)
 
-The most substantive pass in the closer. It compile-time-folds weight *parameters* into HLO constants by reading an out-of-band model directory. The asm references `metadata.json`, `model_files`, `nlohmann`, `npy2literal`, `RemoveParameter`, `CreateConstant`, and the `NCC_INL` diagnostic family — all confirmed in the disassembly.
+The most substantive pass in the closer. It compile-time-folds weight *parameters* into HLO constants by reading an out-of-band model directory. The disassembly references `metadata.json`, `model_files`, `nlohmann`, `npy2literal`, `RemoveParameter`, `CreateConstant`, and the `NCC_INL` diagnostic family.
 
 ```c
 function InlineWeights_Run(module, dir):              // 0x1ee8c60
@@ -108,9 +108,9 @@ Diagnostics emitted: `NCC_INL001`, `NCC_INL002`, `NCC_MOD003`; hard errors `"Cor
 
 > **NOTE —** `RemoveParameter` shifts every later parameter's `parameter_number()`. The loop must re-resolve parameter indices (or iterate highest-index-first) or it will delete the wrong parameter. The bounds check `0 <= no < param_instructions_.size()` is the only guard the binary keeps.
 
-### 3.2 ReplaceRng — `Run` `0x1f63280` (2821 B, 140 bb) — CERTAIN
+### 3.2 ReplaceRng — `Run` `0x1f63280` (2821 B, 140 bb)
 
-Replaces HLO `rng` ops with **statically sampled constant tensors**, so the backend never executes an RNG op. The asm confirms a `std::mt19937` engine (`mersenne_twister_engine` with the `1812433253` initialization multiplier), `uniform_int_distribution`, a `std::random_device` seed, `CreateConstant`, and `CreateTuple`.
+Replaces HLO `rng` ops with **statically sampled constant tensors**, so the backend never executes an RNG op. The disassembly shows a `std::mt19937` engine (`mersenne_twister_engine` with the `1812433253` initialization multiplier), `uniform_int_distribution`, a `std::random_device` seed, `CreateConstant`, and `CreateTuple`.
 
 ```c
 function ReplaceRng_Run(module):                      // 0x1f63280
@@ -130,11 +130,11 @@ function ReplaceRng_Run(module):                      // 0x1f63280
         parent->ReplaceInstruction(inst, new)
 ```
 
-> **GOTCHA —** the seed comes from `std::random_device`, so two compiles of the same module produce **different** folded RNG constants — compilation is non-deterministic at this pass unless an upstream seed override is wired in (not located in this binary; GAP). A reimplementer reproducing bit-for-bit golden outputs must pin the seed.
+> **GOTCHA —** the seed comes from `std::random_device`, so two compiles of the same module produce **different** folded RNG constants — compilation is non-deterministic at this pass unless an upstream seed override is wired in, and no such override was located in this binary. A reimplementer reproducing bit-for-bit golden outputs must pin the seed.
 
-### 3.3 HiloConditionalToSelect — `Run` `0x1eb0dd0` (494 B) → `DoConditionalToSelect` `0x1eb1160` (2347 B) — HIGH
+### 3.3 HiloConditionalToSelect — `Run` `0x1eb0dd0` (494 B) → `DoConditionalToSelect` `0x1eb1160` (2347 B)
 
-Flattens a predicated 2-branch `kConditional` into a per-element `select`, removing control flow for the data-parallel TPB engines. `Run` walks the call graph (`CallGraph::VisitNodes`, `"Running conditional-to-select pass"`); the worker does the surgery. The asm confirms `HasSideEffect`, `CallInliner`, `MakeSelectHlo`, and `CreateTuple`.
+Flattens a predicated 2-branch `kConditional` into a per-element `select`, removing control flow for the data-parallel TPB engines. `Run` walks the call graph (`CallGraph::VisitNodes`, `"Running conditional-to-select pass"`); the worker does the surgery. Its callees include `HasSideEffect`, `CallInliner`, `MakeSelectHlo`, and `CreateTuple`.
 
 ```c
 function DoConditionalToSelect(cond):                 // 0x1eb1160
@@ -153,9 +153,9 @@ function DoConditionalToSelect(cond):                 // 0x1eb1160
     parent->ReplaceInstruction(cond, new)
 ```
 
-### 3.4 DynamicSliceTranspose — matcher `0x1ea02d0`, Expand `0x1ea0570` — HIGH
+### 3.4 DynamicSliceTranspose — matcher `0x1ea02d0`, Expand `0x1ea0570`
 
-OpExpander. Matcher: `transpose(dynamic-slice(...))`. The Expand pushes the transpose below the dynamic-slice so the slice operates on the original (pre-transpose) layout. Asm confirms `InversePermutation`, `PermuteDimensions`, `CreateDynamicSlice`, `CreateTranspose`.
+OpExpander. Matcher: `transpose(dynamic-slice(...))`. The Expand pushes the transpose below the dynamic-slice so the slice operates on the original (pre-transpose) layout. Its callees are `InversePermutation`, `PermuteDimensions`, `CreateDynamicSlice`, and `CreateTranspose`.
 
 ```c
 function DynamicSliceTranspose_Expand(transpose):     // 0x1ea0570
@@ -169,23 +169,23 @@ function DynamicSliceTranspose_Expand(transpose):     // 0x1ea0570
     return CreateTranspose(new_ds, perm)               // transpose now applies to the smaller, sliced tensor
 ```
 
-### 3.5 TransformVariadicReduce — `Run` `0x1f71950` (149 B) → `maxArgMax` `0x1f6c890` (20653 B) — HIGH
+### 3.5 TransformVariadicReduce — `Run` `0x1f71950` (149 B) → `maxArgMax` `0x1f6c890` (20653 B)
 
-`Run` is a 4-callee post-order dispatcher calling `xla::maxArgMax` on each instruction. `maxArgMax` is the 20 KB worker: nested `match::AllOf` patterns recognize a variadic `kReduce` that jointly computes a max value and its arg-max index (a `to_apply()` doing compare+select+index-update over a 2-tuple). It lowers this single variadic reduce into native ops: `MakeReduceHlo(kMax)` for the value, and an iota/compare/select arg-max chain (`MakeCompareHlo` with a `comparison_direction()`, `MakeSelectHlo`, `MakeBroadcastHlo`, `LiteralUtil::MaxValue` sentinel), re-tuples via `CreateTuple`, and `ReplaceInstruction(inst, newTuple)`. The exact comparator topology (tie-break direction) is a minor GAP.
+`Run` is a 4-callee post-order dispatcher calling `xla::maxArgMax` on each instruction. `maxArgMax` is the 20 KB worker: nested `match::AllOf` patterns recognize a variadic `kReduce` that jointly computes a max value and its arg-max index (a `to_apply()` doing compare+select+index-update over a 2-tuple). It lowers this single variadic reduce into native ops: `MakeReduceHlo(kMax)` for the value, and an iota/compare/select arg-max chain (`MakeCompareHlo` with a `comparison_direction()`, `MakeSelectHlo`, `MakeBroadcastHlo`, `LiteralUtil::MaxValue` sentinel), re-tuples via `CreateTuple`, and `ReplaceInstruction(inst, newTuple)`. The exact comparator topology — specifically the tie-break direction when two elements share the maximum — was not resolved [UNRESOLVED].
 
-### 3.6 PartitionEmbedingOps — `Run` `0x1f59390` (3158 B, 171 bb) — MED
+### 3.6 PartitionEmbedingOps — `Run` `0x1f59390` (3158 B, 171 bb)
 
-A large body with no distinctive strings; callees are generic shape/instruction builders. By name and pipeline position (immediately after the output-shaping passes, before `EliminateRedundantCompare`) it partitions embedding/gather ops across the tensor-parallel degree, sharding the embedding-table operand and stitching the per-shard gather results. The exact gather→per-shard-gather construction is **not string-anchored** here (MED — name + size + position only; rewrite mechanics a GAP).
+A large body with no distinctive strings; callees are generic shape/instruction builders. By name and pipeline position (immediately after the output-shaping passes, before `EliminateRedundantCompare`) it partitions embedding/gather ops across the tensor-parallel degree, sharding the embedding-table operand and stitching the per-shard gather results. The exact gather→per-shard-gather construction is **not string-anchored** — the reading rests on the class name, body size, and pipeline position alone, and the rewrite mechanics remain open [INFERRED].
 
-### 3.7 ReplaceMinimumConstant — `Run` `0x1f62990` — HIGH
+### 3.7 ReplaceMinimumConstant — `Run` `0x1f62990`
 
-Despite the name, this pass does **not** rewrite a `minimum` opcode. It rewrites a scalar *constant* — the −inf/lowest sentinel that feeds a min/clamp/dynamic-update-slice mask-fill — to the dtype's largest-negative *finite* value, so the masked positions survive downstream arithmetic that would otherwise propagate NaN/inf. The per-dtype finite floor comes from `hlo_utils::GetMinNonInfValue` (confirmed callee), wrapped by `CreateConstant` and applied by `ReplaceInstruction`. The matcher gate is `shouldReplaceConstant` (confirmed). The "min" in the name is the sentinel it *replaces*, not the consuming opcode.
+Despite the name, this pass does **not** rewrite a `minimum` opcode. It rewrites a scalar *constant* — the −inf/lowest sentinel that feeds a min/clamp/dynamic-update-slice mask-fill — to the dtype's largest-negative *finite* value, so the masked positions survive downstream arithmetic that would otherwise propagate NaN/inf. The per-dtype finite floor comes from the callee `hlo_utils::GetMinNonInfValue`, wrapped by `CreateConstant` and applied by `ReplaceInstruction`. The matcher gate is `shouldReplaceConstant`.
 
-> **CORRECTION (B32-4) —** an earlier reading treated this as a `minimum`-op rewriter. The binary shows the replaced instruction is the scalar constant operand of a min/clamp/DUS, retyped to a finite floor via `GetMinNonInfValue` — not the min op itself.
+> **GOTCHA —** the "min" in `ReplaceMinimumConstant` names the *sentinel value* it replaces, not the opcode it matches. The instruction that gets rewritten is the scalar constant operand of a min/clamp/dynamic-update-slice, retyped to a finite floor; the min op itself is untouched.
 
-### 3.8 DeviceAssignmentLegalization — `Run` `0x1f7c570` (6591 B, 350 bb) — HIGH
+### 3.8 DeviceAssignmentLegalization — `Run` `0x1f7c570` (6591 B, 350 bb)
 
-Rewrites every collective's *logical* replica groups into a *physical* `CollectiveDeviceList` derived from the module's device assignment. Asm confirms `IsCollective`, `GetGlobalDeviceReplicaGroups`, `GetParticipatingDevicesGroupsForSourceTargetPairs`, `CollectiveDeviceList`, `CreateAllGather`, `CreateCollectivePermute`, and the `"Unhandled Collective"` FATAL path.
+Rewrites every collective's *logical* replica groups into a *physical* `CollectiveDeviceList` derived from the module's device assignment. Its callees and strings include `IsCollective`, `GetGlobalDeviceReplicaGroups`, `GetParticipatingDevicesGroupsForSourceTargetPairs`, `CollectiveDeviceList`, `CreateAllGather`, `CreateCollectivePermute`, and the `"Unhandled Collective"` FATAL path.
 
 ```c
 function DeviceAssignmentLegalization_Run(module):    // 0x1f7c570
@@ -207,9 +207,9 @@ function DeviceAssignmentLegalization_Run(module):    // 0x1f7c570
         parent->ReplaceInstruction(inst, new)           // VLOG "Collective before/after Device Assignment Legalization:"
 ```
 
-### 3.9 RewriteScatterPartition — matcher `0x2009240`, Expand `0x20093c0` (2614 B) — HIGH
+### 3.9 RewriteScatterPartition — matcher `0x2009240`, Expand `0x20093c0` (2614 B)
 
-OpExpander. The matcher delegates to anonymous-namespace `pattern_one` (`0x2008f90`) / `pattern_two` (`0x20090e0`), which walk an operand chain via `mutable_operand` and test opcode constants for a scatter-style partition built from collectives + reshapes around a loop: all-gather (4), all-reduce (7), collective-permute (0x1D), GTE (0x3A), reshape (0x5B), while (0x79). The Expand rebuilds it as a single `CreateAllGather`+`CreateReshape`, recomputing the replica-group list and casting through `HloAllGatherInstruction`. Asm confirms `CreateAllGather`, `CreateReshape`, `HloAllGatherInstruction`, `ReplaceOperandWithDifferentShape`, and the VLOG strings `"Num groups"`, `"Num per group"`, `"reshapes tuple elemnt"` (sic — the typo is in the binary).
+OpExpander. The matcher delegates to anonymous-namespace `pattern_one` (`0x2008f90`) / `pattern_two` (`0x20090e0`), which walk an operand chain via `mutable_operand` and test opcode constants for a scatter-style partition built from collectives + reshapes around a loop: all-gather (4), all-reduce (7), collective-permute (0x1D), GTE (0x3A), reshape (0x5B), while (0x79). The Expand rebuilds it as a single `CreateAllGather`+`CreateReshape`, recomputing the replica-group list and casting through `HloAllGatherInstruction`. Its callees and strings include `CreateAllGather`, `CreateReshape`, `HloAllGatherInstruction`, `ReplaceOperandWithDifferentShape`, and the VLOG strings `"Num groups"`, `"Num per group"`, `"reshapes tuple elemnt"` (sic — the typo is in the binary).
 
 ```c
 function RewriteScatterPartition_Expand(inst):        // 0x20093c0
@@ -225,21 +225,25 @@ function RewriteScatterPartition_Expand(inst):        // 0x20093c0
 
 ---
 
-## 4. Adversarial self-verify
+## 4. Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+| Claim | Anchor |
+|---|---|
+| All 28 Run/matcher addresses resolve to their named classes | each address demangles to the expected `xla::<Class>::Run` or `…::InstructionMatchesPattern` — e.g. `0x1ee8c60`→`xla::InlineWeights::Run`, `0x1f7c570`→`xla::hilo::DeviceAssignmentLegalization::Run`, `0x20028c0`→`xla::hilo::ResolveSelfComparison::InstructionMatchesPattern` |
+| InlineWeights reads `metadata.json` and folds via `npy2literal` + `CreateConstant` + `RemoveParameter` | all of `metadata.json`, `model_files`, `nlohmann`, `npy2literal`, `RemoveParameter`, `CreateConstant`, `NCC_INL` appear in the `0x1ee8c60` body |
+| ReplaceRng uses `std::mt19937` (multiplier `1812433253`) seeded from `random_device` | `mersenne_twister`, `1812433253`, `uniform_int_distribution`, `random_device`, `CreateConstant`, `CreateTuple` in the `0x1f63280` body |
+| DeviceAssignmentLegalization FATALs on an unhandled collective and draws device groups from two sources | `GetGlobalDeviceReplicaGroups`, `GetParticipatingDevicesGroupsForSourceTargetPairs`, `CollectiveDeviceList`, `Unhandled Collective`, `IsCollective` in the `0x1f7c570` body |
+| `HiloConditionalToSelect` is the Neuron pass, distinct from stock `xla::ConditionalToSelect` @ `0x2956eb0` | worker symbol is file-local `xlaL21DoConditionalToSelect`; body references `HasSideEffect`, `CallInliner`, `MakeSelectHlo` |
 
-1. **All 28 Run/matcher addresses resolve to their named classes.** Re-pulled each `_0xADDR.asm` filename from `disasm/`; every one demangles to the expected `xla::<Class>::Run` (or `…::InstructionMatchesPattern`). CONFIRMED — e.g. `0x1ee8c60`→`xla::InlineWeights::Run`, `0x1f7c570`→`xla::hilo::DeviceAssignmentLegalization::Run`, `0x20028c0`→`xla::hilo::ResolveSelfComparison::InstructionMatchesPattern`. No failures.
+## 5. Limits of this reading
 
-2. **InlineWeights reads `metadata.json` and folds via `npy2literal`+`CreateConstant`+`RemoveParameter`.** `rg` over the InlineWeights asm returned `metadata.json`, `model_files`, `nlohmann`, `npy2literal`, `RemoveParameter`, `CreateConstant`, `NCC_INL` — all present. CONFIRMED.
-
-3. **ReplaceRng uses a `std::mt19937` (1812433253) seeded from `random_device`.** Asm contains `mersenne_twister`, `1812433253`, `uniform_int_distribution`, `random_device`, `CreateConstant`, `CreateTuple`. CONFIRMED. The non-determinism caveat is therefore a real GOTCHA, not speculation. The internal `Piece::buffer` write detail is INFERRED from the literal-build pattern (not individually traced).
-
-4. **DeviceAssignmentLegalization FATALs on an unhandled collective and uses two device-group sources.** Asm contains `GetGlobalDeviceReplicaGroups`, `GetParticipatingDevicesGroupsForSourceTargetPairs`, `CollectiveDeviceList`, `Unhandled Collective`, `IsCollective`. CONFIRMED. The `CHECK(operands().size()==1)` is on the single-operand path; the per-opcode switch shape is STRONG (callee set), the exact branch ordering INFERRED.
-
-5. **`HiloConditionalToSelect` is the Neuron pass, distinct from stock `xla::ConditionalToSelect` at `0x2956eb0`.** Worker symbol is `xlaL21DoConditionalToSelect` (file-local `L`), and asm confirms `HasSideEffect`, `CallInliner`, `MakeSelectHlo`. CONFIRMED distinct from `0x2956eb0`.
-
-Tagged-INFERRED/GAP items, not fabricated: `PartitionEmbedingOps` sharding mechanics (§3.6, MED); `RewriteModuleDtype` from/to dtype pair (ctor literal, no strings); `InjectNumericalErrors` target-source flag/env key (only `"No targets specified."` located); `TransformVariadicReduce` tie-break direction; the OpExpander matcher opcode-value guards (read from callees, not decompiled control flow).
+- `PartitionEmbedingOps` (§3.6): sharding mechanics are name-and-position only, with no string anchor.
+- `RewriteModuleDtype`: the from/to dtype pair lives in a constructor literal with no accompanying string, so the specific pair is unknown.
+- `InjectNumericalErrors`: the target-source flag or environment key was not located — only the `"No targets specified."` diagnostic.
+- `TransformVariadicReduce`: tie-break direction of the arg-max comparator.
+- ReplaceRng's internal `Piece::buffer` write is reconstructed from the literal-build call pattern rather than traced instruction by instruction.
+- DeviceAssignmentLegalization's per-opcode switch is derived from the callee set; the exact branch ordering is reconstructed.
+- The OpExpander matchers' opcode-value guards were read from callees rather than from decompiled control flow.
 
 ---
 

@@ -9,7 +9,7 @@ context allocation/binding and the per-descriptor *decode* (`dge_decode_fast`), 
 off, at a named call site, to the [3-backend selector](dge-backend-selector.md). The
 reshape, emit, and error stages are documented on their own pages.
 
-Everything here is **byte-pinned to shipped artifacts disassembled this session** — the
+Everything here is **byte-pinned to shipped artifacts** — the
 DEBUG POOL firmware images carved out of `libnrtucode.a` and decoded with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, `ConfigName=Xm_ncore2gp`, uarch "Cairo",
 `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW). Every log line is resolved
@@ -21,7 +21,7 @@ earlier reading disagrees with the disassembly, **the binary wins**, and an in-p
 **CORRECTION** says so.
 
 Confidence tags follow the [project model](../../reference/confidence-model.md): `OBSERVED`
-= a byte/string/instruction read from a shipped artifact this session; `INFERRED` = reasoned
+= a byte/string/instruction read from a shipped artifact; `INFERRED` = reasoned
 over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
@@ -81,7 +81,7 @@ this page nails the setup, the decode, and the exact hand-off point.
 ## 1. Image identification + addressing model
 
 The DGE is **not** in the per-opcode EXTISA micro-kernel ELFs. Those are the POOL *compute*
-kernels: a census of the `CAYMAN_Q7_POOL_PERF_EXTISA_0` SO (carved this session, `.rodata`
+kernels: a census of the `CAYMAN_Q7_POOL_PERF_EXTISA_0` SO (`.rodata`
 `.bin` sha256 `910d41c3…`, **41568 B**, a 32-bit Tensilica-Xtensa ELF) shows **21**
 `.xt.prop.<mangled>` property sections, all compute symbols and **zero** `dge_*`:
 
@@ -97,7 +97,7 @@ kernels: a census of the `CAYMAN_Q7_POOL_PERF_EXTISA_0` SO (carved this session,
 > names embed the *mangled C++ symbol* of each shipped function. Demangling them recovers the
 > real source-level names without any external reference — this is how "no DGE symbol lives in
 > the EXTISA kernels" is a *positive, byte-exact* finding (21 sections, 0 `dge_`), and how the
-> compute-kernel names above are grounded. `[HIGH/OBSERVED]`
+> compute-kernel names above are grounded.
 
 The DGE lives in the **main per-engine POOL firmware images** inside the static archive
 
@@ -109,7 +109,7 @@ extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/
 as members `img_<GEN>_<NX|Q7>_POOL_<MODE>_<SEG>_contents.c.o`. Each `.c.o` is an **x86-64 ELF
 relocatable** whose single `.rodata` PROGBITS holds the raw device IRAM/DRAM image; the carve
 is `ar p <member> | objcopy -O binary --only-section=.rodata`. Three variants carry the DGE,
-with **complementary** string sets; all three were re-carved and sha-confirmed this session:
+with **complementary** string sets:
 
 | Member (DEBUG) | Seg | `.rodata` size | sha256 (prefix) | Role here |
 |---|---|---|---|---|
@@ -123,8 +123,7 @@ with **complementary** string sets; all three were re-carved and sha-confirmed t
 **Chosen trace image for the decode path: `CAYMAN_Q7_POOL_DEBUG_IRAM`** (sha `513a8a22…`); the
 `CAYMAN_NX_POOL` DEBUG pair supplies the setup/context strings and the `dge_shape` dump anchor;
 `MARIANA_PLUS_NX_POOL` supplies the cleanest backend-select arm and the `__FILE__` proof. All
-sha256/size figures above are **re-confirmed** (`objcopy` carve → `stat -c%s` → `sha256sum`).
-`[HIGH/OBSERVED]`
+sha256/size figures above come from the `objcopy` carve. `[HIGH/OBSERVED]`
 
 **Addressing rules.** IRAM loads at device VA `0x0` (reset at byte 0); IRAM addresses below
 are file-offset == VA. The DRAM image loads at device VA `0x80000`, so **DRAM-string VA =
@@ -156,7 +155,7 @@ SEQ boot addressing model]`
 
 The DEBUG `.rodata` strings *encode* the struct fields, the algorithm stages, and the SDMA
 descriptor layout. They are the single most reliable artifact. All VAs below are
-byte-confirmed this session (`dd … | tr -c '[:print:]'`).
+byte-confirmed.
 
 **Setup / context (NX variant, VA = DRAM off + 0x80000):**
 
@@ -196,7 +195,7 @@ byte-confirmed this session (`dd … | tr -c '[:print:]'`).
 
 The `%s` direction tag in `push GENERATE` resolves to the `RD` / `WR` literals sitting
 immediately after the format string in `.rodata` — the read (M2S) vs write (S2M) direction of
-the generated BD. `[HIGH/OBSERVED]`
+the generated BD.
 
 > **NOTE — string-prefix engine identity.** The NX/SEQ-engine DGE strings are prefixed `S:`;
 > the Q7/POOL-engine DGE strings are prefixed `P%i:` (the `%i` is the processor id, set from
@@ -307,8 +306,8 @@ the `engine`/`queue` binding above is the *device-side* consequence of that host
 
 This is the per-descriptor decode: it reads the high-level descriptor, classifies its **KIND**,
 logs it through the common `P%i:` logger, and dispatches to the kind-specific descriptor
-builder. The function is **`entry a1, 48` @IRAM `0x3394`** in the trace image (byte-confirmed
-this session). The `__FILE__` literal `dge_decode_fast.cpp` (byte-read in the
+builder. The function is **`entry a1, 48` @IRAM `0x3394`** in the trace image
+(byte-confirmed). The `__FILE__` literal `dge_decode_fast.cpp` (byte-read in the
 `MARIANA_PLUS_NX` DRAM at off `0x34d3`) is the source file. `[HIGH/OBSERVED]`
 
 ### 4.1 The dispatch mechanism
@@ -343,8 +342,8 @@ After building the `P%i:` prefix arg (`rsr.prid`), `dge_decode_fast` selects the
 
 Each KIND arm is the **identical** idiom: stage the `P%i:` prefix (`const16 a10,8`; `rsr.prid
 a11`), `const16` the KIND format-string id, `call8` the common logger `@0x18a2c`, `call8` the
-kind-specific builder, then `j 0x3713` (common exit). All three decode cleanly at their anchors
-and were re-disassembled this session:
+kind-specific builder, then `j 0x3713` (common exit). All three decode cleanly at their
+anchors:
 
 ```asm
 ; --- DIRECT2D case @0x3538 ---
@@ -375,7 +374,7 @@ and were re-disassembled this session:
 Each `const16 a10,<id>` target is byte-confirmed against the DRAM string image:
 `0xe0c`→`DGE DIRECT2D`, `0xe32`→`DGE GATHER TRANSPOSE`, `0xe1f`→`DGE INDIRECT`. The common
 logger `@0x18a2c` is the variadic `P%i:` printf (own `entry` prologue; spills format args and
-tail-calls a `vsnprintf` helper). `[HIGH/OBSERVED]`
+tail-calls a `vsnprintf` helper).
 
 ### 4.3 The three KINDs = the three descriptor shapes
 
@@ -406,7 +405,7 @@ dge_shape[i].step = [ s0, s1, s2, s3 ]   ; per-dim strides,        u16 each
 The decode walks the high-level descriptor (src/dst base, shape, strides, dtype) and fills
 `dge_shape[src]` and `dge_shape[dst]`; the dtype cast pair travels as `cast:0x%x->0x%x` in the
 backend log. The dump code in the `CAYMAN_NX_POOL` IRAM `@0xac81` decodes cleanly
-(byte-confirmed this session):
+(byte-confirmed):
 
 ```asm
 ac81:  240800   const16 a2, 8
@@ -424,10 +423,9 @@ So the dump iterates a per-context **count field at struct `+0xd`**, **bounded `
 bound (clean scalar run); `[INFERRED]` for "`< 5` == #shapes-per-context".
 
 > **CORRECTION — the `< 5` bound is the `blti` at `0xac99`, not `0xac8e`.** An earlier reading
-> attributed `blti a2,5` to `0xac8e`. The re-disassembly shows `0xac8e` is `beqz.n a2,0xaca0`
+> attributed `blti a2,5` to `0xac8e`. The disassembly shows `0xac8e` is `beqz.n a2,0xaca0`
 > (the zero-shape early-out); the `blti a2,5` is the loop bound at **`0xac99`**. The semantics
 > are unchanged (count at `+0xd`, capped below 5); the address attribution is corrected.
-> `[HIGH/OBSERVED]`
 
 > **GOTCHA — 16-bit shape fields cap the per-dim extent.** `num[]`/`step[]` are printed as
 > `0x%04x`, i.e. **u16** each. A reimplementer must not assume 32-bit dims here: a per-dim
@@ -449,7 +447,7 @@ After decode (and reshape), the DGE picks **one** of three backends — or none.
 [backend-selector page](dge-backend-selector.md) starts where this one ends.
 
 The selector entry is a **backend-availability-table read** from a fixed BSS global, decoded
-cleanest in the `MARIANA_PLUS_NX_POOL` IRAM `@0xf9b0` (byte-confirmed this session):
+cleanest in the `MARIANA_PLUS_NX_POOL` IRAM `@0xf9b0` (byte-confirmed):
 
 ```asm
 ; backend-select — Pool arm — MARIANA_PLUS_NX_POOL_DEBUG IRAM, byte-exact
@@ -495,7 +493,7 @@ encode the ring and bump the tail pointer. The full `P%i: Q7: rdma_desc_gen [%s]
 dma_mask, n_active_dmas, semaphore-descriptor pushes — the descriptor-program detail).
 
 **The doorbell is a single MMIO store.** The TX/RX tail-pointer writeback decodes cleanly in
-the Q7 IRAM `@0x17388` (byte-confirmed this session):
+the Q7 IRAM `@0x17388` (byte-confirmed):
 
 ```asm
 ; rdma_desc_start tail-pointer writeback — CAYMAN_Q7_POOL_DEBUG IRAM, byte-exact
@@ -523,7 +521,6 @@ ring tail and **launches the engine**. This is the UDMA doorbell. `[HIGH/OBSERVE
 > `0x1739b` does the actual `s32i.n` doorbell write happen — the confirmation arg is set up
 > ahead of the store, with the matching `callx8` logger on the fall-through path. Do not read
 > "written" as "the store has completed"; the byte order is *stage-arg → store → log*.
-> `[HIGH/OBSERVED]`
 
 **Reconciliation with the ring / RDM (orientation):**
 
@@ -561,12 +558,10 @@ ring tail and **launches the engine**. This is the UDMA doorbell. `[HIGH/OBSERVE
   that fill the ring §7 feeds.
 - **[iDMA / Legacy DMA](idma-legacy-dma.md)** — the legacy single-transfer `DramRingDMA` path,
   the contrast anchor: one BD vs. the DGE's descriptor program.
-- **DGE Builder + QoS** (`../../dma/dge-builder-qos.md`) — **forward link, Part 9, not yet
-  authored.** Will decode the priority-class / QoS arbitration that the `engine`/`queue`
-  binding (§3) and the host priority-class map feed. *(planned path — NOTE: target file does
-  not yet exist.)*
-- **DGE Micro-op Encoding** (`../../dma/dge-microop-encoding.md`) — **forward link, Part 9, not
-  yet authored.** Will decode the exact BD word0/word1 bitfield packing the GENERATE/DIMPUSH/
-  REGWRITE pushes produce. *(planned path — NOTE: target file does not yet exist.)*
+- **DGE Builder + QoS** (`../../dma/dge-builder-qos.md`) — **Part 9.** Decodes the
+  priority-class / QoS arbitration that the `engine`/`queue` binding (§3) and the host
+  priority-class map feed.
+- **DGE Micro-op Encoding** (`../../dma/dge-microop-encoding.md`) — **Part 9.** Decodes the
+  exact BD word0/word1 bitfield packing the GENERATE/DIMPUSH/REGWRITE pushes produce.
 - **[The Confidence & Walls Model](../../reference/confidence-model.md)** — the normative
   definition of the `[CONF/PROV]` tags and the FLIX-desync MED ceiling cited throughout.

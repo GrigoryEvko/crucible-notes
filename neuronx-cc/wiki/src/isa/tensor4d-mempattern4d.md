@@ -8,7 +8,7 @@
 
 The 20-byte layout is the [4+4N rule](tensor-descriptors.md#the-44n-size-rule) at `N = 4`: `4 + 4·4 = 20`. It is byte-identical to `TENSOR3D` with **one extra `{stride, count}` pair** appended — and, because strides and counts live in two **separate** contiguous arrays, appending the fourth dimension does three things at once: it adds `step3` at the end of the stride array (`+0xA`), shifts the whole count array down by two bytes (the count base moves from `+0xA` in 3D to `+0xC` in 4D), then adds `num3` at `+0x12`. The "extra 4 bytes" are exactly `{step3 @+0xA, num3 @+0x12}`. There is no second descriptor, no continuation flag — the spill is the same array grown by one entry, which is why the slot is 20 bytes, not 16.
 
-The central correction this page makes to the naive expectation: **`TENSOR4D` is the general maximal data-tensor descriptor, not a batch-norm / transpose-reduce special case.** Cross-referencing the two `assignAccess<TENSOR4D>` thunks against the symbol table resolves **22 distinct op-encoders** (18 CoreV2 + 4 CoreV3) that emit 4D — copy, shuffle, transpose, pool, reduce, max, gather, iota, memset, reciprocal, RNG-state, the BN-stats reduced inputs, and the gen3 sparse-matmul ifmap — plus a string-keyed generic selector that routes any name-tagged 4D operand. 4D is the **fallback** the encoder spills to when 3D cannot express the walk; BN/reduce/sparse are simply the operands that *most often* need the fourth axis, not the only ones.
+The one thing the naive expectation gets wrong: **`TENSOR4D` is the general maximal data-tensor descriptor, not a batch-norm / transpose-reduce special case.** Cross-referencing the two `assignAccess<TENSOR4D>` thunks against the symbol table resolves **22 distinct op-encoders** (18 CoreV2 + 4 CoreV3) that emit 4D — copy, shuffle, transpose, pool, reduce, max, gather, iota, memset, reciprocal, RNG-state, the BN-stats reduced inputs, and the gen3 sparse-matmul ifmap — plus a string-keyed generic selector that routes any name-tagged 4D operand. 4D is the **fallback** the encoder spills to when 3D cannot express the walk; BN/reduce/sparse are simply the operands that *most often* need the fourth axis, not the only ones.
 
 For reimplementation, the contract is:
 
@@ -45,12 +45,12 @@ The size is pinned by the same `.rodata` mechanism as the smaller descriptors. T
 
 | Descriptor | `N` | Size | Assert string | `.rodata` | Referenced from | Confidence |
 |---|---|---|---|---|---|---|
-| `TENSOR4D` | 4 | **20 B** | `"ISA mem pattern 4D must have 20 bytes to encode"` | `0x1d6e990` | `0x133e9b1` (v2 dispatcher), `0x14273b6` (v3 dispatcher) | CONFIRMED |
-| `TENSOR3D` | 3 | 16 B | `"ISA mem pattern 3D must have 16 bytes to encode"` | `0x1d6e920` | 3D dispatchers (v2/v3/v4) | CONFIRMED |
+| `TENSOR4D` | 4 | **20 B** | `"ISA mem pattern 4D must have 20 bytes to encode"` | `0x1d6e990` | `0x133e9b1` (v2 dispatcher), `0x14273b6` (v3 dispatcher) | CERTAIN |
+| `TENSOR3D` | 3 | 16 B | `"ISA mem pattern 3D must have 16 bytes to encode"` | `0x1d6e920` | 3D dispatchers (v2/v3/v4) | CERTAIN |
 
 `20 = 4 + 4·4`. The 4D assert string is referenced from **exactly** the two 4D dispatchers — the `lea` that loads its address lives inside `assignAccess<core_v2::TENSOR4D>` at `0x133e9b1` and `assignAccess<core_v3::TENSOR4D>` at `0x14273b6` — so the binary's own size statement is unambiguous about which slot is 20 bytes.
 
-> **NOTE —** there is no `assignAccess<core_v4::MEM_PATTERN4D>` symbol. The v4 destination dispatcher family stops at `MEM_PATTERN2D`/`MEM_PATTERN3D`; the v4 4D destination path reuses the `TENSOR4D` struct (packed by `assignStaticPattern<core_v4::TENSOR4D>` @ `0x150cf60`) and is validated by `core_v4::mem4d_valid`. So at v4 there is no separate `MEM_PATTERN4D` *encoder* — the 4D DST role rides the `TENSOR4D` wire struct. (CONFIRMED absence — the symbol is not in `nm -DC`.)
+> **NOTE —** there is no `assignAccess<core_v4::MEM_PATTERN4D>` symbol. The v4 destination dispatcher family stops at `MEM_PATTERN2D`/`MEM_PATTERN3D`; the v4 4D destination path reuses the `TENSOR4D` struct (packed by `assignStaticPattern<core_v4::TENSOR4D>` @ `0x150cf60`) and is validated by `core_v4::mem4d_valid`. So at v4 there is no separate `MEM_PATTERN4D` *encoder* — the 4D DST role rides the `TENSOR4D` wire struct. The symbol's absence is read directly from `nm -DC`, which `libwalrus.so` retains in full.
 
 ### The byte map
 
@@ -58,17 +58,17 @@ The 20 bytes are `[ADDR4][step0..step3][num0..num3]` — the stride array first,
 
 | Offset | Size | Field | Witness | Confidence |
 |---|---|---|---|---|
-| `+0x00` | 4 | `ADDR4` start-address word — partition dim folded in; byte-addr bits `0..28`, region/PSUM bits `25..28` (`0x1E000000`), bit-31 register-mode | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CONFIRMED |
-| `+0x04` | 2 | `step0` (i16) — free-dim 0 stride | enc `lea [2·0+4]`; dec reads `+4` | CONFIRMED |
-| `+0x06` | 2 | `step1` (i16) — free-dim 1 stride | enc `lea [2·1+4]` | CONFIRMED |
-| `+0x08` | 2 | `step2` (i16) — free-dim 2 stride | enc `lea [2·2+4]`; dec `cmpw $0,+8` (PSUM path) | CONFIRMED |
-| `+0x0A` | 2 | `step3` (i16) — free-dim 3 stride — **the spill** | enc `lea [2·3+4]`; default-fill `+0xA` @ `0x1177397` | CONFIRMED |
-| `+0x0C` | 2 | `num0` (u16) — free-dim 0 count | enc `lea [2·0+0xC]`; dec `cmpw $0,+0xC` | CONFIRMED |
-| `+0x0E` | 2 | `num1` (u16) — free-dim 1 count | enc `lea [2·1+0xC]`; dec `cmpw $0,+0xE` | CONFIRMED |
-| `+0x10` | 2 | `num2` (u16) — free-dim 2 count | enc `lea [2·2+0xC]`; dec `cmpw $0,+0x10` | CONFIRMED |
-| `+0x12` | 2 | `num3` (u16) — free-dim 3 count — **the spill** | enc `lea [2·3+0xC]`; default-fill `+0x12` @ `0x117739b`; dec `cmpw $0,+0x12` | CONFIRMED |
+| `+0x00` | 4 | `ADDR4` start-address word — partition dim folded in; byte-addr bits `0..28`, region/PSUM bits `25..28` (`0x1E000000`), bit-31 register-mode | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CERTAIN |
+| `+0x04` | 2 | `step0` (i16) — free-dim 0 stride | enc `lea [2·0+4]`; dec reads `+4` | CERTAIN |
+| `+0x06` | 2 | `step1` (i16) — free-dim 1 stride | enc `lea [2·1+4]` | CERTAIN |
+| `+0x08` | 2 | `step2` (i16) — free-dim 2 stride | enc `lea [2·2+4]`; dec `cmpw $0,+8` (PSUM path) | CERTAIN |
+| `+0x0A` | 2 | `step3` (i16) — free-dim 3 stride — **the spill** | enc `lea [2·3+4]`; default-fill `+0xA` @ `0x1177397` | CERTAIN |
+| `+0x0C` | 2 | `num0` (u16) — free-dim 0 count | enc `lea [2·0+0xC]`; dec `cmpw $0,+0xC` | CERTAIN |
+| `+0x0E` | 2 | `num1` (u16) — free-dim 1 count | enc `lea [2·1+0xC]`; dec `cmpw $0,+0xE` | CERTAIN |
+| `+0x10` | 2 | `num2` (u16) — free-dim 2 count | enc `lea [2·2+0xC]`; dec `cmpw $0,+0x10` | CERTAIN |
+| `+0x12` | 2 | `num3` (u16) — free-dim 3 count — **the spill** | enc `lea [2·3+0xC]`; default-fill `+0x12` @ `0x117739b`; dec `cmpw $0,+0x12` | CERTAIN |
 
-> **CORRECTION — ADDR4 region bits are `25..28`, not `21-22`.** An earlier draft of the `+0x00` row gave the region/PSUM-discriminator bits as `21-22` and labelled the `25..28` quadrant bits a "v3/v4 add". Both are wrong: the region split is the **arch-universal** mask `0x1E000000` = bits `25..28`, read off the decoder's `and ebx,1E000000h` and the PSUM-window base `0x2000000 = 1<<25` directly in `tensor_start_addr_valid` ([2.2 ADDR4 §PSUM-window detection](addr4.md#psum-window-detection--region-class--bits-2528)). This page's own `tensor4d_valid` source-check walk (below) likewise tests the `25..28` quadrant bits (`& 0x1e000000`). The `21-22` figure is fixed in place.
+> **NOTE — the ADDR4 region/PSUM discriminator is bits `25..28`, and it is arch-universal.** The mask is `0x1E000000`, read off the decoder's `and ebx,1E000000h` and the PSUM-window base `0x2000000 = 1<<25` inside `tensor_start_addr_valid` ([2.2 ADDR4 §PSUM-window detection](addr4.md#psum-window-detection--region-class--bits-2528)). It is not a v3/v4 addition, and the discriminator is not at bits `21-22`. The `tensor4d_valid` source check below tests the same `25..28` quadrant bits (`& 0x1e000000`).
 
 The encoder witnesses are byte-exact off the packer body (`assignStaticPattern<core_v2::TENSOR4D>` @ `0x1176df0`): the stride store computes its target as `desc + 2i + 4` (`lea r13,[rax+rax+4]` @ `0x11772b9`), the count store as `desc + (2i+4) + 8 = desc + 2i + 0xC` (`lea rdi,[rax+r13+8]` @ `0x11772f9`). The `step`/`num` word widths and signedness are unchanged from the smaller descriptors: `step` is a signed `i16` through `sub_116ca30` (sign-match overflow guard), `num` an unsigned `u16` through `sub_116d620` (zero-rejecting guard) — see [2.3 stride/count words](tensor-descriptors.md#the-stride-word--signed-i16-element-units).
 
@@ -108,8 +108,8 @@ The 16-vs-20 boundary is independently confirmed by the validators' count-nonzer
 
 | Validator | Address | `num` words checked | Count base | Confidence |
 |---|---|---|---|---|
-| `core_v4::mem3d_valid` | `0x14467d0` | `+0xA`, `+0xC`, `+0xE` (3 entries) | `+0xA` | CONFIRMED |
-| `core_v4::mem4d_valid` | `0x1446550` | `+0xC`, `+0xE`, `+0x10`, `+0x12` (4 entries) | `+0xC` | CONFIRMED |
+| `core_v4::mem3d_valid` | `0x14467d0` | `+0xA`, `+0xC`, `+0xE` (3 entries) | `+0xA` | CERTAIN |
+| `core_v4::mem4d_valid` | `0x1446550` | `+0xC`, `+0xE`, `+0x10`, `+0x12` (4 entries) | `+0xC` | CERTAIN |
 
 The 4D decoder validates exactly one more `num` word than the 3D decoder, **and** at a `+2`-shifted base — matching the encoder's count-array relocation byte-for-byte. The decoder validates precisely the bytes the encoder spills.
 
@@ -163,7 +163,7 @@ The canonical AP axis order is `[W, Z, Y, X] = Pattern[0..3]`, with `Pattern[0] 
 - iterates the free dims `Pattern[num_dims-1 .. 1]` (innermost first), **drops** degenerate (`num == 1`) axes, and **compacts** the survivors into slots `0,1,2,3` from the bottom;
 - the fourth slot `{step3 @+0xA, num3 @+0x12}` holds the extra (fourth) surviving free dim. It does **not** relabel the partition axis or reorder the first three — it is the spill the 16-byte window could not hold.
 
-So a `TENSOR4D` pattern spans up to **five** logical AP dims: `Pattern[0] → ADDR4`, four surviving free dims → the four `{step, num}` slots. The `AxisListType = XYZW` selector (value 3, "reduce all four free dims") is the reduce-side companion of this descriptor; the trailing-channel variants (`XYZWC` / `C`) are the five-axis collapse-all forms that ride a 4D descriptor with the partition axis as the reduction target. (STRONG — the axis mapping after `num==1` compaction follows the `[W,Z,Y,X]` order plus the compaction loop; the per-op axis assignment is owned by the upstream AP lowering, not the wire layout.)
+So a `TENSOR4D` pattern spans up to **five** logical AP dims: `Pattern[0] → ADDR4`, four surviving free dims → the four `{step, num}` slots. The `AxisListType = XYZW` selector (value 3, "reduce all four free dims") is the reduce-side companion of this descriptor; the trailing-channel variants (`XYZWC` / `C`) are the five-axis collapse-all forms that ride a 4D descriptor with the partition axis as the reduction target. The axis mapping after `num==1` compaction is reconstructed from the `[W,Z,Y,X]` order plus the compaction loop; the per-op axis assignment itself is owned by the upstream AP lowering, not by the wire layout.
 
 ---
 
@@ -198,7 +198,7 @@ bool mem4d_valid(desc, dtype, write, psum_ok, sbuf_ok) {
 
 `mem4d_valid` is the wire-level consumer of exactly the bytes `assignStaticPattern<TENSOR4D>` wrote: the ADDR4 in a legal SB/PSUM window, the region marker, and every `num` word nonzero. The region byte `+3` `& 0x60 == 0x20` test reads the **same** `0x20` the encoder stamps via `or desc[+3],0x20` — encoder and decoder agree on the region bit. The `num`-sweep offsets `+0xC/+0xE/+0x10/+0x12` are byte-exact across all three arch copies.
 
-> **CORRECTION (the brief's `0x136ee40` is `core_v3`, not "the" decoder) —** an earlier framing named `mem4d_valid @0x136ee40` as the single 4D decoder. There are **three** arch copies — `core_v2::mem4d_valid @0x127f660`, `core_v3::mem4d_valid @0x136ee40` (the cited one), and `core_v4::mem4d_valid @0x1446550` — plus a separate source-role `tensor4d_valid` family and a `check_m4d_active_channels` channel checker. The 20-byte geometry is identical across all three; they differ only in the region/quadrant encoding.
+There is no single 4D decoder. `mem4d_valid` exists in **three** arch copies — `core_v2::mem4d_valid @0x127f660`, `core_v3::mem4d_valid @0x136ee40`, and `core_v4::mem4d_valid @0x1446550` — alongside a separate source-role `tensor4d_valid` family and the `check_m4d_active_channels` channel checker. The 20-byte geometry is identical across all three copies; they differ only in the region/quadrant encoding.
 
 ### `tensor4d_valid` — the source check (v3 `0x136f600` / v4 `0x14477c0`)
 
@@ -208,11 +208,11 @@ The read-operand twin. Same 20-byte geometry, same `num0..num3 @+0xC/+0xE/+0x10/
 
 | Check | Address (v4 unless noted) | What it reads | Role | Confidence |
 |---|---|---|---|---|
-| `check_m4d_active_channels(MEM_PATTERN4D, u8)` | v2 `0x1280010` / v3 `0x1370570` / v4 `0x14494e0` | ADDR4 `@+0` partition band + 2nd-window byte `+7` / word `+4`; the `u8` = active channel count | validates the caller-supplied partition/channel span against the ADDR4, **not** a descriptor field | CONFIRMED |
-| `m4d_not_in_psum(MEM_PATTERN4D)` | `0x14463a0` | region byte `+3` (inverse of the `0x20` marker) | asserts a 4D operand is **not** PSUM-resident where 4D must be SBUF-only | CONFIRMED |
-| `indirect_quadrant_check_src4d(MEM_PATTERN4D)` | `0x14484a0` | region byte `+3 & 0xe0 == 0x20`; data addr `@+0` masked `& 0x1fffffff`, `≤ 0x3fffff`; 2nd word `@+4` same way | the gather/indirect-mode 4D check: two address windows in the 20 bytes (data `@+0`, index/scale `@+4`) | CONFIRMED |
+| `check_m4d_active_channels(MEM_PATTERN4D, u8)` | v2 `0x1280010` / v3 `0x1370570` / v4 `0x14494e0` | ADDR4 `@+0` partition band + 2nd-window byte `+7` / word `+4`; the `u8` = active channel count | validates the caller-supplied partition/channel span against the ADDR4, **not** a descriptor field | CERTAIN |
+| `m4d_not_in_psum(MEM_PATTERN4D)` | `0x14463a0` | region byte `+3` (inverse of the `0x20` marker) | asserts a 4D operand is **not** PSUM-resident where 4D must be SBUF-only | CERTAIN |
+| `indirect_quadrant_check_src4d(MEM_PATTERN4D)` | `0x14484a0` | region byte `+3 & 0xe0 == 0x20`; data addr `@+0` masked `& 0x1fffffff`, `≤ 0x3fffff`; 2nd word `@+4` same way | the gather/indirect-mode 4D check: two address windows in the 20 bytes (data `@+0`, index/scale `@+4`) | CERTAIN |
 
-> **QUIRK — an indirect 4D descriptor reinterprets `+4` as a second address, not as `step0`.** In the gather/indirect form the region bits gate a dual-`ADDR4` reading of the 20 bytes: the data address at `+0` and an index/scale window at `+4`, the same dual-address shape as the v4 indirect 3D arm. The *plain* (non-indirect) 4D descriptor uses `+4` as `step0`. A reimplementer decoding a 4D slot must branch on the region bits before interpreting `+4`. (STRONG — the decoder branches on region; the full indirect-4D *encoder* leaf was not unrolled.)
+> **QUIRK — an indirect 4D descriptor reinterprets `+4` as a second address, not as `step0`.** In the gather/indirect form the region bits gate a dual-`ADDR4` reading of the 20 bytes: the data address at `+0` and an index/scale window at `+4`, the same dual-address shape as the v4 indirect 3D arm. The *plain* (non-indirect) 4D descriptor uses `+4` as `step0`. A reimplementer decoding a 4D slot must branch on the region bits before interpreting `+4`. (The decoder's region branch is read directly; the full indirect-4D *encoder* leaf was not unrolled.)
 
 > **NOTE —** `v4::mem4d_valid` ends with `is_valid_enum` / `is_valid_dtype` calls (`0x1446663` / `0x14466a7`) operating on bytes "past `+0x12`". Those are the `DTYPE` / `ENUM_LIST` arguments passed by value alongside the struct, **not** descriptor bytes. The 20-byte struct itself is `+0..+0x13`.
 
@@ -222,13 +222,13 @@ The read-operand twin. Same 20-byte geometry, same `num0..num3 @+0xC/+0xE/+0x10/
 
 ### Purpose
 
-The brief's open question — "is 4D materialized *only* on BN / transpose-reduce paths, or is it a general fallback?" — is answered by resolving every call site of the two `assignAccess<TENSOR4D>` thunks against the symbol table. The answer: **4D is the general maximal data-tensor descriptor.**
+Is 4D materialized *only* on BN / transpose-reduce paths, or is it a general fallback? Resolving every call site of the two `assignAccess<TENSOR4D>` thunks against the symbol table settles it: **4D is the general maximal data-tensor descriptor.**
 
 ### Method
 
 The two real packers are reached through `.plt` thunks: the CoreV2 thunk `@0x603ee0` (→ `0x133e710`) has **57** call sites; the CoreV3 thunk `@0x5f32d0` (→ `0x1427170`) has **8**. Resolving each call-site address to its enclosing `nm` symbol yields the distinct producers below — 65 sites, 22 distinct op-encoders.
 
-### CoreV2 producers (18 distinct — CONFIRMED)
+### CoreV2 producers (18 distinct)
 
 | Op-encoder | Operand that is `TENSOR4D` |
 |---|---|
@@ -250,7 +250,7 @@ The two real packers are reached through `.plt` thunks: the CoreV2 thunk `@0x603
 | `visitInstRng` / `visitInstGetRandState` | the RNG state struct (`D4_RAND_STRUCT = TENSOR4D`) |
 | `CoreV2GenImpl::assignAccessToType` | the string-keyed generic selector (below) |
 
-### CoreV3 producers (4 distinct — CONFIRMED)
+### CoreV3 producers (4 distinct)
 
 | Op-encoder | Operand that is `TENSOR4D` |
 |---|---|
@@ -270,7 +270,7 @@ The two real packers are reached through `.plt` thunks: the CoreV2 thunk `@0x603
 - **`CROSS_LANE_REDUCE` TensorReduce** (`axis = C`) — the reduce adds a cross-partition axis on top of the free pattern → a fourth descriptor dim.
 - **`MatmultSparse` ifmap** — structured sparsity adds a tag/group axis, so the ifmap is `TENSOR4D` where the dense ifmap is `TENSOR3D`.
 
-(The "why these specifically need a fourth axis" is STRONG; the producer set itself is CONFIRMED from the 65 resolved call sites.)
+The producer set is read from the 65 resolved call sites; the per-op explanation of *why* each needs a fourth axis is reconstructed from the operand roles.
 
 ---
 
@@ -284,25 +284,27 @@ The 20-byte layout is invariant across CoreV2/V3/V4 — the same `+0xC` count ba
 
 | Claim | Witness | Confidence |
 |---|---|---|
-| 20-byte size | `.rodata` `"4D must have 20 bytes"` @ `0x1d6e990`, ref'd by both 4D dispatchers (`0x133e9b1` v2, `0x14273b6` v3) | CONFIRMED |
-| `step @ +4/+6/+8/+0xA` | encoder `lea [2i+4]` @ `0x11772b9` + default `+0xA` @ `0x1177397` | CONFIRMED |
-| `num @ +0xC/+0xE/+0x10/+0x12` | encoder `lea [2i+0xC]` @ `0x11772f9` + default `+0x12` @ `0x117739b`; decoder `cmpw` at the same four offsets (all 3 `mem4d_valid`) | CONFIRMED |
-| 16→20 spill = +1 pair, base `+0xA→+0xC` | `mem3d_valid` sweeps `num` to `+0xE` (3); `mem4d_valid` to `+0x12` (4) | CONFIRMED |
-| dim-count = `active ≤ 5` (`= N+1`) | `cmp $0x5,%r13d ; setbe` @ `0x1177162` + `"[1, 4]D"` `.rodata` @ `0x1d53378` | CONFIRMED |
-| dim-0 → ADDR4 (no slot) | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CONFIRMED |
-| indirect/mode marker — byte `+3` bit 5 = word bit 29 (`0x20`); nibble = byte3 `& 0x60` = word bits 29:30 | encoder `or desc[+3],0x20`; decoder `and $0x60 ; cmp $0x20` | CONFIRMED |
-| producer set = 18 v2 + 4 v3 | 65 resolved call sites of the two `TENSOR4D` thunks | CONFIRMED |
+| 20-byte size | `.rodata` `"4D must have 20 bytes"` @ `0x1d6e990`, ref'd by both 4D dispatchers (`0x133e9b1` v2, `0x14273b6` v3) | CERTAIN |
+| `step @ +4/+6/+8/+0xA` | encoder `lea [2i+4]` @ `0x11772b9` + default `+0xA` @ `0x1177397` | CERTAIN |
+| `num @ +0xC/+0xE/+0x10/+0x12` | encoder `lea [2i+0xC]` @ `0x11772f9` + default `+0x12` @ `0x117739b`; decoder `cmpw` at the same four offsets (all 3 `mem4d_valid`) | CERTAIN |
+| 16→20 spill = +1 pair, base `+0xA→+0xC` | `mem3d_valid` sweeps `num` to `+0xE` (3); `mem4d_valid` to `+0x12` (4) | CERTAIN |
+| dim-count = `active ≤ 5` (`= N+1`) | `cmp $0x5,%r13d ; setbe` @ `0x1177162` + `"[1, 4]D"` `.rodata` @ `0x1d53378` | CERTAIN |
+| dim-0 → ADDR4 (no slot) | `assignStartAddr<ADDR4>` head of packer @ `0x1176ff8`; decoder reads `+0` → `tensor_start_addr_valid` | CERTAIN |
+| indirect/mode marker — byte `+3` bit 5 = word bit 29 (`0x20`); nibble = byte3 `& 0x60` = word bits 29:30 | encoder `or desc[+3],0x20`; decoder `and $0x60 ; cmp $0x20` | CERTAIN |
+| producer set = 18 v2 + 4 v3 | 65 resolved call sites of the two `TENSOR4D` thunks | CERTAIN |
 
 ---
 
-## Gaps and Confidence
+## Evidence summary
 
-- **20-byte layout, the spill delta, the active-dim range check, the producer census — CONFIRMED.** Size pinned by the `.rodata` assert ref'd from both 4D dispatchers; offsets byte-exact from the packer `lea` offsets and the validator `cmpw` offsets; the spill confirmed both ways (3D `num`-sweep stops `+0xE`, 4D reaches `+0x12`); the producer set resolved from 65 thunk call sites.
-- **Encoder ↔ decoder round-trip — CONFIRMED** for DST (`mem4d_valid` ×3) and SRC (`tensor4d_valid` ×2): every offset the packer writes is an offset a validator reads.
-- **ADDR4 `@+0` bit map — STRONG.** Owned formally by [2.2 ADDR4](addr4.md); reconstructed here only as the descriptor's first word.
-- **Axis-to-slot mapping after `num==1` compaction — STRONG.** Follows the `[W,Z,Y,X]` order plus the high→low compaction loop; the per-op axis assignment is owned by the upstream AP lowering, not the wire layout.
-- **Indirect-4D dual-address form — STRONG.** The decoder branches on region to read `+4` as a second address; the indirect-4D *encoder* leaf was not individually unrolled.
-- **No `assignAccess<core_v4::MEM_PATTERN4D>` — CONFIRMED absence.** The v4 4D DST role reuses the `TENSOR4D` struct + `mem4d_valid`.
+| Claim | Grounding | Confidence |
+|---|---|---|
+| 20-byte layout, spill delta, active-dim range check, producer census | size pinned by the `.rodata` assert referenced from both 4D dispatchers; offsets byte-exact from the packer `lea` offsets and the validator `cmpw` offsets; the spill shows up both ways (3D `num`-sweep stops at `+0xE`, 4D reaches `+0x12`); producer set resolved from 65 thunk call sites | CERTAIN |
+| Encoder ↔ decoder round-trip | every offset the packer writes is an offset a validator reads, for DST (`mem4d_valid` ×3) and SRC (`tensor4d_valid` ×2) | CERTAIN |
+| ADDR4 `@+0` bit map | owned formally by [2.2 ADDR4](addr4.md); reconstructed here only as the descriptor's first word | HIGH |
+| Axis-to-slot mapping after `num==1` compaction | follows the `[W,Z,Y,X]` order plus the high→low compaction loop; per-op axis assignment belongs to the upstream AP lowering | HIGH |
+| Indirect-4D dual-address form | the decoder branches on region to read `+4` as a second address; the indirect-4D *encoder* leaf was not individually unrolled | HIGH |
+| No `assignAccess<core_v4::MEM_PATTERN4D>` exists | absent from the retained dynamic symbol table; the v4 4D DST role reuses the `TENSOR4D` struct plus `mem4d_valid` | CERTAIN |
 
 ## Cross-References
 

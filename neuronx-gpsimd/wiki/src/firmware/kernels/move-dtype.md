@@ -13,7 +13,7 @@ x86-64 ucode decoder `libnrtucode_internal.so` (the C++ source file `move.cpp`, 
 **not** stripped) and in the shipped arch-isa C headers — **not** in a hand-scheduled Xtensa
 FLIX body. So no device disassembly is needed: the facts come from (a) the host decoder's
 `.rodata` assert string and embedded firmware-image `.data` blobs, and (b) the
-`aws_neuron_isa_tpb_ctrl_mv.h` header predicate, **compile-verified this pass with gcc**.
+`aws_neuron_isa_tpb_ctrl_mv.h` header predicate, **compile-verified with gcc**.
 Everything below is re-grounded against the binary `libnrtucode_internal.so`
 (sha256 `b7c67e89…632fc329b`) and the four arch-isa header trees under
 `extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/…/c10/{lib,include}` (gitignored —
@@ -22,7 +22,7 @@ reach with `fd --no-ignore` or absolute paths).
 Confidence tags per [the Confidence & Walls model](../../reference/confidence-model.md):
 `[HIGH/OBSERVED]` = read-from-byte / compiled / proven; `[MED/INFERRED]` = reasoned over
 OBSERVED; `[…/CARRIED]` = re-used at a sibling report's confidence without re-reading the
-artifact this pass.
+artifact.
 
 ---
 
@@ -31,34 +31,33 @@ artifact this pass.
 1. **`MOVE` is a SEQ control instruction, opcode `0xa7`, struct `NEURON_ISA_TPB_CTRL_MV_STRUCT`
    (64 B).** It sits in the sequencer control band `0xa0..0xbf` adjacent to `ALU_OP (0xa8)`
    and `COMPARE_BRANCH (0xa9)` — the `R[]` register ISA — **not** the POOL tensor band where
-   `Copy (0x46)` / `Cast (0x47)` live. `[HIGH/OBSERVED — common.h:255, instruction_mapping.json:30, compile-verify.]`
+   `Copy (0x46)` / `Cast (0x47)` live. `[HIGH/OBSERVED — common.h:255, instruction_mapping.json:30]`
 2. **It moves whole 32-bit register words, never tensors.** The `ctrl_mv.h` header states it
    verbatim: *"This is the general purpose register move instruction. It does not use tensors
-   or access SBUF/PSUM memory."* `[HIGH/OBSERVED — ctrl_mv.h header text.]`
+   or access SBUF/PSUM memory."*
 3. **The dtype field is a hard 3-value whitelist `{UINT32(0x9), INT32(0x8), FP32(0xA)}`** —
    the three 4-byte (full-register) dtypes only. A **single** dtype byte (offset 13) is shared
-   by source and destination, so `MOVE` **cannot convert**. `[HIGH/OBSERVED — §3, §4.]`
+   by source and destination, so `MOVE` **cannot convert**.
 4. **The gate `ctrl_mv_has_valid_dtype` is byte-for-byte the `move.cpp:41` assert.** The host
    decoder's `.rodata` carries the assert string in **59 copies** (one per gen × engine × build
-   firmware image that embeds the `MOVE` decoder). `[HIGH/OBSERVED — §1, 59 string hits.]`
+   firmware image that embeds the `MOVE` decoder).
 5. **Within the gate the move is a raw 32-bit word copy** — no convert, no sign-extend, no
    width branch. All three admitted dtypes hit the *identical* path; the dtype only records the
-   word's interpretation and gates legality. `[HIGH/OBSERVED — header line "the full 32 bits
-   will be placed into the destination register".]`
+   word's interpretation and gates legality.
 6. **Two source modes only:** `move_source ∈ {REGISTER=0, IMMEDIATE=1}` (offset 14) — the sole
    runtime branch. Confirmed by the two DEBUG print forms `S: R[%d] = R[%d] = 0x%x` (reg) and
-   `S: R[%d] = imm = 0x%x` (imm). `[HIGH/OBSERVED — DATA_SRC enum + print strings.]`
+   `S: R[%d] = imm = 0x%x` (imm).
 7. **Universal across engines and generations.** The `MOVE` decoder is embedded in the
    firmware DRAM of **all five** GPSIMD engines (ACT, DVE, PE, POOL, SP) on every gen; the
    `CTRL_MV` **struct body and dtype gate are byte-identical** across
    SUNDA/CAYMAN/MARIANA/MAVERICK. (One **per-gen header nuance** in the validity *contract* —
-   see the [CORRECTION](#71-per-gen--the-op-and-its-gate) in §7.) `[HIGH/OBSERVED — §7.]`
+   see the [CORRECTION](#71-per-gen--the-op-and-its-gate) in §7.)
 
 ---
 
 ## 1. The string and symbol anchors
 
-All anchors below are read directly from `libnrtucode_internal.so` this pass.
+All anchors below are read directly from `libnrtucode_internal.so`.
 
 ### 1.1 The `move.cpp:41` assert (the dtype gate, in host `.rodata` and embedded firmware)
 
@@ -76,8 +75,7 @@ $ strings libnrtucode_internal.so | rg 'move.cpp:41' | head -1
 The decoder source path is `…/NeuronUcode/src/decode/move.cpp`; the assert is at **line 41**.
 The 59 copies are not 59 distinct asserts — the decoder body is **inlined into each embedded
 per-(gen × engine × build) firmware image's decode table**, so the same assert string is baked
-into every image that carries the `MOVE` leg (§7.2). `[HIGH/OBSERVED — strings -c = 59,
-verbatim text.]`
+into every image that carries the `MOVE` leg (§7.2). `[HIGH/OBSERVED]`
 
 > **NOTE — assert vs. release gate.** The `move.cpp:41` line is a DEBUG-build *developer
 > assert* (the *"highest priority … TODO other dtypes"* comment marks it as such). The
@@ -85,7 +83,6 @@ verbatim text.]`
 > `ctrl_mv_has_valid_dtype` *validity predicate* that gates the instruction at decode time
 > (§3.3) — and the assert string is present in `SUNDA_*_RELEASE_DRAM` images too. The dtype
 > restriction therefore holds in **both** build flavors; the predicate is build-independent.
-> `[HIGH/OBSERVED — assert in RELEASE images + the build-independent header predicate.]`
 
 ### 1.2 The device DEBUG self-name and the two print forms
 
@@ -106,8 +103,7 @@ S: MoveShape(ShapeToReg)
 
 So the disassembler prints `MOVE`, then **per destination register** either a
 register-source line or an immediate-source line — exactly the `move_source`
-`REGISTER`/`IMMEDIATE` split (§4.2). `[HIGH/OBSERVED — the four S: strings + their opcode
-order in the print table.]`
+`REGISTER`/`IMMEDIATE` split (§4.2).
 
 ### 1.3 The C-ABI surface: the decoder is internal, not an exported symbol
 
@@ -121,8 +117,7 @@ The library exports only thin C wrappers (`nrtucode_get_hwdecode_table`,
 `move` symbol.** The `MOVE` decode is a static/inlined body **inside the embedded firmware
 images** — the host `.text` is a wrapper that `lea`'s the firmware `.data` blobs (e.g.
 `MAVERICK_NX_POOL_TEST_IRAM_get.data`). `MOVE` is decoded *inside* those images, not as a
-host-lib function. `[HIGH/OBSERVED — nm shows no move symbol; .text xrefs the _get.data
-blobs.]`
+host-lib function.
 
 > **GOTCHA — this is why the host lib, not the device Xtensa, is authoritative here.** Unlike
 > the POOL data kernels (`Copy`/`Cast` — device Q7 `.xt.prop` bodies), `MOVE` is a *SEQ control*
@@ -132,7 +127,6 @@ blobs.]`
 > those images. So the gate is readable from **both** the host `.rodata` and the embedded device
 > firmware, cross-confirmed by the header predicate. A device-side Xtensa walk would add nothing:
 > the gate is a *decode-time* check, and the device execution is a trivial regfile write.
-> `[HIGH/OBSERVED — sha256-matched lib + the .data blob-owner map of §7.2.]`
 
 ---
 
@@ -160,7 +154,7 @@ band. Read verbatim from `aws_neuron_isa_tpb_common.h` (all four gens identical)
 
 `MOVE` is a **sequencer register-file instruction**, adjacent to `ALU_OP` (the scalar
 evaluator) and `COMPARE_BRANCH`. It is in the `R[]` register ISA — *worlds away* from the POOL
-tensor ISA where `COPY (0x46)` and `CAST (0x47)` sit. `[HIGH/OBSERVED — common.h:248–263.]`
+tensor ISA where `COPY (0x46)` and `CAST (0x47)` sit. `[HIGH/OBSERVED — common.h:248–263]`
 
 ### 2.2 Struct binding — `instruction_mapping.json`
 
@@ -172,13 +166,13 @@ tensor ISA where `COPY (0x46)` and `CAST (0x47)` sit. `[HIGH/OBSERVED — common
 The `CTRL_*` family is the SEQ control-engine struct set: `CTRL_MV` = move, `CTRL_MS` =
 move-shape, `CTRL_AL` = alu, `CTRL_NO` = no-operand, etc. The `0xa7 → CTRL_MV` and
 `0xb2 → CTRL_MS` bindings are **byte-identical** across all four gens'
-`instruction_mapping.json`. `[HIGH/OBSERVED — mapping JSON lines 27–31, diffed across gens.]`
+`instruction_mapping.json`. `[HIGH/OBSERVED — mapping JSON lines 27–31]`
 
 ---
 
 ## 3. The operand struct — `NEURON_ISA_TPB_CTRL_MV_STRUCT` (64 B, compile-verified)
 
-The struct is **compile-verified this pass** with gcc against the maverick header (the
+The struct is **compile-verified** with gcc against the maverick header (the
 `ISA_STATIC_ASSERT(==64)` is in the header itself):
 
 ```c
@@ -206,7 +200,7 @@ OPCODE_MOVE=0xa7 OPCODE_MOVE_SHAPE=0xb2 INT32=0x8 UINT32=0x9 FP32=0xa REG=0 IMM=
 
 Every offset, the `64`-byte total, the `0xa7` opcode, the three dtype ordinals, and the
 `REG=0`/`IMM=1` source codes reproduce exactly. `NEURON_ISA_TPB_REG_NUM` is a `uint8_t`.
-`[HIGH/OBSERVED — gcc compile + offsetof this pass.]`
+`[HIGH/OBSERVED]`
 
 ### 3.1 The dtype field — a single shared byte, src == dst
 
@@ -215,7 +209,7 @@ destination must be the same types."* So `MOVE` — unlike `Cast`, which carries
 (`in_dtype@32`, `out_dtype@33`, which **may differ**) — has exactly **one** dtype byte. The
 single field is what makes conversion impossible: there is no second type to convert *to*. The
 dtype selects the 32-bit interpretation for the disassembler and the legality gate, **not** a
-datapath. `[HIGH/OBSERVED — ctrl_mv.h "single dtype field" + the single byte @13.]`
+datapath.
 
 ### 3.2 `NEURON_ISA_TPB_MOVE_IMMEDIATE` — the 32-byte (8×u32) immediate union
 
@@ -231,14 +225,14 @@ typedef union NEURON_ISA_TPB_MOVE_IMMEDIATE {   // common.h:1131
 
 The union is **32 bytes = 8 × u32 = the full register-array width**: with `num_mov ≤ 8`
 destinations × 32 bits each, the op moves up to **256 bits** (8 full register words) in one
-instruction. `[HIGH/INFERRED — num_mov ≤ 8 × u32[8] = 256 bits.]`
+instruction. `[HIGH/INFERRED]`
 
 > **QUIRK — the immediate union *encodes* narrow views the decoder *rejects*.** The union
 > exposes `uint8[32]`, `uint16[16]`, and `fp16[16]` views, but the `move.cpp:41` gate **admits
 > only** the `uint32`/`int32`/`fp32` views. The narrow views are the *encoding surface* for the
 > *"TODO other dtypes"* — the sub-register (8/16-bit) element moves that were **never
 > implemented** (§4.4). The union is wider than the implemented subset on purpose; the decoder
-> is the narrower reality. `[HIGH/OBSERVED — union body @common.h:1131 vs. the assert gate.]`
+> is the narrower reality.
 
 ### 3.3 The validity predicate — `is_valid_ctrl_mv`
 
@@ -270,8 +264,7 @@ The full validity contract, transcribed verbatim from the header's predicate gro
 `ctrl_mv_has_valid_dtype` is **byte-for-byte** the `move.cpp:41` host assert — the same three
 clauses in the same order. Two further header **NOTES** constrain the register lists:
 *"Each destination register must be unique (no duplicates)"* and *"No register used in the
-destination register list can be used in source register list."* `[HIGH/OBSERVED — predicate
-group + the two header notes read verbatim, all four gens.]`
+destination register list can be used in source register list."* `[HIGH/OBSERVED — all four gens]`
 
 **Register specifiers** (`ctrl_mv.h`, *"Registers"* section):
 
@@ -285,7 +278,6 @@ group + the two header notes read verbatim, all four gens.]`
 > **NOTE — `MOVE` can snapshot the PC.** Register specifiers `128`/`129` read the low/high
 > halves of the current instruction's Neuron address into a GP register — a PC-capture path
 > with no equivalent in `Copy`/`Cast`. Writes to `128`/`129` are silently ignored.
-> `[HIGH/OBSERVED — ctrl_mv.h register table.]`
 
 ---
 
@@ -329,9 +321,7 @@ bool decode_move(const NEURON_ISA_TPB_CTRL_MV_STRUCT *ins, uint32_t R[/*64+PC*/]
 }
 ```
 
-`[HIGH/OBSERVED — gate predicate + line "the full 32 bits will be placed" + the two print
-forms; the loop body is INFERRED-HIGH (a trivial regfile copy, the device body was not
-walked).]`
+`[HIGH/OBSERVED gate; INFERRED loop body]`
 
 ### 4.2 The two source modes — the only runtime branch
 
@@ -340,8 +330,7 @@ walked).]`
 | `REGISTER` | `0` | `dst[k] = R[src_registers[k]]` | `S: R[%d] = R[%d] = 0x%x` |
 | `IMMEDIATE` | `1` | `dst[k] = immediate.uint32[k]` | `S: R[%d] = imm = 0x%x` |
 
-This is the **single** runtime decision in the whole instruction. `[HIGH/OBSERVED — DATA_SRC
-enum + the two S: print strings.]`
+This is the **single** runtime decision in the whole instruction.
 
 ### 4.3 The per-dtype support table — a 3-row 32-bit whitelist
 
@@ -366,8 +355,7 @@ The per-dtype "support" reduces to: the **32-bit band is fully (and identically)
 implemented**; sub-32-bit is a baked TODO; 64-bit, `FP32R`, and all MX are gate-rejected. This
 is *narrower* than `Cast` (12 in-dtypes) and the *opposite* of `Cast`'s per-dtype convert —
 but *one dtype wider* than the sequence-bounds gate, which admits only `{INT32, FP32}`
-(`MOVE` adds `UINT32`). `[HIGH/OBSERVED — the predicate is exactly the complement of
-{UINT32,INT32,FP32}; dtype ordinals from the dtype model.]`
+(`MOVE` adds `UINT32`).
 
 ### 4.4 "Full-register move" and the "TODO other dtypes"
 
@@ -378,15 +366,12 @@ assert's *"highest priority is full-register moves. TODO other dtypes"* therefor
 **unimplemented** (`TODO`) path would be **sub-register-width (8/16-bit element) moves** —
 which the `MOVE_IMMEDIATE` union's `uint8[32]`/`uint16[16]` views already *encode* but the
 decoder *rejects*. There is exactly **one** move width — 32 bits — × `num_mov` elements; there
-is no element-size branch. `[HIGH/OBSERVED for the 32-bit gate + the union views; INFERRED-HIGH
-that TODO == sub-register element moves, from line "the full 32 bits will be placed" + the
-narrower union views + 64-bit exceeding the register word.]`
+is no element-size branch. `[HIGH gate + union views; INFERRED TODO reading]`
 
 > **GOTCHA — `MOVE` does *not* widen on MAVERICK.** The MAVERICK MX dtype wave
 > (`FP4`, `FP8_E2`, `INT4`, `SFP8`, `CPTC1..7`) does **not** appear in `MOVE`'s gate — the
 > whitelist is the same three 32-bit codes on v5 as on v2. A would-be `MOVE` of an MX value
-> dies at `ctrl_mv_has_valid_dtype`. `[HIGH/OBSERVED — the gate predicate read on maverick is
-> identical to sunda.]`
+> dies at `ctrl_mv_has_valid_dtype`. `[HIGH/OBSERVED]`
 
 ---
 
@@ -422,8 +407,7 @@ is **YES, they are different ops in different engines**:
 They share the *word* "move" and the *bypass / no-convert* idea, but operate on entirely
 different state in different engines. **There is no funnel:** a tensor `Copy` does **not**
 invoke `MOVE`, and `MOVE` never touches a tensor. See [Cast and Copy](cast-copy.md) for the
-element-wise convert sibling. `[HIGH/OBSERVED — ctrl_mv.h "does not use tensors or access
-SBUF/PSUM" vs. the S4D4_TR tensor4d src/dst; opcodes COPY=0x46/CAST=0x47 @common.h:183–184.]`
+element-wise convert sibling. `[HIGH/OBSERVED — common.h:183–184]`
 
 ### 5.2 `MoveShape (0xb2)` — a third "move", dtype-less, on `CTRL_MS`
 
@@ -450,8 +434,6 @@ typedef struct NEURON_ISA_TPB_CTRL_MS_STRUCT {
 `move_type ∈ {IMMEDIATE(0x0), REG_TO_SHAPE(0x1), SHAPE_TO_REG(0x2)}` — the three
 `S: MoveShape(Immediate/RegToShape/ShapeToReg)` prints — plus `shape_reg_type`. It is **out of
 scope** for dtype handling, documented here only to disambiguate the three "move" strings.
-`[HIGH/OBSERVED — ctrl_ms.h struct + the TENSOR_SHAPE_MOVE_TYPE enum {0,1,2} + the three
-print strings.]`
 
 > **CORRECTION — offset 13 collides between `MOVE` and `MoveShape`.** Both `CTRL_MV` and
 > `CTRL_MS` put a one-byte field at **offset 13**, but it means **different things**: in
@@ -459,13 +441,12 @@ print strings.]`
 > count). And the byte at **offset 12** is `num_mov` in `CTRL_MV` but `move_type` in `CTRL_MS`.
 > A decoder that disambiguates these two by struct offset alone — without first reading the
 > **opcode** (`0xa7` vs `0xb2`) — will mis-interpret both. **Dispatch on the opcode first.**
-> `[HIGH/OBSERVED — the two struct layouts compared @offset 12–13.]`
+> `[HIGH/OBSERVED]`
 
 **Three "moves", three engines, three structs:**
 `move.cpp`/`MOVE (0xa7)`/`CTRL_MV` = register data move (this page);
 `move_shape.cpp`/`MOVE_SHAPE (0xb2)`/`CTRL_MS` = shape-descriptor move;
 `Copy`/`Cast (0x46/0x47)`/`S4D4_TR` = tensor data move (POOL engine).
-`[HIGH/OBSERVED — distinct opcodes, structs, engines.]`
 
 ---
 
@@ -480,14 +461,14 @@ then does **no** width/signedness dispatch at all — all three admitted dtypes 
 raw-32-bit-word path. So `MOVE` is the dtype-agnostic raw-word baseline **within** the 32-bit
 band, but it is **not** a universal dtype-agnostic copy: it *rejects every non-32-bit dtype*.
 It is the **scalar-register analogue** of the bit-accurate tensor `Copy` — one altitude below
-the tensor datapath. `[HIGH/OBSERVED — single dtype byte gated then no dispatch.]`
+the tensor datapath.
 
 > **NOTE — "non-32-bit dtype legs" are a deliberate non-feature, not unrecovered code.** A
 > reader could expect `move.cpp`'s narrow-dtype handling to be a *hidden datapath* still to be
 > recovered. It is not: the narrow legs are the **explicit `"TODO other dtypes"`** — they were
 > *never written*. The `MOVE_IMMEDIATE` union *encodes* them (the `uint8`/`uint16` views), the
 > decoder *rejects* them at the gate. There is nothing more to recover; the gap is a baked,
-> characterized TODO. `[HIGH/OBSERVED — assert comment + union views vs. gate.]`
+> characterized TODO.
 
 ### 6.2 `MOVE (0xa7)` vs. `ALU_OP (0xa8)` — adjacent, not the same
 
@@ -497,7 +478,6 @@ the SEQ `R[]` register file. But `MOVE` is **not** an `ALU_OP`: it does **not** 
 `(op, dtype-width, signedness)` to a native Xtensa leaf, `MOVE` is a pure register write with a
 32-bit gate. They share the register file and the SEQ engine; the dispatch is independent. See
 [the ALU-op datapath + dtype matrix](alu-op-matrix.md) for the arithmetic neighbor.
-`[HIGH/OBSERVED — adjacent opcodes 0xa7/0xa8, different struct + datapath.]`
 
 ---
 
@@ -515,9 +495,8 @@ the SEQ `R[]` register file. But `MOVE` is **not** an `ALU_OP`: it does **not** 
 The `CTRL_MV` **struct body** is **byte-identical** SUNDA ↔ MAVERICK
 (`diff` of the `typedef struct` block = IDENTICAL on all four), and the dtype gate is the same
 three-value whitelist on every gen. There is **no per-gen `MOVE` change** to the operand or the
-gate. (TONGA / V1 is not in this package's arch-isa set; out of scope.) `[HIGH/OBSERVED —
-per-gen header opcode + typedef-struct body diff + the ctrl_mv_has_valid_dtype predicate
-read on all four gens.]`
+gate. (TONGA / V1 is not in this package's arch-isa set; out of scope.)
+`[HIGH/OBSERVED — all four gens]`
 
 > **CORRECTION — "byte-identical header" overstates it; the struct + gate are identical, the
 > validity *contract* grew one clause on v5.** A `diff` of the **whole** `ctrl_mv.h` file
@@ -528,8 +507,7 @@ read on all four gens.]`
 > layout, the dtype gate, the opcode, the `instruction_mapping` binding — is identical across
 > all four gens; only the v5 validity *contract* additionally requires the instruction's tile
 > index to be zero. Prefer "struct + dtype gate byte-identical across gens" over "header
-> byte-identical". `[HIGH/OBSERVED — full-file diff + per-gen has_tile_idx_zero count this
-> pass.]`
+> byte-identical". `[HIGH/OBSERVED]`
 
 ### 7.2 Per-engine — the decoder is in every engine's firmware DRAM
 
@@ -548,8 +526,7 @@ present in:
 `MOVE` is the **universal SEQ control-engine register move** — its decoder is baked into the
 firmware of **all five** GPSIMD engines (Activation, DVE/Vector, PE/Matmul, POOL, SP/Sync) on
 every gen. It is shared infrastructure, not a per-engine kernel. The `S: MOVE` DEBUG self-name
-appears in the 16 DEBUG-build images. `[HIGH/OBSERVED — 59 assert copies mapped to their
-*_get.data owners; the S: MOVE roster in the DEBUG images.]`
+appears in the 16 DEBUG-build images.
 
 ---
 

@@ -34,7 +34,7 @@ Two companion pages own the steady-state halves of this model and are
 * [Boot-Arming + Device Fault Recovery](boot-arming-fault-recovery.md) (#948) —
   the sequence that *arms* that firewall and the fail-stop fault machine.
 
-Forward references (stubs at time of writing — cross-link, do not duplicate):
+Forward references (cross-link, do not duplicate):
 the on-core isolation map [Reachability / Isolation](reachability-isolation.md)
 (#950); the security capstone [Security Synthesis](security-synthesis.md) (#953).
 Load-path siblings: [NEFF Version / Compatibility Model](../../neff/version-compat.md)
@@ -49,9 +49,10 @@ Load-path siblings: [NEFF Version / Compatibility Model](../../neff/version-comp
 
 > **PROVENANCE.** Host-runtime addresses are read from `libnrt.so.2.31.24.0`
 > (`aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce`, sha256
-> `956382de…02cd59a6`); device-library addresses are read this session straight
+> `956382de…02cd59a6`); device-library addresses are read straight
 > from `libnrtucode_internal.so` (NOT stripped, BuildID `9cbf78c6…`) via
-> `nm`/`objdump`. Confidence is tagged `[conf · prov]`, `prov ∈ {OBSERVED,
+> `nm`/`objdump`. The page default is `[HIGH · OBSERVED]`; claims that depart from
+> it carry an explicit `[conf · prov]` tag, `prov ∈ {OBSERVED,
 > INFERRED, CARRIED}`. The threat *consequences* (what an attacker could do given
 > an observed gap) are reasoned `[MED · INFERRED]` from the observed control flow
 > — the binary witnesses the *check*, the inference is the *attack it fails to
@@ -273,11 +274,10 @@ applied]`
 ### 1.5 Step 5 — ELF magic and program-header shape
 
 When the staged image is itself an Xtensa `pi_library` ELF (the custom-op ExtISA
-`.so`), two structural gates run before relocation. Re-disassembled this session
-from `libnrtucode_internal.so`:
+`.so`), two structural gates run before relocation, from `libnrtucode_internal.so`:
 
 ```c
-/* Step 5a -- xtlib_verify_magic @0x9b6d40 (re-disassembled this session).
+/* Step 5a -- xtlib_verify_magic @0x9b6d40.
  * Validates ONLY: ELF magic, 32-bit class, and the endian byte (which it uses to
  * set a global byte-swap flag). It does NOT check e_machine, e_version, or ANY
  * integrity field. Returns 0 on success (xor %eax,%eax). */
@@ -291,7 +291,7 @@ static int xtlib_verify_magic(const uint8_t *e /* e_ident */)
     return 0;                                        /* magic OK -- nothing else checked */
 }
 
-/* Step 5b -- validate_dynamic_load @0x9b71f0 (re-disassembled this session).
+/* Step 5b -- validate_dynamic_load @0x9b71f0.
  * Walks the phdr table and enforces the segment SHAPE: a R+X text LOAD, a R+W
  * data LOAD, an optional R+W scratch LOAD, and a PT_DYNAMIC (flags&7==6).
  * On any shape failure it writes error code 7 -- it does NOT abort the process,
@@ -323,11 +323,11 @@ static int validate_dynamic_load(xtlib_info_t *out, const elf32_ehdr_t *e)
 The host prelinker rebases the `pi_library` to its device load addresses by
 walking the `.rela.got` table (240 `Elf32_Rela` entries on the reference blob).
 The chain is `prelink_relocate_lib @0x9b6160 → relocate_op @0x9b6660 →
-reloc_addr @0x9b6130`. Re-disassembled this session, the dispatch keys on the
+reloc_addr @0x9b6130`. The dispatch keys on the
 `r_info` low byte:
 
 ```c
-/* Step 6 -- prelink_relocate_lib @0x9b6160 (re-disassembled this session).
+/* Step 6 -- prelink_relocate_lib @0x9b6160.
  * Type 0 = R_XTENSA_NONE (skip); type 5 = additive 32-bit rebase (see #881 note);
  * 20..34 = R_XTENSA_SLOT{0..14}_OP; 35..49 = R_XTENSA_SLOT{0..14}_ALT.
  * Any relocate_op() failure ABORTS the whole install -- the image is NEVER
@@ -404,12 +404,12 @@ the available buffer on device"` (rc 7). `[HIGH · OBSERVED; CARRIED prelinker-u
 
 ### 1.8 Step 8 — the boot / claim handshake (liveness, not auth)
 
-`nrtucode_core_on_ucode_booted @0x9b0ab0` is the host's final step. Re-disassembled
-this session, it is a **4-byte read + a 4-byte write** through the platform
-read/write vtable — it boots nothing and copies nothing:
+`nrtucode_core_on_ucode_booted @0x9b0ab0` is the host's final step —
+a **4-byte read + a 4-byte write** through the platform
+read/write vtable, booting nothing and copying nothing:
 
 ```c
-/* Step 8 -- nrtucode_core_on_ucode_booted @0x9b0ab0 (re-disassembled this session).
+/* Step 8 -- nrtucode_core_on_ucode_booted @0x9b0ab0.
  * A liveness + single-owner handshake over DRAM[0]. NOT an authentication. */
 static int nrtucode_core_on_ucode_booted(nrtucode_core_t *core)
 {
@@ -431,7 +431,7 @@ static int nrtucode_core_on_ucode_booted(nrtucode_core_t *core)
 ```
 
 The device firmware writes `0x6099CB34` to `DRAM[0]` once its POOL ucode is up
-(re-verified on the carved DRAM blob as LE `34 cb 99 60` at offset 0 by the
+(on the carved DRAM blob as LE `34 cb 99 60` at offset 0 per the
 [boot-arming page](boot-arming-fault-recovery.md) §5c). The host reads it,
 **writes back `0x502B2DA1`** as its ownership claim, and marks the core booted.
 A second `nrtucode_core_t` that finds `0x502B2DA1` already present is refused
@@ -589,7 +589,7 @@ What **RELIES ON THE HOST** (no silicon enforces it):
 
 ## 4. Adversarial self-verification
 
-The five strongest **validated-vs-not** claims, re-checked this session against
+The five strongest **validated-vs-not** claims, checked against
 the named files (single-file `nm`/`objdump`/recomputation, never a folder grep):
 
 | # | Claim | Check against | Result |

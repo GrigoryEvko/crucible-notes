@@ -497,7 +497,7 @@ implementations and the SDMA ring.
 | `COHERENT` degrades to no-op under `NDEBUG`                                       | MED        | standard `assert()` semantics; bodies un-instantiated in this lib         |
 | TCM non-tracking intentional vs oversight                                        | LOW / NOTED | only the contract (no enforcer arg) is observable                        |
 
-**No corrections to SX-ABI-04** — every offset, size, enumerator, symbol, and the
+**No corrections to ABI-04** — every offset, size, enumerator, symbol, and the
 instruction-level `+0x04` proof reproduce exactly against the DWARF and headers.
 
 ---

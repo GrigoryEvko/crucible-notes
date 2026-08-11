@@ -10,11 +10,9 @@
 > page that owns the byte-level evidence. It does **not** re-derive the per-call
 > API reference table.
 
-Every claim is anchored to an address, symbol, string, or detail-page reference,
-and tagged **confidence · provenance**: `HIGH/MED/LOW` × `OBSERVED` (read
-first-hand from the shipped binary this pass) / `INFERRED` (reasoned across the
-lane) / `CARRIED` (consolidated from a cited sibling page, not re-disassembled
-here). All addresses are file offsets in the host x86-64 ELF, which is
+Every claim is anchored to an address, symbol, string, or detail-page reference;
+the page default is `[HIGH·OBSERVED]` and claims that depart from it carry an
+explicit tag. All addresses are file offsets in the host x86-64 ELF, which is
 VMA==file-offset for `.text`/`.rodata`/`.data` (verified below); the device-side
 Vision-Q7 facts are CARRIED from the device carves (`ncore2gp xtensa-elf-objdump`),
 never host-resident.
@@ -28,7 +26,7 @@ ELF: `122,956,336` bytes, ELF64 x86-64, `BuildID 8bb57aba0fb2e0035f1d88e9fc4fb3e
 not stripped (`.debug_info` present), `17,372` functions, version string
 `libnrt version 2.31.24.0`, git `0b044f4ce`, internally branded `KaenaRuntime` +
 `KaenaHal-2.31.0.0`. **[HIGH·OBSERVED]** (`readelf -n` / `objdump -T` /
-`rg -a 'libnrt version'`, this pass.)
+`rg -a 'libnrt version'`.)
 
 To a GPSIMD reimplementer it presents **four** things stacked into one library:
 
@@ -92,7 +90,7 @@ For the GPSIMD path the essential members are a small subset of nine families:
 | NRT_3.0.0 ASYNC | `nrta_cc_prepare` `nrta_cc_schedule` `nrta_execute_schedule` … | collectives async overlay (§6) |
 
 **[HIGH·OBSERVED** — all six bolded addresses confirmed via `objdump -T` /
-`function_addresses.json` this pass.]** The C ABI is the **only** supported entry;
+`function_addresses.json`.]** The C ABI is the **only** supported entry;
 everything below is internal C++ (subsystem histogram: `aws_hal 815` · `encd 289`
 · `tdrv 260` · `nrt 243` · `ndl 122` · `ucode 37` · `kmgr 29` · `dmem 23` …,
 CARRIED from [libnrt-surface.md](libnrt-surface.md)).
@@ -136,7 +134,7 @@ IRAM/DRAM install, **programmed-IO not DMA**) and **(b)** single-CSR write
 (`al_reg_write32 → csr_write → ndl_bar_write`, one 32-bit word, every control
 register) — are the only two ways anything reaches the silicon. **[HIGH·CARRIED**
 from [aws-hal-q7.md](aws-hal-q7.md); `kaena_khal @0xcaeb80` and `write_padded
-@0x473eb0` re-confirmed this pass.]**
+@0x473eb0` confirmed.]**
 
 > **NOTE — what a reimplementer can collapse.** Layers 3a+3b exist in libnrt only
 > because the device customop library is a *separate deliverable* that must also
@@ -145,8 +143,7 @@ from [aws-hal-q7.md](aws-hal-q7.md); `kaena_khal @0xcaeb80` and `write_padded
 > reimplementation that owns the device-code-host responsibilities itself can fold
 > 3a into 3b. **Layer 3b's arch-dispatch is NOT optional** — the register offsets
 > genuinely differ across Sunda/Cayman/Mariana (the per-arch `__FILE__` strings
-> `aws_hal_q7_{sunda,cayman,mariana}.c` are right there in `.rodata`, re-read this
-> pass). **[HIGH·INFERRED]**
+> `aws_hal_q7_{sunda,cayman,mariana}.c` are right there in `.rodata`). **[HIGH·INFERRED]**
 
 ---
 
@@ -208,7 +205,7 @@ nrt_init() {
 **[HIGH·OBSERVED** for the addresses/edges (`nrt_set_pool_eng_ucode →
 tdrv_set_pool_eng_ucode`, `ucode_init_module @0x225940`, `tpb_eng_init_hals_v2
 @0x2687e0`, `aws_hal_q7_ucode_eng_init @0x451080`, `write_padded @0x473eb0`,
-`pool_stdio_block_init @0x300c70` — all confirmed this pass); the override
+`pool_stdio_block_init @0x300c70` — all confirmed); the override
 instruction sequence and the per-arch run-stall split are **CARRIED** from
 [nrtucode-bringup.md](nrtucode-bringup.md) / [aws-hal-q7.md](aws-hal-q7.md) and
 the hw-decode divergence from [hw-decode-cam-programming.md](hw-decode-cam-programming.md).]**
@@ -244,7 +241,7 @@ nrt_load(neff, size, &model) -> nrt_load_util -> kmgr_load_nn_nc {
 ```
 
 `kbl_model_add @0x3058e0` is where the NEFF becomes a live device program. Its
-callee set is confirmed this pass:
+callee set is confirmed:
 
 ```c
 kbl_model_add -> dma_queue_bundle_instance_lut_init   /* per-engine DMA queue bundles */
@@ -256,7 +253,7 @@ kbl_model_add -> dma_queue_bundle_instance_lut_init   /* per-engine DMA queue bu
 
 **[HIGH·OBSERVED** — `kbl_model_add @0x3058e0` and its four named callee edges
 (`dma_queue_bundle_instance_lut_init`, `sequencer_setup_instr`, `ucode_stage_libs
-@0x310ea0`, `add_model`) confirmed via `callgraph.json` this pass.]**
+@0x310ea0`, `add_model`) confirmed via `callgraph.json`.]**
 
 > **NOTE — the instruction image is synthesized, not copied.** The compiler's
 > per-engine `.bin` is **not** the loaded image. `sequencer_setup_instr`
@@ -266,7 +263,7 @@ kbl_model_add -> dma_queue_bundle_instance_lut_init   /* per-engine DMA queue bu
 > MAIN is the expanded `def.json` stream. The ucode-library load sequence is
 > *inserted* into the POOL preamble — the bridge to the device-side Q7
 > `kernel_info_table`. Detail belongs to the NEFF assembly-pipeline part
-> (the `neff/` chapter is the canonical home; `DX-NEFF-05`). **[CARRIED]**
+> (the `neff/` chapter is the canonical home). **[CARRIED]**
 
 ### 2.3 The metaneff host I/O binding
 
@@ -286,8 +283,8 @@ slots the host fills from user args vs from checkpoint state/weights;
 `output_aliases_to` is the in-place/donated-buffer map. For a GPSIMD custom op the
 device-side I/O for `var_id i` rides a DMA descriptor on the
 `KBIN_DMA_RING_TYPE_CUSTOM_OP` (=16) queue. **[HIGH·CARRIED** — the metaneff I/O
-ABI is owned by the NEFF chapter, `DX-NEFF-02`; the `idx-16` custom-op ring is
-re-grounded in [execute-time-dispatch.md](execute-time-dispatch.md).]** metaneff
+ABI is owned by the NEFF chapter; the `idx-16` custom-op ring is
+grounded in [execute-time-dispatch.md](execute-time-dispatch.md).]** metaneff
 is the host key-ring; the NEFF var table is the device key-ring; `nrt_tensor`
 ordinals are the shared index space.
 
@@ -317,7 +314,7 @@ Three host hinges, all decided at `kbl_model_add` time:
   is BROADCAST**; all 8 Q7 cores resolve opcodes through it.
 
 **[HIGH·OBSERVED** — `ucode_stage_libs @0x310ea0`, `ucode_switch_libs @0x311100 →
-aws_hal_q7_swap_table` confirmed this pass; the three predicates' internals
+aws_hal_q7_swap_table` confirmed; the three predicates' internals
 **CARRIED** from [execute-time-dispatch.md](execute-time-dispatch.md).]** What is
 per-core is only **(i)** the 8 custom-op DMA queues and **(ii)** each core's
 PRID-rebased private SoC-DRAM window.
@@ -333,7 +330,7 @@ The host lowering for a pool-custom op is `translate_one_pseudo_embedding_update
 
 The `LOAD_POOL_ARGUMENT` is built by **`add_load_pool_arguments @0x276780`**
 (caller confirmed: `translate_one_pseudo_embedding_update_instr_v2`). I disassembled
-its prologue this pass and read the literal directly:
+its prologue and read the literal directly:
 
 ```asm
 276780 <add_load_pool_arguments>:
@@ -360,7 +357,7 @@ reads `one_value_read_addr`; the kernel posts on `completion_write_addr` at done
 Every TPB-sequencer instruction is a fixed 64-byte / `0x40`-stride slot.
 
 **[HIGH·OBSERVED** — `add_load_pool_arguments @0x276780`, the `mov $0x107a,%r10d`
-at `0x276788`, and the caller edge are first-hand this pass; the device-side ABI
+at `0x276788`, and the caller edge are first-hand; the device-side ABI
 consumption is **CARRIED** from [execute-time-dispatch.md](execute-time-dispatch.md)
 and [../abi/programming-model.md](../abi/programming-model.md).]**
 
@@ -373,7 +370,7 @@ and [../abi/programming-model.md](../abi/programming-model.md).]**
 
 `nrt_execute @0x91de0` is a thin profiling/trace bracket that tail-calls
 `nrt_execute_repeat @0x91650 → kmgr_exec @0xdfd50`. The spine, every edge
-confirmed this pass:
+confirmed:
 
 ```c
 nrt_execute -> nrt_execute_repeat -> kmgr_exec {
@@ -392,7 +389,7 @@ kmgr_exec`, `kmgr_exec → {kmgr_exec_pre, kmgr_sync_exec, kmgr_async_exec_add_w
 kmgr_async_exec_poll}`, `dlr_add_to_hw_exec_queue → kbl_compute_setup`,
 `dlr_kickoff_exec → kbl_infer_kickoff`, `kbl_infer_kickoff → exec_kickoff_infer`,
 `exec_kickoff_infer → ndl_nc_semaphore_increment` — all confirmed via
-`callgraph.json` + `function_addresses.json` this pass.]**
+`callgraph.json` + `function_addresses.json`.]**
 
 That single NeuronCore semaphore increment is the entire kickoff. The SP/SEQ
 sequencer, gated on it, unblocks and begins fetching the per-engine 64-B
@@ -444,7 +441,7 @@ thread does **not** spin on a register; it blocks on a pooled completion eventfd
 **[HIGH·CARRIED** — execute-completion detail in
 [execute-time-dispatch.md](execute-time-dispatch.md); the device-side notification
 PRODUCER (the TIE WUR `UR#0x14`/`#0x15` publish/error pair) and the three-path NQ
-consume model are device/interconnect carves (`DX-INT-03/04`).]**
+consume model are device/interconnect carves.]**
 
 ### 3.6 One op, 8 cores, end-to-end
 
@@ -577,7 +574,7 @@ ucode_teardown_module dlclose's libnrtucode_extisa.so.
 
 **[HIGH·OBSERVED** for the edges (`tdrv_destroy @0x269a70 → {ucode_core_destroy,
 ucode_ll_destroy, notification_destroy, pool_stdio_block_destroy}`, `nrt_close
-@0x93c20`, `nrt_unload @0xaa190` — confirmed this pass); the ordered loop is
+@0x93c20`, `nrt_unload @0xaa190` — confirmed); the ordered loop is
 **CARRIED** from [spmd-teardown.md](spmd-teardown.md).]**
 
 > **NOTE — "13 core_destroy" is the runtime loop count, not the static edge count.**
@@ -603,7 +600,7 @@ ucode_ll_destroy, notification_destroy, pool_stdio_block_destroy}`, `nrt_close
 `nrt_init_state` is read at the top of every public entry: calls before `INIT`
 return `NRT_UNINITIALIZED(13)`, after `CLOSE` return `NRT_CLOSED(14)`. **[HIGH·CARRIED**
 from [lifecycle-error-model.md](lifecycle-error-model.md), the canonical home;
-the `nrt_set_pool_eng_ucode` state guard (reject `0xd`/`0xe`) is re-grounded in
+the `nrt_set_pool_eng_ucode` state guard (reject `0xd`/`0xe`) is grounded in
 [nrtucode-bringup.md](nrtucode-bringup.md).]**
 
 ### 5.2 The nrt_status_t taxonomy
@@ -637,8 +634,7 @@ and raises an NQ interrupt. The host (`exec_request_process_errors`):
 network-proxy (→ `1206`), NQ ring full (→ `1204`) — sets the Band-C/B status + the
 latched `exec_fatal_status` + a `"(FATAL-RT-UNDEFINED-STATE)"` log line, dumps the
 per-engine instruction pointers, and returns `ERP_STEP_FATAL`. **[HIGH·CARRIED**
-from [lifecycle-error-model.md](lifecycle-error-model.md); the device PRODUCER side
-is `DX-INT-04`.]**
+from [lifecycle-error-model.md](lifecycle-error-model.md).]**
 
 ### 5.4 Timeout / hang detection
 
@@ -687,8 +683,8 @@ re-run or explicitly unloaded). **[HIGH·CARRIED** from
 
 ## 6. The version axis — NRT_2.0.0 (sync) vs NRT_3.0.0 (async nrta_*)
 
-The `145` real exports split across **two ELF symbol-version nodes**, both
-re-read this pass (`readelf -V` / `objdump -T`):
+The `145` real exports split across **two ELF symbol-version nodes**
+(`readelf -V` / `objdump -T`):
 
 | Node | Count | Surface |
 | --- | --- | --- |
@@ -699,7 +695,7 @@ The 8 `NRT_3.0.0` symbols, enumerated first-hand:
 `nrta_cc_prepare @0x7c980`, `nrta_cc_schedule @0x7bd80`, `nrta_execute_schedule
 @0x7bb00`, `nrta_get_sequence @0x7c450`, `nrta_is_completed @0x7c720`,
 `nrta_tensor_copy @0x7d8c0`, `nrta_tensor_read @0x7e440`, `nrta_tensor_write
-@0x7df10`. **[HIGH·OBSERVED** this pass.]**
+@0x7df10`. **[HIGH·OBSERVED.]**
 
 The `NRT_2.0.0` execute engine is selected at `nrt_init` (`kmgr_exec_mode_t`:
 `KMGR_EXEC_MODE_ASYNC=0` the implicit worker-queue path vs `_EXPLICIT_ASYNC=1`);
@@ -760,7 +756,7 @@ for the crate internals.]**
 
 ## 8. Confidence / scope / what a reimplementer still needs
 
-**HIGH · OBSERVED (re-verified first-hand this pass):** the binary identity
+**HIGH · OBSERVED:** the binary identity
 (`122,956,336` B, BuildID `8bb57aba…`, git `0b044f4ce`, `17,372` functions,
 VMA==file-offset for `.text`/`.rodata`/`.data`, **no `.data` delta**); the two
 version nodes (`NRT_2.0.0` parent, `NRT_3.0.0` child with exactly 8 `nrta_*`); the

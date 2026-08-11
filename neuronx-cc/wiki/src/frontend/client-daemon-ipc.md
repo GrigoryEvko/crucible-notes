@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 
 ## It is not the default path
 
-> **NOTE —** This subsystem is optional and has no internal caller. The wheel's only `console_scripts` entry (`dist-info/entry_points.txt`) is `neuronx-cc = neuronxcc.driver.CommandDriver:main`. A grep across every `.py`/`.so` for `cli.Client`, `cli.Daemon`, `neuron-cc-client`, `neuron-cc-daemon`, `com.amazon.neuronxcc`, `requests_unixsocket`, or `neuron.pid` matches **only** `Client.py` and `Daemon.py` themselves; `neuronxcc/cli/__init__.py` is 0 bytes. **CONFIRMED.** The IPC layer is reachable solely via `python -m neuronxcc.cli.Client …`; the default compile runs `CompileCommand` in-process (see [3.3](compilecommand-pipeline.md)).
+> **NOTE —** This subsystem is optional and has no internal caller. The wheel's only `console_scripts` entry (`dist-info/entry_points.txt`) is `neuronx-cc = neuronxcc.driver.CommandDriver:main`. A grep across every `.py`/`.so` for `cli.Client`, `cli.Daemon`, `neuron-cc-client`, `neuron-cc-daemon`, `com.amazon.neuronxcc`, `requests_unixsocket`, or `neuron.pid` matches **only** `Client.py` and `Daemon.py` themselves; `neuronxcc/cli/__init__.py` is 0 bytes. The IPC layer is reachable solely via `python -m neuronxcc.cli.Client …`; the default compile runs `CompileCommand` in-process (see [3.3](compilecommand-pipeline.md)).
 
 The runtime dependencies are pinned in `dist-info/METADATA`: `python-daemon>=2.2.4`, `requests-unixsocket>=0.1.5`, `psutil>=5.6.7`. None of these are vendored in the wheel — `PIDLockFile` (arriving transitively via `python-daemon`), `daemon.DaemonContext`, and `requests_unixsocket.Session` are third-party and their bodies are not bytes in this artifact; their semantics below are taken from those pinned versions and standard behaviour, tagged where so.
 
@@ -46,7 +46,7 @@ A single HTTP/1.1 verb (`POST`) over a stream socket carries one compile request
 
 ### Transport and address
 
-The transport is a `SOCK_STREAM` `AF_UNIX` socket in the Linux **abstract namespace** — the address string begins with a single NUL byte, so it has no filesystem path, no inode, and is auto-unlinked when the last reference closes. `requests_unixsocket` provides the `http+unix://` URL scheme; its netloc carries the URL-decoded socket address, and `/`-separated path components after the netloc become the HTTP path. **CONFIRMED.**
+The transport is a `SOCK_STREAM` `AF_UNIX` socket in the Linux **abstract namespace** — the address string begins with a single NUL byte, so it has no filesystem path, no inode, and is auto-unlinked when the last reference closes. `requests_unixsocket` provides the `http+unix://` URL scheme; its netloc carries the URL-decoded socket address, and `/`-separated path components after the netloc become the HTTP path.
 
 ```c
 // Daemon side — Daemon.run, Daemon.py:204-208
@@ -72,11 +72,11 @@ The dispatch lives in `do_POST` (`Daemon.py:128–178`). Only `POST` is implemen
 | POST | *(other path)* | ignored | ignored | `404` `text/plain` body `Unrecognized command <path>` | `Daemon.py:167–171` |
 | POST | *(any, on raise)* | — | — | `400` `text/plain` body `str(exception)` | `Daemon.py:172–178` |
 
-Confidence: all four rows **CONFIRMED** from the literal branch structure in `do_POST`; the `501` for non-POST is **HIGH** (stdlib `BaseHTTPRequestHandler` behaviour, no `do_*` override exists).
+All four rows are read from the literal branch structure in `do_POST`. The `501` for a non-POST verb is stdlib `BaseHTTPRequestHandler` behaviour rather than something this code writes — no `do_*` override for other verbs exists.
 
 > **GOTCHA — a successful `/compile` returns `200` with an empty body.** `send_response(200); end_headers()` (`Daemon.py:160–161`) is reached *after* `runPipeline` returns, with no `wfile.write`. The compiler's textual output goes to the logfile/console, **not** the HTTP body. `Client.run` only logs `response.text` when it is non-empty (`Client.py:107`). A reimplementer who expects the build log in the response will get nothing.
 
-> **QUIRK — `/exit` does not call `server.shutdown()`.** It flips the private `_BaseServer__shutdown_request` flag (`Daemon.py:164`) so `serve_forever`'s own loop exits cleanly after the current request, rather than blocking on a cross-thread `shutdown()`. `/exit` has **no in-package caller**: `Client.run` only ever hits `/compile` (`Client.py:96`). It is an out-of-band admin/DoS hook. **HIGH.**
+> **QUIRK — `/exit` does not call `server.shutdown()`.** It flips the private `_BaseServer__shutdown_request` flag (`Daemon.py:164`) so `serve_forever`'s own loop exits cleanly after the current request, rather than blocking on a cross-thread `shutdown()`. `/exit` has **no in-package caller**: `Client.run` only ever hits `/compile` (`Client.py:96`). It is an out-of-band admin/DoS hook.
 
 ### Request body construction
 
@@ -95,7 +95,7 @@ body = self.rfile.read(size).decode("ascii");                      // py:69  ASC
 argv = shlex.split(body);                                          // py:70
 ```
 
-> **GOTCHA — the body is decoded `ascii`, not `utf-8` (`Daemon.py:69`).** Compile args containing non-ASCII (e.g. a Unicode path) would raise `UnicodeDecodeError` inside `do_POST`, get caught by the `except BaseException`, and return `400`. The Client does not re-encode, so this is latent rather than exercised, but a reimplementer who switches to `utf-8` on either side changes observable behaviour. **MED.**
+> **GOTCHA — the body is decoded `ascii`, not `utf-8` (`Daemon.py:69`).** Compile args containing non-ASCII (e.g. a Unicode path) would raise `UnicodeDecodeError` inside `do_POST`, get caught by the `except BaseException`, and return `400`. The Client does not re-encode, so this is latent rather than exercised, but a reimplementer who switches to `utf-8` on either side changes observable behaviour.
 
 ### Peer-credential read (not an auth check)
 
@@ -110,7 +110,7 @@ self.client_address = (pid,);   // workaround: unix sockets have no client_addre
                                 // BaseHTTPRequestHandler.log_message assumes one exists
 ```
 
-The unpacked `pid` exists **only** so `BaseHTTPRequestHandler.log_message` (overridden at `Daemon.py:64` to funnel through `logger.info`) has something to print — the comment at `Daemon.py:137` says exactly this. The `uid`/`gid` are read and discarded. **No branch consumes the credentials for an access decision.** **CONFIRMED** — see [§ Access-control surface](#access-control-surface).
+The unpacked `pid` exists **only** so `BaseHTTPRequestHandler.log_message` (overridden at `Daemon.py:64` to funnel through `logger.info`) has something to print — the comment at `Daemon.py:137` says exactly this. The `uid`/`gid` are read and discarded. **No branch consumes the credentials for an access decision** — see [§ Access-control surface](#access-control-surface).
 
 ---
 
@@ -147,9 +147,9 @@ function Daemon_run(self):                                  // Daemon.py:180
 
 ### Concurrency
 
-The server is a bare `socketserver.UnixStreamServer` (`Daemon.py:208`) — **no** `ThreadingMixIn`, **no** `ForkingMixIn`. Requests are fully serialized: one `do_POST` runs at a time inside `serve_forever`. A second client connecting mid-compile blocks in the accept backlog until the first returns. **CONFIRMED.** Keep-alive is disabled per request via `self.close_connection = True` (`Daemon.py:139`) — one request per connection.
+The server is a bare `socketserver.UnixStreamServer` (`Daemon.py:208`) — **no** `ThreadingMixIn`, **no** `ForkingMixIn`. Requests are fully serialized: one `do_POST` runs at a time inside `serve_forever`. A second client connecting mid-compile blocks in the accept backlog until the first returns. Keep-alive is disabled per request via `self.close_connection = True` (`Daemon.py:139`) — one request per connection.
 
-Within a compile, `CompileCommand.runPipeline` (`Daemon.py:124`) runs its `driver.Pipeline` of `driver.Job`s sequentially, each `Job` spawning exactly one native `subprocess.Popen` child and `communicate()`-blocking before the next. Intra-stage native parallelism is pinned to one thread by `OMP_NUM_THREADS=1` in the daemon's inherited environment — set by the Client at spawn (`Client.py:56`). That env var is the only thread-control knob in this layer. **HIGH** (pipeline/job internals are Cython `.so`; symbol names recovered, bodies not decompiled — see [3.3](compilecommand-pipeline.md)).
+Within a compile, `CompileCommand.runPipeline` (`Daemon.py:124`) runs its `driver.Pipeline` of `driver.Job`s sequentially, each `Job` spawning exactly one native `subprocess.Popen` child and `communicate()`-blocking before the next. Intra-stage native parallelism is pinned to one thread by `OMP_NUM_THREADS=1` in the daemon's inherited environment — set by the Client at spawn (`Client.py:56`). That env var is the only thread-control knob in this layer. The pipeline and job internals themselves are Cython `.so` — symbol names are recovered, bodies are not decompiled; see [3.3](compilecommand-pipeline.md).
 
 ### Idle shutdown via SIGALRM
 
@@ -161,11 +161,11 @@ function timeoutHandler(signum, frame):                    // Daemon.py:212-214
 
 `signal.alarm(N)` is armed once at startup (`Daemon.py:217`, default `N=300`, `--inactivity-timeout 0` disables) and **re-armed on every POST** at the top of `do_POST` (`Daemon.py:130–131`), giving idle-TTL semantics. On fire, `timeoutHandler` spawns a thread to call `server.shutdown()`.
 
-> **GOTCHA — the shutdown must run on a *separate* thread.** `BaseServer.shutdown()` blocks until `serve_forever`'s loop acknowledges; calling it directly from the signal handler (which runs on the main thread *inside* `serve_forever`) would deadlock. The `threading.Thread(...).start()` at `Daemon.py:214` is the deadlock-breaker, not an optimisation. **CONFIRMED.**
+> **GOTCHA — the shutdown must run on a *separate* thread.** `BaseServer.shutdown()` blocks until `serve_forever`'s loop acknowledges; calling it directly from the signal handler (which runs on the main thread *inside* `serve_forever`) would deadlock. The `threading.Thread(...).start()` at `Daemon.py:214` is the deadlock-breaker, not an optimisation.
 
-> **NOTE — a compile longer than `N` seconds is not interrupted.** The single-threaded server cannot deliver the alarm's effect until the current `do_POST` returns to the select loop, and the per-request re-arm (`Daemon.py:131`) pushes the deadline out anyway. The daemon shuts down only after an *idle* gap of `N` s. **HIGH.**
+> **NOTE — a compile longer than `N` seconds is not interrupted.** The single-threaded server cannot deliver the alarm's effect until the current `do_POST` returns to the select loop, and the per-request re-arm (`Daemon.py:131`) pushes the deadline out anyway. The daemon shuts down only after an *idle* gap of `N` s.
 
-Beyond `SIGALRM`, `Daemon.py` installs no `SIGTERM`/`SIGINT`/`SIGCHLD` handler. `daemon.DaemonContext` installs its own default `signal_map` (python-daemon default: `SIGTTIN`/`SIGTTOU`/`SIGTSTP`→ignore, `SIGTERM`→terminate raising `SystemExit`), so `SIGTERM` triggers `DaemonContext.__exit__` → `PIDLockFile.release()` (clean pidfile removal); `SIGKILL` leaves a stale pidfile for the next client to garbage-collect. **HIGH** (DaemonContext behaviour is library-derived, not bytes in this wheel).
+Beyond `SIGALRM`, `Daemon.py` installs no `SIGTERM`/`SIGINT`/`SIGCHLD` handler. `daemon.DaemonContext` installs its own default `signal_map` (python-daemon default: `SIGTTIN`/`SIGTTOU`/`SIGTSTP`→ignore, `SIGTERM`→terminate raising `SystemExit`), so `SIGTERM` triggers `DaemonContext.__exit__` → `PIDLockFile.release()` (clean pidfile removal); `SIGKILL` leaves a stale pidfile for the next client to garbage-collect. The `DaemonContext` behaviour here is taken from the pinned library version, not from bytes in this wheel.
 
 ---
 
@@ -198,9 +198,9 @@ function Client_init(pid_file, inactivity_timeout, log_file, log_level):  // Cli
     self.abstractSocket = "com.amazon.neuronxcc." + str(daemonPid)         // py:81
 ```
 
-The pidfile-poll backoff is **0.5, 1.0, 2.0, 4.0, 8.0 s** (≈15.5 s max before raising), computed directly from `0.5 * pow(2, attempt)` (`Client.py:70`). **CONFIRMED.** `subprocess.check_call` blocks, but the spawned daemon detaches (`DaemonContext` double-fork), so `check_call` returns as soon as the intermediate process exits; the pidfile poll closes the race between detach and the post-fork pid write.
+The pidfile-poll backoff is **0.5, 1.0, 2.0, 4.0, 8.0 s** (≈15.5 s max before raising), computed directly from `0.5 * pow(2, attempt)` (`Client.py:70`). `subprocess.check_call` blocks, but the spawned daemon detaches (`DaemonContext` double-fork), so `check_call` returns as soon as the intermediate process exits; the pidfile poll closes the race between detach and the post-fork pid write.
 
-> **CORRECTION (D-A09/S2-01) —** an earlier pass implied `--verbose`/`--logfile`/`--logfile-verbose` are part of the daemon spawn argv. They are **not**. The spawn (`Client.py:43–60`) passes only `--log-level --pid-file --inactivity-timeout [--log-file]`; note `--verbose` is the *Client* CLI flag name (`Client.py:132`), whereas the daemon takes `--log-level` (`Daemon.py:242`). The `--verbose`/`--logfile`/`--logfile-verbose` triplet is injected later by the daemon into the *per-request* `CompileCommand`, not into the daemon's own argv (see below).
+> **GOTCHA —** three similar-looking verbosity flags live at three different layers, and none of them is the daemon's spawn argv. The spawn (`Client.py:43–60`) passes only `--log-level --pid-file --inactivity-timeout [--log-file]`. `--verbose` is the *Client's own* CLI flag (`Client.py:132`); the daemon's equivalent is `--log-level` (`Daemon.py:242`). The `--verbose`/`--logfile`/`--logfile-verbose` triplet is injected by the daemon into the *per-request* `CompileCommand`, never into its own argv.
 
 ### PIDLockFile lifecycle
 
@@ -212,7 +212,7 @@ The pidfile-poll backoff is **0.5, 1.0, 2.0, 4.0, 8.0 s** (≈15.5 s max before 
 | daemon release | `DaemonContext.__exit__` | `release()`: remove lockfile on clean shutdown |
 | crash | — | pidfile orphaned; next client detects via `psutil.pid_exists→False`, removes, respawns |
 
-The authoritative liveness check is `psutil.pid_exists(daemonPid)` (`Client.py:32,35`), not the lock — the pidfile is advisory. A `SIGKILL`'d daemon leaves a stale pidfile the next client garbage-collects. **HIGH.** A TOCTOU window exists (two clients racing on a stale pidfile, both removing+respawning); it is mitigated only by the losing daemon's `PIDLockFile.acquire()` `O_EXCL` failing, after which that daemon exits.
+The authoritative liveness check is `psutil.pid_exists(daemonPid)` (`Client.py:32,35`), not the lock — the pidfile is advisory. A `SIGKILL`'d daemon leaves a stale pidfile the next client garbage-collects. A TOCTOU window exists (two clients racing on a stale pidfile, both removing+respawning); it is mitigated only by the losing daemon's `PIDLockFile.acquire()` `O_EXCL` failing, after which that daemon exits.
 
 ### Per-request `chdir` and fresh CompileCommand
 
@@ -228,9 +228,9 @@ if path == "/compile":
     send_response(200); end_headers()                            // py:160-161
 ```
 
-`chdir` is `neuronxcc.driver.ContextUtils.chdir` — a context-manager class that saves cwd on enter, `os.chdir`s to the target, and restores on exit. Because it sits in an `ExitStack`, cwd is **always restored** after `__compile()`, even on exception. Each compile therefore runs in the client's cwd, then the daemon returns to its own. **CONFIRMED.**
+`chdir` is `neuronxcc.driver.ContextUtils.chdir` — a context-manager class that saves cwd on enter, `os.chdir`s to the target, and restores on exit. Because it sits in an `ExitStack`, cwd is **always restored** after `__compile()`, even on exception. Each compile therefore runs in the client's cwd, then the daemon returns to its own.
 
-> **GOTCHA — the daemon `mkdir -p`s the requested working directory.** `workingDir.mkdir(parents=True, exist_ok=True)` (`Daemon.py:155`) creates the path if it does not exist, *before* the chdir. The directory name comes verbatim from the client's `working_directory` query parameter. **CONFIRMED.** This matters for the access-control discussion below: a peer chooses the path and the daemon will create and enter it.
+> **GOTCHA — the daemon `mkdir -p`s the requested working directory.** `workingDir.mkdir(parents=True, exist_ok=True)` (`Daemon.py:155`) creates the path if it does not exist, *before* the chdir. The directory name comes verbatim from the client's `working_directory` query parameter. This matters for the access-control discussion below: a peer chooses the path and the daemon will create and enter it.
 
 Inside `__compile` (`Daemon.py:67–126`) a **fresh** `CompileCommand(parent_command="neuronx-cc")` is built per request (`Daemon.py:72`); the `FIXME` at `Daemon.py:71` explains why — `CompileCommand.run()` mutates the shared argparser, so reuse would leak state. The daemon then injects three args into `compileCommand.optional_group`:
 
@@ -240,13 +240,13 @@ Inside `__compile` (`Daemon.py:67–126`) a **fresh** `CompileCommand(parent_com
 | `--logfile` | `'log-neuron-cc.txt'` | logfile name, `Path(val).resolve()` to abs | `Daemon.py:97` |
 | `--logfile-verbose` | `'info'` | logfile verbosity via `to_numeric_level` | `Daemon.py:105` |
 
-`to_numeric_level` (`Daemon.py:74–87`) maps `0→WARNING, 1→INFO, 2→DEBUG`, passes a bare digit string through, else asserts the lowercased token is in the level list via `neuron_assert('DAE', 2, …)` and returns `getattr(logging, level.upper())`. Then `buildPipeline(argv, logger)` (`Daemon.py:113`) assembles the pipeline; the daemon copies `vars(args)`, pops `metrics_timestamp` (changes every run) and `inputs` (input files are content-hashed elsewhere — comments `Daemon.py:116–117`), `pprint`-formats the rest at debug level, and calls `runPipeline` (`Daemon.py:124`). **CONFIRMED** for the Python glue; the `buildPipeline`/`runPipeline` internals are Cython `.so` (symbol names only) — see [3.3](compilecommand-pipeline.md).
+`to_numeric_level` (`Daemon.py:74–87`) maps `0→WARNING, 1→INFO, 2→DEBUG`, passes a bare digit string through, else asserts the lowercased token is in the level list via `neuron_assert('DAE', 2, …)` and returns `getattr(logging, level.upper())`. Then `buildPipeline(argv, logger)` (`Daemon.py:113`) assembles the pipeline; the daemon copies `vars(args)`, pops `metrics_timestamp` (changes every run) and `inputs` (input files are content-hashed elsewhere — comments `Daemon.py:116–117`), `pprint`-formats the rest at debug level, and calls `runPipeline` (`Daemon.py:124`). All of that is readable Python; the `buildPipeline`/`runPipeline` internals behind it are Cython `.so`, recovered by symbol name only — see [3.3](compilecommand-pipeline.md).
 
 ### Client-side retry and exit code
 
 `Client.run` retries the POST up to 5 times with the same 0.5/1/2/4/8 s backoff on any connection `Exception` (`Client.py:92–104`), then returns `os.EX_OK` if a `Response` arrived (`Client.py:106–110`) or `os.EX_DATAERR` (=65) if every attempt failed (`Client.py:111–113`).
 
-> **GOTCHA — a daemon `400`/`404` still exits `EX_OK`.** `if response:` (`Client.py:106`) is truthy for *any* returned `requests.Response`, including `400` and `404`. A compile that failed inside the daemon (caught → `400` + error text) returns `EX_OK` from `neuron-cc-client` with the error merely logged. The caller cannot distinguish a clean compile from a daemon error by exit status. **HIGH.**
+> **GOTCHA — a daemon `400`/`404` still exits `EX_OK`.** `if response:` (`Client.py:106`) is truthy for *any* returned `requests.Response`, including `400` and `404`. A compile that failed inside the daemon (caught → `400` + error text) returns `EX_OK` from `neuron-cc-client` with the error merely logged. The caller cannot distinguish a clean compile from a daemon error by exit status.
 
 ---
 
@@ -328,13 +328,13 @@ Server: BaseHTTP/0.6 Python/3.10.x
 Date: …
 ```
 
-(empty body). The Client logs nothing from the body (`response.text` is empty), logs `"Compilation completed"`, and returns `EX_OK`. On any raised exception inside the `try` (`Daemon.py:172`), the response is instead `400 text/plain` with body `str(e)`; on an unknown path, `404 text/plain` body `Unrecognized command <path>`. **CONFIRMED** for the request/response structure; exact header text (`Server`, `HTTP/1.0`) is **HIGH** (stdlib `BaseHTTPRequestHandler` defaults, not re-derived from this wheel).
+(empty body). The Client logs nothing from the body (`response.text` is empty), logs `"Compilation completed"`, and returns `EX_OK`. On any raised exception inside the `try` (`Daemon.py:172`), the response is instead `400 text/plain` with body `str(e)`; on an unknown path, `404 text/plain` body `Unrecognized command <path>`. The request/response structure above comes from the code; the exact header text (`Server`, `HTTP/1.0`) is the stdlib `BaseHTTPRequestHandler` default rather than something re-derived from this wheel.
 
 ---
 
 ## Access-Control Surface
 
-> **NOTE (security — structural observation, CONFIRMED) —** The daemon performs **no authentication and no authorization** on the abstract `AF_UNIX` socket. The only identity the handler reads is `SO_PEERCRED` (`Daemon.py:134–138`), and the unpacked `(pid, uid, gid)` is used solely to populate `self.client_address` for log formatting — no branch in `do_POST`/`__compile` consumes it for an access decision. There is no allow-list, no `uid` comparison, no token, no rate limiting, and no request-body cap beyond `Content-Length`.
+> **NOTE (security — structural observation) —** The daemon performs **no authentication and no authorization** on the abstract `AF_UNIX` socket. The only identity the handler reads is `SO_PEERCRED` (`Daemon.py:134–138`), and the unpacked `(pid, uid, gid)` is used solely to populate `self.client_address` for log formatting — no branch in `do_POST`/`__compile` consumes it for an access decision. There is no allow-list, no `uid` comparison, no token, no rate limiting, and no request-body cap beyond `Content-Length`.
 
 This is a factual property of the code path, not an exploit. Stated neutrally for a reimplementer reasoning about the trust boundary:
 
@@ -342,7 +342,7 @@ This is a factual property of the code path, not an exploit. Stated neutrally fo
 - **`/compile` runs an arbitrary compiler argv** (`shlex.split` of the request body → `CompileCommand`), in a **peer-chosen `working_directory`** that the daemon will `mkdir -p` and `chdir` into (`Daemon.py:155–156`), and which ultimately drives native `subprocess.Popen` stages (the Jobs).
 - **`/exit` is an unauthenticated shutdown** (`Daemon.py:162–166`) that any peer can POST.
 
-The earlier-pass label "no authn/authz" is upheld and tagged **CONFIRMED** here because the *absence* is directly visible in the code: every read of peer identity flows into logging, and the two routes execute unconditionally on path match. A reimplementer who needs a multi-tenant or networked deployment must add the access-control layer that this design intentionally omits — the design assumes a single trusted local user reusing their own warm compiler.
+The absence is directly visible in the code: every read of peer identity flows into logging, and the two routes execute unconditionally on path match. A reimplementer who needs a multi-tenant or networked deployment must add the access-control layer that this design intentionally omits — the design assumes a single trusted local user reusing their own warm compiler.
 
 ---
 
@@ -353,15 +353,15 @@ The earlier-pass label "no authn/authz" is upheld and tagged **CONFIRMED** here 
 | `LockDirectory` (class) | `Daemon.py:38–49` | **defined but never referenced** anywhere in `Daemon.py` — dead/legacy (`flock`-based dir lock) |
 | `files_preserve_names` | `Daemon.py:185–190` | computed (`/proc/self/fd` readlinks) but **never used** — diagnostic remnant; only `files_preserve` (the fd ints) is passed to `DaemonContext` |
 
-Both confirmed by reading every reference in `Daemon.py`. **HIGH.** A reimplementer can omit them with no behavioural change.
+Both were checked against every reference in `Daemon.py`. A reimplementer can omit them with no behavioural change.
 
 ---
 
-## Gaps & Provenance
+## Limits of this reading
 
-- **G1 — pipeline internals.** `CompileCommand.buildPipeline`/`runPipeline`, the `driver.Pipeline`/`driver.Job` bodies, and `ContextUtils.chdir`/`Actions.str2bool`/`logging.Assert.neuron_assert` are Cython `.so` modules; only symbol names and string literals are recovered, bodies not decompiled. Job ordering is covered in [3.3](compilecommand-pipeline.md).
-- **G2 — third-party semantics.** `PIDLockFile`, `daemon.DaemonContext`, and `requests_unixsocket.Session` are not vendored; their `O_EXCL` lock, double-fork/`signal_map`, and `http+unix://` URL handling are taken from the pinned versions (`python-daemon>=2.2.4`, `requests-unixsocket>=0.1.5`, `psutil>=5.6.7`) and standard behaviour, tagged **HIGH** where cited.
-- **G3 — exact HTTP framing.** Response header bytes (`Server`, protocol version) are stdlib `BaseHTTPRequestHandler` defaults, shown illustratively; not re-derived from this wheel.
+- **Pipeline internals.** `CompileCommand.buildPipeline`/`runPipeline`, the `driver.Pipeline`/`driver.Job` bodies, and `ContextUtils.chdir` / `Actions.str2bool` / `logging.Assert.neuron_assert` are Cython `.so` modules; only symbol names and string literals are recovered, and no body was decompiled. Job ordering is covered in [3.3](compilecommand-pipeline.md).
+- **Third-party semantics.** `PIDLockFile`, `daemon.DaemonContext`, and `requests_unixsocket.Session` are not vendored in the wheel. Their `O_EXCL` lock, double-fork and `signal_map`, and `http+unix://` URL handling are taken from the pinned versions (`python-daemon>=2.2.4`, `requests-unixsocket>=0.1.5`, `psutil>=5.6.7`) and from standard behaviour.
+- **Exact HTTP framing.** The response header bytes (`Server`, protocol version) are stdlib `BaseHTTPRequestHandler` defaults shown illustratively, not re-derived from this wheel.
 
 ---
 

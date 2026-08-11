@@ -36,7 +36,7 @@ For reimplementation, the contract is:
 
 Detect the RMS denominator subgraph `sqrt(Σ x²)` and box it into one op so the Penguin back-half can route it onto a fused RMSNorm kernel. The recognized window is three ops — `mul`, `reduce`, `sqrt` — and nothing more. The reciprocal (`1/…`), the `+eps`, the broadcast, and the scale-by-weight that finish a true RMSNorm are intentionally left in the graph; the `MulRedSqrt` marker is a *hint*, not the whole normalization.
 
-> **CORRECTION (C03) —** the prior design sketch (and the task brief) described this idiom as `mul → reduce → rsqrt`. The binary matches `mhlo::SqrtOp` (TypeID @0x9d304b0), **not** `RsqrtOp`. There is no reciprocal in the fused cluster. A reimplementation that keys off `rsqrt` will never fire on the shapes this pass actually fuses. CERTAIN.
+> **GOTCHA — the matched consumer is `sqrt`, not `rsqrt`.** The idiom is widely written `mul → reduce → rsqrt`, because that is the shape a hand-written RMSNorm takes. This pass matches `mhlo::SqrtOp` (TypeID @`0x9d304b0`); there is no reciprocal anywhere in the fused cluster. A matcher keyed on `rsqrt` never fires.
 
 ### Entry Point
 
@@ -57,13 +57,12 @@ hilo::NeuronOpFusion::runOnOperation (@0x2101680)   ── disasm-verified call 
        ├─ fuseLog1pOp                         ── call @0x21016be
        └─ fuseElementwiseOps                  ── tail-jmp @0x210170b
 ```
-> **CORRECTION (audit #816) —** an earlier draft of this tree listed the order as
-> `fuseDotLogisticOp → fuseElementwiseOps → fuseMulRedSqrt → fuseSubExp → …` and called this
-> pass "3rd of 6". The disasm of `runOnOperation` @0x2101680 shows `fuseSubExp` is the
-> **unconditional first** call (@0x2101696), `fuseMulRedSqrt` runs **immediately after**
-> `fuseDotLogisticOp` (@0x21016f2, gated with it on the `fuseDotLogistic` flag), and
-> `fuseElementwiseOps` is the **tail** call (@0x210170b under `generalElementwiseFusion`).
-> The order above is the byte-true one; see [4.34](op-fusion-dot-elementwise.md). CERTAIN.
+The call order above is the one `runOnOperation` @`0x2101680` actually executes, and it is
+worth reading carefully: `fuseSubExp` goes first and unconditionally (@`0x2101696`);
+`fuseMulRedSqrt` runs immediately after `fuseDotLogisticOp` (@`0x21016f2`), sharing its
+`fuseDotLogistic` gate; and `fuseElementwiseOps` is the tail call (@`0x210170b`, under
+`generalElementwiseFusion`). See [op-fusion](op-fusion-dot-elementwise.md) for the sibling
+passes.
 
 > **NOTE —** the matched window is anchored on the *reduce*, not the mul or the sqrt. The pass `walk`s for `mhlo::ReduceOp`; from each reduce it probes *down* to the sqrt consumer and *up* to the mul producer. Anchoring on the reduce is deliberate: it is the one op in the chain whose identity (a reduction) most narrows the search, and it sits in the middle so both directions are a single hop.
 
@@ -148,7 +147,7 @@ The matched subgraph, in MHLO:
 | `MhloToPythonPrinter::printMulRedSqrtFusionOp` | 0x20f1f60 | 4032 | MHLO Penguin emitter | CERTAIN |
 | `StableHLOToPythonPrinter::printMulRedSqrtCompositeOp` | 0x2191450 | 4187 | StableHLO Penguin emitter | CERTAIN |
 
-> **CORRECTION (C03) —** the brief's `fuseMulRedSqrtCounter` "static" applies to the **StableHLO** twin only (`hilo::StableHLONeuronOpFusion::fuseMulRedSqrtCounter` @0x9c70580). The MHLO `NeuronOpFusion::fuseMulRedSqrt` driver has *no* named counter symbol and emits *no* diagnostic — it is a pure IR rewrite. The counter's use-site (a VLOG/stat increment) was not located in the MHLO driver; its ctor only zero-inits it. MED→HIGH.
+> **NOTE — only the StableHLO twin has a counter.** `fuseMulRedSqrtCounter` exists as `hilo::StableHLONeuronOpFusion::fuseMulRedSqrtCounter` @`0x9c70580`. The MHLO `NeuronOpFusion::fuseMulRedSqrt` driver has no named counter symbol and emits no diagnostic at all — it is a pure IR rewrite. Even on the StableHLO side the counter's use-site was not located; its constructor only zero-initializes it.
 
 ---
 
@@ -364,21 +363,40 @@ Diagnostics that belong to the `AwsNeuronRmsNorm` path (and confirm the two are 
 
 A matching backward op exists: `AwsNeuronRmsNormBackward` (@0x2628ab) / `mhlo.rms_norm_backward` (@0x22638a) → `printRmsNorm(…, /*backward=*/true)`.
 
-> **NOTE —** the `NeuronTensorOp(op="MulRedSqrt")` marker and the `AwsNeuronRmsNorm` marker are both lowered, downstream in the Penguin middle-end / Walrus backend, onto the nkilib RMSNorm kernels under `neuronxcc/nki/_pre_prod_kernels/rms_norm/` (`rmsnorm_quant*.py`) and `…/rmsnorm_tkg.py`. The op→kernel binding and the back-half reconstruction of `+eps`, the reciprocal, and the weight broadcast from the `MulRedSqrt` hint are a Penguin/Walrus concern, not traced here. See 6.7.5.
+> **NOTE —** the `NeuronTensorOp(op="MulRedSqrt")` marker and the `AwsNeuronRmsNorm` marker are both lowered, downstream in the Penguin middle-end / Walrus backend, onto the nkilib RMSNorm kernels under `neuronxcc/nki/_pre_prod_kernels/rms_norm/` (`rmsnorm_quant*.py`) and `…/rmsnorm_tkg.py`. The op→kernel binding and the back-half reconstruction of `+eps`, the reciprocal, and the weight broadcast from the `MulRedSqrt` hint are a Penguin/Walrus concern, not traced here. See the RMSNorm kernel page.
 
 ---
 
-## Adversarial self-verification
+## Evidence summary and limits of this reading
 
-The five strongest claims, re-challenged against the binary:
+This binary ships without decompiled bodies, so every structure on this page is transcribed
+from disassembly plus TypeID and string anchors rather than from reconstructed C.
 
-1. **Matched consumer is `SqrtOp`, not `RsqrtOp`.** P2 (@0x20fba0d) compares the consumer TypeID against `TypeID<mhlo::SqrtOp>` @0x9d304b0, not an Rsqrt resolver. The cluster is 3 ops (mul/reduce/sqrt). **CONFIRMED** — and it overturns the brief's `rsqrt` premise (CORRECTION C03 above).
-2. **Walk anchor is `ReduceOp`.** The trampoline @0x20fbc30 filters `op.typeID() == TypeID<mhlo::ReduceOp>` before tail-calling the matcher; the matcher probes down to sqrt and up to mul. **CONFIRMED**.
-3. **`codeGen` operands = updateInputs-remapped live-ins, results = live-out types, terminator = live-out values.** Steps 4b/4c/4d/4g in the build sequence, anchored to `updateInputs` @0x2102630 and `mhlo::FusionOp::build` @0x8f9bcb0. The remap is a real legalization (via `getOperationReturnOp` @0x21c2f50), not dedup. **CONFIRMED**.
-4. **Live-in = defined-outside-used-inside; live-out = defined-inside-used-outside**, both over the `DenseSet` at `this+0x20`. `populateLiveIns` @0x2103760 and `populateLiveOuts` @0x2103680 implement exactly these two rules. **CONFIRMED**.
-5. **`FusionKind` is the only kind discriminator and `codeGen` is name-agnostic** (7 callers across all fusions). Step 4h stamps `StringAttr("FusionKind", this.kindTag)`; the tag is the ctor's `StringRef`. The composite roster @0x2e0258 lists MulRedSqrt as one of 7 kinds. **CONFIRMED**, with the caveat that the composite-kind set ≠ the fuse*-pass set (QUIRK above).
+Four claims are pinned at specific instructions. The matched consumer is `SqrtOp`: predicate
+P2 (@`0x20fba0d`) compares the consumer TypeID against `TypeID<mhlo::SqrtOp>` @`0x9d304b0`,
+so the cluster is exactly three ops. The walk anchor is `ReduceOp`: the trampoline
+@`0x20fbc30` filters on `TypeID<mhlo::ReduceOp>` before tail-calling the matcher, which then
+probes down to sqrt and up to mul. `codeGen`'s operand/result/terminator contract —
+`updateInputs`-remapped live-ins, live-out types, live-out values — sits in build steps
+4b/4c/4d/4g, anchored to `updateInputs` @`0x2102630` and `mhlo::FusionOp::build`
+@`0x8f9bcb0`, with the remap being a genuine legalization through `getOperationReturnOp`
+@`0x21c2f50` rather than a dedup. And the live-in / live-out definitions are literally what
+`populateLiveIns` @`0x2103760` and `populateLiveOuts` @`0x2103680` compute over the
+`DenseSet` at `this+0x20`.
 
-**Tagged uncertainties** — the reduce-region opcode is never checked (P5 captures `operand(1)` but does not verify `kAdd`; LOW that no downstream check exists either); the BlockArgument array base offset in 4f reads `[fusionOp+0x48 + i*0x20 + 0x18]` (stride matches `BlockArgument` but base-vs-operand-impl is MED — semantics CERTAIN, offset MED); `getCompositeReturnOp` @0x21bffe0 is inferred as the `func.return`-walking twin of `getOperationReturnOp` (HIGH, not line-by-line transcribed); the StableHLO `fuseMulRedSqrtCounter` use-site (what it counts, where logged) was not located (MED). No address, offset, or string on this page is fabricated; all derive from `hlo2penguin` disasm + TypeID/string anchors (the binary was `NVOPEN_IDA_SKIP_DECOMPILE`, so structure is transcribed from disasm rather than decompiled `.c`).
+`FusionKind` being the sole kind discriminator is equally direct — step 4h stamps
+`StringAttr("FusionKind", this.kindTag)` from the constructor's `StringRef`, and the
+composite roster @`0x2e0258` lists MulRedSqrt among seven kinds — subject to the caveat
+above that the composite-kind set is not the same as the `fuse*`-pass set.
+
+Four things stay open. The reduce region's opcode is never checked: P5 captures `operand(1)`
+without verifying `kAdd`, and no downstream check was found either. The BlockArgument array
+read in step 4f, `[fusionOp+0x48 + i*0x20 + 0x18]`, has a stride that matches
+`BlockArgument`, but whether the base is the argument array or an operand impl is not
+settled — the semantics are certain, the offset less so. `getCompositeReturnOp` @`0x21bffe0`
+is taken to be the `func.return`-walking twin of `getOperationReturnOp` without a
+line-by-line transcription. And the StableHLO `fuseMulRedSqrtCounter` use-site — what it
+counts and where it is logged — was never located.
 
 ---
 

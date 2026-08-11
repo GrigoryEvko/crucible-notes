@@ -7,7 +7,7 @@ that sequence into a destination tensor holding **exactly 2×** the source eleme
 with the highest destination dimension **pinned to 2** (the min/max pair). It pins the
 opcode (`0xbe`), the 64-byte `NEURON_ISA_TPB_S3D3_SEQ_BOUNDS_STRUCT` operand struct
 byte-for-byte from the shipped ISA header (compile-verified `sizeof == 64` on all three
-supporting generations this session), the **DTYPE-keyed two-leg datapath** recovered from
+supporting generations), the **DTYPE-keyed two-leg datapath** recovered from
 the carved POOL firmware (an integer min/max leg vs an ordered-float-compare leg), the
 **`{INT32, FP32}` hard-whitelist dtype gate** (`has_valid_seq_bounds_dtype`, both
 `in_dtype` *and* `out_dtype`), the per-dtype valid-bounds contract
@@ -46,17 +46,17 @@ page documents.
 
 GetSequenceBounds is a **first-class POOL-engine ISA instruction**, not a private helper.
 Three independent anchors — the demangled `.xt.prop` symbol, the compiled opcode/struct,
-and the baked DEBUG self-name strings — converge on the same instruction:
+and the baked DEBUG self-name strings — converge on the same instruction (all HIGH/OBSERVED):
 
-| Anchor | Value | Source | Tag |
-|---|---|---|---|
-| Opcode | `NEURON_ISA_TPB_OPCODE_GET_SEQUENCE_BOUNDS = 0xbe` | `common.h:261` | HIGH / OBSERVED |
-| Operand struct | `NEURON_ISA_TPB_S3D3_SEQ_BOUNDS_STRUCT` (64 B) | `s3d3_seq_bounds.h:19-31` | HIGH / OBSERVED |
-| `0xbe → struct` binding | `instruction_mapping.json:259-260` | compile + JSON | HIGH / OBSERVED |
-| Device symbol (mangled) | `_Z24get_sequence_bounds_implj20NEURON_ISA_TPB_DTYPE` | `.xt.prop` section name | HIGH / OBSERVED |
-| Device symbol (demangled) | `get_sequence_bounds_impl(unsigned int, NEURON_ISA_TPB_DTYPE)` | `c++filt` | HIGH / OBSERVED |
-| DEBUG self-name (decode) | `"P%i: GetSequenceBounds : num_chans = %0d"` @ `0x1be4` | POOL DEBUG DRAM | HIGH / OBSERVED |
-| DEBUG self-name (active) | `"P%i: Decode : GetSequenceBounds : active_chans = %d"` @ `0x1c0e` | POOL DEBUG DRAM | HIGH / OBSERVED |
+| Anchor | Value | Source |
+|---|---|---|
+| Opcode | `NEURON_ISA_TPB_OPCODE_GET_SEQUENCE_BOUNDS = 0xbe` | `common.h:261` |
+| Operand struct | `NEURON_ISA_TPB_S3D3_SEQ_BOUNDS_STRUCT` (64 B) | `s3d3_seq_bounds.h:19-31` |
+| `0xbe → struct` binding | `instruction_mapping.json:259-260` | compile + JSON |
+| Device symbol (mangled) | `_Z24get_sequence_bounds_implj20NEURON_ISA_TPB_DTYPE` | `.xt.prop` section name |
+| Device symbol (demangled) | `get_sequence_bounds_impl(unsigned int, NEURON_ISA_TPB_DTYPE)` | `c++filt` |
+| DEBUG self-name (decode) | `"P%i: GetSequenceBounds : num_chans = %0d"` @ `0x1be4` | POOL DEBUG DRAM |
+| DEBUG self-name (active) | `"P%i: Decode : GetSequenceBounds : active_chans = %d"` @ `0x1c0e` | POOL DEBUG DRAM |
 
 The mangled symbol is the single most informative anchor: the suffix
 `j20NEURON_ISA_TPB_DTYPE` proves the device kernel takes **two by-value arguments** —
@@ -91,7 +91,7 @@ struct kernel_info_record {
 
 The dispatcher linear-scans the packed `(spec, opcode)` key, then `callx8 funcVA` into a
 small **entry trampoline**; the trampoline does FLIX register setup and then `callx8` again
-into the **body** (the address the `.xt.prop` func-start names). Byte-exact, this session:
+into the **body** (the address the `.xt.prop` func-start names). Byte-exact:
 
 | Image | Table location | Index | `{opcode, funcVA}` | Trampoline | Body |
 |---|---|---|---|---|---|
@@ -139,7 +139,7 @@ func-start in each image. `.text` VMA `0x01000000` maps to file offset `0x100`
 ## 2. The operand struct — `NEURON_ISA_TPB_S3D3_SEQ_BOUNDS_STRUCT` (64 B)
 
 The `instruction_mapping.json` binds opcode `0xbe` (`GET_SEQUENCE_BOUNDS`) to exactly one
-struct. Recompiled this session (`gcc -std=c11 -I<hdr>`, `offsetof`/`sizeof`; the header's
+struct. Recompiled (`gcc -std=c11 -I<hdr>`, `offsetof`/`sizeof`; the header's
 `ISA_STATIC_ASSERT(sizeof == 64)` passes):
 
 | off | size | field | type | role |
@@ -155,7 +155,7 @@ struct. Recompiled this session (`gcc -std=c11 -I<hdr>`, `offsetof`/`sizeof`; th
 | 48 | 16 | `reserved1[16]` | `uint8_t[16]` | ALL 16 MUST be 0 |
 
 ```text
-verify_seqb (gcc 16.1.1, -std=c11, this session) — OBSERVED:
+verify_seqb (gcc 16.1.1, -std=c11) — OBSERVED:
   sizeof=64
   num_active@12 in_dtype@14 out_dtype@15 src@16 dst@32 reserved1@48
   sizeof(TENSOR3D)=16 sizeof(DTYPE)=1 sizeof(HEADER)=4 sizeof(EVENTS)=8
@@ -292,7 +292,7 @@ void get_sequence_bounds_impl(unsigned int elem_count, NEURON_ISA_TPB_DTYPE dtyp
 ### 3.4 The codec-neighbor template (corroborating the int/float split)
 
 The `.xt.prop` section immediately following `get_sequence_bounds_impl` is the pair (both
-demangled and confirmed present in the carved `libnrtucode` POOL images this session):
+demangled and confirmed present in the carved `libnrtucode` POOL images):
 
 ```text
 _Z23nonzero_with_count_implIfEvjiijj  = nonzero_with_count_impl<float>(...)
@@ -315,7 +315,7 @@ The "per-dtype bounds table" reimplementers must enforce *is* the
 `is_valid_get_sequence_bounds` predicate, read verbatim from the header (all comment
 clauses; the generator's Rust-pseudocode), **identical across cayman/mariana/maverick**
 (the three seq_bounds headers are semantically identical modulo the NC-version comment
-line, this session). HIGH/OBSERVED.
+line). HIGH/OBSERVED.
 
 ```rust
 fn is_valid_get_sequence_bounds(i: Inst, nc: NeuronCoreVersion) -> bool {
@@ -463,8 +463,8 @@ is no per-gen bounds change.
 | MARIANA (V4) | `0xbe` | present | `{INT32,FP32}` | `MARIANA_NX_POOL` + `MARIANA_PLUS_NX_POOL` PERF + DEBUG + TEST | identical `.xt.prop` |
 | MAVERICK (V5) | `0xbe` | present | `{INT32,FP32}` | `MAVERICK_NX_POOL` PERF + TEST (**no DEBUG**) | `kernel_info 0xbe → rel 0x4770` |
 
-The per-gen POOL image names and the DEBUG self-name strings were re-verified this session
-directly in the shipped `libnrtucode_internal.so` (the embedded firmware archive):
+The per-gen POOL image names and the DEBUG self-name strings are read directly out of the
+shipped `libnrtucode_internal.so` (the embedded firmware archive):
 CAYMAN/MARIANA/MARIANA_PLUS ship `POOL_PERF` + `POOL_DEBUG` + `POOL_TEST`; **MAVERICK ships
 `POOL_PERF` + `POOL_TEST` with no `POOL_DEBUG`** — which is why the MAVERICK image is
 stripped and its interiors are header-OBSERVED only.

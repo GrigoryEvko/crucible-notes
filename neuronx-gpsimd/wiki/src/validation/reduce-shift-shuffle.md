@@ -9,7 +9,7 @@ vector (SHUFFLE / SELECT). The method is unchanged — same harness, same four l
 the SEM block, the nki op, and the FLIX mnemonics change.
 
 The result up front: across **83 directed edge probes + 2,005 seeded fuzz cases = 2,088
-total**, the four references — the [GX-SEM RTL model](../isa/semantics/formal-isa-model.md)
+total**, the four references — the [SEM RTL model](../isa/semantics/formal-isa-model.md)
 **(a)**, the device-toolchain FLIX decode **(b)**, the nki-0.3.0 numpy reference **(c)**, and
 the shipped `libfiss-base.so` value leaves **driven LIVE via ctypes (d)** — are
 **bit-identical on every op the references jointly define. Zero mismatches.** One initial SEM
@@ -34,7 +34,7 @@ ISS oracle's cross-lane staging at
 
 ---
 
-## 1. Why these three families group here  `[HIGH]`
+## 1. Why these three families group here
 
 The elementwise families ([four-oracle-method](four-oracle-method.md) §4, mac-multiply,
 convert-pack-cast) all share one property: the leaf is **per-lane** —
@@ -62,10 +62,10 @@ again, distinct algorithms, identical bytes.
 
 ---
 
-## 2. The leaf root set — nm-grounded  `[HIGH/OBSERVED]`
+## 2. The leaf root set — nm-grounded
 
 Enumerated with `nm <abs>/libfiss-base.so | rg 'module__xdref_<root>'` against the
-**12,330,016-byte** binary this pass (never the decompile):
+**12,330,016-byte** binary (never the decompile):
 
 ```
 .../extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/libfiss-base.so
@@ -113,12 +113,12 @@ amount-field bit-width.
 
 ---
 
-## 3. The four references — exactly how each computes  `[HIGH]`
+## 3. The four references — exactly how each computes
 
-### Leg (a) — GX-SEM closed-form model  `[MED/INFERRED, HIGH-in-value]`
+### Leg (a) — SEM closed-form model  `[MED/INFERRED, HIGH-in-value]`
 
 Bit-precise RTL semantics lifted from the TIE-XML
-([formal-isa-model](../isa/semantics/formal-isa-model.md)) and this-pass disassembly:
+([formal-isa-model](../isa/semantics/formal-isa-model.md)) and disassembly:
 
 ```python
 # REDUCE
@@ -150,12 +150,12 @@ def sem_dcmprs(src, vbool):                                               # pred
     return out
 ```
 
-### Leg (b) — GX-FLIX device bundle decode  `[HIGH/OBSERVED]`
+### Leg (b) — FLIX device bundle decode
 
 Each mnemonic is assembled by the device `xtensa-elf-as` and decoded by the device
 `xtensa-elf-objdump` (XTENSA_CORE=ncore2gp). The decode's role is **identity**: raw bytes →
-mnemonic, the mnemonic binding the value semantic legs (a)/(d) compute. Re-run this pass —
-each 8-byte form is the `{nop; nop; nop; <op>}` N0 bundle, the value op in slot 3:
+mnemonic, the mnemonic binding the value semantic legs (a)/(d) compute. Each 8-byte form is the
+`{nop; nop; nop; <op>}` N0 bundle, the value op in slot 3:
 
 ```
 $ export XTENSA_SYSTEM=.../tools/XtensaTools/config
@@ -211,8 +211,7 @@ nki_shfl = lambda s,c: [int(s[c[k] & 0x1F]) for k in range(32)]
 leaf / whole-vector permute leaf **called on every input** with `arg0 = NULL` (the
 arith+reduce+permute oracle is bare-leaf drivable — `xstate` unused; the only walled leaves
 in the whole binary are the three `recipqli` soft-float refiners, see
-[four-oracle-method](four-oracle-method.md) §7). The recovered ABIs, **re-confirmed by
-execution this pass**:
+[four-oracle-method](four-oracle-method.md) §7). The recovered ABIs, **confirmed by execution**:
 
 ```
 SHIFT  binary : void f(rdi=arg0, esi=value, edx=amount, rcx=*out32)
@@ -234,7 +233,7 @@ DCMPRS        : void f(rdi, rsi=*src[64xi8], rdx=*vbool[64-bit], rcx=*out[64xi8]
 
 ---
 
-## 4. The harness — identical inputs reach four legs  `[HIGH]`
+## 4. The harness — identical inputs reach four legs
 
 The [four-oracle-method](four-oracle-method.md) §3-4 contract is reused verbatim: the *same*
 input stream is fed to all four legs; a per-element / per-vector differential is a complete
@@ -285,7 +284,7 @@ def live_radds(vals):                                        # 32 lanes of i16 -
 
 ---
 
-## 5. The agreement tables — the result  `[HIGH]`
+## 5. The agreement tables — the result
 
 ### 5.1 REDUCE / RB / NUM / T  (30 directed + 805 fuzz)
 
@@ -375,13 +374,13 @@ characterized — the *value* still agrees on all legs.
 
 ---
 
-## 6. Divergences + root cause  `[HIGH]`
+## 6. Divergences + root cause
 
-### Divergence 1 — radds writeback width (SEM(a) vs LIVE(d)): ROOT-CAUSED, FIXED  `[HIGH/OBSERVED]`
+### Divergence 1 — radds writeback width (SEM(a) vs LIVE(d)): ROOT-CAUSED, FIXED
 
 The differential's one genuine bit-exactness finding. `radds_nx16_16_512` saturates the i32
 sum and then **stores a 16-bit field** — the `_16_512` in the name *is* the output width.
-Disassembled this pass at `0x814b94..0x814bbc`:
+Disassembled at `0x814b94..0x814bbc`:
 
 ```asm
 ; module__xdref_radds_nx16_16_512   @0x814970  (16-bit saturating-sum writeback)
@@ -398,7 +397,7 @@ initially returned the sign-extended i32 `0xffff8000` for `radds({0xC000 x8})`, 
 from the live `0x8000`. Root cause: the SEM model ignored the 16-bit writeback width. Fixed —
 `sem_radds` now masks to `& 0xFFFF` (§3) and all four legs agree.
 
-**Live proof — the vendor binary's own arithmetic, called this pass:**
+**Live proof — the vendor binary's own arithmetic:**
 
 ```
 radd_nx16  {1..32}      = 0x210      (1+2+...+32 = 528)
@@ -414,7 +413,7 @@ raddu_nx16 {0x8000 x4}  = 0x20000    (unsigned, NO sign-extend)
 > the leaf name** (`_16_` vs `_32_`); `radds` saturates *to the 16-bit field*, `radd` keeps
 > the i32. A reimplementation must read the suffix and clamp/store accordingly.
 
-### Divergence 2 — argmax tie (nki(c) vs RB LIVE(d)): ROOT-CAUSED, characterized  `[HIGH/OBSERVED]`
+### Divergence 2 — argmax tie (nki(c) vs RB LIVE(d)): ROOT-CAUSED, characterized
 
 `np.argmax` returns the **FIRST** maximal index; the RB
 (`module__xdref_rbmax_nx16_64_512_512`) leaf emits the **FULL tie-SET bitmask — a UNION**
@@ -424,7 +423,7 @@ weakness: the reduced **value still agrees** on all four legs; only the winning-
 representation differs, and the hardware union (reproduced by SEM + LIVE + FLIX) is the
 richer, correct behaviour.
 
-**Live proof — RB driven this pass, the 2-bits-per-lane vbool decoded** (`(bits >> 2k) & 3`):
+**Live proof — RB driven, the 2-bits-per-lane vbool decoded** (`(bits >> 2k) & 3`):
 
 ```
 rbmax unique max@7      : value=0x4000  winning-lanes={7}
@@ -435,7 +434,7 @@ rbmin min@3 (-9)        : value=0xfff7  winning-lanes={3}
 > **NOTE.** A reimplementation that emits only `argmax` (one index) is observably wrong on a
 > tie. The hardware contract is the **mask** — every lane equal to the extremum is set.
 
-### Why no OTHER divergence (the deeper reason)  `[HIGH]`
+### Why no OTHER divergence (the deeper reason)
 
 The reduce/shift/permute datapath has almost **no free parameter** for the references to
 disagree about: wrap/headroom is fixed by the output-field width (the name); saturation
@@ -448,11 +447,11 @@ unambiguous and agree.
 
 ---
 
-## 7. The hard edges, proven LIVE — annotated  `[HIGH/OBSERVED]`
+## 7. The hard edges, proven LIVE — annotated
 
-The bodies behind the agreement tables, disassembled and **executed** this pass.
+The bodies behind the agreement tables, disassembled and **executed**.
 
-### 7.1 `nsau` / `nsa` — normalize (CLZ), the 3-arg unary  `[HIGH/OBSERVED]`
+### 7.1 `nsau` / `nsa` — normalize (CLZ), the 3-arg unary
 
 ```asm
 ; module__xdref_nsau_16_16   @0x8585a0   (CLZ; unary, out-pointer in %rdx)
@@ -468,7 +467,7 @@ The bodies behind the agreement tables, disassembled and **executed** this pass.
 
 So `nsau(0) = 16`, `nsau(0x0001) = 15 - 0 = 15`, `nsau(0x8000) = 15 - 15 = 0`. The signed
 `nsa` is `clz(x ^ (x>>15)) - 1` (CLZ of the value XOR its sign-replication, minus one) so
-`nsa(0x0001) = 14`, `nsa(0xffff) = 15`, `nsa(0x8000) = 0`. Live, called this pass:
+`nsa(0x0001) = 14`, `nsa(0xffff) = 15`, `nsa(0x8000) = 0`. Live:
 
 ```
 nsau(0x0000) = 16    nsa(0x0000) = 15
@@ -478,7 +477,7 @@ nsau(0x8000) =  0    nsa(0x8000) =  0
 nsau(0xffff) =  0    nsa(0xffff) = 15
 ```
 
-### 7.2 Shift — over-shift clear, sign-fill, saturating clamp  `[HIGH/OBSERVED]`
+### 7.2 Shift — over-shift clear, sign-fill, saturating clamp
 
 The `sls_u` body shares the exact `{0x8000, 0x7fff}` sat masks with `radds`, gated by the
 `cmp $0x1f` over-shift test:
@@ -491,7 +490,7 @@ The `sls_u` body shares the exact `{0x8000, 0x7fff}` sat masks with `radds`, gat
   858299:  81 e2 ff 7f 00 00    and    $0x7fff,%edx        ; sat -> 0x7fff  (clamp +max)
 ```
 
-Live, called this pass:
+Live:
 
 ```
 sll_u 0x0001<<4  = 0x0010
@@ -510,7 +509,7 @@ rotr_u 0x8000 r1 = 0x4000
 > variants are unidirectional. A reimplementation must branch on the amount's sign for the
 > `_s` leaves, and must clear (not wrap) the `_u` leaves above `0x1f`.
 
-### 7.3 Crossbar masks — `sel & 0x3f`, `shfl & 0x1f`  `[HIGH/OBSERVED]`
+### 7.3 Crossbar masks — `sel & 0x3f`, `shfl & 0x1f`
 
 The control index is masked *in the body* — the pool size is the mask:
 
@@ -524,7 +523,7 @@ The control index is masked *in the body* — the pool size is the mask:
   86af8b:  83 e0 1f             and    $0x1f,%eax
 ```
 
-Live, called this pass (srcA markers `0xa00+k`, srcB markers `0xb00+k`):
+Live (srcA markers `0xa00+k`, srcB markers `0xb00+k`):
 
 ```
 shfl ctrl={0,1,31,32,33} -> {0x100,0x101,0x11f,0x100,0x101}   (idx32 & 0x1f = 0 -> src[0])
@@ -537,7 +536,7 @@ sel  ctrl={0,32,63,64,127} -> {B[0],A[0],A[31],B[0],A[31]}    (pool[0..31]=B, [3
 > ctrl 32 selects `srcA[0]`, and ctrl 64 wraps (`& 0x3f`) back to `srcB[0]`. Get the order
 > wrong and identity-from-A/identity-from-B swap.
 
-### 7.4 `dcmprs` — the predicate-EXPAND scatter  `[HIGH/OBSERVED]`
+### 7.4 `dcmprs` — the predicate-EXPAND scatter
 
 The most structurally distinct op on the page. The body reads the vbool **1 bit per lane**,
 computes a **prefix-popcount** index via `module__xdref_popc64_7_64`, clamps it via
@@ -555,7 +554,7 @@ predicate is set** — otherwise the slot keeps the fill:
 ```
 
 This is `out[k] = src[popcount(vbool & ((1<<k)-1))]` for set lanes, `out[k] = src[63]` for
-unset. Live, called this pass (src = `0xa0 .. 0xdf`, mask = lanes {3, 7, 9}):
+unset. Live (src = `0xa0 .. 0xdf`, mask = lanes {3, 7, 9}):
 
 ```
 dcmprs keep{3,7,9}, src=0xa0..0xdf:
@@ -574,50 +573,44 @@ dcmprs keep{3,7,9}, src=0xa0..0xdf:
 
 ---
 
-## 8. Adversarial self-verify  `[HIGH]`
+## 8. Adversarial self-verify
 
-The five strongest claims on this page, each re-challenged against the binary and the live
-drive:
+The five strongest claims on this page:
 
-1. **argmax tie → UNION mask `{2,9}`** — *Challenge:* could the "union" be an artifact of
-   reading the vbool 1-byte-per-lane? *Resolved:* the RB vbool is **2 bits per lane**; decoded
+1. **argmax tie → UNION mask `{2,9}`.** The RB vbool is **2 bits per lane**; decoded
    as `(bits >> 2k) & 3` the LIVE leaf returns lanes `{2, 9}` for the tie and `{7}` for the
-   unique max — a genuine union, not a packing artifact. `[HIGH/OBSERVED]`
-2. **`dcmprs` prefix-popcount EXPAND** — *Challenge:* my first print of `out[0..3] =
-   {0xdf,0xdf,0xdf,0xa0}` looked like a mismatch with the report's `{0xa0,0xa1,0xa2}`.
-   *Resolved:* those are different positions — `out[0..2]` are *fills* (lanes unset), the kept
+   unique max — a genuine union, not a packing artifact.
+2. **`dcmprs` prefix-popcount EXPAND.** `out[0..2]` are *fills* (lanes unset); the kept
    values land at `out[3]=0xa0, out[7]=0xa1, out[9]=0xa2`. The body's `popc64` + per-lane
-   `and $0x1` confirms the destination is predicate-gated. No mismatch. `[HIGH/OBSERVED]`
-3. **`sel & 0x3f` / `shfl & 0x1f` mask widths** — *Challenge:* are the widths inferred or in
-   the body? *Resolved:* `and $0x3f,%esi` @0x85f06a (sel) and `and $0x1f,%edi` @0x86af78
-   (shfl) are explicit in the disassembly; LIVE `sel idx127→A[31]`, `shfl idx32→src[0]`
-   confirm the narrowing arithmetically. `[HIGH/OBSERVED]`
-4. **radds 16-bit vs radd full-i32 writeback** — *Challenge:* is the width a mode or the
-   name? *Resolved:* `radds_nx16_16_512` body masks `& 0x8000` / `& 0x7fff` then `movzwl`
-   (0x814b94..0x814bbc); `radd_nx16_32_512` stores the full i32. LIVE: `radds{0xC000 x8} =
-   0x8000` vs `radd{0x4000 x32} = 0x80000`. The width is in the suffix. `[HIGH/OBSERVED]`
-5. **LIVE ctypes outputs are the real binary, not a re-implementation** — *Challenge:* could
-   these be the SEM lift mislabeled? *Resolved:* every figure here came from
-   `ctypes.CDLL(libfiss-base.so)` calling `module__xdref_*` on inputs this pass; the
+   `and $0x1` confirms the destination is predicate-gated.
+3. **`sel & 0x3f` / `shfl & 0x1f` mask widths.** `and $0x3f,%esi` @0x85f06a (sel) and
+   `and $0x1f,%edi` @0x86af78 (shfl) are explicit in the disassembly; LIVE `sel idx127→A[31]`,
+   `shfl idx32→src[0]` confirm the narrowing arithmetically.
+4. **radds 16-bit vs radd full-i32 writeback.** `radds_nx16_16_512` body masks
+   `& 0x8000` / `& 0x7fff` then `movzwl` (0x814b94..0x814bbc); `radd_nx16_32_512` stores the
+   full i32. LIVE: `radds{0xC000 x8} = 0x8000` vs `radd{0x4000 x32} = 0x80000`. The width is
+   in the suffix.
+5. **LIVE ctypes outputs are the real binary, not a re-implementation.** Every figure here came
+   from `ctypes.CDLL(libfiss-base.so)` calling `module__xdref_*` on inputs; the
    `nsau`/`nsa`/`sll`/`sls`/`rotr`/`radd`/`radds`/`rbmax`/`sel`/`shfl`/`dcmprs` outputs match
    the SEM model *and* the FLIX-decoded mnemonic. A SEM-vs-LIVE mismatch (it happened once,
-   the radds case) flips the verdict and the binary wins. `[HIGH/OBSERVED]`
+   the radds case) flips the verdict and the binary wins.
 
 ---
 
-## 9. Confidence / observation ledger  `[HIGH]`
+## 9. Confidence / observation ledger
 
 | Claim | Tag | Ground |
 |-------|-----|--------|
-| 4 legs bit-identical over 83 directed + 2,005 fuzz = 2,088 cases, 0 mismatches | HIGH / OBSERVED | the real `libfiss-base.so` `dlopen`'d and its reduce/shift/permute leaves called on every input this pass; SEM + numpy + FLIX-decode cross-checked |
-| `radds_nx16_16_512` writes a **16-bit** field; `radd_nx16_32_512` keeps **full i32** | HIGH / OBSERVED | disassembled `radds`@0x814b94..0x814bbc (`and $0x8000`/`and $0x7fff`/`movzwl`); LIVE `radds{0xC000 x8}=0x8000` vs `radd{0x4000 x32}=0x80000` this pass |
-| argmax tie emits the **UNION** lane-mask `{2,9}` (2 bits/lane vbool) | HIGH / OBSERVED | `rbmax_nx16_64_512_512` driven LIVE this pass; vbool decoded `(bits>>2k)&3` → `{2,9}` on the tie, `{7}` unique |
-| `dcmprs` EXPAND: `out[k]=src[prefix-popcount]` for set lanes, fill `src[63]` | HIGH / OBSERVED | body threads `popc64_7_64` + `dcmprs_clamp` (disasm @0x8341d0); LIVE keep{3,7,9}→{0xa0,0xa1,0xa2}, fill 0xdf this pass |
-| `sel` ctrl & `0x3f` (pool `B\|\|A`, 64); `shfl` ctrl & `0x1f` (single source, 32) | HIGH / OBSERVED | disassembled `and $0x3f`@0x85f06a (sel), `and $0x1f`@0x86af78 (shfl); LIVE idx-narrowing this pass |
-| `nsau` = CLZ (3-arg unary, out via `%rdx`); `nsa` = signed CLZ − 1 | HIGH / OBSERVED | disassembled `nsau`@0x8585a0 (`bsr; sub`, `mov %eax,(%rdx)`); LIVE `nsau(1)=15`, `nsau(0)=16`, `nsa(0xffff)=15` this pass |
-| over-shift `n>0x1f` CLEARS; `sls`/`srs` clamp `{0x7fff,0x8000}`; `sra` sign-fill | HIGH / OBSERVED | `sls`@0x858262 (`cmp $0x1f`; `and $0x8000`/`and $0x7fff`); LIVE `sll<<17=0`, `sls 0x4000<<2=0x7fff`, `sra 0x8000>>4=0xf800` this pass |
-| 21 FLIX bundles decode N0 (byte0=0x2f, op0=0xf, pred=0xf), opcode in slot 3; `dcmprs2nx8` WIDE | HIGH / OBSERVED | device `xtensa-elf-as`/`objdump` (XTENSA_CORE=ncore2gp) assembled + decoded `radd`/`sll`/`sel`/`nsau` byte-identically this pass; raw `-s` stream byte0=0x2f |
-| leg (a) SEM constants (sign-bias min/max, `{0x7fff,0x8000}` clamp, prefix-popcount expand) | MED / INFERRED | from the TIE-XML / this-pass disasm rather than re-decoded from XML here; corroborated by bit-exact agreement with the LIVE binary |
+| 4 legs bit-identical over 83 directed + 2,005 fuzz = 2,088 cases, 0 mismatches | HIGH / OBSERVED | the real `libfiss-base.so` `dlopen`'d and its reduce/shift/permute leaves called on every input; SEM + numpy + FLIX-decode cross-checked |
+| `radds_nx16_16_512` writes a **16-bit** field; `radd_nx16_32_512` keeps **full i32** | HIGH / OBSERVED | disassembled `radds`@0x814b94..0x814bbc (`and $0x8000`/`and $0x7fff`/`movzwl`); LIVE `radds{0xC000 x8}=0x8000` vs `radd{0x4000 x32}=0x80000` |
+| argmax tie emits the **UNION** lane-mask `{2,9}` (2 bits/lane vbool) | HIGH / OBSERVED | `rbmax_nx16_64_512_512` driven LIVE; vbool decoded `(bits>>2k)&3` → `{2,9}` on the tie, `{7}` unique |
+| `dcmprs` EXPAND: `out[k]=src[prefix-popcount]` for set lanes, fill `src[63]` | HIGH / OBSERVED | body threads `popc64_7_64` + `dcmprs_clamp` (disasm @0x8341d0); LIVE keep{3,7,9}→{0xa0,0xa1,0xa2}, fill 0xdf |
+| `sel` ctrl & `0x3f` (pool `B\|\|A`, 64); `shfl` ctrl & `0x1f` (single source, 32) | HIGH / OBSERVED | disassembled `and $0x3f`@0x85f06a (sel), `and $0x1f`@0x86af78 (shfl); LIVE idx-narrowing |
+| `nsau` = CLZ (3-arg unary, out via `%rdx`); `nsa` = signed CLZ − 1 | HIGH / OBSERVED | disassembled `nsau`@0x8585a0 (`bsr; sub`, `mov %eax,(%rdx)`); LIVE `nsau(1)=15`, `nsau(0)=16`, `nsa(0xffff)=15` |
+| over-shift `n>0x1f` CLEARS; `sls`/`srs` clamp `{0x7fff,0x8000}`; `sra` sign-fill | HIGH / OBSERVED | `sls`@0x858262 (`cmp $0x1f`; `and $0x8000`/`and $0x7fff`); LIVE `sll<<17=0`, `sls 0x4000<<2=0x7fff`, `sra 0x8000>>4=0xf800` |
+| 21 FLIX bundles decode N0 (byte0=0x2f, op0=0xf, pred=0xf), opcode in slot 3; `dcmprs2nx8` WIDE | HIGH / OBSERVED | device `xtensa-elf-as`/`objdump` (XTENSA_CORE=ncore2gp) assembled + decoded `radd`/`sll`/`sel`/`nsau` byte-identically; raw `-s` stream byte0=0x2f |
+| leg (a) SEM constants (sign-bias min/max, `{0x7fff,0x8000}` clamp, prefix-popcount expand) | MED / INFERRED | from the TIE-XML / disasm rather than re-decoded from XML here; corroborated by bit-exact agreement with the LIVE binary |
 | nki validates the native-primitive subset (radd/rmax/rmin/shfl/sll/srl/sra); rest 3-way+LIVE | MED / OBSERVED | nki `_NUMPY_FUNC_MAP` surface; the non-primitive ops marked `n/a` in the nki column, closed by LIVE |
 | `dsel` out2 full characterization needs the 2-sub-field 32-bit packed ctrl | LOW / INFERRED | flat 16-bit ctrl leaves out2 = pool[0] (OBSERVED); the full out2 is deferred to the wide-permute slice |
 | fp NUM tie-break **rounding** depth | LOW / CARRIED | SELECTION + Invalid are OBSERVED here; the round rule is the fp-round-mode slice's scope |

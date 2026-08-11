@@ -8,22 +8,22 @@ This is the one-glance cheat-sheet for reading a raw TPB instruction-bundle `.bi
 
 The whole format reduces to four facts. **(1)** A bundle is exactly **64 bytes** (16 dwords), always — there is no other length. **(2)** Bytes `+0x00..+0x03` are the universal header word `{opcode, 0x10, 0x00, 0x00}`; the rest is an op-specific union keyed on the opcode byte. **(3)** Descriptor slots land at one of **three family-fixed offset sets** (A/B/C), not at arbitrary offsets, with a control band filling the gap. **(4)** Every descriptor slot opens with a 4-byte **ADDR4** word and follows the **`4 + 4N`** size rule (1D=8, 2D=12, 3D=16, 4D=20).
 
-> **GOTCHA — there is no descriptor at bundle byte `+0x48`.** The recurring `+0x48` in older field maps is the *vtable* offset for `setupHeader` (`call [rax+0x48]`, slot 9) — a **code** offset, not a bundle byte. A 16-byte TENSOR3D at `+0x48` would span `+0x48..+0x57` and overflow the 64-byte bundle (`0x58 > 0x40`). [2.1 CORRECTION (N11), CONFIRMED]
+> **GOTCHA — there is no descriptor at bundle byte `+0x48`.** The recurring `+0x48` in older field maps is the *vtable* offset for `setupHeader` (`call [rax+0x48]`, slot 9) — a **code** offset, not a bundle byte. A 16-byte TENSOR3D at `+0x48` would span `+0x48..+0x57` and overflow the 64-byte bundle (`0x58 > 0x40`). [2.1]
 
 | | |
 |---|---|
-| **Bundle size** | exactly **64 B** = 16 dwords; `fwrite(…, 0x40, …)` — CONFIRMED |
-| **Header word** | `+0x00..+0x03 = {opcode, 0x10, 0x00, 0x00}`; LE `*(u16*)b = 0x10NN` — CONFIRMED |
-| **`inst_word_len`** | `byte[1] = 0x10` hardcoded; no non-16 length exists — CONFIRMED |
-| **ADDR4** | 4-byte LE `u32` @ slot+0 of every descriptor; 29-bit addr + mode/reg flags — CONFIRMED |
-| **Descriptor rule** | `slot_size(N) = 4 + 4N` (1D=8 · 2D=12 · 3D=16 · 4D=20) — CONFIRMED |
-| **Slot families** | A `0x10/0x30` · B `0x10/0x20/0x30` · C `0x0C/0x2C` — CONFIRMED |
+| **Bundle size** | exactly **64 B** = 16 dwords; `fwrite(…, 0x40, …)` |
+| **Header word** | `+0x00..+0x03 = {opcode, 0x10, 0x00, 0x00}`; LE `*(u16*)b = 0x10NN` |
+| **`inst_word_len`** | `byte[1] = 0x10` hardcoded; no non-16 length exists |
+| **ADDR4** | 4-byte LE `u32` @ slot+0 of every descriptor; 29-bit addr + mode/reg flags |
+| **Descriptor rule** | `slot_size(N) = 4 + 4N` (1D=8 · 2D=12 · 3D=16 · 4D=20) |
+| **Slot families** | A `0x10/0x30` · B `0x10/0x20/0x30` · C `0x0C/0x2C` |
 
 ---
 
 ## 1. The header word (`+0x00..+0x03`)
 
-Written by `setupHeader` (`0x1172120`/`0x1369280`/`0x143f440`, byte-identical V2/V3/V4). The only universal field; every other byte is op-specific or zero. [2.1 §"universal header word", CONFIRMED]
+Written by `setupHeader` (`0x1172120`/`0x1369280`/`0x143f440`, byte-identical V2/V3/V4). The only universal field; every other byte is op-specific or zero. [2.1 §"universal header word"]
 
 | Off | Field | Value | Note |
 |---|---|---|---|
@@ -39,11 +39,11 @@ Written by `setupHeader` (`0x1172120`/`0x1369280`/`0x143f440`, byte-identical V2
         \__ LE word *(u16*)b = 0x10NN __/   (NN = opcode, hi 0x10 = inst_word_len)
 ```
 
-> **QUIRK —** only one op perturbs `byte[1]`: `QuantizeMx` (gen4, opcode `0xE3`) ORs bit 0 (`0x10 → 0x11`) when SATURATE is set, writing the word directly. Every other op leaves `byte[1] = 0x10`. [2.1 §GOTCHA, CONFIRMED]
+> **QUIRK —** only one op perturbs `byte[1]`: `QuantizeMx` (gen4, opcode `0xE3`) ORs bit 0 (`0x10 → 0x11`) when SATURATE is set, writing the word directly. Every other op leaves `byte[1] = 0x10`. [2.1 §GOTCHA]
 
 ### Optional sync band (`+0x04..+0x0B`)
 
-Present **iff** the inst carries SyncInfo (DVE/Pool/Act/SP/DMA; **absent on matmul**), written by `setupSyncWait`/`setupSyncUpdate`. Not part of the header word. [2.1 §"shared-vs-op-specific split", STRONG]
+Present **iff** the inst carries SyncInfo (DVE/Pool/Act/SP/DMA; **absent on matmul**), written by `setupSyncWait`/`setupSyncUpdate`. Not part of the header word. [2.1 §"shared-vs-op-specific split"]
 
 | Off | Field | Off | Field |
 |---|---|---|---|
@@ -55,7 +55,7 @@ Present **iff** the inst carries SyncInfo (DVE/Pool/Act/SP/DMA; **absent on matm
 
 ## 2. The ADDR4 word (32-bit, `u32` LE @ slot+0)
 
-Opens **every** descriptor slot. Bits `0..28` are a 29-bit byte address; bits `25..28` double as the SBUF/PSUM region discriminator; bits `29/30` are the mode nibble; bit `31` is register-mode. [2.2, CONFIRMED]
+Opens **every** descriptor slot. Bits `0..28` are a 29-bit byte address; bits `25..28` double as the SBUF/PSUM region discriminator; bits `29/30` are the mode nibble; bit `31` is register-mode. [2.2]
 
 | Field | Bits | Mask | Meaning |
 |---|---|---|---|
@@ -81,13 +81,13 @@ Opens **every** descriptor slot. Bits `0..28` are a 29-bit byte address; bits `2
  PSUM  ⇔  (addr29 - 0x2000000) <= 0x3FFFFF   (4 MiB window @ 32 MiB); SBUF clears bits 25..28.
 ```
 
-> **GOTCHA — register-mode is bit 31 (`0x80`), not bit 30.** Bit 30 (`0x40`) is the ACTIVE nibble bit. The decoder takes the register branch on a sign test of byte 3 (= word bit 31), and the encoder stamps `or [slot+3], 0x80`. RM and the mode nibble (`&0x60`) are independent. [2.2 §GOTCHA, CONFIRMED]
+> **GOTCHA — register-mode is bit 31 (`0x80`), not bit 30.** Bit 30 (`0x40`) is the ACTIVE nibble bit. The decoder takes the register branch on a sign test of byte 3 (= word bit 31), and the encoder stamps `or [slot+3], 0x80`. RM and the mode nibble (`&0x60`) are independent. [2.2 §GOTCHA]
 
 ---
 
 ## 3. The three slot families
 
-Each op places its operand descriptors at a **family-fixed** offset (`lea [base+OFF]` before `assignAccess<…>`), chosen by descriptor width (3D=16 B vs 4D=20 B) and operand count (2 vs 3 slots). The control band fills the gap exactly one missing descriptor wide. [2.1 §"three descriptor-slot families", CONFIRMED]
+Each op places its operand descriptors at a **family-fixed** offset (`lea [base+OFF]` before `assignAccess<…>`), chosen by descriptor width (3D=16 B vs 4D=20 B) and operand count (2 vs 3 slots). The control band fills the gap exactly one missing descriptor wide. [2.1 §"three descriptor-slot families"]
 
 | Family | Shape | Slot offsets | Control band | Canonical witness |
 |---|---|---|---|---|
@@ -103,17 +103,17 @@ Each op places its operand descriptors at a **family-fixed** offset (`lea [base+
   C  :  [HD]------[4D@0C........20][BAND 20..2B][4D@2C..3F]  in@0C out@2C
 ```
 
-Family membership of the byte-verified anchor ops (above) is CONFIRMED; the family of the remaining ~90 ops in the [110-row opcode table](master-opcode-table.md) is assigned by descriptor-width evidence on their per-engine pages (STRONG for the tail). The rule itself — *width + operand count picks the offsets, the band fills the gap* — is CONFIRMED across all four byte-verified families. [2.9 §NOTE]
+The anchor ops above are byte-verified. The family of the remaining ~90 ops in the [110-row opcode table](master-opcode-table.md) is assigned from descriptor-width evidence on their per-engine pages rather than from a direct byte read, so treat the tail as a well-supported reading rather than a measurement. The rule itself — *width + operand count picks the offsets, the band fills the gap* — holds across all four byte-verified families. [2.9 §NOTE]
 
-> **QUIRK — "slots at `+16/+32/+48`" is Family B only.** That phrasing (`0x10/0x20/0x30`) is correct for B's three contiguous slots, not for A (two slots `0x10/0x30`, band at `0x20`) or C (`0x0C/0x2C`). It is **not** the universal layout, and the `+0x48` in it conflates the vtable offset with a wire byte. [2.1 §Family B QUIRK, CONFIRMED]
+> **QUIRK — "slots at `+16/+32/+48`" is Family B only.** That phrasing (`0x10/0x20/0x30`) is correct for B's three contiguous slots, not for A (two slots `0x10/0x30`, band at `0x20`) or C (`0x0C/0x2C`). It is **not** the universal layout, and the `+0x48` in it conflates the vtable offset with a wire byte. [2.1 §Family B QUIRK]
 
-> **NOTE — mixed-width anchors.** The low/high positions are *slots* that accept a variable-width descriptor. BNStats puts a 4D (20 B) at the `+0x0C` anchor but a 2D (12 B) at the `+0x30` anchor. The anchor is fixed; the width is not. [2.1 §"mixed-width slots", CONFIRMED]
+> **NOTE — mixed-width anchors.** The low/high positions are *slots* that accept a variable-width descriptor. BNStats puts a 4D (20 B) at the `+0x0C` anchor but a 2D (12 B) at the `+0x30` anchor. The anchor is fixed; the width is not. [2.1 §"mixed-width slots"]
 
 ---
 
 ## 4. Descriptor sizes — the `4 + 4N` rule
 
-Every descriptor = ADDR4 (4 B) + `N` × i16 stride + `N` × u16 num. Sizes pinned by `.rodata` asserts (`"ISA mem pattern ND must have K bytes to encode"` @ `0x1d6e810`/`8b0`/`920`/`990`). SRC operands use the `TENSOR*` name, DST operands the byte-identical `MEM_PATTERN*` name (role, not layout). [2.3 / 2.9, CONFIRMED]
+Every descriptor = ADDR4 (4 B) + `N` × i16 stride + `N` × u16 num. Sizes pinned by `.rodata` asserts (`"ISA mem pattern ND must have K bytes to encode"` @ `0x1d6e810`/`8b0`/`920`/`990`). SRC operands use the `TENSOR*` name, DST operands the byte-identical `MEM_PATTERN*` name (role, not layout). [2.3 / 2.9]
 
 | Descriptor | `N` | Size | stride array | num array (base `4+2N`) |
 |---|---|---|---|---|
@@ -131,7 +131,7 @@ Every descriptor = ADDR4 (4 B) + `N` × i16 stride + `N` × u16 num. Sizes pinne
 
 ### The MX / indirect descriptors (16/20 B)
 
-Same `4 + 4N` footprint; the body re-purposes the static stride/num region for index/scale ADDR4s. [2.9 §2.4/2.5, CONFIRMED]
+Same `4 + 4N` footprint; the body re-purposes the static stride/num region for index/scale ADDR4s. [2.9 §2.4/2.5]
 
 | Descriptor | Size | Body (after first ADDR4) |
 |---|---|---|
@@ -140,7 +140,7 @@ Same `4 + 4N` footprint; the body re-purposes the static stride/num region for i
 | `INDIRECT16B` | 16 B | index ADDR4 `+0` (bit29 set), data `+4`, `num` `+8`, inert `+0xA..+0xF` |
 | `INDIRECT20B` | 20 B | same payload, 20-byte form (4-D AP) |
 
-> **NOTE — DMA `DIRECT2D` (`0xD4`) is a fourth, distinct body (Family D).** It reuses `+0x00..+0x0B` (header + sync) but carries 8-byte **ADDR8** addresses (src `+0x10`, dst `+0x28`) and its own 2-D step/num body — *not* mem-pattern slots. Handle it as its own case. [2.1 §NOTE, CONFIRMED]
+> **NOTE — DMA `DIRECT2D` (`0xD4`) is a fourth, distinct body (Family D).** It reuses `+0x00..+0x0B` (header + sync) but carries 8-byte **ADDR8** addresses (src `+0x10`, dst `+0x28`) and its own 2-D step/num body — *not* mem-pattern slots. Handle it as its own case. [2.1 §NOTE]
 
 ---
 

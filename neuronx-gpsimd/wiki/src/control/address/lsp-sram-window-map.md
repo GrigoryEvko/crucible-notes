@@ -58,14 +58,14 @@ each script (`lsp_fll_load_cpu0`):
 > (line 2). The `MEMORY{}` block, `PHDRS`, `SECTIONS`, cacheattr words and every
 > address symbol are byte-identical across all three. The `-n`/`-N` distinction
 > matters to the *output ELF flags* (NMAGIC/OMAGIC page alignment), not to where
-> the linker places `sram0_0_seg`. `[HIGH/OBS — diffed this section]`
+> the linker places `sram0_0_seg`.
 
 > **NOTE — `.xr`/`.xu` carry no addresses.** Both relocatable variants are 74-line
 > scripts with **no `MEMORY{}` and no `PHDRS`**: `SECTIONS{}` lays `.text 0 :`,
 > `.bss 0 :` etc. at offset `0`, leaving final addresses to a later full link.
 > They exist so an object-merge (`ld -r`) of the customop sources can be produced
 > without committing to the `0x84000000` window. The window base is decided only
-> in the **default `.x`** placing link. `[HIGH/OBS]`
+> in the **default `.x`** placing link.
 
 The `specs` file (1229 bytes, all 9 identical in role) wires the CRT start/end
 objects for the final link:
@@ -75,8 +75,6 @@ objects for the final link:
 *endfile:    crtend%O%s crtn%O%s
 *lib:                                  # empty — no implicit -l libraries
 ```
-
-`[HIGH/OBS — specs read in full]`
 
 ---
 
@@ -103,8 +101,6 @@ regions. The complete segment table:
 
 > *(`cpu_single`: `sram0_0_seg org=0x84000000 len=0x2000000`, end `0x86000000`.)*
 
-`[HIGH/OBS — cpu0 .x read in full; lines 3-7, 52]`
-
 ### 2.1 The memory-boundary symbols
 
 The script also exports the `ld`-standard boundary symbols (cpu0, lines 22-31):
@@ -122,7 +118,6 @@ _memmap_seg_sram0_0_start = 0x84000000;   _memmap_seg_sram0_0_max = 0x84200000;/
 > `len = 0x1000` (4 KiB) — only the first 4 KiB are used for the customop's XEA3
 > vectors. The **SRAM** region and segment are equal (both
 > `0x84000000..0x84200000`): there is no headroom region beyond the 2 MiB bank.
-> `[HIGH/OBS — both symbol pairs read byte-exact]`
 
 ### 2.2 Reset / vector base
 
@@ -133,21 +128,21 @@ PROVIDE(_memmap_vecbase_reset = 0x0);
 ```
 
 Reset and vector base sit at NX `0x0`, inside the `iram0_0_seg` IRAM region
-(lines 33-35). `[HIGH/OBS]`
+(lines 33-35).
 
 > **CORRECTION-class NOTE — there is no third region.** A grep across **all nine**
 > customop `.x` scripts finds **no `__stack`, no `_heap_sentry`, no `dram0`/
 > `dram0_0_seg`** — only the metadata marker `.note.GNU-stack`. The customop LSP
 > *deliberately* strips the stack and heap that the toolchain's reference LSPs
 > carry (see §6): the runtime HBM stack and the xmem heaps are carved at run time,
-> not by the linker. The map is exactly two regions. `[HIGH/OBS — rg over all 9 .x]`
+> not by the linker. The map is exactly two regions.
 
 ---
 
 ## 3. The SRAM window / bank map — the per-core banks
 
 The "SRAM window map" is the per-core `sram0_0_seg` bank table. All nine scripts'
-`sram0_0_seg` origins, re-grepped byte-exact:
+`sram0_0_seg` origins, byte-exact:
 
 | LSP | `sram0_0_seg` org | len | bank range `[start, end)` |
 |---|---|---|---|
@@ -161,8 +156,7 @@ The "SRAM window map" is the per-core `sram0_0_seg` bank table. All nine scripts
 | `lsp_fll_load_cpu7` | `0x84E00000` | `0x200000` | `[0x84E00000, 0x85000000)` |
 | `lsp_fll_load_cpu_single` | `0x84000000` | `0x2000000` | `[0x84000000, 0x86000000)` |
 
-`iram0_0_seg` is `org = 0x0, len = 0x1000` — **verified identical for all nine**.
-`[HIGH/OBS — all 9 origins re-grepped this section]`
+`iram0_0_seg` is `org = 0x0, len = 0x1000` — **identical for all nine**.
 
 ### 3.1 The stride and tiling — byte-exact arithmetic
 
@@ -195,7 +189,7 @@ end(cpu7)             = 0x84E00000 + 0x200000     = 0x85000000
 The eight per-core banks **tile** `[0x84000000, 0x85000000)` = **16 MiB** with
 **no gap and no overlap** — each bank's `end` equals the next bank's `org`.
 `cpu_single` owns `[0x84000000, 0x86000000)` = **32 MiB** (16× the per-core bank,
-and 2× the eight-core tiled extent). `[HIGH/OBS — arithmetic over the table]`
+and 2× the eight-core tiled extent).
 
 ### 3.2 The 2-MiB stride is the only material per-core change
 
@@ -219,7 +213,7 @@ length `0x200000 → 0x2000000` + the two `*_end`/`*_max` symbols
 build is **one object set, eight base-shifted link variants** — the
 PRID-indexed 2-MiB stride is provably the only per-core difference. This is the
 **link-time half** of the SPMD dual identity (same image, per-core base;
-runtime half = the `rsr.prid` read). `[HIGH/OBS — diffed this section]`
+runtime half = the `rsr.prid` read).
 
 ### 3.3 What the bank holds
 
@@ -247,8 +241,7 @@ reading shows this **conflates a base with two strides**:
 | `0x4000000` (64 MiB) | inter-pinned-window stride (SBUF→`hbm_scratch`) — the *only* sense in which `0x84000000` is "one step" | `0x84000000 − 0x80000000` |
 
 There is **no** sense in which SRAM banks are spaced by `0x84000000`: per-core
-spacing is `0x200000`, and the entire eight-core set fits in 16 MiB.
-`[HIGH/OBS — §2/§3 above]`
+spacing is `0x200000`, and the entire eight-core set fits in 16 MiB (§2/§3).
 
 `0x84000000` as a base is structurally pinned by four shipped, byte-exact facts.
 
@@ -290,8 +283,7 @@ BEGIN noncached
 So the core's hardware bus map defines a **cached 512-MiB aperture**
 `[0x80000000, 0xa0000000)` and a non-cached 512-MiB aperture
 `[0xa0000000, 0xc0000000)`. The customop SRAM bank base `0x84000000` falls
-**squarely inside the cached `cached0` aperture**. `[HIGH/OBS — ldapp .x + .xmm
-read this section]`
+**squarely inside the cached `cached0` aperture**.
 
 ### 4.3 The customop cacheattr makes that region (and only it) writeback
 
@@ -318,7 +310,7 @@ Decode of `0x44414444` (nibble `r7…r0`):
 `unused_mask = 0xFFF0FFF0` zeros the nibble positions of the *live* regions →
 only **`r0` (IRAM, uncached)** and **`r4` (window aperture, cached)** are real.
 
-Contrast the reference words read this section:
+Contrast the reference words:
 
 | LSP | `cacheattr_wb_trapnull` | cached region(s) | `region_map` |
 |---|---|---|---|
@@ -331,12 +323,11 @@ In every `ncore2gp` LSP the nibble for the region holding the program's data is
 window aperture through which the SoC-translation windows are reached) and leaves
 `r0` (vectors) uncached. Caching the `hbm_scratch` window is what makes per-core
 code-fetch / data-access from the bank fast `[INFERRED — the cacheattr nibble is
-OBSERVED; the performance reading is architectural]`. `[HIGH/OBS — all three
-cacheattr words read this section]`
+OBSERVED; the performance reading is architectural]`.
 
 ### 4.4 The MPU background map confirms the 2-GiB split
 
-`config/ncore2gp-params` MPU background map (read this section):
+`config/ncore2gp-params` MPU background map:
 
 ```
 #VirtStartAddr   SizeInBytes    AccessRights   MemoryType
@@ -350,8 +341,7 @@ The 32-bit space is split into two **2-GiB halves at `0x80000000`**. Both pinned
 windows (`0x80000000` SBUF, `0x84000000` `hbm_scratch`) **and** all eight per-core
 SRAM banks (`0x84000000..0x85000000`) live in the **upper 2-GiB MPU half**. The
 `ISSSysRam` base/size (`0x100000` / 1 GiB) match the reference local-bus `sram`
-region the customop LSP **repoints** to `0x84000000`. `[HIGH/OBS —
-ncore2gp-params read this section]`
+region the customop LSP **repoints** to `0x84000000`.
 
 ### 4.5 `0x84000000` carries no SoC-side stride meaning
 
@@ -393,8 +383,7 @@ Three `PHDRS` are declared — `iram0_0_phdr`, `sram0_0_phdr`,
 `sram0_0_bss_phdr` (all `PT_LOAD`) — so the loadable image carries the IRAM
 vectors, the SRAM code/data, and a separate program header for the NOLOAD `.bss`
 (the `.bss` occupies bank address space but ships no bytes; the CRT zeroes it via
-the `_bss_table` pointer pair emitted into `.rodata`). `[HIGH/OBS — SECTIONS read
-in full]`
+the `_bss_table` pointer pair emitted into `.rodata`).
 
 Key role distinctions:
 
@@ -403,19 +392,19 @@ Key role distinctions:
   HBM-resident `hbm_scratch` heap reached *through* the `0x84000000` window — a
   different physical store, despite the linker's generic `sram0` label (Tensilica's
   generic name for "the data/code RAM region", here re-pointed at the HBM-scratch
-  NX window). `[HIGH — distinct SoC backing]`
+  NX window).
 - **The DATARAM is not in the LSP.** The per-core on-core dataram
   (`[0x80000,0x90000)`; the reference `sim` LSP's `dram0_0_seg @ 0x80000`) is
   omitted; the runtime reaches it via a direct NX deref, never a linker `dram0`
-  region. `[HIGH/OBS — no dram0 in any customop .x]`
+  region (no `dram0` appears in any customop `.x`).
 - **The IRAM region holds only the customop's XEA3 vectors** (4 KiB); it is
   distinct from the SEQ/Q7 **engine firmware** image (`.text @ 0x01000000`) — two
-  different programs in the Q7 NX space at different times. `[HIGH]`
+  different programs in the Q7 NX space at different times.
 - **No system-visible/shared-window region exists in the LSP.** SBUF
   (`0x80000000`), PSUM, EVT_SEM, and general HBM tensor data are reached at
   **runtime** via the pinned/dynamic translation windows, not placed by the
-  linker. The LSP is a pure per-core code/const/bss placement script. `[HIGH/OBS
-  — LSP has no 0x80000000 / 0x07/09/0a000000 origins]`
+  linker. The LSP is a pure per-core code/const/bss placement script — it declares
+  no `0x80000000` and no `0x07/09/0a000000` origins.
 
 ---
 
@@ -449,7 +438,7 @@ decode; and the firmware `0x01000000` image is a legitimately separate program
 from the customop `.so` at `0x84000000`. The linker bakes the `0x84000000` window
 base; the SoC↔Q7 translation hardware
 ([soc-q7-translation-windows](soc-q7-translation-windows.md)) resolves it to the
-runtime `hbm_scratch` SoC tag at execution time. `[HIGH/OBS]`
+runtime `hbm_scratch` SoC tag at execution time.
 
 ---
 
@@ -465,7 +454,7 @@ runtime `hbm_scratch` SoC tag at execution time. `[HIGH/OBS]`
   HBM-stack arena cap) are **runtime/firmware-image** facts, not customop-LSP
   facts. `[HIGH — single LSP family OBSERVED; gen-identity MED, only one family
   ships]`
-- **Per-core `[HIGH/OBS]`** — the only per-core difference is the `sram0_0_seg`
+- **Per-core** — the only per-core difference is the `sram0_0_seg`
   bank base (2-MiB stride; §3.2). `iram0_0_seg`, `region_map`, cacheattr, `PHDRS`,
   `ENTRY`, and the whole `SECTIONS{}` block are byte-identical `cpu0..7`;
   `cpu_single` differs only in the bank *length*.

@@ -14,7 +14,7 @@ This is a **catalog / reference page**, so it omits a reimplementation contract 
 |---|---|
 | **Module** | `neuronxcc.nki.compiler.backends.neuron.sema` (Cython extension) |
 | **Source module** | `sema.py` (per Cython `AddTraceback` line tags) |
-| **`err_*` builders** | **70** module-level (`__pyx_mdef … err_*`); **77** distinct `err_*` rodata names (see CORRECTION) |
+| **`err_*` builders** | **70** module-level (`__pyx_mdef … err_*`); **77** distinct `err_*` rodata names (see *Counting the leaves*) |
 | **`assert_*` helpers** | 24 (the assert engine) |
 | **`check_*` validators** | `NKIFunc` methods; ~32 named, 63 `check_*` symbols total |
 | **`warn_*`** | 1 — `warn_block_dimension_is_deprecated` (the lone non-fatal diagnostic) |
@@ -23,7 +23,17 @@ This is a **catalog / reference page**, so it omits a reimplementation contract 
 | **Docs URL appended** | `https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.errors.html` |
 | **Default exception** | `NKISyntaxError` (`__init__` @ `0xf6c20`, defined in this module) |
 
-> **CORRECTION (W05-COUNT) —** the backing report headlines "78 `err_*`". The binary supports a more precise statement. `nm` over the module-definition symbols (`__pyx_mdef_…_<idx>err_*`) yields **70** distinct *module-level* `err_*` builders — the functions wrapped by `sema_err_url`. A `strings | sort -u` over rodata yields **77** distinct `err_*` *names*, the extra seven being class-method and Cython-collision-suffixed forms (e.g. `err_param_shape_incompatible_wit_2`) plus the format helper `err_tensor_access_out_of_bound_1range_string`. The "78" figure counts that `_1range_string` helper as a 78th leaf on top of the 77. None of the three counts is wrong; they count different things. The catalog below tabulates the full named surface and labels the helper explicitly, so the reimplementer can reconcile either way. (`err_msg` appears in rodata but is a *field* name, not a builder, and is excluded from all counts.)
+### Counting the leaves
+
+Three different numbers circulate for "how many `err_*` are there", and all three are defensible because they count different things:
+
+| Count | What it measures | How to reproduce |
+|---|---|---|
+| **70** | module-level `err_*` builders — the functions actually wrapped by `sema_err_url` | `nm` over `__pyx_mdef_…_<idx>err_*` |
+| **77** | distinct `err_*` *names*, adding seven class-method and Cython-collision-suffixed forms (e.g. `err_param_shape_incompatible_wit_2`) plus the format helper `err_tensor_access_out_of_bound_1range_string` | `strings` over rodata, deduplicated |
+| **78** | the 77 names with the `_1range_string` helper counted as a leaf in its own right | as above, plus one |
+
+This page tabulates the full named surface and labels the format helper explicitly, so either reconciliation works. `err_msg` also appears in rodata, but it is a *field* name rather than a builder and is excluded from every count.
 
 ---
 
@@ -77,7 +87,7 @@ function err_num_partition_exceed_arch_limit(shapes, max_p, api_name):   // 0x99
 
 The verbatim docstring example confirms the chain end-to-end (rodata): `x = nl.zeros(shape=[256, 1024], dtype=np.float32, buffer=nl.sbuf) # Error: number of partitions 256 exceed architecture limitation of 128.`
 
-> **NOTE —** the `err_*` global is reached through a **Cython-cached module-global slot**, not a direct call relocation. That is why many `err_*` triggers in the catalog below are tagged INFERRED for the *trigger* even when the *builder and template* are CONFIRMED: the predicate that funnels into a given `err_*` is sometimes only resolvable by name-and-semantics, not by a single literal call-site instruction. Three `assert_*` (`assert_num_partition`, `assert_par_dim_sbuf`, `assert_par_dim_psum`) all funnel to the *same* `err_num_partition_exceed_arch_limit` leaf — predicate fan-in is many-to-one.
+> **NOTE —** the `err_*` global is reached through a **Cython-cached module-global slot**, not a direct call relocation. That is why many catalog rows below read *CERTAIN (trigger MEDIUM)*: the builder and its message template are read straight out of the binary, but the predicate that funnels into a given `err_*` is sometimes resolvable only by name and semantics, not by a literal call-site instruction. Fan-in is also many-to-one — `assert_num_partition`, `assert_par_dim_sbuf`, and `assert_par_dim_psum` all funnel to the *same* `err_num_partition_exceed_arch_limit` leaf.
 
 ### The `nki_assert` raise primitive
 
@@ -133,13 +143,13 @@ Partition counts, dimension ranks, dimension sizes, SBUF/PSUM capacity. The hard
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_num_partition_exceed_arch_limit` `0x99e90 · 2420 · ValueError` | `number of partitions <par_dim> exceed architecture limitation of <max_p>` (frags `0x10ac70`+`0x106ae0`) | `par_dim > 128` | tile creation (`nl.zeros`/`ndarray`), `nl.transpose`, `nisa.*` | CONFIRMED |
-| `err_num_partition_mismatch` `0x807f0 · 2398 · ValueError` | `number of partitions … mismatch in parameters (<shapes>)` (frag `0x106500`) | partition dims differ across operands | `nisa.tensor_tensor` & multi-operand isa | CONFIRMED |
-| `err_size_of_dimension_exceed_arch_limit` `0x77500 · 2366 · ValueError` | `size of dimension <dim> in '<name><shape>' of '<api>' exceed architecture limitation of <max_size>` (frag `0x109a00`) | a free/contract dim > arch cap | `nl.transpose`, `nl.matmul`/`nisa.nc_matmul` | CONFIRMED |
-| `err_exceed_max_supported_dimension` `0xbf3a0 · 2343 · ValueError` | `'<name><shape>' … exceed max supported number of dimension <max_rank>` (frag `0x1099c0`) | `rank(param) > max_rank` | `nl.transpose`, rank-restricted isa | CONFIRMED |
-| `err_stack_overflow_sbuf` `0x813a0 · 1763 · RuntimeError` | `stack overflow: required sbuf size <sbuf_size> exceeds available sbuf size <target_sbuf_size>` (frag `0x109f20`) | cumulative SBUF alloc > device budget | tile alloc on `nl.sbuf` | CONFIRMED (trigger INFERRED) |
-| `err_stack_overflow_psum` `0x81f60 · 1756 · RuntimeError` | `stack overflow: required psum banks <n> exceeds available psum banks <target>` (frag `0x109da0`) | PSUM bank demand > 8 | PSUM alloc / matmul accumulation | CONFIRMED (trigger INFERRED) |
-| `err_valid_size` `0x63bd0 · 2867 · NKISyntaxError*` | `<name> size must be in [ … ]` / ` size must be ` (frags `0x10bac0`+`0x10c178`) | size operand outside valid set | size-constrained isa (raised inline via `nki_assert`) | STRONG |
+| `err_num_partition_exceed_arch_limit` `0x99e90 · 2420 · ValueError` | `number of partitions <par_dim> exceed architecture limitation of <max_p>` (frags `0x10ac70`+`0x106ae0`) | `par_dim > 128` | tile creation (`nl.zeros`/`ndarray`), `nl.transpose`, `nisa.*` | CERTAIN |
+| `err_num_partition_mismatch` `0x807f0 · 2398 · ValueError` | `number of partitions … mismatch in parameters (<shapes>)` (frag `0x106500`) | partition dims differ across operands | `nisa.tensor_tensor` & multi-operand isa | CERTAIN |
+| `err_size_of_dimension_exceed_arch_limit` `0x77500 · 2366 · ValueError` | `size of dimension <dim> in '<name><shape>' of '<api>' exceed architecture limitation of <max_size>` (frag `0x109a00`) | a free/contract dim > arch cap | `nl.transpose`, `nl.matmul`/`nisa.nc_matmul` | CERTAIN |
+| `err_exceed_max_supported_dimension` `0xbf3a0 · 2343 · ValueError` | `'<name><shape>' … exceed max supported number of dimension <max_rank>` (frag `0x1099c0`) | `rank(param) > max_rank` | `nl.transpose`, rank-restricted isa | CERTAIN |
+| `err_stack_overflow_sbuf` `0x813a0 · 1763 · RuntimeError` | `stack overflow: required sbuf size <sbuf_size> exceeds available sbuf size <target_sbuf_size>` (frag `0x109f20`) | cumulative SBUF alloc > device budget | tile alloc on `nl.sbuf` | CERTAIN (trigger MEDIUM) |
+| `err_stack_overflow_psum` `0x81f60 · 1756 · RuntimeError` | `stack overflow: required psum banks <n> exceeds available psum banks <target>` (frag `0x109da0`) | PSUM bank demand > 8 | PSUM alloc / matmul accumulation | CERTAIN (trigger MEDIUM) |
+| `err_valid_size` `0x63bd0 · 2867 · NKISyntaxError*` | `<name> size must be in [ … ]` / ` size must be ` (frags `0x10bac0`+`0x10c178`) | size operand outside valid set | size-constrained isa (raised inline via `nki_assert`) | HIGH |
 
 ---
 
@@ -147,14 +157,14 @@ Partition counts, dimension ranks, dimension sizes, SBUF/PSUM capacity. The hard
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_tile_shape_mismatch` `0x4ba30 · 1330 · NKISyntaxError*` | `tile shape mismatch, expected '<expected_shape>' …` (frag `0x109d60`) | actual tile shape ≠ expected | fixed-shape operand contracts | CONFIRMED |
-| `err_annotation_shape_mismatch` `0x4cd30 · 2441 · TypeError` | `shape of \`<name><shape>\` does not match the expected shape of <annotation_shape>` (frags `0x10cd68`+`0x109260`) | `value.shape != annotation` | typed assignment `data: nt.tensor[…] = …` | CONFIRMED |
-| `err_param_shape_mismatch` `0x90430 · 360 · ValueError` | `Parameter shapes (<shapes>) … has mismatched shapes` (frags `0x10ba50`+`0x10aa90`) | operand shapes incompatible (no-broadcast) | elementwise isa requiring identical shapes | CONFIRMED |
-| `err_param_shape_incompatible_with_numpy` `0x8f6d0 · 354 · ValueError` | `Parameter shapes (<shapes>) … could not be broadcast together with shapes` (frag `0x109320`) | shapes fail NumPy broadcast | broadcast-following APIs (`nl.add`/`mul`) | CONFIRMED |
-| `err_param_shape_incompatible_with_matmul` `0xee450 · 343 · ValueError` | matmul contraction-shape incompatibility (`<transpose_x>`, `<shapes>`) | lhs/rhs contraction dims incompatible | `nl.matmul`, `nisa.nc_matmul` | CONFIRMED |
-| `err_store_dst_shape_smaller_than_other_shape` `0xbe290 · 1958 · ValueError` | `Illegal assignment destination shape in '<expr>': shape … '<dst_name>' is smaller than other parameter shape <shapes>` (frags `0x1087c0`+`0x108f80`) | dst broadcast-smaller than src | tile assign `dst[…]=src`, `nl.store` | CONFIRMED |
-| `err_indices_shape_mismatch` `0x705c0 · 1985 · IndexError` | `shape mismatch: indices indexing tensor …` (frag `0x108c60`) | advanced-index tensor shape mismatch | indirect/advanced indexing | CONFIRMED (trigger INFERRED) |
-| `err_leading_dimension_of_tensor_must_be_partition` `0x7f070 · 2519 · NKISyntaxError*` | `The leading dimension of SBUF/PSUM tensors must be the partition dimension. The tensor has shape <tensor_shape>` (frag `0x107c00`) | leading dim of SBUF/PSUM tile ≠ partition dim | tile creation/use where dim 0 ≠ par_dim | CONFIRMED |
+| `err_tile_shape_mismatch` `0x4ba30 · 1330 · NKISyntaxError*` | `tile shape mismatch, expected '<expected_shape>' …` (frag `0x109d60`) | actual tile shape ≠ expected | fixed-shape operand contracts | CERTAIN |
+| `err_annotation_shape_mismatch` `0x4cd30 · 2441 · TypeError` | `shape of \`<name><shape>\` does not match the expected shape of <annotation_shape>` (frags `0x10cd68`+`0x109260`) | `value.shape != annotation` | typed assignment `data: nt.tensor[…] = …` | CERTAIN |
+| `err_param_shape_mismatch` `0x90430 · 360 · ValueError` | `Parameter shapes (<shapes>) … has mismatched shapes` (frags `0x10ba50`+`0x10aa90`) | operand shapes incompatible (no-broadcast) | elementwise isa requiring identical shapes | CERTAIN |
+| `err_param_shape_incompatible_with_numpy` `0x8f6d0 · 354 · ValueError` | `Parameter shapes (<shapes>) … could not be broadcast together with shapes` (frag `0x109320`) | shapes fail NumPy broadcast | broadcast-following APIs (`nl.add`/`mul`) | CERTAIN |
+| `err_param_shape_incompatible_with_matmul` `0xee450 · 343 · ValueError` | matmul contraction-shape incompatibility (`<transpose_x>`, `<shapes>`) | lhs/rhs contraction dims incompatible | `nl.matmul`, `nisa.nc_matmul` | CERTAIN |
+| `err_store_dst_shape_smaller_than_other_shape` `0xbe290 · 1958 · ValueError` | `Illegal assignment destination shape in '<expr>': shape … '<dst_name>' is smaller than other parameter shape <shapes>` (frags `0x1087c0`+`0x108f80`) | dst broadcast-smaller than src | tile assign `dst[…]=src`, `nl.store` | CERTAIN |
+| `err_indices_shape_mismatch` `0x705c0 · 1985 · IndexError` | `shape mismatch: indices indexing tensor …` (frag `0x108c60`) | advanced-index tensor shape mismatch | indirect/advanced indexing | CERTAIN (trigger MEDIUM) |
+| `err_leading_dimension_of_tensor_must_be_partition` `0x7f070 · 2519 · NKISyntaxError*` | `The leading dimension of SBUF/PSUM tensors must be the partition dimension. The tensor has shape <tensor_shape>` (frag `0x107c00`) | leading dim of SBUF/PSUM tile ≠ partition dim | tile creation/use where dim 0 ≠ par_dim | CERTAIN |
 
 > **NOTE —** `err_param_shape_incompatible_with_matmul` is reached from `check_matmul_high_level_shape` via the Cython-collision slot `err_param_shape_incompatible_wit_2` (the `_2` suffix disambiguates it from `..._with_numpy`, which truncates to `..._wit`). Both truncations are visible as cached-slot names; the builders are distinct.
 
@@ -164,16 +174,16 @@ Partition counts, dimension ranks, dimension sizes, SBUF/PSUM capacity. The hard
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_supported_operand_dtype` `0xce320 · 332 · TypeError` | `'<name>' …, expected one of the following dtypes: <expected_dtypes>` (frag `0x1090c0`) | operand dtype ∉ supported set | dtype-restricted isa | CONFIRMED |
-| `err_unsupported_dtype_value` `0xd3ec0 · 327 · ValueError` | `Unsupported dtype '<dtype_value>' …, expected one of the following dtypes: <expected_dtypes>` (frag `0x10b130`) | `dtype=` value not a legal NKI dtype | any API taking `dtype=` | CONFIRMED |
-| `err_unsupported_args` `0x628b0 · 313 · TypeError` | `'<api>' with unsupported arguments on nki tensor: <e>` (frag `0x108ac0`) | tensor dunder/op with bad arg signature | overloaded tensor operators | CONFIRMED |
-| `err_activation_bias_invalid_type` `0x7fc30 · 1573 · TypeError` | `'bias' param of '<instr_name>' must be a vector of type float32, float16, or bfloat16, got '<dtype>'` (frags `0x10c0e0`+`0x108ea0`) | `bias.dtype ∉ {fp32,fp16,bf16}` | `nisa.activation`/`activation_reduce` (`bias=`) | CONFIRMED (trigger INFERRED) |
-| `err_activation_scale_invalid_type` `0x84330 · 1558 · TypeError` | `'scale' param of '<instr_name>' must be a scalar or vector of type float32, got '<dtype>'` (frags `0x10bcf0`+`0x108ee0`) | `scale.dtype != float32` | `nisa.activation`/`activation_reduce` (`scale=`) | CONFIRMED (trigger INFERRED) |
-| `err_src_dst_same_dtype` `0x50c70 · 2861 · NKISyntaxError*` | `<api> src and dst must have same data type but got <src> / <dst>` (frag `0x108c20`) | `src.dtype != dst.dtype` on copy/transpose | `nisa.dma_copy`/`tensor_copy`/transpose | CONFIRMED |
-| `err_tile_index_add_non_integer_scalar` `0xa73e0 · 1752 · TypeError` | `tile_index can only add with integer scalar, got scalar with dtype <dtype>` (frag `0x1061e0`) | `tile_index + non-integer scalar` | index arithmetic on `tile_index`/mgrid | CONFIRMED (trigger INFERRED) |
-| `err_unexpected_type_of_operand` `0x8a800 · 1339 · TypeError` | operand type ∉ `<expected_types>` (`'… but got 'np.…'` family, frag `0x10c940`) | operand python/IR type ∉ expected | any class-restricted operand | CONFIRMED |
-| `err_operand_cannot_be_none` `0x941e0 · 323 · ValueError` | `'<name>' cannot be None.` (frag `0x10be30`) | required operand is `None` | any API with a mandatory operand | CONFIRMED |
-| `err_incorrect_target_type` `0xd5170 · 1481 · NKISyntaxError*` | `<target_type> … is not supported in '<name>'` (frag `0x10af70`) | wrong NeuronCore target for instruction | arch-gated isa (from the two arch-support errs) | CONFIRMED |
+| `err_supported_operand_dtype` `0xce320 · 332 · TypeError` | `'<name>' …, expected one of the following dtypes: <expected_dtypes>` (frag `0x1090c0`) | operand dtype ∉ supported set | dtype-restricted isa | CERTAIN |
+| `err_unsupported_dtype_value` `0xd3ec0 · 327 · ValueError` | `Unsupported dtype '<dtype_value>' …, expected one of the following dtypes: <expected_dtypes>` (frag `0x10b130`) | `dtype=` value not a legal NKI dtype | any API taking `dtype=` | CERTAIN |
+| `err_unsupported_args` `0x628b0 · 313 · TypeError` | `'<api>' with unsupported arguments on nki tensor: <e>` (frag `0x108ac0`) | tensor dunder/op with bad arg signature | overloaded tensor operators | CERTAIN |
+| `err_activation_bias_invalid_type` `0x7fc30 · 1573 · TypeError` | `'bias' param of '<instr_name>' must be a vector of type float32, float16, or bfloat16, got '<dtype>'` (frags `0x10c0e0`+`0x108ea0`) | `bias.dtype ∉ {fp32,fp16,bf16}` | `nisa.activation`/`activation_reduce` (`bias=`) | CERTAIN (trigger MEDIUM) |
+| `err_activation_scale_invalid_type` `0x84330 · 1558 · TypeError` | `'scale' param of '<instr_name>' must be a scalar or vector of type float32, got '<dtype>'` (frags `0x10bcf0`+`0x108ee0`) | `scale.dtype != float32` | `nisa.activation`/`activation_reduce` (`scale=`) | CERTAIN (trigger MEDIUM) |
+| `err_src_dst_same_dtype` `0x50c70 · 2861 · NKISyntaxError*` | `<api> src and dst must have same data type but got <src> / <dst>` (frag `0x108c20`) | `src.dtype != dst.dtype` on copy/transpose | `nisa.dma_copy`/`tensor_copy`/transpose | CERTAIN |
+| `err_tile_index_add_non_integer_scalar` `0xa73e0 · 1752 · TypeError` | `tile_index can only add with integer scalar, got scalar with dtype <dtype>` (frag `0x1061e0`) | `tile_index + non-integer scalar` | index arithmetic on `tile_index`/mgrid | CERTAIN (trigger MEDIUM) |
+| `err_unexpected_type_of_operand` `0x8a800 · 1339 · TypeError` | operand type ∉ `<expected_types>` (`'… but got 'np.…'` family, frag `0x10c940`) | operand python/IR type ∉ expected | any class-restricted operand | CERTAIN |
+| `err_operand_cannot_be_none` `0x941e0 · 323 · ValueError` | `'<name>' cannot be None.` (frag `0x10be30`) | required operand is `None` | any API with a mandatory operand | CERTAIN |
+| `err_incorrect_target_type` `0xd5170 · 1481 · NKISyntaxError*` | `<target_type> … is not supported in '<name>'` (frag `0x10af70`) | wrong NeuronCore target for instruction | arch-gated isa (from the two arch-support errs) | CERTAIN |
 
 ---
 
@@ -183,12 +193,12 @@ HBM / SBUF / PSUM placement. NKI enforces per-API memory-residency requirements;
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_unsupported_memory` `0xda290 · 1810 · TypeError` | `Expected operand '<name>' of '<api>' to be in address space '<expected_addr_space>', but got a <tile> instead.` (frags `0x10ba70`+`0x10a830`+`0x10cc68`) | operand buffer ∉ required address spaces | `nl.load` (src=hbm), compute (psum\|sbuf) | CONFIRMED |
-| `err_shared_hbm_must_in_kernel_level` `0xeb420 · 2080 · RuntimeError` | `shared_hbm buffer can only be created top level kernel scope <scope>` | `nl.ndarray(buffer=nl.shared_hbm)` outside top-level scope | `nl.ndarray`/`nl.full` with `buffer=nl.shared_hbm` | CONFIRMED |
-| `err_hbm_tensor_with_init_value_not_supported` `0x44850 · 1499 · NKISyntaxError*` | `Creating HBM tensor with init value is not supported.` (frag `0x108940`) | init/fill value on an HBM tensor | `nl.full`/`nl.zeros(…, buffer=hbm)` | CONFIRMED |
-| `err_tensor_creation_on_scratchpad_with_init_value_not_supported` `0x44a20 · 1485 · NKISyntaxError*` | `Creating SBUF/PSUM tensor with init value is not supported in allocated kernels.` (frag `0x1088e0`) | init value on SBUF/PSUM tile in *allocated* kernel | `nl.full(buffer=ncc.sbuf…)` in allocated kernels | CONFIRMED |
-| `err_bias_tensor_must_be_specified_in_allocation` `0x44680 · 1521 · NKISyntaxError*` | `Bias tensor for activation op must be specified in allocated kernel!` (frag `0x108a60`) | `nisa.activation` without explicit bias in allocated kernel | `nisa.activation` (allocated) | CONFIRMED |
-| `err_transpose_on_tensor_engine_not_allowed_in_allocated_kernel` `0x444b0 · 1590 · NKISyntaxError*` | feature-gate string (no interpolation) | `nc_transpose` on TensorEngine / matmul w/o `transpose_x` in allocated kernel | `nisa.nc_transpose`, `nl.matmul` (allocated) | CONFIRMED |
+| `err_unsupported_memory` `0xda290 · 1810 · TypeError` | `Expected operand '<name>' of '<api>' to be in address space '<expected_addr_space>', but got a <tile> instead.` (frags `0x10ba70`+`0x10a830`+`0x10cc68`) | operand buffer ∉ required address spaces | `nl.load` (src=hbm), compute (psum\|sbuf) | CERTAIN |
+| `err_shared_hbm_must_in_kernel_level` `0xeb420 · 2080 · RuntimeError` | `shared_hbm buffer can only be created top level kernel scope <scope>` | `nl.ndarray(buffer=nl.shared_hbm)` outside top-level scope | `nl.ndarray`/`nl.full` with `buffer=nl.shared_hbm` | CERTAIN |
+| `err_hbm_tensor_with_init_value_not_supported` `0x44850 · 1499 · NKISyntaxError*` | `Creating HBM tensor with init value is not supported.` (frag `0x108940`) | init/fill value on an HBM tensor | `nl.full`/`nl.zeros(…, buffer=hbm)` | CERTAIN |
+| `err_tensor_creation_on_scratchpad_with_init_value_not_supported` `0x44a20 · 1485 · NKISyntaxError*` | `Creating SBUF/PSUM tensor with init value is not supported in allocated kernels.` (frag `0x1088e0`) | init value on SBUF/PSUM tile in *allocated* kernel | `nl.full(buffer=ncc.sbuf…)` in allocated kernels | CERTAIN |
+| `err_bias_tensor_must_be_specified_in_allocation` `0x44680 · 1521 · NKISyntaxError*` | `Bias tensor for activation op must be specified in allocated kernel!` (frag `0x108a60`) | `nisa.activation` without explicit bias in allocated kernel | `nisa.activation` (allocated) | CERTAIN |
+| `err_transpose_on_tensor_engine_not_allowed_in_allocated_kernel` `0x444b0 · 1590 · NKISyntaxError*` | feature-gate string (no interpolation) | `nc_transpose` on TensorEngine / matmul w/o `transpose_x` in allocated kernel | `nisa.nc_transpose`, `nl.matmul` (allocated) | CERTAIN |
 
 ---
 
@@ -198,22 +208,22 @@ Instruction selection. These leaves gate which op runs on which engine, which dt
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_instruction_unsupported_op` `0x5d880 · 1399 · NKISyntaxError*` | `<op_name> is not supported in '<inst_name>'` (frags `0x10af70`+`0x10b910`) | op ∉ instruction's legal op set | `nisa.tensor_reduce`/`tensor_tensor`/`tensor_scalar` (`op=`) | CONFIRMED |
-| `err_instruction_engine_unsupported_op_comb` `0xba320 · 1409 · NKISyntaxError*` | unsupported `(op0, op1)` pair on engine | op-pair illegal on chosen engine | fused two-op isa (e.g. `tensor_tensor_scan`) | CONFIRMED (trigger INFERRED) |
-| `err_instruction_supported_dtypes` `0x98ac0 · 1420 · NKISyntaxError*` | `<inst>.<param> on <target> dtype <dtype>, supported: <supported_dtypes>` | param dtype ∉ per-target positive-list | dtype-gated isa (positive form) | CONFIRMED (trigger INFERRED) |
-| `err_instruction_unsupported_dtypes` `0x975f0 · 1430 · NKISyntaxError*` | dtype `<dtype>` in *unsupported* set for inst/param/target | param dtype ∈ per-target blacklist | dtype-gated isa (negative form) | CONFIRMED (trigger INFERRED) |
-| `err_tensor_int32_add_multiply_supported_engine` `0xb2490 · 2898 · NKISyntaxError*` | int32 add/multiply only on `<multiple_engines>`; op `<op>` dtype `<dtype>` engine `<engine>` | int32 tensor add/mul on engine lacking int32 ALU (→ `err_instruction_unsupported_op`) | `nisa.tensor_tensor`/`tensor_scalar` (int32 add\|mult) | CONFIRMED |
-| `err_par_reduce_unsupported_op` `0xeace0 · 1454 · NKISyntaxError*` | `par_reduce does not support operator=<op_name>` (frag `0x1064c0`) | unsupported op in partition reduction | `nisa.*_par_reduce` | CONFIRMED (trigger INFERRED) |
-| `err_reduce_unsupported_negate` `0x76650 · 1458 · NKISyntaxError*` | `negate option can only be used with arithmetic ops, unsupported op=<op_name>` (frag `0x1067a0`) | `negate=True` on non-arithmetic reduce | `nisa.tensor_reduce(negate=True)` | CONFIRMED (trigger INFERRED) |
-| `err_reduce_bitvec_op_invalid_dtype` `0x85c20 · 1440 · NKISyntaxError*` | bitvec reduce requires integer dtype, got `<dtype>` | bitwise reduce on float dtype | `nisa.tensor_reduce(op=bitwise_*)` | CONFIRMED (trigger INFERRED) |
-| `err_par_reduce_bitvec_op_invalid_dtype` `0x84ee0 · 1447 · NKISyntaxError*` | partition bitvec reduce requires integer dtype, got `<dtype>` | bitwise partition-reduce on float dtype | nisa partition bitwise reductions | CONFIRMED (trigger INFERRED) |
-| `err_bitvec_operand_must_be_integer` `0xbc170 · 1462 · NKISyntaxError*` | bitvec op operand `<operand_name>` dtype `<dtype>` must be integer (frag `0x10bb10`) | bitwise op on non-integer operand | nisa bitwise tensor ops (and/or/xor/shift) | CONFIRMED (trigger INFERRED) |
-| `err_mask_not_equal_not_supported` `0x44bf0 · 1468 · NKISyntaxError*` | `'not equal' mask is not supported` (frag `0x108e20`) | `!=` used to build a mask predicate | `mask=` with not-equal comparison | CONFIRMED |
-| `err_logic_or_not_supported` `0x94f50 · 339 · ValueError` | `'logical or' is not supported for the \`<name>\`` (frag `0x108f20`) | python `or` on a tensor/mask | tensor expressions using `or` (use `\|`) | CONFIRMED |
-| `err_exact_arch_support_for_inst` `0xbd240 · 2910 · NKISyntaxError*` | inst `<inst_name>' is available on <available_targets>` (frag `0x10bb40`; via `ncversion2str`) | instruction used on a target where it does not exist (→ `err_incorrect_target_type`) | arch-exclusive isa | CONFIRMED |
-| `err_min_arch_support_for_inst` `0xe3620 · 2919 · NKISyntaxError*` | inst `<inst_name>` requires min target `<min_target>` (via `get_nc_version`/`ncversion2str`) | instruction below its minimum NeuronCore gen (→ `err_incorrect_target_type`) | gen-gated isa | CONFIRMED |
-| `err_min_arch_support_for_hwdge` `0x69130 · 2927 · NKISyntaxError*` | HW DGE mode `<dge_mode>` for inst `<inst_name>` requires min target `<min_target>` | HW descriptor-gen-engine mode below min arch (→ `err_min_arch_support_for_inst`) | DMA/DGE-accelerated isa on too-old a target | CONFIRMED |
-| `err_multi_cores_spmd_not_supported` `0x7d0a0 · 2064 · RuntimeError` | `SPMD grid with multi neuron cores is not supported on <target>` (frag `0x107c80`) | multi-core SPMD grid on a target lacking it | `kernel[grid]` launch on unsupported target | CONFIRMED (trigger INFERRED) |
+| `err_instruction_unsupported_op` `0x5d880 · 1399 · NKISyntaxError*` | `<op_name> is not supported in '<inst_name>'` (frags `0x10af70`+`0x10b910`) | op ∉ instruction's legal op set | `nisa.tensor_reduce`/`tensor_tensor`/`tensor_scalar` (`op=`) | CERTAIN |
+| `err_instruction_engine_unsupported_op_comb` `0xba320 · 1409 · NKISyntaxError*` | unsupported `(op0, op1)` pair on engine | op-pair illegal on chosen engine | fused two-op isa (e.g. `tensor_tensor_scan`) | CERTAIN (trigger MEDIUM) |
+| `err_instruction_supported_dtypes` `0x98ac0 · 1420 · NKISyntaxError*` | `<inst>.<param> on <target> dtype <dtype>, supported: <supported_dtypes>` | param dtype ∉ per-target positive-list | dtype-gated isa (positive form) | CERTAIN (trigger MEDIUM) |
+| `err_instruction_unsupported_dtypes` `0x975f0 · 1430 · NKISyntaxError*` | dtype `<dtype>` in *unsupported* set for inst/param/target | param dtype ∈ per-target blacklist | dtype-gated isa (negative form) | CERTAIN (trigger MEDIUM) |
+| `err_tensor_int32_add_multiply_supported_engine` `0xb2490 · 2898 · NKISyntaxError*` | int32 add/multiply only on `<multiple_engines>`; op `<op>` dtype `<dtype>` engine `<engine>` | int32 tensor add/mul on engine lacking int32 ALU (→ `err_instruction_unsupported_op`) | `nisa.tensor_tensor`/`tensor_scalar` (int32 add\|mult) | CERTAIN |
+| `err_par_reduce_unsupported_op` `0xeace0 · 1454 · NKISyntaxError*` | `par_reduce does not support operator=<op_name>` (frag `0x1064c0`) | unsupported op in partition reduction | `nisa.*_par_reduce` | CERTAIN (trigger MEDIUM) |
+| `err_reduce_unsupported_negate` `0x76650 · 1458 · NKISyntaxError*` | `negate option can only be used with arithmetic ops, unsupported op=<op_name>` (frag `0x1067a0`) | `negate=True` on non-arithmetic reduce | `nisa.tensor_reduce(negate=True)` | CERTAIN (trigger MEDIUM) |
+| `err_reduce_bitvec_op_invalid_dtype` `0x85c20 · 1440 · NKISyntaxError*` | bitvec reduce requires integer dtype, got `<dtype>` | bitwise reduce on float dtype | `nisa.tensor_reduce(op=bitwise_*)` | CERTAIN (trigger MEDIUM) |
+| `err_par_reduce_bitvec_op_invalid_dtype` `0x84ee0 · 1447 · NKISyntaxError*` | partition bitvec reduce requires integer dtype, got `<dtype>` | bitwise partition-reduce on float dtype | nisa partition bitwise reductions | CERTAIN (trigger MEDIUM) |
+| `err_bitvec_operand_must_be_integer` `0xbc170 · 1462 · NKISyntaxError*` | bitvec op operand `<operand_name>` dtype `<dtype>` must be integer (frag `0x10bb10`) | bitwise op on non-integer operand | nisa bitwise tensor ops (and/or/xor/shift) | CERTAIN (trigger MEDIUM) |
+| `err_mask_not_equal_not_supported` `0x44bf0 · 1468 · NKISyntaxError*` | `'not equal' mask is not supported` (frag `0x108e20`) | `!=` used to build a mask predicate | `mask=` with not-equal comparison | CERTAIN |
+| `err_logic_or_not_supported` `0x94f50 · 339 · ValueError` | `'logical or' is not supported for the \`<name>\`` (frag `0x108f20`) | python `or` on a tensor/mask | tensor expressions using `or` (use `\|`) | CERTAIN |
+| `err_exact_arch_support_for_inst` `0xbd240 · 2910 · NKISyntaxError*` | inst `<inst_name>' is available on <available_targets>` (frag `0x10bb40`; via `ncversion2str`) | instruction used on a target where it does not exist (→ `err_incorrect_target_type`) | arch-exclusive isa | CERTAIN |
+| `err_min_arch_support_for_inst` `0xe3620 · 2919 · NKISyntaxError*` | inst `<inst_name>` requires min target `<min_target>` (via `get_nc_version`/`ncversion2str`) | instruction below its minimum NeuronCore gen (→ `err_incorrect_target_type`) | gen-gated isa | CERTAIN |
+| `err_min_arch_support_for_hwdge` `0x69130 · 2927 · NKISyntaxError*` | HW DGE mode `<dge_mode>` for inst `<inst_name>` requires min target `<min_target>` | HW descriptor-gen-engine mode below min arch (→ `err_min_arch_support_for_inst`) | DMA/DGE-accelerated isa on too-old a target | CERTAIN |
+| `err_multi_cores_spmd_not_supported` `0x7d0a0 · 2064 · RuntimeError` | `SPMD grid with multi neuron cores is not supported on <target>` (frag `0x107c80`) | multi-core SPMD grid on a target lacking it | `kernel[grid]` launch on unsupported target | CERTAIN (trigger MEDIUM) |
 
 ---
 
@@ -221,19 +231,19 @@ Instruction selection. These leaves gate which op runs on which engine, which dt
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_tensor_access_out_of_bound` `0x5ae50 · 1840 · IndexError` | `Out-of-bound access for tensor \`<tensor_name>\` on dimension … index range <oob_range> exceed dimension size of <shape>` (frags `0x10c550`+`0x10aab0`) | computed index range exceeds a tensor dim | `nl.load`/`nl.store` (fix via `mask=`) | CONFIRMED (trigger INFERRED) |
-| `err_tensor_access_out_of_bound_1range_string` `0xa1500 · 1885 · NKISyntaxError*` | format **helper** — formats `<range_tuple>` for the above | (helper, not a top-level leaf) | — | CONFIRMED |
-| `err_tensor_index_not_supported` `0x9cda0 · 2124 · NKISyntaxError*` | tensor `<tensor_name>` indexed with unsupported index `<index>` (type `<type_name>`) | unsupported index object/type | tile subscript with illegal index kind | CONFIRMED (trigger INFERRED) |
-| `err_cannot_assign_to_index` `0x46510 · 2008 · TypeError` | `'index' tensor does not support item assignment <index_or_mask>` | item assignment into index/mask tensor | assignment to `nl.mgrid`/arange-derived index | CONFIRMED |
-| `err_unsupported_mixing_basic_advanced_tensor_indexing` `0x43d70 · 1934 · NKISyntaxError*` | `Mixing basic tensor indexing and advanced tensor indexing is not supported.` (frag `0x108660`) | subscript mixes slice and index-tensor across axes | any tile subscript combining basic+advanced | CONFIRMED |
-| `err_indirect_indices_free_dim` `0x439d0 · 2133 · NKISyntaxError*` | `Indirect indexing on free dimension not supported, must be partition dimension or block dimension.` (frag `0x108740`) | indirect index applied to a free dimension | `nl.load`/`nl.store` with index tensor on free axis | CONFIRMED |
-| `err_indirect_indices_sbuf` `0x43800 · 2158 · NKISyntaxError*` | `Indirect indices tile must be on SBUF.` (frag `0x108700`) | index tile not in SBUF | indirect-indexed `nl.load`/`nl.store` | CONFIRMED |
-| `err_indirect_indices_are_not_supported_with_nki_api` `0xaafb0 · 2459 · NKISyntaxError*` | `cannot use indirect indexing access with the current NKI API for <indirect_operands>` (frag `0x107820`) | indirect operand passed to an API that forbids it | `nl.load_transpose2d`, `nisa.dma_transpose` | CONFIRMED |
-| `err_copy_dynamic_indirect_indices_not_natively_supported` `0xebba0 · 2484 · NKISyntaxError*` | `cannot copy a tensor with indirect memory reference access to \`<lhs>\`` (frag `0x107880`) | copy with runtime-dynamic indirect source | use `nisa.tensor_copy_dynamic_src` | CONFIRMED |
-| `err_atomic_rmw_add_only` `0x46b10 · 2163 · NKISyntaxError*` | `atomic_rmw \`op\` param only supports 'add' operation currently. An unsupported op=<op>` (frag `0x107960`) | `atomic_rmw` with `op != add` | `nl`/`nisa` `atomic_rmw` | CONFIRMED |
-| `err_atomic_rmw_dynamic_index` `0x43630 · 2170 · NKISyntaxError*` | `atomic_rmw \`dst\` only supports indirect dynamic indexing currently. Use a tile to index.` (frag `0x1079c0`) | `atomic_rmw` dst without indirect dynamic index | `atomic_rmw` dst addressing | CONFIRMED |
-| `err_1d_arange_not_supported` `0xa2240 · 1716 · NKISyntaxError*` | `<tensor_name> with 1d arange is not supported.` (frag `0x108b00`) | tile subscripted with a bare 1-D `nl.arange` | tile indexing (use `[:,None]`) | CONFIRMED |
-| `err_unexpected_output_dependencies` `0xec2e0 · 1895 · NKISyntaxError*` | `Unexpected output dependencies <missing_indices>` | same memory written across parallel iterations | writes inside `nl.affine_range` / spmd grid | CONFIRMED |
+| `err_tensor_access_out_of_bound` `0x5ae50 · 1840 · IndexError` | `Out-of-bound access for tensor \`<tensor_name>\` on dimension … index range <oob_range> exceed dimension size of <shape>` (frags `0x10c550`+`0x10aab0`) | computed index range exceeds a tensor dim | `nl.load`/`nl.store` (fix via `mask=`) | CERTAIN (trigger MEDIUM) |
+| `err_tensor_access_out_of_bound_1range_string` `0xa1500 · 1885 · NKISyntaxError*` | format **helper** — formats `<range_tuple>` for the above | (helper, not a top-level leaf) | — | CERTAIN |
+| `err_tensor_index_not_supported` `0x9cda0 · 2124 · NKISyntaxError*` | tensor `<tensor_name>` indexed with unsupported index `<index>` (type `<type_name>`) | unsupported index object/type | tile subscript with illegal index kind | CERTAIN (trigger MEDIUM) |
+| `err_cannot_assign_to_index` `0x46510 · 2008 · TypeError` | `'index' tensor does not support item assignment <index_or_mask>` | item assignment into index/mask tensor | assignment to `nl.mgrid`/arange-derived index | CERTAIN |
+| `err_unsupported_mixing_basic_advanced_tensor_indexing` `0x43d70 · 1934 · NKISyntaxError*` | `Mixing basic tensor indexing and advanced tensor indexing is not supported.` (frag `0x108660`) | subscript mixes slice and index-tensor across axes | any tile subscript combining basic+advanced | CERTAIN |
+| `err_indirect_indices_free_dim` `0x439d0 · 2133 · NKISyntaxError*` | `Indirect indexing on free dimension not supported, must be partition dimension or block dimension.` (frag `0x108740`) | indirect index applied to a free dimension | `nl.load`/`nl.store` with index tensor on free axis | CERTAIN |
+| `err_indirect_indices_sbuf` `0x43800 · 2158 · NKISyntaxError*` | `Indirect indices tile must be on SBUF.` (frag `0x108700`) | index tile not in SBUF | indirect-indexed `nl.load`/`nl.store` | CERTAIN |
+| `err_indirect_indices_are_not_supported_with_nki_api` `0xaafb0 · 2459 · NKISyntaxError*` | `cannot use indirect indexing access with the current NKI API for <indirect_operands>` (frag `0x107820`) | indirect operand passed to an API that forbids it | `nl.load_transpose2d`, `nisa.dma_transpose` | CERTAIN |
+| `err_copy_dynamic_indirect_indices_not_natively_supported` `0xebba0 · 2484 · NKISyntaxError*` | `cannot copy a tensor with indirect memory reference access to \`<lhs>\`` (frag `0x107880`) | copy with runtime-dynamic indirect source | use `nisa.tensor_copy_dynamic_src` | CERTAIN |
+| `err_atomic_rmw_add_only` `0x46b10 · 2163 · NKISyntaxError*` | `atomic_rmw \`op\` param only supports 'add' operation currently. An unsupported op=<op>` (frag `0x107960`) | `atomic_rmw` with `op != add` | `nl`/`nisa` `atomic_rmw` | CERTAIN |
+| `err_atomic_rmw_dynamic_index` `0x43630 · 2170 · NKISyntaxError*` | `atomic_rmw \`dst\` only supports indirect dynamic indexing currently. Use a tile to index.` (frag `0x1079c0`) | `atomic_rmw` dst without indirect dynamic index | `atomic_rmw` dst addressing | CERTAIN |
+| `err_1d_arange_not_supported` `0xa2240 · 1716 · NKISyntaxError*` | `<tensor_name> with 1d arange is not supported.` (frag `0x108b00`) | tile subscripted with a bare 1-D `nl.arange` | tile indexing (use `[:,None]`) | CERTAIN |
+| `err_unexpected_output_dependencies` `0xec2e0 · 1895 · NKISyntaxError*` | `Unexpected output dependencies <missing_indices>` | same memory written across parallel iterations | writes inside `nl.affine_range` / spmd grid | CERTAIN |
 
 ---
 
@@ -241,19 +251,19 @@ Instruction selection. These leaves gate which op runs on which engine, which dt
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_dynamic_control_flow_not_supported` `0x442e0 · 1620 · NKISyntaxError*` | `dynamic control-flow depending on tensor value is not supported.` (frag `0x107640`) | `if cnd:` where `cnd` is a runtime tensor value | python if/while on a loaded tensor | CONFIRMED |
-| `err_control_flow_condition_depending_on_arange` `0x43f40 · 1688 · NKISyntaxError*` | `Control-flow depending on \`nl.arange\` or \`nl.mgrid\` is not supported.` (frag `0x108980`) | branch condition derives from arange/mgrid | if-conditions over arange/mgrid (use `mask=`) | CONFIRMED |
-| `err_unsupported_expression_in_mask` `0x44110 · 1635 · ValueError` | `NKI mask expressions must be affine expressions of static loop indices. Dynamic values, tensor elements, or non-affine operations are not supported in mask predicates.` (frag `0x107d80`) | `mask=` contains non-affine/runtime term | load/store/compute `mask=` predicates | CONFIRMED |
-| `err_while_loop_requires_unconditional_entry` `0x43290 · 2584 · ValueError` | `Traditional while loops are not supported in NKI. Use the do-while pattern instead: start with 'cond = scalar(True)' …` (frag `0x1095a0`) | `while cond:` evaluated before first entry | python while loops in a kernel | CONFIRMED |
-| `err_ambiguous_tensor_truth_value` `0x43460 · 2533 · ValueError` | f-string from the DOC text; no interpolation (NumPy-style ambiguity) | `bool()` of a multi-element tensor | logical operators / truthiness on tensors | CONFIRMED |
-| `err_nki_api_outside_of_nki_kernel` `0x43ba0 · 2027 · RuntimeError` | `calling NKI API outside of NKI kernels is not supported.` (frag `0x1078c0`) | `nl.*`/`nisa.*` with no active trace context | any NKI API outside `@nki.jit`/`@nki.trace` | CONFIRMED |
-| `err_nested_kernel_with_spmd_grid` `0xb4270 · 2038 · NKISyntaxError*` | `<func_name>[<grid>]) inside another kernel is not supported.` (frag `0x109040`) | invoking `kernelN[grid](…)` inside another traced kernel | nested SPMD-grid kernel calls | CONFIRMED |
-| `err_program_id_axis_out_of_bounds` `0x83730 · 1323 · IndexError` | `axis in \`program_id\` is out-of-bound(s) of the spmd launch grid (axis=<axis> … rank <rank>)` (frag `0x107900`) | `nl.program_id(axis)` with `axis >= grid rank` | `nl.program_id(axis)` | CONFIRMED |
-| `err_local_variable_used_out_of_scope` `0xb4f00 · 1257 · NKISyntaxError*` | `Local variable '<name>' is referenced outside of its parent scope <parent_scope>` | tensor defined in an if/for block used after it | cross-scope tensor reuse (hoist the `nl.ndarray`) | CONFIRMED |
-| `err_tensor_output_not_written_to` `0xeca20 · 2187 · ValueError` | `<tensor_name> … never written to` | output tensor with no store reaching it | kernel output contract / `nl.store` coverage | CONFIRMED |
-| `err_cannot_update_immutable_parameter` `0x45f10 · 2287 · TypeError` | `Cannot update immutable parameter \`<tensor_name>\`` (frag `0x1089e0`) | `nl.store` into un-annotated (immutable) param | `nl.store(in_tensor, …)` on immutable param | CONFIRMED |
-| `err_mutable_parameter_not_returned` `0xaa470 · 2242 · NKISyntaxError*` | `<tensor_names> … mutable kernel parameter not returned` | `nt.mutable_tensor` param written but not returned | kernel return list | CONFIRMED |
-| `err_failed_to_infer_tile_from_local_tensor` `0x64f90 · 1770 · TypeError` | `Failed to infer tile from tensor '…': the first dimension of the tile is not the partition dimension of the tensor.` (frags `0x108860`+`0x108b40`) | compute API given a tensor whose dim 0 ≠ partition dim | any compute API (`nl.add`/`exp`) on a non-tile-shaped tensor | CONFIRMED |
+| `err_dynamic_control_flow_not_supported` `0x442e0 · 1620 · NKISyntaxError*` | `dynamic control-flow depending on tensor value is not supported.` (frag `0x107640`) | `if cnd:` where `cnd` is a runtime tensor value | python if/while on a loaded tensor | CERTAIN |
+| `err_control_flow_condition_depending_on_arange` `0x43f40 · 1688 · NKISyntaxError*` | `Control-flow depending on \`nl.arange\` or \`nl.mgrid\` is not supported.` (frag `0x108980`) | branch condition derives from arange/mgrid | if-conditions over arange/mgrid (use `mask=`) | CERTAIN |
+| `err_unsupported_expression_in_mask` `0x44110 · 1635 · ValueError` | `NKI mask expressions must be affine expressions of static loop indices. Dynamic values, tensor elements, or non-affine operations are not supported in mask predicates.` (frag `0x107d80`) | `mask=` contains non-affine/runtime term | load/store/compute `mask=` predicates | CERTAIN |
+| `err_while_loop_requires_unconditional_entry` `0x43290 · 2584 · ValueError` | `Traditional while loops are not supported in NKI. Use the do-while pattern instead: start with 'cond = scalar(True)' …` (frag `0x1095a0`) | `while cond:` evaluated before first entry | python while loops in a kernel | CERTAIN |
+| `err_ambiguous_tensor_truth_value` `0x43460 · 2533 · ValueError` | f-string from the DOC text; no interpolation (NumPy-style ambiguity) | `bool()` of a multi-element tensor | logical operators / truthiness on tensors | CERTAIN |
+| `err_nki_api_outside_of_nki_kernel` `0x43ba0 · 2027 · RuntimeError` | `calling NKI API outside of NKI kernels is not supported.` (frag `0x1078c0`) | `nl.*`/`nisa.*` with no active trace context | any NKI API outside `@nki.jit`/`@nki.trace` | CERTAIN |
+| `err_nested_kernel_with_spmd_grid` `0xb4270 · 2038 · NKISyntaxError*` | `<func_name>[<grid>]) inside another kernel is not supported.` (frag `0x109040`) | invoking `kernelN[grid](…)` inside another traced kernel | nested SPMD-grid kernel calls | CERTAIN |
+| `err_program_id_axis_out_of_bounds` `0x83730 · 1323 · IndexError` | `axis in \`program_id\` is out-of-bound(s) of the spmd launch grid (axis=<axis> … rank <rank>)` (frag `0x107900`) | `nl.program_id(axis)` with `axis >= grid rank` | `nl.program_id(axis)` | CERTAIN |
+| `err_local_variable_used_out_of_scope` `0xb4f00 · 1257 · NKISyntaxError*` | `Local variable '<name>' is referenced outside of its parent scope <parent_scope>` | tensor defined in an if/for block used after it | cross-scope tensor reuse (hoist the `nl.ndarray`) | CERTAIN |
+| `err_tensor_output_not_written_to` `0xeca20 · 2187 · ValueError` | `<tensor_name> … never written to` | output tensor with no store reaching it | kernel output contract / `nl.store` coverage | CERTAIN |
+| `err_cannot_update_immutable_parameter` `0x45f10 · 2287 · TypeError` | `Cannot update immutable parameter \`<tensor_name>\`` (frag `0x1089e0`) | `nl.store` into un-annotated (immutable) param | `nl.store(in_tensor, …)` on immutable param | CERTAIN |
+| `err_mutable_parameter_not_returned` `0xaa470 · 2242 · NKISyntaxError*` | `<tensor_names> … mutable kernel parameter not returned` | `nt.mutable_tensor` param written but not returned | kernel return list | CERTAIN |
+| `err_failed_to_infer_tile_from_local_tensor` `0x64f90 · 1770 · TypeError` | `Failed to infer tile from tensor '…': the first dimension of the tile is not the partition dimension of the tensor.` (frags `0x108860`+`0x108b40`) | compute API given a tensor whose dim 0 ≠ partition dim | any compute API (`nl.add`/`exp`) on a non-tile-shaped tensor | CERTAIN |
 
 ---
 
@@ -261,11 +271,11 @@ Instruction selection. These leaves gate which op runs on which engine, which dt
 
 | `err_*` (addr · line · exc) | Message template (rodata) | Trigger / predicate | Raising op | Conf |
 |---|---|---|---|---|
-| `err_activation_scale_scalar_or_vector` `0x4c6a0 · 1540 · NKISyntaxError*` | `'scale' param of 'activation' can only be a scalar or a vector in partition dimension, scale.shape=<shape>` (frag `0x108ca0`) | scale tensor neither scalar nor partition-dim 1-D vector | `nisa.activation(scale=)` | CONFIRMED |
-| `err_tiled_offloaded_memcpy_same_shape` `0x4aec0 · 2175 · NKISyntaxError*` | `src and dst must have the same shape, src.shape=<src> dst.shape=<dst>` (frag `0x106300`+`0x10c5b0`) | tiled/offloaded memcpy with mismatched src/dst | tiled offloaded `nisa.dma_copy`/memcpy | CONFIRMED (trigger INFERRED) |
-| `err_tiled_offloaded_fma_same_length` `0x95cc0 · 2181 · NKISyntaxError*` | `srcs and scales must have the same length, len(srcs)=<srcs>, len(scales)=<scales>` (frags `0x10bb60`+`0x10c840`) | tiled FMA where `len(srcs) != len(scales)` | tiled offloaded fused multiply-add | CONFIRMED (trigger INFERRED) |
-| `err_expected_constant_value` `0x7c4a0 · 1472 · NKISyntaxError*` | expected compile-time constant `<expected>`, got `<value>` | must-be-constant argument got a runtime value | APIs with compile-time-constant operands (shapes/axes/dtypes) | CONFIRMED |
-| `err_nki_param_not_hashable` `0x82b20 · 2071 · ValueError` | `'<name>' to be hashable, but got type <ty>` (frag `0x109e60`) | hashable-expected kernel param is unhashable | kernel parameter binding / memoization | CONFIRMED (trigger INFERRED) |
+| `err_activation_scale_scalar_or_vector` `0x4c6a0 · 1540 · NKISyntaxError*` | `'scale' param of 'activation' can only be a scalar or a vector in partition dimension, scale.shape=<shape>` (frag `0x108ca0`) | scale tensor neither scalar nor partition-dim 1-D vector | `nisa.activation(scale=)` | CERTAIN |
+| `err_tiled_offloaded_memcpy_same_shape` `0x4aec0 · 2175 · NKISyntaxError*` | `src and dst must have the same shape, src.shape=<src> dst.shape=<dst>` (frag `0x106300`+`0x10c5b0`) | tiled/offloaded memcpy with mismatched src/dst | tiled offloaded `nisa.dma_copy`/memcpy | CERTAIN (trigger MEDIUM) |
+| `err_tiled_offloaded_fma_same_length` `0x95cc0 · 2181 · NKISyntaxError*` | `srcs and scales must have the same length, len(srcs)=<srcs>, len(scales)=<scales>` (frags `0x10bb60`+`0x10c840`) | tiled FMA where `len(srcs) != len(scales)` | tiled offloaded fused multiply-add | CERTAIN (trigger MEDIUM) |
+| `err_expected_constant_value` `0x7c4a0 · 1472 · NKISyntaxError*` | expected compile-time constant `<expected>`, got `<value>` | must-be-constant argument got a runtime value | APIs with compile-time-constant operands (shapes/axes/dtypes) | CERTAIN |
+| `err_nki_param_not_hashable` `0x82b20 · 2071 · ValueError` | `'<name>' to be hashable, but got type <ty>` (frag `0x109e60`) | hashable-expected kernel param is unhashable | kernel parameter binding / memoization | CERTAIN (trigger MEDIUM) |
 
 ---
 
@@ -273,7 +283,7 @@ Instruction selection. These leaves gate which op runs on which engine, which dt
 
 | `warn_*` (addr · line · severity) | Message template | Trigger | Conf |
 |---|---|---|---|
-| `warn_block_dimension_is_deprecated` `0xd5ea0 · 2512 · DeprecationWarning` | `Block dimension is deprecated. The leading dimension of <tensor>…` (frag `0x108a20`); shares DOC `0xfebc0` with `err_leading_dimension_of_tensor_must_be_partition` | a tile with a block dim in front of the partition dim | CONFIRMED |
+| `warn_block_dimension_is_deprecated` `0xd5ea0 · 2512 · DeprecationWarning` | `Block dimension is deprecated. The leading dimension of <tensor>…` (frag `0x108a20`); shares DOC `0xfebc0` with `err_leading_dimension_of_tensor_must_be_partition` | a tile with a block dim in front of the partition dim | CERTAIN |
 
 > **NOTE —** `warn_block_dimension_is_deprecated` is the only diagnostic that does *not* abort tracing. It emits through `warnings.warn` (`DeprecationWarning`, rodata `0x10b470`) and the kernel continues — block dim is still accepted but points the author at the migration guide. Its sibling hard error `err_leading_dimension_of_tensor_must_be_partition` fires only once block dim is fully removed for a given op. The two share a docstring, so the docs page renders the warning and the error from one source.
 
@@ -297,7 +307,7 @@ The `assert_*` helpers are the W04 layer: each validates one predicate and, on f
 
 ### Inline-message asserts (raise via `nki_assert` directly)
 
-These 17 build their own message string and raise through `nki_assert`. Recovered inline fragments (CONFIRMED rodata) anchor them:
+These 17 build their own message string and raise through `nki_assert`. Where an inline fragment was recovered from rodata it anchors the row:
 
 | `assert_*` (addr · line) | Args | Inline message fragment (rodata) |
 |---|---|---|
@@ -346,7 +356,7 @@ The `check_*` validators are `NKIFunc` methods that validate a whole API paramet
 
 ### Validators with their own inline messages
 
-Several `check_*` raise CONFIRMED inline messages with no `err_*` symbol fronting them — they belong to the same diagnostic surface:
+Several `check_*` raise inline messages with no `err_*` symbol fronting them — they belong to the same diagnostic surface:
 
 ```text
 check_quantize_mx_shape (1025):
@@ -388,15 +398,14 @@ The inverse map: which user-facing NKI API can trip which diagnostics. A kernel 
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Anchors
 
-The five strongest load-paths of this page, re-challenged against the binary:
+Every symbol and string cited on this page is reproducible from the wheel with `nm` and `strings`; the chain-level anchors are:
 
-1. **"78 `err_*`" — re-grounded and corrected.** `nm` over `__pyx_mdef_…err_*` returns **70** module-level builders; `strings | rg -o '\berr_…' | sort -u` returns **77** distinct names (78 if the `_1range_string` helper is counted as a separate leaf). The page documents all three figures and the CORRECTION callout reconciles them. The "78" headline counts the format helper as a leaf — defensible but imprecise; the page favors the symbol-grounded 70 + named 77.
-2. **The funnel `assert→err` hop is real, not inferred.** `assert_num_partition` (`0x96c80`) and `err_num_partition_exceed_arch_limit` (`0x99e90`) are both present as symbols, and the docstring example `# Error: number of partitions 256 exceed architecture limitation of 128.` is a verbatim rodata literal — the predicate, builder, and rendered message all confirmed in one chain.
-3. **`sema_err_url` appends one URL.** `sema_err_url` and `sema_err_url.<locals>.wrapper` are both symbols; the URL `https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.errors.html` is a single rodata literal. CONFIRMED.
-4. **`nki_assert` is the shared raise primitive.** `__pyx_pw_…_23nki_assert` at `0xbb9a0` matches the report's address exactly; `NKISyntaxError.__init__` is present, confirming the default class is module-local. CONFIRMED.
-5. **Message templates are verbatim, not paraphrased.** Spot-checks of `Traditional while loops are not supported`, `number of partitions mismatch in parameters (`, `stack overflow: required sbuf size `, and the `tensor_tensor` docstring example all return exact rodata matches. The per-row templates that could not be matched to a single literal (reassembled from interpolation fragments) carry their fragment addresses inline and inherit the report's INFERRED tagging for the *trigger* even when the *template* is CONFIRMED.
+- **The `assert` → `err` hop is a real chain, not a reconstruction.** `assert_num_partition` (`0x96c80`) and `err_num_partition_exceed_arch_limit` (`0x99e90`) are both present as symbols, and the docstring example `# Error: number of partitions 256 exceed architecture limitation of 128.` is a verbatim rodata literal — predicate, builder, and rendered message all resolve in one chain.
+- **`sema_err_url` appends exactly one URL.** Both `sema_err_url` and `sema_err_url.<locals>.wrapper` are symbols, and `https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.errors.html` is a single rodata literal.
+- **`nki_assert` is the shared raise primitive.** `__pyx_pw_…_23nki_assert` sits at `0xbb9a0`, and `NKISyntaxError.__init__` is present in the module, which is what makes the default exception class module-local.
+- **Message templates are verbatim, not paraphrased.** `Traditional while loops are not supported`, `number of partitions mismatch in parameters (`, `stack overflow: required sbuf size `, and the `tensor_tensor` docstring example all match rodata exactly. Rows whose template had to be reassembled from interpolation fragments carry those fragment addresses inline.
 
 > **GOTCHA —** the IDA sidecar for `sema.so` is absent in this corpus (only `missing_addresses/*` index files ship for it). All grounding on this page therefore comes from the **shipped `sema.cpython-310-…so` binary itself** (`nm`, `strings`, DWARF `debug_info` — the module is not stripped), not from a decompilation database. The addresses are file VAs from the symbol table and are directly checkable with `nm`; the per-fragment rodata offsets are from `strings -t x`. A reimplementer can reproduce every cited symbol and string from the wheel with two commands.
 

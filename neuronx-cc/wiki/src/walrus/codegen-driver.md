@@ -92,7 +92,9 @@ function Codegen_codegen(this, Module):                  // 0x11d2c50
     teardown()
 ```
 
-> **CORRECTION (CGD-01) —** an earlier strand summary (D-J29 §2c) labelled the codegen passes "MEASURE pass mode 0 (GENERATE)" then "GENERATE pass mode 1". That conflates the *source name* `GENERATE_ISACODE` with the *integer* the pass passes. The disassembly is unambiguous: the production `Codegen::codegen` emits **only** `mov r8d,1` (mode 1 = RUN_ISA_CHECKS) and `xor r8d,r8d` (mode 0 = COLLECT_OPCODES) at every CoreVxGen ctor site — there is **no** `mov r8d,2` (GENERATE_ISACODE) anywhere in `0x11d2c50`. The "emit" pass in production is RUN_ISA_CHECKS, not GENERATE_ISACODE. See [the mode table](#the-codegenmode-tristate) below. [CONFIRMED — `rg 'r8d, 2'` over the codegen disasm returns nothing; only mode 0/1 sites present.]
+The production driver runs **only two of the three modes**. Every CoreVxGen ctor site inside `Codegen::codegen` emits either `xor r8d,r8d` (mode 0 = COLLECT_OPCODES) or `mov r8d,1` (mode 1 = RUN_ISA_CHECKS); there is no `mov r8d,2` anywhere in `0x11d2c50`. So the pass that actually emits bytes in production is RUN_ISA_CHECKS, not GENERATE_ISACODE.
+
+> **GOTCHA — the "emit" mode is not the one named GENERATE.** `GENERATE_ISACODE` (mode 2) never runs in the production codegen pass; it is reached only by the Verifier's own Generator. Reading the mode from its source *name* rather than from the integer at the ctor site inverts which pass emits. See [the mode table](#the-codegenmode-tristate) below.
 
 ### Function Map
 
@@ -130,7 +132,7 @@ cmp  ebp, 28h               // 40 → core_v4
 jnz  throw_unknown_arch     // else: runtime_error(ArchLevel2string(arch))
 ```
 
-> **QUIRK —** there are **two** arch-select sites in libwalrus that read `Module+0xAC` with the same `0x14/0x1E/0x28` codes, and they differ in `CodeGenMode`. The one on this page is `Codegen::codegen` (`0x11d2c50`), the *real emit*, which `tc_new`s a raw heap object and constructs with mode 0/1. The other is `birverifier::InstVisitor::initCodegen` (`0xfc5d00`), reached only from `Verifier::run` (`0xf9f120`); it builds an **embedded** `std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` (tag stored at `this+1600`) with `CodeGenMode = 2` (GENERATE_ISACODE) and lives in the *Verifier* pass, not the codegen pass. A reimplementer who assumes one arch-select will miss that the verifier runs its own Generator with a different mode. [CONFIRMED — callgraph: only `Verifier::run → 0xfc5d00`; codegen.c uses `tc_new` + raw ctor.]
+> **QUIRK —** there are **two** arch-select sites in libwalrus that read `Module+0xAC` with the same `0x14/0x1E/0x28` codes, and they differ in `CodeGenMode`. The one on this page is `Codegen::codegen` (`0x11d2c50`), the *real emit*, which `tc_new`s a raw heap object and constructs with mode 0/1. The other is `birverifier::InstVisitor::initCodegen` (`0xfc5d00`), reached only from `Verifier::run` (`0xf9f120`); it builds an **embedded** `std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` (tag stored at `this+1600`) with `CodeGenMode = 2` (GENERATE_ISACODE) and lives in the *Verifier* pass, not the codegen pass. A reimplementer who assumes one arch-select will miss that the verifier runs its own Generator with a different mode.
 
 ### The Generator Field Layout
 
@@ -151,11 +153,11 @@ The base `Generator` ctor (`0x11f19e0`) writes the object layout shared by all t
 | arch tag | `+628` (dword) | uint | core-version / arch tag (ctor arg `a6`) |
 | per-inst `.bin` flag | `+697` (byte) | bool | Debug: also write per-instruction `.bin` files |
 
-> **NOTE —** the `DenseMap<EngineInfo, FILE*>` is cited at both `+88` (D-J28) and `+176` (D-J29). The discrepancy is a byte-vs-qword indexing artifact in the two strands (`a1 + 22·q` = `+176`); the field itself is the per-engine stream map, confirmed by the `at()` assertion string in `findBin` naming `DenseMap<bir::EngineInfo, _IO_FILE*>`. Treat the exact numeric offset as MEDIUM; the *role* is CERTAIN. [createBin `0x11f3db0` fopen + the DenseMap assertion at `findBin 0x11f4b90`.]
+> **GOTCHA — the `DenseMap<EngineInfo, FILE*>` offset reads as either `+88` or `+176`** depending on whether the decompiler indexed the object in bytes or qwords (`a1 + 22·q` = `+176`). The field's *role* is certain — the `at()` assertion string in `findBin` names it `DenseMap<bir::EngineInfo, _IO_FILE*>` — but treat the exact numeric offset as MEDIUM confidence. *Anchors: `createBin` @ `0x11f3db0` fopen, plus the DenseMap assertion at `findBin` @ `0x11f4b90`.*
 
 ### The Inheritance Ladder
 
-`CoreV4GenImpl ▸ CoreV3GenImpl ▸ CoreV2GenImpl` is a single-inheritance chain (RTTI `__si_class_type_info`). Per-op `visitInst<Op>` slots resolve most-derived-wins: CoreV2 fills the base set, CoreV3 patches a handful (e.g. its own `generateMatMul` at `0x13643d0`), CoreV4 patches the MX/quant ops. Visible in `codegen.c`: the CoreV3/CoreV4 visit calls are typed `IRVisitor<CoreV3Gen|CoreV4Gen>::visit((CoreV2GenImpl*)gen, …)` — the upcast to the `CoreV2GenImpl` base subobject is direct binary evidence of the chain. The actual per-instruction encoder is always reached through the vtable, so the driver never branches on arch again after construction. [CONFIRMED.]
+`CoreV4GenImpl ▸ CoreV3GenImpl ▸ CoreV2GenImpl` is a single-inheritance chain (RTTI `__si_class_type_info`). Per-op `visitInst<Op>` slots resolve most-derived-wins: CoreV2 fills the base set, CoreV3 patches a handful (e.g. its own `generateMatMul` at `0x13643d0`), CoreV4 patches the MX/quant ops. Visible in `codegen.c`: the CoreV3/CoreV4 visit calls are typed `IRVisitor<CoreV3Gen|CoreV4Gen>::visit((CoreV2GenImpl*)gen, …)` — the upcast to the `CoreV2GenImpl` base subobject is direct binary evidence of the chain. The actual per-instruction encoder is always reached through the vtable, so the driver never branches on arch again after construction.
 
 ---
 
@@ -175,7 +177,7 @@ The values are fixed by the **branch order** in every encoder, not by the human-
 | **1** | `RUN_ISA_CHECKS` | Build the 64-byte bundle, `fwrite` to the engine stream, **emplace into the per-inst validation SmallVector** + set `this+128` | yes | yes | yes |
 | **2** | `GENERATE_ISACODE` | Build the 64-byte bundle (run the two-pass weight-tile guards), `fwrite` to the engine stream | yes | yes | no |
 
-> **GOTCHA —** the rodata error string lists the modes as *"one of GENERATE_ISACODE, RUN_ISA_CHECKS, or COLLECT_OPCODES"* — i.e. 2, 1, 0. The **integers are the reverse of the message order.** A reimplementer who assigns ordinals from the string (`GENERATE=0`) inverts the whole scheme: COLLECT would emit and GENERATE would do nothing. The authoritative encoding is the dispatch, transcribed below. [CONFIRMED — `generateLoadWeights` disasm `0x1258548`.]
+> **GOTCHA —** the rodata error string lists the modes as *"one of GENERATE_ISACODE, RUN_ISA_CHECKS, or COLLECT_OPCODES"* — i.e. 2, 1, 0. The **integers are the reverse of the message order.** A reimplementer who assigns ordinals from the string (`GENERATE=0`) inverts the whole scheme: COLLECT would emit and GENERATE would do nothing. The authoritative encoding is the dispatch, transcribed below from `generateLoadWeights` @ `0x1258548`.
 
 ### Algorithm — the per-op dispatch
 
@@ -194,7 +196,7 @@ jz   COLLECT_path            //   → record opcode index, return
 call bir::reportError(...)   //   default: hard error (defensive; unreachable in normal flow)
 ```
 
-`generateMatMul` (`0x1248650`) and `CoreV3GenImpl::generateMatMul` (`0x13643d0`) carry the identical head (`mov eax,[rdi+270h] / cmp eax,1 / cmp eax,2`, same error string) — the mechanism is arch-universal, baked into every bundle builder rather than centralised. [CONFIRMED across V2 decompiled + V2/V3 disasm.]
+`generateMatMul` (`0x1248650`) and `CoreV3GenImpl::generateMatMul` (`0x13643d0`) carry the identical head (`mov eax,[rdi+270h] / cmp eax,1 / cmp eax,2`, same error string) — the mechanism is arch-universal, baked into every bundle builder rather than centralised.
 
 ```c
 // the three arms, distilled (generateLoadWeights / generateMatMul)
@@ -224,7 +226,9 @@ shared_tail:                                             // modes 1 AND 2 conver
     stats[opcode]++ ; per_engine_count++
 ```
 
-> **QUIRK —** RUN_ISA_CHECKS (mode 1) and GENERATE_ISACODE (mode 2) **both** `fwrite` the bundle to the engine stream. The fwrite is *not* mode-gated between them. The only differences are (a) GENERATE runs the two-pass weight-tile guards that RUN_ISA skips, and (b) RUN_ISA `emplace_back`s the bundle into the validation SmallVector so it gets checked later. The actual ISA wire-validation does **not** happen inline in the encoder — it is deferred to `flushISAChecks`. Only COLLECT_OPCODES (mode 0) avoids the bundle and the fwrite entirely. [CONFIRMED — disasm divergence at the three arms; shared tail at `generateMatMul` lines 1184-1206.]
+> **QUIRK —** RUN_ISA_CHECKS (mode 1) and GENERATE_ISACODE (mode 2) **both** `fwrite` the bundle to the engine stream. The fwrite is *not* mode-gated between them. The only differences are (a) GENERATE runs the two-pass weight-tile guards that RUN_ISA skips, and (b) RUN_ISA `emplace_back`s the bundle into the validation SmallVector so it gets checked later. The actual ISA wire-validation does **not** happen inline in the encoder — it is deferred to `flushISAChecks`. Only COLLECT_OPCODES (mode 0) avoids the bundle and the fwrite entirely.
+
+*Anchors: the disassembly diverges at the three arms and shares a tail at `generateMatMul` lines 1184-1206.*
 
 ### The One-Pass / Two-Pass Gate
 
@@ -246,8 +250,6 @@ _M_assign_elements(gen1+0x140, gen0+0x140)      // copy PairHash<Inst,Engine> ma
 … copy gen0+0x178 / gen0+0x198 …
 IRVisitor<CoreV2Gen>::visit(gen1, Module)       // pass 1: emit + validate
 ```
-
-[CONFIRMED — disasm `0x11d3398`: `xor r8d,r8d` ctor visit, then `mov r8d,1` ctor, `_M_assign_elements`, visit.]
 
 ---
 
@@ -286,11 +288,11 @@ function IRVisitor_visit_Module(this, Module):           // 0x11d6dd0
     return mode
 ```
 
-> **NOTE —** the order is `Function → BasicBlock → Instruction` in **schedule order** (the linked instruction list inside each BB), with `main` first. It is *not* "emit all PE instructions, then all Activation". The per-engine `.bin` files end up grouped only because `findBin` routes each bundle by the instruction's engine. [CONFIRMED — full `visit(Module)` decompiled.]
+> **NOTE —** the order is `Function → BasicBlock → Instruction` in **schedule order** (the linked instruction list inside each BB), with `main` first. It is *not* "emit all PE instructions, then all Activation". The per-engine `.bin` files end up grouped only because `findBin` routes each bundle by the instruction's engine.
 
 ### Per-Op Dispatch
 
-`visit(Instruction&)` (`0x1178790`, 1438 B) reads the opcode kind at `Instruction+0x58` and runs a compare-chain: opcodes `0x69/0x6A/0x6C` are basic-block-boundary handling (`enterBasicBlock`); everything else falls to `enterInstruction(this, I)` then the matching `visitInst<Op>`. ~136 distinct `visitInst<Op>` targets are reached (the per-op encoders documented across the encoder pages). The most-derived vtable slot is taken, so CoreV3/V4 overrides win for their patched ops. [CONFIRMED — disasm dispatch chain; 136 `visitInst` symbols counted.]
+`visit(Instruction&)` (`0x1178790`, 1438 B) reads the opcode kind at `Instruction+0x58` and runs a compare-chain: opcodes `0x69/0x6A/0x6C` are basic-block-boundary handling (`enterBasicBlock`); everything else falls to `enterInstruction(this, I)` then the matching `visitInst<Op>`. ~136 distinct `visitInst<Op>` targets are reached (the per-op encoders documented across the encoder pages). The most-derived vtable slot is taken, so CoreV3/V4 overrides win for their patched ops.
 
 ### Per-Engine Stream Setup
 
@@ -312,7 +314,7 @@ function findBin(this, Instruction I):                   // 0x11f4b90
     return streams[eng]
 ```
 
-`incrementProgramCounter(EngineType)` (`0x11f6d10`) bumps the per-engine PC as bundles append; this cursor is what branch-target resolution (`updateBranchHintTargetPC`) reads. `createInstBin` (`0x11f12b0`) is a *separate* debug path that opens one file per instruction under `Module::getArtifactAbsPath()`, gated by the `+697` flag — distinct from the main per-engine streams. The per-engine `.bin` writer and `setupHeader` are detailed in the sibling `.bin`-emission and setupHeader pages (planned). [CONFIRMED — createBin fopen + EngineInfo2string; findBin engine reject; callgraph: createBin caller = {initCodegen}.]
+`incrementProgramCounter(EngineType)` (`0x11f6d10`) bumps the per-engine PC as bundles append; this cursor is what branch-target resolution (`updateBranchHintTargetPC`) reads. `createInstBin` (`0x11f12b0`) is a *separate* debug path that opens one file per instruction under `Module::getArtifactAbsPath()`, gated by the `+697` flag — distinct from the main per-engine streams. The per-engine `.bin` writer and `setupHeader` are detailed in the sibling `.bin`-emission and setupHeader pages (planned).
 
 ---
 
@@ -339,7 +341,9 @@ function enqueueISAChecks(this, I):                      // 0x11f1fe0
         flushISAChecks(this)                             // ⭐ batch auto-flush every 10k insts
 ```
 
-The `ISAMapping` record (152 bytes): `+0x00 Instruction*`, `+0x08 SmallVector<array<uchar,64>>` (the bundles), `+0x10 (dword)` bundle count, `+0x14` inline cap. Every instruction that emitted bundles is queued with a *copy* of those exact 64-byte bundles, paired with its `Instruction*`. [CONFIRMED — `enqueueISAChecks 0x11f1fe0`: `if (result > 0x173180) return flushISAChecks`.]
+The `ISAMapping` record (152 bytes): `+0x00 Instruction*`, `+0x08 SmallVector<array<uchar,64>>` (the bundles), `+0x10 (dword)` bundle count, `+0x14` inline cap. Every instruction that emitted bundles is queued with a *copy* of those exact 64-byte bundles, paired with its `Instruction*`.
+
+*Anchors: `enqueueISAChecks` @ `0x11f1fe0` — `if (result > 0x173180) return flushISAChecks`.*
 
 ### Algorithm — the TBB parallel replay
 
@@ -376,11 +380,11 @@ for (; b != e; b += 64):
                                                          //   = runSingleISACheck(Instruction*, bundle64)
 ```
 
-> **QUIRK —** the validator is reached by a **virtual call to slot 0** of the Generator's vtable, not a named call. data_tables confirms the `CoreV2Gen` vtable (`0x3d94d90`) slot 0 = `CoreV2GenImpl::runSingleISACheck` (`0x1211cf0`); CoreV3/V4 override slot 0 with their own (`0x134c060` / `0x1435010`). This is how the *per-arch* wire validator is selected — the same arch projection as the encoder family, resolved once at construction. A reimplementer who hard-codes a single validator misses the per-generation override. [CONFIRMED — `b += 64` inner loop + virtual dispatch; data_tables slot 0.]
+> **QUIRK —** the validator is reached by a **virtual call to slot 0** of the Generator's vtable, not a named call. data_tables confirms the `CoreV2Gen` vtable (`0x3d94d90`) slot 0 = `CoreV2GenImpl::runSingleISACheck` (`0x1211cf0`); CoreV3/V4 override slot 0 with their own (`0x134c060` / `0x1435010`). This is how the *per-arch* wire validator is selected — the same arch projection as the encoder family, resolved once at construction. A reimplementer who hard-codes a single validator misses the per-generation override.
 
 ### Fail-the-pass semantics
 
-A failed ISA check does **not** abort mid-emission. The encoders run to completion for the whole module first (bundles are already `fwrite`-ten to the engine streams). `flushISAChecks` runs *last*, collects errors across all instructions in parallel into a single `std::exception_ptr`, and rethrows the *first* captured one. So the engine `.bin` streams are produced, but the codegen pass as a whole **throws** if any instruction is wire-illegal — the throw escapes `IRVisitor<CoreVxGen>::visit(Module&)` → the `Codegen` BackendPass → a compiler error. Validate-after-emit, fail-the-pass. [CONFIRMED — D-J28 §3.5; `flushISAChecks` rethrow path.]
+A failed ISA check does **not** abort mid-emission. The encoders run to completion for the whole module first (bundles are already `fwrite`-ten to the engine streams). `flushISAChecks` runs *last*, collects errors across all instructions in parallel into a single `std::exception_ptr`, and rethrows the *first* captured one. So the engine `.bin` streams are produced, but the codegen pass as a whole **throws** if any instruction is wire-illegal — the throw escapes `IRVisitor<CoreVxGen>::visit(Module&)` → the `Codegen` BackendPass → a compiler error. Validate-after-emit, fail-the-pass.
 
 ### The Gate, Restated
 
@@ -390,7 +394,7 @@ A failed ISA check does **not** abort mid-emission. The encoders run to completi
 | `RUN_ISA_CHECKS` (1) | **yes** | bundles were enqueued; the whole point is to validate them |
 | `GENERATE_ISACODE` (2) | **yes** | `mode != 0` is true; runs the flush even though it did not enqueue |
 
-> **GOTCHA —** the end-of-walk flush is gated `mode != 0`, i.e. it runs for *both* mode 1 and mode 2. But GENERATE_ISACODE (mode 2) does **not** enqueue bundles (it uses a stack staging buffer), so for mode 2 the queue is empty and `flushISAChecks` finds `n == 0` and is a no-op. In the production codegen pass this is moot — `Codegen::codegen` only drives modes 0 and 1, so the flush either skips (mode 0) or has a populated queue (mode 1). Mode 2's empty-queue flush only matters to the Verifier's separate Generator. [CONFIRMED — visit(Module) tail gate; GENERATE arm uses staging buffer, no `emplace_back`.]
+> **GOTCHA —** the end-of-walk flush is gated `mode != 0`, i.e. it runs for *both* mode 1 and mode 2. But GENERATE_ISACODE (mode 2) does **not** enqueue bundles (it uses a stack staging buffer), so for mode 2 the queue is empty and `flushISAChecks` finds `n == 0` and is a no-op. In the production codegen pass this is moot — `Codegen::codegen` only drives modes 0 and 1, so the flush either skips (mode 0) or has a populated queue (mode 1). Mode 2's empty-queue flush only matters to the Verifier's separate Generator.
 
 ---
 
@@ -404,7 +408,7 @@ A failed ISA check does **not** abort mid-emission. The encoders run to completi
 | L1 | structural legality (engine assignment, SbIO, FP8 consistency) | `birverifier::InstVisitor` — a separate pass | active, `NeuronAssertion 400` |
 | L2 | silicon wire-legality (`instruction_engine_check` + `is_valid_neuron_instruction`) | `runSingleISACheck`, replayed by `flushISAChecks` | active, the final gate |
 
-The divergence worth flagging for the simulator/verifier strands: the codegen wire model is "one 64-byte bundle per opcode, validated post-emit in parallel"; the sim and structural verifier walk the *structural* BIR. RUN_ISA_CHECKS is the mode that makes codegen run as a wire validator — it still fwrites, but the run exists to surface the silicon `NeuronAssertion`s on the byte-exact emitted bundles. The L2 validator body and its `is_valid_*` cascade are the planned sibling page. [STRONG — cross-checked against the L2 wire-validator strand.]
+The divergence worth flagging for the simulator/verifier strands: the codegen wire model is "one 64-byte bundle per opcode, validated post-emit in parallel"; the sim and structural verifier walk the *structural* BIR. RUN_ISA_CHECKS is the mode that makes codegen run as a wire validator — it still fwrites, but the run exists to surface the silicon `NeuronAssertion`s on the byte-exact emitted bundles. The L2 validator body and its `is_valid_*` cascade are the planned sibling page.
 
 ---
 

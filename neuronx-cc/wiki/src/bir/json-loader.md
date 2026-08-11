@@ -46,14 +46,12 @@ The disassembly head is unambiguous about the version handling — and corrects 
 0x48df79  call adl<NamedObjectContainer<FunctionHolder,Function>>::from_json  ; <<< PASS 1
 ```
 
-The Hex-Rays output renders the store as `Module::setVersion(a2, 0)` — that `0` is the decompiler losing the by-reference output buffer of the inlined `detail::from_json<…,uint>`; the disasm shows the real argument is the parsed uint moved into `esi` at `0x48df56`. **[CONFIRMED]**
-
-The `cmp byte ptr [rbx], 1` immediately after is **not** a version compare — `rbx` holds the json pointer and byte 0 is nlohmann's `value_t` discriminant, so this tests *"is the document a JSON object?"* before descending. The **only** thing the driver does with the version is `setVersion`. Its sole consumer in all of `libBIR` is the Pelican affine-expression deserializer (`QuasiAffineExpr::createFromJson` @ `0x3bd8d0` → `Module::getVersion`), which selects `fromJsonv1` vs `fromJsonv2`. Every other BIR layer is version-agnostic. **[CONFIRMED]** (See [Version 1 vs 2](#version-1-old-vs-2-new--exactly-one-gated-codepath).)
+The Hex-Rays output renders the store as `Module::setVersion(a2, 0)` — that `0` is the decompiler losing the by-reference output buffer of the inlined `detail::from_json<…,uint>`; the disasm shows the real argument is the parsed uint moved into `esi` at `0x48df56`.
+The `cmp byte ptr [rbx], 1` immediately after is **not** a version compare — `rbx` holds the json pointer and byte 0 is nlohmann's `value_t` discriminant, so this tests *"is the document a JSON object?"* before descending. The **only** thing the driver does with the version is `setVersion`. Its sole consumer in all of `libBIR` is the Pelican affine-expression deserializer (`QuasiAffineExpr::createFromJson` @ `0x3bd8d0` → `Module::getVersion`), which selects `fromJsonv1` vs `fromJsonv2`. Every other BIR layer is version-agnostic. (See [Version 1 vs 2](#version-1-old-vs-2-new--exactly-one-gated-codepath).)
 
 ### Step D2 — arch / archRev / hwm
 
-Inside the `m_type == object` branch the driver reads `arch` (`ArchLevel`, key `[5]`) and `archRev` (`ArchRevision`, key `[9]`), builds a `bir::Arch`, and calls `Module::setArch`; for a scalar document it sets the `ArchLevel` directly. It then resolves the hardware model singleton — `bir::Hwm::getSingleton` (`0x48df10` body, near the tail at the `setHwm`/`setArtifactAbsPath` calls) — and stores it via `Module::setHwm`. **[CONFIRMED]**
-
+Inside the `m_type == object` branch the driver reads `arch` (`ArchLevel`, key `[5]`) and `archRev` (`ArchRevision`, key `[9]`), builds a `bir::Arch`, and calls `Module::setArch`; for a scalar document it sets the `ArchLevel` directly. It then resolves the hardware model singleton — `bir::Hwm::getSingleton` (`0x48df10` body, near the tail at the `setHwm`/`setArtifactAbsPath` calls) — and stores it via `Module::setHwm`.
 ### Step D3/D4 — PASS 1: build the function containers
 
 ```c
@@ -65,8 +63,7 @@ adl_serializer<NamedObjectContainer<FunctionHolder,Function>>::from_json();   //
 adl_serializer<NamedObjectContainer<FunctionHolder,Function>>::from_json();   // again, for the NKI functions
 ```
 
-The first container call (`0x48df79`) builds the ordinary functions; a second, unconditional call (`0x48e0xx` in the decompiled body) builds the NKI functions. Each iterates its `functions` array, and per entry constructs one `Function` (next section). The driver then reads module-level DMAQueues into `Module+80` via `adl_serializer<NamedObjectContainer<Module,DMAQueue>>::from_json`. **[CONFIRMED]**
-
+The first container call (`0x48df79`) builds the ordinary functions; a second, unconditional call (`0x48e0xx` in the decompiled body) builds the NKI functions. Each iterates its `functions` array, and per entry constructs one `Function` (next section). The driver then reads module-level DMAQueues into `Module+80` via `adl_serializer<NamedObjectContainer<Module,DMAQueue>>::from_json`.
 ### Steps D6/D7 — PASS 2: re-walk and resolve
 
 After every object exists, the driver walks the *same* `functions` array a second time and, for each entry, looks the function back up **by name** and runs its pass-2 resolver:
@@ -81,8 +78,7 @@ while ( !iter_eq(it, end) ) {                          // for each entry in "fun
 }
 ```
 
-A second identical loop uses `getNKIFunctionByName` for the NKI functions. The re-lookup is what makes this a *resolve* pass: it does not reconstruct anything, it finds the already-built `Function` and hands it back its own JSON to resolve cross-cutting refs. **[CONFIRMED]**
-
+A second identical loop uses `getNKIFunctionByName` for the NKI functions. The re-lookup is what makes this a *resolve* pass: it does not reconstruct anything, it finds the already-built `Function` and hands it back its own JSON to resolve cross-cutting refs.
 ### Step D8 — the `"main"` InstCall binding (module-level pass 2)
 
 The last block of the driver resolves the inter-function call bindings. For the `"main"` function (looked up via `getFunctionByName("main")` at `0x48e7xx`, with a fallback to the first function), it walks the call-argument list and resolves each name through *two* symtabs:
@@ -98,8 +94,7 @@ ml = bir::Function::getMemoryLocationByName(callee, argName); // the actual pass
 // result accumulated into DenseMap<InstCall const*, SetVector<MemoryLocation const*>>
 ```
 
-This binds memlocs of one function as actual arguments of an `InstCall` in another — necessarily after both functions are fully built, which is why it lives in the module-level pass 2 rather than in `Function::createFromJson`. The `getInstructionByName`, `cast<InstCall>`, `getMemoryLocationByName`, and `"found"` assert sites are all present in the driver body (lines 808/908/1026/1048/1003 of the decompiled `0x48df10`). **[CONFIRMED]**
-
+This binds memlocs of one function as actual arguments of an `InstCall` in another — necessarily after both functions are fully built, which is why it lives in the module-level pass 2 rather than in `Function::createFromJson`. The `getInstructionByName`, `cast<InstCall>`, `getMemoryLocationByName`, and `"found"` assert sites are all present in the driver body (lines 808/908/1026/1048/1003 of the decompiled `0x48df10`).
 ## Pass 1 — construction and symbol-table fill
 
 ### The per-Function build order
@@ -115,7 +110,7 @@ This binds memlocs of one function as actual arguments of an `InstCall` in anoth
 | (e) | `0x27ecbf` | `BasicBlock::createFromJson(name, BasicBlockHolder*, json)` | per `basic_blocks` entry → fills **name→BasicBlock**, then per `instructions` entry → **name→Instruction** |
 | (f) | `0x27ed26` | `createFromJsonRecursively` = `sub_27D150` | intra-function dep edges + structured-control recursion |
 
-Because storages (b) precede blocks/instructions (e), and (e) precedes the recursive wirer (f), **every** memloc, set, register, block, and instruction is name-addressable by the time (f) runs. That is the invariant the whole loader rests on. **[CONFIRMED]** (disasm of `0x27ead0`.)
+Because storages (b) precede blocks/instructions (e), and (e) precedes the recursive wirer (f), **every** memloc, set, register, block, and instruction is name-addressable by the time (f) runs. That is the invariant the whole loader rests on. *Anchor: disasm of `0x27ead0`.*
 
 ### What the symbol table *is*
 
@@ -129,8 +124,7 @@ if ( v8 == v5[2] && (!v8 || !memcmp(name.data, v5[1], v8)) ) // length match + b
     return *(elem);                                          // name → Instruction*
 ```
 
-Every `getXByName` in the loader is this shape: hash the wire name with seed `0xC70F6907`, walk the bucket, `memcmp` the key. The `0xC70F6907` seed is identical across `getInstructionByName`, `BasicBlock::createFromJsonPass2`, and `NamedObjectContainer::insertElement` — i.e. one symtab discipline for the whole tree. **[CONFIRMED]**
-
+Every `getXByName` in the loader is this shape: hash the wire name with seed `0xC70F6907`, walk the bucket, `memcmp` the key. The `0xC70F6907` seed is identical across `getInstructionByName`, `BasicBlock::createFromJsonPass2`, and `NamedObjectContainer::insertElement` — i.e. one symtab discipline for the whole tree.
 ### Building an Instruction and minting its name
 
 `Instruction::createFromJson(name, BasicBlock*, json)` @ `0x2f0c60` (decompiled) drives the per-instruction build:
@@ -142,7 +136,7 @@ adl_serializer<bir::InstructionType>::from_json(…, v9 + 88, …); // set the o
 for (each operand)  bir::Argument::createFromJson((Instruction*)v9);  // build AP / immediate operand
 ```
 
-`createFromJsonHelper` is the *kind-string → constructor* factory: it reads the `instruction_type` opcode and `new`s the matching `Instruction` subclass, then the subclass's `readFieldsFromJson` reads its op-specific fields at `+0xF0…`. (This is the same dispatch shape the [value model](value-model.md) page documents for `Argument::createFromJson`, where the `kind` string selects Physical / Symbolic / Register / immediate.) The fact that the `InstructionType` `from_json` writes into `helper_result + 88` confirms the opcode lives at struct `+0x58`, matching [InstructionType](instruction-type.md). The exact subclass jump table inside the helper is **[INFERRED]** — the helper body resolves to a thunk in this corpus and the per-opcode field readers are owned by the [Instruction base](instruction-base.md) page. **[CONFIRMED]** for the dispatch shape; **[INFERRED]** for the jump-table layout.
+`createFromJsonHelper` is the *kind-string → constructor* factory: it reads the `instruction_type` opcode and `new`s the matching `Instruction` subclass, then the subclass's `readFieldsFromJson` reads its op-specific fields at `+0xF0…`. (This is the same dispatch shape the [value model](value-model.md) page documents for `Argument::createFromJson`, where the `kind` string selects Physical / Symbolic / Register / immediate.) The fact that the `InstructionType` `from_json` writes into `helper_result + 88` confirms the opcode lives at struct `+0x58`, matching [InstructionType](instruction-type.md). [INFERRED] The exact subclass jump table inside the helper: the helper body resolves to a thunk in this corpus, and the per-opcode field readers are owned by the [Instruction base](instruction-base.md) page. The dispatch *shape* above is read from the driver.
 
 `PhysicalAccessPattern::setLocation` binds an operand to its `StorageBase` **here, in pass 1** — the memloc already exists from step (b), so an operand→location reference is *not* a forward reference. This is decisive for why operands need no pass-2 resolution.
 
@@ -155,8 +149,7 @@ This runs at the tail of `Function::createFromJson`, once every block and instru
 * **control-flow successors** resolved by name in the holder: `onTrue` / `onFalse` / `target`, each guarded by `"<key> && BasicBlock does not exist!"` (lines 1096 / 1298 / 1530).
 * **structured-control recursion** (line 972): switch on the opcode `*((_DWORD*)I + 22)` — `22*4 == 0x58`, the `InstructionType` field. `case 'i'` (== 105, `Loop`) descends into the nested block body via `sub_27D150(Fn, I - 11, bodyHolder)` (line 973), the `-11` being the offset from the `Instruction` to its embedded `BasicBlockHolder`; `case 'N'` (== 78, the branch family) handles its successor edges.
 
-These edges are order-safe because both endpoints live in the same function and have been built by step (e). They are wired in pass 1 *precisely because* they need no forward lookup. **[CONFIRMED]**
-
+These edges are order-safe because both endpoints live in the same function and have been built by step (e). They are wired in pass 1 *precisely because* they need no forward lookup.
 ## Pass 2 — forward-reference resolution
 
 ### Per-Function driver — `createFromJsonPass2` @ `0x275e10`
@@ -169,8 +162,7 @@ This function also failed Hex-Rays; the disasm shows two calls and nothing else 
 0x276023  call bir::BasicBlock::createFromJsonPass2 ; per block: φ incoming-value resolution
 ```
 
-So a function's pass 2 is exactly *"resolve the cross-cutting instruction refs, then resolve the block-argument φ-nodes."* **[CONFIRMED]**
-
+So a function's pass 2 is exactly *"resolve the cross-cutting instruction refs, then resolve the block-argument φ-nodes."*
 ### The resolver — `createFromJsonRecursivelyPass2` (`sub_273300` @ `0x273300`)
 
 It re-walks `"blocks"` → `NamedObjectContainer<BasicBlockHolder,BasicBlock>::getElementByName` (line 305) → each instruction, and dispatches on the opcode `v35 = *((_DWORD*)I + 22)` (`+0x58` again). The arms are the entire forward-reference set:
@@ -183,10 +175,8 @@ bir::reportError(QueueByName != 0, …, "Queue does not exist!");  // line 507/5
 v34[30] = QueueByName;                                        // store at I+0xF0  (30*8 == 0xF0)
 ```
 
-The queue pointer lands at `Instruction + 0xF0` (`v34[30]`), matching the InstDMA/collective layout. **[CONFIRMED]**
-
-**DMA-trigger back-ref (`IT == 67`, `InstDMATrigger`).** After asserting the trigger already has its queue (`q && "Queue does not exist!"`), it iterates `json["dma_blocks"]` and, per block name, calls `DMAQueue::findDMABlock` (line 566) → `reportError(blk != 0, …, "Block does not exist!")` (line 571) → `InstDMABlock::setTrigger(blk, this)` (line 586) — the forward trigger↔block link. **[CONFIRMED]**
-
+The queue pointer lands at `Instruction + 0xF0` (`v34[30]`), matching the InstDMA/collective layout.
+**DMA-trigger back-ref (`IT == 67`, `InstDMATrigger`).** After asserting the trigger already has its queue (`q && "Queue does not exist!"`), it iterates `json["dma_blocks"]` and, per block name, calls `DMAQueue::findDMABlock` (line 566) → `reportError(blk != 0, …, "Block does not exist!")` (line 571) → `InstDMABlock::setTrigger(blk, this)` (line 586) — the forward trigger↔block link.
 **General typed `dependencies`.** Assert `JsonDeps.is_array() && "'dependencies' must be a JSON array"` (line 791), then per entry (decompiled lines 818–872, disasm `0x274fba`/`0x275156`):
 
 ```c
@@ -204,12 +194,9 @@ if ( entry is [name, kind] ) {                               // *entry == 2 (two
 }
 ```
 
-So a `dependencies` entry is **either** a bare name (⇒ `EdgeKind = Flow = 4`) **or** a `[name, kind]` pair (⇒ the typed `EdgeKind`, `string2EdgeKind`-mapped, or a numeric 5..7). The `PointerIntPair<Instruction*, 3, EdgeKind>` with `IntBits = 3` is verbatim in the alignment/overflow asserts (lines 862–874), so the edge tag is a 3-bit field and `EdgeKind` must be `< 8`. **[CONFIRMED]**
-
-**Predicated dependencies.** A richer arm builds `std::tuple<Instruction*, EdgeKind, vector<QuasiAffineExpr>, vector<AffinePredicate>>` per entry: `getInstructionByName` + `string2EdgeKind`, then `QuasiAffineExpr(getPelicanContext())` + `createFromJson` (the version-gated Pelican path, lines 1267–1269) and `AffinePredicate::createFromJson`, appended to the instruction's predicated-dependency vector via `_M_realloc_insert` (line 1434). **[CONFIRMED]**
-
-**Recursion** descends into nested control-flow block bodies via the same `getElementByName` + self-call (resolving the pass-2 set), mirroring the pass-1 recursion. **[CONFIRMED]**
-
+So a `dependencies` entry is **either** a bare name (⇒ `EdgeKind = Flow = 4`) **or** a `[name, kind]` pair (⇒ the typed `EdgeKind`, `string2EdgeKind`-mapped, or a numeric 5..7). The `PointerIntPair<Instruction*, 3, EdgeKind>` with `IntBits = 3` is verbatim in the alignment/overflow asserts (lines 862–874), so the edge tag is a 3-bit field and `EdgeKind` must be `< 8`.
+**Predicated dependencies.** A richer arm builds `std::tuple<Instruction*, EdgeKind, vector<QuasiAffineExpr>, vector<AffinePredicate>>` per entry: `getInstructionByName` + `string2EdgeKind`, then `QuasiAffineExpr(getPelicanContext())` + `createFromJson` (the version-gated Pelican path, lines 1267–1269) and `AffinePredicate::createFromJson`, appended to the instruction's predicated-dependency vector via `_M_realloc_insert` (line 1434).
+**Recursion** descends into nested control-flow block bodies via the same `getElementByName` + self-call (resolving the pass-2 set), mirroring the pass-1 recursion.
 ### φ-node resolution — `BasicBlock::createFromJsonPass2` @ `0x23de90`
 
 BIR block arguments are φ-nodes; their incoming `(value, predecessor-block)` pairs are resolved here because a predecessor may be defined after the block that consumes its value:
@@ -225,14 +212,12 @@ for (each block argument) {
 }
 ```
 
-The `getBasicBlockByName` lookup is the forward/back block reference; `addIncomingValue` stores the φ pair. **[CONFIRMED]**
-
+The `getBasicBlockByName` lookup is the forward/back block reference; `addIncomingValue` stores the φ pair.
 ## Why two passes — proven from the binary
 
 > **GOTCHA — the second pass exists *only* for forward and sideways references, and the binary marks each one with a "does not exist" guard.** The references resolved in pass 2 — `dependencies`, `getQueueByName`, `findDMABlock`, φ `getBasicBlockByName`, the `InstCall` `getMemoryLocationByName` — can all name an object defined **later** in the document or in a **sibling** block/function. A queue is declared at module scope *after* every function (driver step D5, after D3/D4). A φ-node's predecessor block may be emitted after the block that uses its value. A `dependency` may point forward in the instruction stream. None of these are resolvable when the consuming instruction is first constructed.
 >
-> The proof is the guard set: every pass-2 lookup is wrapped in a *missing-reference* check — `reportError(p != 0, …, "Queue does not exist!")`, `"Block does not exist!"`, `"Unknown dependency"`, the φ `value != 0 && pred != 0` test, the `InstCall` `"found"` assert (NeuronAssertion 62). These checks can only succeed *after* driver step D6, because only then does **every** object in **every** function exist. Pass 1's intra-region edges (`loop_carried_dependencies`, dataflow predecessors, `onTrue`/`onFalse`/`target`) carry *no* such cross-function guard — their endpoints are provably built by containment order, so they are resolved in place. The construct/resolve barrier between D5 and D6 is the line that makes the missing-reference guards meaningful. **[CONFIRMED]**
-
+> The proof is the guard set: every pass-2 lookup is wrapped in a *missing-reference* check — `reportError(p != 0, …, "Queue does not exist!")`, `"Block does not exist!"`, `"Unknown dependency"`, the φ `value != 0 && pred != 0` test, the `InstCall` `"found"` assert (NeuronAssertion 62). These checks can only succeed *after* driver step D6, because only then does **every** object in **every** function exist. Pass 1's intra-region edges (`loop_carried_dependencies`, dataflow predecessors, `onTrue`/`onFalse`/`target`) carry *no* such cross-function guard — their endpoints are provably built by containment order, so they are resolved in place. The construct/resolve barrier between D5 and D6 is the line that makes the missing-reference guards meaningful.
 The split is also visible in the *shape* of the two recursive functions: `sub_27D150` (pass 1) and `sub_273300` (pass 2) walk the **same** `blocks`/`instructions` structure and dispatch on the **same** opcode field (`+0x58`), but pass 1 only ever resolves names through the *current function's* symtabs (`getInstructionByName(Fn, …)`), while pass 2 additionally reaches `Module::getQueueByName`, `DMAQueue::findDMABlock`, and `Function::getBasicBlockByName` — the module- and sibling-scoped tables. The pass-1 recursion is the structural descent that *materialises* the nested blocks of `InstLoop` / `InstDMABlock` bodies; the pass-2 recursion re-descends the now-complete tree to wire their cross-cutting edges.
 
 ## Version 1 (old) vs 2 (new) — exactly one gated codepath
@@ -247,10 +232,8 @@ The module-level version int gates precisely one thing. `Module::getVersion` (`0
 0x3bd9be  lea  rdi, "Check the version of bir json file - should be 1 (old) or 2 (new)"  ; fatal on ∉{1,2}
 ```
 
-So the on-wire encoding of affine address expressions (the `RefPtr<Expr>` tree and the `LoopAxis` `addrs` vector) is the *only* version-keyed part of the BIR document. **[CONFIRMED]**
-
-The memloc-alias loader has a *separate* "old vs new" axis that is **not** version-keyed: `addMemLocAliasesFromJson` @ `0x26f020` calls `getVersion` **zero** times and selects schema by JSON **shape** — the *set-keyed* form has `allocation["memorylocations"]` with `alias` entries that are 3-tuples `[destSet, destMemLoc, kind]` (resolved via `getMemoryLocationSetByName` → `MemoryLocationSet::getMemoryLocationByName`), versus the *memloc-keyed* form whose `alias` entries are 2-tuples `[destMemLoc, kind]` (resolved via `Function::getMemoryLocationByName`). The two "old/new" notions — numeric version 1/2 for Pelican, structural shape for aliases — are independent. **[CONFIRMED]**
-
+So the on-wire encoding of affine address expressions (the `RefPtr<Expr>` tree and the `LoopAxis` `addrs` vector) is the *only* version-keyed part of the BIR document.
+The memloc-alias loader has a *separate* "old vs new" axis that is **not** version-keyed: `addMemLocAliasesFromJson` @ `0x26f020` calls `getVersion` **zero** times and selects schema by JSON **shape** — the *set-keyed* form has `allocation["memorylocations"]` with `alias` entries that are 3-tuples `[destSet, destMemLoc, kind]` (resolved via `getMemoryLocationSetByName` → `MemoryLocationSet::getMemoryLocationByName`), versus the *memloc-keyed* form whose `alias` entries are 2-tuples `[destMemLoc, kind]` (resolved via `Function::getMemoryLocationByName`). The two "old/new" notions — numeric version 1/2 for Pelican, structural shape for aliases — are independent.
 ## Error and fatal paths
 
 Two mechanisms surface, and they map cleanly onto the two failure modes (malformed document vs missing reference):
@@ -277,8 +260,7 @@ The semantic guards, with their source anchors:
 | `Check the version of bir json file - should be 1 (old) or 2 (new)` | Pelican | `0x741110`, fatal on version ∉ {1,2} |
 | `(PtrWord & ~PointerBitMask)==0` / `(Int & ~IntMask)==0` | every `addDependency` | `PointerIntPair.h`, `IntBits = 3` ⇒ `EdgeKind < 8` |
 
-Every `NeuronAssertion` emits the standard footer (`Please open a support ticket at https://github.com/aws-neuron/aws-neuron-sdk/issues/new …`), present verbatim in the driver body. **[CONFIRMED]**
-
+Every `NeuronAssertion` emits the standard footer (`Please open a support ticket at https://github.com/aws-neuron/aws-neuron-sdk/issues/new …`), present verbatim in the driver body.
 ## Reconstructed algorithm
 
 ```text
@@ -357,4 +339,4 @@ loadModule(json M):
 * [MemoryLocation / Storage & the Alias Model](memory-location.md) — the Storage family built in step (b) and the shape-keyed alias schema of `addMemLocAliasesFromJson`.
 * [The BIR-JSON Writer](json-writer.md) *(7.13)* — the `to_json` inverse this page deserializes; the 19-key header and `PointerIntPair` edge model it emits.
 * [The BIR-JSON Schema](json-schema-catalog.md) *(7.14)* — the full member roster and v1/v2 wire-key catalog.
-* [NEFF members](../formats/neff.md) *(12.3, planned)* — where the BIR-JSON document sits inside the NEFF tar.
+* [NEFF members](../formats/neff-json-sidecars.md) *(12.3, planned)* — where the BIR-JSON document sits inside the NEFF tar.

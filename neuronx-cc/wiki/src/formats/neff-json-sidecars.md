@@ -95,11 +95,11 @@ The member names the reader knows how to resolve, as literal string constants in
 
 | Member | Literal pattern(s) | Layout | Confidence |
 |---|---|---|---|
-| KELF index | `kelf-0.json`, `kelf-<N>.json` | top-level, fixed name (+ per-core variant) | CONFIRMED |
-| Per-core definition | `sg00/def.json`, `sg\d+/def.json` | per-core; regex-resolved | CONFIRMED |
-| Top metadata | `info.json` | top-level | CONFIRMED |
-| Subgraph table | `neff.json` | top-level | CONFIRMED |
-| Tensor map | `sgLnk/sg00/tensor_map.json`, `sg\d+/tensor_map.json` | per-core, two layouts | CONFIRMED |
+| KELF index | `kelf-0.json`, `kelf-<N>.json` | top-level, fixed name (+ per-core variant) | CERTAIN |
+| Per-core definition | `sg00/def.json`, `sg\d+/def.json` | per-core; regex-resolved | CERTAIN |
+| Top metadata | `info.json` | top-level | CERTAIN |
+| Subgraph table | `neff.json` | top-level | CERTAIN |
+| Tensor map | `sgLnk/sg00/tensor_map.json`, `sg\d+/tensor_map.json` | per-core, two layouts | CERTAIN |
 
 > **GOTCHA —** `tensor_map.json` appears under **both** `sgLnk/sg00/` and a flat `sg<N>/`. A reimplementation that hardcodes `sg00/tensor_map.json` will miss it on the other layout. The reader's defence is the regex `sg\d+/tensor_map.json` — callers must select by pattern, never by a fixed path.
 
@@ -119,22 +119,22 @@ All wrapper addresses are in the NeffInfo.so VA frame (`__pyx_pw_9neuronxcc_3kra
 
 | Accessor | Wrapper @ | Member read | Returns | Confidence |
 |---|---|---|---|---|
-| `parseFile` | `0x16e40` | (opens neff, caches path) | self | CONFIRMED |
-| `findInNeff` | `0x19b10` | (the `dd|tar` primitive) | raw member bytes | CONFIRMED |
-| `getKelf` | `0xf640` | `kelf-0.json` | raw text/bytes | CONFIRMED |
-| `getInfoJson` | `0x100c0` | `info.json` | dict | CONFIRMED |
-| `getNeffJson` | `0xf100` | `neff.json` | dict | CONFIRMED |
-| `getDefJson` | `0xfb80` | `sg\d+/def.json` | dict | CONFIRMED |
-| `getNeffFile` | `0x10600` | — | neff path/handle | CONFIRMED |
-| `getTensorMapJson` | `0x16260` | `sg\d+/tensor_map.json` | dict / raw json | CONFIRMED |
-| `getTensorMap` | `0x11640` | `tensor_map.json` | parsed I/O map | CONFIRMED |
-| `getAliasInfo` | `0x18480` | `tensor_map.json` | `{input_name → output_name}` pairs | CONFIRMED |
-| `hasMustAlias` | `0x150c0` | `tensor_map.json` | bool | CONFIRMED |
-| `getArchType` | `0x14110` | `kelf-0.json` | arch codename str | CONFIRMED |
-| `getCCRankWorldSize` | `0x1ade0` | def.json CC metadata | int (world size) | CONFIRMED |
-| `hasCC` | `0x14700` | (CC presence) | bool | CONFIRMED |
-| `getNumNc` | `0x13660` | `neff.json` | core count | CONFIRMED |
-| `getNumNeuronCores` | `0x11d20` | `neff.json` | core count | CONFIRMED |
+| `parseFile` | `0x16e40` | (opens neff, caches path) | self | CERTAIN |
+| `findInNeff` | `0x19b10` | (the `dd|tar` primitive) | raw member bytes | CERTAIN |
+| `getKelf` | `0xf640` | `kelf-0.json` | raw text/bytes | CERTAIN |
+| `getInfoJson` | `0x100c0` | `info.json` | dict | CERTAIN |
+| `getNeffJson` | `0xf100` | `neff.json` | dict | CERTAIN |
+| `getDefJson` | `0xfb80` | `sg\d+/def.json` | dict | CERTAIN |
+| `getNeffFile` | `0x10600` | — | neff path/handle | CERTAIN |
+| `getTensorMapJson` | `0x16260` | `sg\d+/tensor_map.json` | dict / raw json | CERTAIN |
+| `getTensorMap` | `0x11640` | `tensor_map.json` | parsed I/O map | CERTAIN |
+| `getAliasInfo` | `0x18480` | `tensor_map.json` | `{input_name → output_name}` pairs | CERTAIN |
+| `hasMustAlias` | `0x150c0` | `tensor_map.json` | bool | CERTAIN |
+| `getArchType` | `0x14110` | `kelf-0.json` | arch codename str | CERTAIN |
+| `getCCRankWorldSize` | `0x1ade0` | def.json CC metadata | int (world size) | CERTAIN |
+| `hasCC` | `0x14700` | (CC presence) | bool | CERTAIN |
+| `getNumNc` | `0x13660` | `neff.json` | core count | CERTAIN |
+| `getNumNeuronCores` | `0x11d20` | `neff.json` | core count | CERTAIN |
 
 ### Algorithm
 
@@ -175,10 +175,10 @@ These `__pyx_kp_*` literals are the reader's refusal conditions — each one is 
 
 | JSON field | Type | Header destination | Confidence |
 |---|---|---|---|
-| version **major** | uint | `neff_header + 168` | CONFIRMED |
-| version **minor** | uint | `neff_header + 476` | CONFIRMED |
-| NEFF **filename** | str (≤255) | `neff_header + 220` (`strncpy` bound `0xFF`) | CONFIRMED |
-| **engine-present** bool array | array&lt;bool&gt; | `neff_header + 480…` (one byte / engine slot) | CONFIRMED |
+| version **major** | uint | `neff_header + 168` | CERTAIN |
+| version **minor** | uint | `neff_header + 476` | CERTAIN |
+| NEFF **filename** | str (≤255) | `neff_header + 220` (`strncpy` bound `0xFF`) | CERTAIN |
+| **engine-present** bool array | array&lt;bool&gt; | `neff_header + 480…` (one byte / engine slot) | CERTAIN |
 
 The engine-present array is iterated as an `nlohmann` `array<bool>` and stored one byte per engine slot — the per-engine "has instructions" bitmap. Header constants **not** sourced from `info.json` (set by `initializeNeffHeader` directly): `+0 = 2` (NEFF format version), `+8 = 0x400` (1024-byte header region), `+204` a 16-byte RFC-4122 v4 UUID, `+544` CCRankWorldSize, `+552` arch-mode word.
 
@@ -215,14 +215,14 @@ The engine-present array is iterated as an `nlohmann` `array<bool>` and stored o
 
 | Field | Where | Meaning | Confidence |
 |---|---|---|---|
-| `revision` / `target_arch` / `0.5` | top-level | revision, arch tag, schema version | CONFIRMED (strings) |
-| `graphs` | top-level | the subgraph map (root `"main"` + per-core nodes) | CONFIRMED (string) |
-| `sg_coreV1<i>` | per virtual NeuronCore | one node per core, `i = to_string(coreIdx)` | CONFIRMED (`sg_coreV1` string) |
-| `op = "__kelf"` | node | kelf-backed subgraph kind | CONFIRMED (`__kelf` string) |
-| `subgraph = "0"` | node | subgraph id within the core | STRONG |
-| `kelf-<N>.json` | node | reference to the per-core KELF index | CONFIRMED |
-| `size` | node | kelf byte size (decimal) | STRONG |
-| `tvm_op` | node | tvm op tag = the `sg_coreV1` node name | CONFIRMED (`tvm_op` string) |
+| `revision` / `target_arch` / `0.5` | top-level | revision, arch tag, schema version | CERTAIN (strings) |
+| `graphs` | top-level | the subgraph map (root `"main"` + per-core nodes) | CERTAIN (string) |
+| `sg_coreV1<i>` | per virtual NeuronCore | one node per core, `i = to_string(coreIdx)` | CERTAIN (`sg_coreV1` string) |
+| `op = "__kelf"` | node | kelf-backed subgraph kind | CERTAIN (`__kelf` string) |
+| `subgraph = "0"` | node | subgraph id within the core | HIGH |
+| `kelf-<N>.json` | node | reference to the per-core KELF index | CERTAIN |
+| `size` | node | kelf byte size (decimal) | HIGH |
+| `tvm_op` | node | tvm op tag = the `sg_coreV1` node name | CERTAIN (`tvm_op` string) |
 
 > **NOTE —** the `sg_coreV1` nodes reference both the per-core `kelf-<N>.json` *and* the per-core `def.json` (`getArtifactAbsPath + "def.json"`). The on-disk per-engine basenames are TitleCase (`PE.bin`, `Pool.bin`, `Activation.bin`, `SP.bin`, `DVE.bin`) while `def.json` indexes lowercase engine ids — an intentional engine-name duality.
 
@@ -242,26 +242,26 @@ The `__kelf` node's internal structure is the subject of the [NEFF/KELF `__kelf`
 
 | Key | Value | Confidence |
 |---|---|---|
-| `definition` | module name | CONFIRMED (string) |
-| `0.6` | schema version | CONFIRMED (string @ `+594084`) |
-| arch fields | `ArchModel`-derived (`ArchModel + 84` always; `+96` when `archLevel ≤ 49`) | STRONG |
-| `var` | the variable / tensor table (§4.1) | CONFIRMED |
-| `dma` | the DMA-queue table (§4.2) | CONFIRMED |
-| CC info | `replica_groups` / `src_target_pairs` / `#rank_world_size` (§5) | CONFIRMED |
-| ucode | `{name, opcode, sub_opcode}` entries | CONFIRMED |
-| fp8 | `FP8ConvConfig[0]/[1]` | CONFIRMED |
-| `neff_features` | feature-flag string array (§4.3); key is plural `"neff_features"` @ `.rodata 0x1c86984` (see [12.5](neff-feature-flags.md)) | CONFIRMED (string) |
+| `definition` | module name | CERTAIN (string) |
+| `0.6` | schema version | CERTAIN (string @ `+594084`) |
+| arch fields | `ArchModel`-derived (`ArchModel + 84` always; `+96` when `archLevel ≤ 49`) | HIGH |
+| `var` | the variable / tensor table (§4.1) | CERTAIN |
+| `dma` | the DMA-queue table (§4.2) | CERTAIN |
+| CC info | `replica_groups` / `src_target_pairs` / `#rank_world_size` (§5) | CERTAIN |
+| ucode | `{name, opcode, sub_opcode}` entries | CERTAIN |
+| fp8 | `FP8ConvConfig[0]/[1]` | CERTAIN |
+| `neff_features` | feature-flag string array (§4.3); key is plural `"neff_features"` @ `.rodata 0x1c86984` (see [12.5](neff-feature-flags.md)) | CERTAIN (string) |
 
 The producer sub-tables run in order; each is a separately-symboled `NeffPackager` method:
 
 | Sub-table | Writer @ | Confidence |
 |---|---|---|
-| DMA-queue definitions | `writeDMAQueueDefinitions` @ `0x1524d10` | CONFIRMED |
-| Variable definitions | `writeVarDefinitions` @ `0x1526530` | CONFIRMED |
-| CC info | `writeCCInfo` @ `0x1523af0` | CONFIRMED |
-| ucode-lib definitions | `writeUCodeLibDefinitions` @ `0x1522d60` | CONFIRMED |
-| FP8 config | `writeFP8Config` @ `0x1521e70` | CONFIRMED |
-| NEFF features | `writeNEFFFeatures` @ `0x15294b0` | CONFIRMED |
+| DMA-queue definitions | `writeDMAQueueDefinitions` @ `0x1524d10` | CERTAIN |
+| Variable definitions | `writeVarDefinitions` @ `0x1526530` | CERTAIN |
+| CC info | `writeCCInfo` @ `0x1523af0` | CERTAIN |
+| ucode-lib definitions | `writeUCodeLibDefinitions` @ `0x1522d60` | CERTAIN |
+| FP8 config | `writeFP8Config` @ `0x1521e70` | CERTAIN |
+| NEFF features | `writeNEFFFeatures` @ `0x15294b0` | CERTAIN |
 
 ### 4.1 The `var` Table
 
@@ -269,14 +269,14 @@ The variable table (`writeVarDefinitions`) is the heart of `def.json`. Each entr
 
 | Per-var key | Meaning | Confidence |
 |---|---|---|
-| `var_id` | numeric var id | STRONG |
-| `name` | tensor name | CONFIRMED (string) |
-| `size` | byte size | CONFIRMED (`v['size']` read in analyze_neff) |
-| `file` | backing const `.bin` filename | STRONG |
-| `pointer` | placement pointer | CONFIRMED (string) |
-| `dge-table` / `DGETable` | DGE descriptor-table reference | CONFIRMED (strings) |
-| `CCGrp` | collective-comms group id | CONFIRMED (string) |
-| `type` | location-class enum (below) | CONFIRMED |
+| `var_id` | numeric var id | HIGH |
+| `name` | tensor name | CERTAIN (string) |
+| `size` | byte size | CERTAIN (`v['size']` read in analyze_neff) |
+| `file` | backing const `.bin` filename | HIGH |
+| `pointer` | placement pointer | CERTAIN (string) |
+| `dge-table` / `DGETable` | DGE descriptor-table reference | CERTAIN (strings) |
+| `CCGrp` | collective-comms group id | CERTAIN (string) |
+| `type` | location-class enum (below) | CERTAIN |
 
 The `type` location-class enum (string literals in libwalrus, read in analyze_neff):
 
@@ -297,13 +297,13 @@ if v['type'] == 'virtual':
 
 | Virtual-var key | Meaning | Confidence |
 |---|---|---|
-| `fabric_path` | virt area name (`main`/`alt`) | CONFIRMED (analyze_neff + libwalrus string) |
-| `backing_buf` | virt area name (`main`/`sharded`) | CONFIRMED |
-| `backing_variable_off` | offset into the backing area | CONFIRMED |
+| `fabric_path` | virt area name (`main`/`alt`) | CERTAIN (analyze_neff + libwalrus string) |
+| `backing_buf` | virt area name (`main`/`sharded`) | CERTAIN |
+| `backing_variable_off` | offset into the backing area | CERTAIN |
 
 Const-file de-dup is gated by `enableConstFileDedup`; the packager logs `Const File de-dup saved <KB> KB`. The table asserts `tensors in Call table must be physical tensors`.
 
-> **CORRECTION (D-S02 §6 / §2) —** the backing report lists the analyze-time `type`-iteration set as `{'tmp-buf','virtual','input','output','file'}`. In the shipped `analyze_neff_artifacts.py` the size-accumulation loop iterates only `['tmp-buf', 'virtual', 'input', 'output']`, and `'file'` is handled in a **separate** branch (`if v['type'] == 'file': self.const_size += v['size']`). The full *emitted* enum (nine classes incl. `state-buffer`/`local`/`shared`/`remote`) is still correct — the correction is only about which subset that one analyzer loop walks.
+> **GOTCHA —** the analyzer's size-accumulation loop is narrower than the emitted enum. `analyze_neff_artifacts.py` iterates only `['tmp-buf', 'virtual', 'input', 'output']`; `'file'` is handled in a *separate* branch (`if v['type'] == 'file': self.const_size += v['size']`), and the remaining classes (`state-buffer`, `local`, `shared`, `remote`) are not walked by that loop at all. The emitted `type` enum still has all nine classes — only this one consumer subsets it.
 
 ### 4.2 The DMA-Queue Table
 
@@ -414,19 +414,19 @@ The CC metadata keys (all `__pyx_n_s_*` / `__pyx_kp_u_*` constants in NeffInfo.s
 
 | Key | Where | Meaning | Confidence |
 |---|---|---|---|
-| `inputs` | top-level | list of input tensor descriptors | CONFIRMED (`__pyx_n_s_inputs`/`__pyx_n_u_inputs`) |
-| `outputs` | top-level | list of output tensor descriptors | INFERRED (see CORRECTION) |
-| `alias_map` | top-level | input↔output aliasing table | CONFIRMED (`__pyx_n_s_alias_map`) |
-| `must_alias` | alias entry / flag | must-alias (in-place) vs may-alias | CONFIRMED (`__pyx_n_u_must_alias`) |
-| `input_name` | alias entry | the donated input tensor name | CONFIRMED |
-| `output_name` | alias entry | the aliased output tensor name | CONFIRMED |
-| `name` | per-tensor | tensor name field | CONFIRMED (`__pyx_n_s_name`) |
+| `inputs` | top-level | list of input tensor descriptors | CERTAIN (`__pyx_n_s_inputs`/`__pyx_n_u_inputs`) |
+| `outputs` | top-level | list of output tensor descriptors | MEDIUM (see note below) |
+| `alias_map` | top-level | input↔output aliasing table | CERTAIN (`__pyx_n_s_alias_map`) |
+| `must_alias` | alias entry / flag | must-alias (in-place) vs may-alias | CERTAIN (`__pyx_n_u_must_alias`) |
+| `input_name` | alias entry | the donated input tensor name | CERTAIN |
+| `output_name` | alias entry | the aliased output tensor name | CERTAIN |
+| `name` | per-tensor | tensor name field | CERTAIN (`__pyx_n_s_name`) |
 
-> **CORRECTION (D-S02 §2) —** the backing report lists `"outputs"` as a CONFIRMED top-level key. In NeffInfo.so cp310 there **is** a string constant for `inputs` (`__pyx_n_s_inputs` / `__pyx_n_u_inputs`) but **no** standalone `outputs` constant — only `output_name` (the alias sub-key) exists. So the reader is observed to iterate `inputs` and `alias_map`; the `outputs` top-level list is inferred from the producer's intent (and from the `1 input aliasing to multiple outputs …` assertion, which names "outputs" only in prose), not anchored to a reader string. Tagged INFERRED above.
+> **NOTE — `outputs` is not anchored to a reader string.** NeffInfo.so cp310 carries a string constant for `inputs` (`__pyx_n_s_inputs` / `__pyx_n_u_inputs`) but no standalone `outputs` constant; the only related literal is `output_name`, the alias sub-key. The reader is observed to iterate `inputs` and `alias_map`. A top-level `outputs` list is inferred from the producer's intent and from the `1 input aliasing to multiple outputs …` assertion, which names "outputs" only in prose.
 
 ### Per-Tensor Descriptor
 
-The per-tensor binding tuple — `name → {shape, dtype, DRAM-address, engine/queue}` — is the documented intent of `getTensorMap`. The placement values originate from `bir::MemoryLocation` (MemoryType → `{DRAM8, SB16, PSUM32}`, MemoryAddressSpace, Dtype). `getTensorMap` indexes `inputs` (and outputs) entries by `name` then reads the placement sub-keys; the exact JSON key spelling for `shape`/`dtype`/`address` is produced by the linker and is **not** re-stated as literals inside NeffInfo — the reader simply traverses them. Tagged STRONG/INFERRED for the sub-key spelling.
+The per-tensor binding tuple — `name → {shape, dtype, DRAM-address, engine/queue}` — is the documented intent of `getTensorMap`. The placement values originate from `bir::MemoryLocation` (MemoryType → `{DRAM8, SB16, PSUM32}`, MemoryAddressSpace, Dtype). `getTensorMap` indexes `inputs` (and outputs) entries by `name` then reads the placement sub-keys; the exact JSON key spelling for `shape`/`dtype`/`address` is produced by the linker and is **not** re-stated as literals inside NeffInfo — the reader simply traverses them. The sub-key spelling is therefore [INFERRED].
 
 ### Alias Relation
 
@@ -475,7 +475,7 @@ NeffInfo  (kra, Cython)   parseFile → findInNeff (dd|tar) → json.loads →
    analyze_neff_artifacts.py reads def.json["var"] + per-engine *.json + *.bin
 ```
 
-> **CORRECTION (D-J34 §5) —** the NEFF integrity hash is **MD5** ("IR signature"), not SHA-1.
+> **GOTCHA —** the NEFF integrity hash is **MD5** — the "IR signature" — not SHA-1.
 
 ---
 

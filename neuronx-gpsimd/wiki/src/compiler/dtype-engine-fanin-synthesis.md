@@ -37,7 +37,7 @@ opcode catalog — the [opcode-catalog-ledger](../firmware/kernels/opcode-catalo
 > as a silicon fact.
 
 **Confidence convention.** Every claim is tagged `HIGH/MED/LOW` × `OBSERVED` (read from a
-shipped artifact / symbol / string / header this pass) / `INFERRED` (reasoned over
+shipped artifact / symbol / string / header) / `INFERRED` (reasoned over
 OBSERVED) / `CARRIED` (consolidated from a cited sibling page at its stated confidence).
 The two host corpora and the device contract:
 
@@ -64,7 +64,7 @@ specialised dtype there is a **dedicated opcode** whose **validator hard-pins** 
 SundaISel (or, for the engine axis, the NKI frontend) chooses *which* opcode by matching
 the BIR node's `(dtype, op, flags, gen)` tuple to the validator that accepts it.
 
-The validator field names were read byte-exact this pass from the TPB opcode validator
+The validator field names were read byte-exact from the TPB opcode validator
 surface `CC/isa_tpb/sunda/neuron_isa_tpb_pybind.cpython-311-*.so` (strings):
 
 | validator field | gate | selects |
@@ -83,7 +83,7 @@ surface `CC/isa_tpb/sunda/neuron_isa_tpb_pybind.cpython-311-*.so` (strings):
 | `copy_predicated_scalar_opcode` | the CopyPredicated scalar-form gate | `0xe8` COPY_PREDICATED_SCALAR |
 
 The dtype enum these predicates read (`CC/isa_tpb/python/enum_mapping.cpython-311-*.so`,
-strings this pass): `BFLOAT16`, `FP32R`, `INT32`, `UINT32` — the four the CC lane routes
+strings): `BFLOAT16`, `FP32R`, `INT32`, `UINT32` — the four the CC lane routes
 on. `[HIGH/OBSERVED — strings on both pybinds.]`
 
 > **NOTE — the opcode byte is engine-invariant.** Across the entire fan-in, the *engine*
@@ -205,8 +205,8 @@ the hardwired DVE/ACT datapath), not the byte. This resolves the ledger's "POOL/
 for these ops as **"POOL when routed there, else DVE/ACT" — a compiler-policy axis, not an
 opcode split.**
 
-The resolution rule is a **frontend dtype/op/buffer predicate**, re-read byte-exact this
-pass from `NKI/isa/tensor_ops.py` (the `0x41` route) — there is **no shape- or cost-driven
+The resolution rule is a **frontend dtype/op/buffer predicate**, re-read byte-exact
+from `NKI/isa/tensor_ops.py` (the `0x41` route) — there is **no shape- or cost-driven
 ISel switch**:
 
 ```c
@@ -359,7 +359,7 @@ The validator-gated mechanism is not unique to dtype/engine/gen — it also rout
 
 So the fan-in is a **uniform design**: a generic BIR class + a family of per-opcode
 validators; the lowering selects the opcode whose validator the node satisfies, along the
-relevant axis. `[HIGH — validator names OBSERVED this pass; opcode targets CARRIED
+relevant axis. `[HIGH — validator names OBSERVED; opcode targets CARRIED
 bir-inst-roster §3.5.]`
 
 ### A.7 The "GPSIMD-is-not-the-float-hotpath" keystone `[HIGH/CARRIED]`
@@ -612,7 +612,7 @@ Each claim re-derived from the binaries, attacked, resolved. `[HIGH/OBSERVED]`
 
 **(1) The BIR roster is exactly 110 — not 73, not 109, not 111, not 112, not ~119.**
 Two independent symbol families in `libBIR.so` must agree once the abstract bases are
-filtered. Verified byte-exact this pass (`nm -D`, **mangled**, on the cp311 copy):
+filtered. Verified byte-exact (`nm -D`, **mangled**, on the cp311 copy):
 
 ```
 $ nm -D .../starfish/lib/libBIR.so | rg -o '_ZTVN3bir[0-9]+Inst[A-Za-z0-9_]+E' | sort -u | wc -l   # 112 raw

@@ -1,6 +1,6 @@
 # The Two-GPSIMD Reconciliation — Pool-Engine Alias vs Xtensa Cluster
 
-> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Two binaries carry a unit named "GPSIMD" and they are **different hardware**. The compiler/IR side lives in `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so` (cp310 frame: `.text`/`.rodata` VMA == file offset, `.data` is `+0x400000`; the `_0x5e9xxx` `.c` sidecars are PLT thunks, real bodies disassemble from `.text 0x135xxxx` — the two-VA-frame artifact). The custom-op CPU side lives in `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so` — eight Tensilica Xtensa ELF32 executables. Disasm offsets quoted from the encoder body are grounded on the cp310 IDA tree (`CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840`, CONFIRMED); the cp312 anchor `0x13597a0` is ASSERTED, not verified — cp312 `libwalrus` is not in the indexed corpus (only the cp312 `walrus_driver` binaries are), so treat the cp312 delta as a noted prediction. Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
+> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Two binaries carry a unit named "GPSIMD" and they are **different hardware**. The compiler/IR side lives in `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so` (cp310 frame: `.text`/`.rodata` VMA == file offset, `.data` is `+0x400000`; the `_0x5e9xxx` `.c` sidecars are PLT thunks, real bodies disassemble from `.text 0x135xxxx` — the two-VA-frame artifact). The custom-op CPU side lives in `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so` — eight Tensilica Xtensa ELF32 executables. Disasm offsets quoted from the encoder body are grounded on the cp310 IDA tree (`CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840`); the cp312 anchor `0x13597a0` is [INFERRED] — cp312 `libwalrus` is not in the indexed corpus (only the cp312 `walrus_driver` binaries are), so treat the cp312 delta as a prediction. Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
 
 ## Abstract
 
@@ -8,29 +8,28 @@ The name **"GPSIMD"** appears twice in this toolchain, attached to two physicall
 
 The first "GPSIMD" — call it the **Pool-alias GPSIMD** ([1.13](../arch/gpsimd-engine.md)) — is the *external display name of the internal Pool sequencer*. The `libBIR` engine table literally renames `EngineType Pool(1)` to the string `"GPSIMD"`, and its entire user-visible ISA surface is one fixed-function machine instruction, `InstGPSIMDSB2SB` (InstructionType 33, opcode `0xBF`), a cross-core State-Buffer→State-Buffer copy that swaps SBUF tiles between the two physical cores of a 2-core LNC. It is a *datapath the compiler emits and a hardware engine executes*. The second "GPSIMD" — the **Xtensa custom-op CPU cluster** ([11.1](gpsimd-xtensa-layout.md)) — is a software op-runtime: eight Tensilica Xtensa cores, each running a statically-linked freestanding image (`libbuiltincustomop_cpu{0..7}.stripped.so`) that embeds a PyTorch-c10 subset and the custom-op SDK. It is reached by a *completely different* BIR instruction, `InstCustomOp` (InstructionType 53), and has its own DRAM-windowed memory model that the compiler never sees.
 
-The proof that these are two things and not one thing seen from two angles is threefold and **CONFIRMED** at the binary level: (i) the verbatim `libBIR` string `"ExternalEngineType used as EngineType. External: GPSIMD Internal: Pool"`; (ii) two distinct `InstructionType`s with two distinct encoders on two distinct engines; (iii) a *disjoint-namespace test* — the Xtensa `cpu0.so` has **zero** mentions of SBUF/SB2SB/Pool/partition/GPSIMD, and `libwalrus`/`libBIR` have **zero** mentions of `SUNDA_APB_BASE`/`MEM_WINDOW0`/`data_scratch_map`. Neither binary knows the other's memory model. The rest of this page builds the unified four-region address map that keeps them as adjacent-but-disjoint regions owned by different agents, identifies the single DMA bridge where they touch the same bytes, and ledgers every claim by confidence — flagging honestly that the address-map *unification* (whether the Xtensa DRAM window physically aliases SBUF) is the one genuinely-open question.
+The proof that these are two things and not one thing seen from two angles is threefold, and every leg of it is a direct binary observation: (i) the verbatim `libBIR` string `"ExternalEngineType used as EngineType. External: GPSIMD Internal: Pool"`; (ii) two distinct `InstructionType`s with two distinct encoders on two distinct engines; (iii) a *disjoint-namespace test* — the Xtensa `cpu0.so` has **zero** mentions of SBUF/SB2SB/Pool/partition/GPSIMD, and `libwalrus`/`libBIR` have **zero** mentions of `SUNDA_APB_BASE`/`MEM_WINDOW0`/`data_scratch_map`. Neither binary knows the other's memory model. The rest of this page builds the unified four-region address map that keeps them as adjacent-but-disjoint regions owned by different agents, identifies the single DMA bridge where they touch the same bytes, and marks the one genuinely-open question: whether the Xtensa DRAM window physically aliases SBUF.
 
-> **GOTCHA —** "GPSIMD" with no qualifier is a landmine in this codebase. It has already misled one analysis pass. The two correct, disambiguated names are **"GPSIMD(=Pool) engine"** (the SB2SB datapath, [1.13](../arch/gpsimd-engine.md)) and **"GPSIMD custom-op CPU"** (the 8 Xtensa cores, [11.1](gpsimd-xtensa-layout.md)). Never write bare "GPSIMD" in memory-model prose.
+> **GOTCHA —** "GPSIMD" with no qualifier is a landmine in this codebase. The two correct, disambiguated names are **"GPSIMD(=Pool) engine"** (the SB2SB datapath, [1.13](../arch/gpsimd-engine.md)) and **"GPSIMD custom-op CPU"** (the 8 Xtensa cores, [11.1](gpsimd-xtensa-layout.md)). Never write bare "GPSIMD" in memory-model prose.
 
 For reimplementation, the contract is:
 
 - The **name-collision result**: two `InstructionType`s (`IT33` Pool-engine `GPSIMDSB2SB` vs `IT53` Xtensa `CustomOp`), why they share a name, and the single string that settles it.
 - The **disjoint-namespace test**: the two `rg`-negative grounds that prove neither binary models the other's memory.
 - The **unified four-region address map** — per-CPU private window, shared DRAM scratch, the APB aperture, and the SBUF substrate — with each region's single owner.
-- The **DMA bridge** (the only contact point) and the one **SPECULATIVE** gap it leaves open.
+- The **DMA bridge** (the only contact point) and the one gap it leaves open.
 
 | | |
 |---|---|
 | **Pool-alias GPSIMD** | `EngineType Pool(1)` → external `"GPSIMD"`; one op `InstGPSIMDSB2SB` (IT33, opcode `0xBF`) |
 | **Xtensa GPSIMD** | 8× Tensilica Xtensa ELF32; reached by `InstCustomOp` (IT53), cpu_id ∈ [0,8) |
 | **Decisive string** | `libBIR` verbatim: `"External: GPSIMD Internal: Pool"` |
-| **Sole SB2SB encoder** | `CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840` (cp310, CONFIRMED) / `0x13597a0` (cp312, ASSERTED — cp312 `libwalrus` not in corpus) |
+| **Sole SB2SB encoder** | `CoreV3GenImpl::visitInstGPSIMDSB2SB` @ `0x1359840` (cp310) / `0x13597a0` (cp312, [INFERRED] — cp312 `libwalrus` not in corpus) |
 | **LNC2 gate** | `cmpl $0x2,0x1a4(%rax)` (cores-per-LNC == 2) @ encoder `+0x227`/`+0x561` |
 | **Per-CPU window** | `0x84000000 + cpu_id·0x200000` (2 MiB stride) — read off ELF `LOAD` vaddrs |
 | **Shared DRAM scratch** | `[0x80000, 0x90000)` (64 KiB), `data_transfer.cpp:160` |
 | **APB aperture** | `READ_LOCAL_UREG64(MEM_WINDOW0_LO) == SUNDA_APB_BASE`, `data_transfer.cpp:240` |
 | **Disjointness** | `cpu0.so` ∌ {sbuf,sb2sb,pool,partition,gpsimd}; `libwalrus`/`libBIR` ∌ {SUNDA_APB_BASE,MEM_WINDOW0} |
-| **Backing** | D-M11 (Pool/SB2SB ISA), D-AC07 (memory-model reconciliation) |
 
 ---
 
@@ -42,7 +41,7 @@ Before reconciling, each view must be stated so precisely that the collision bec
 
 ### View A — GPSIMD as the Pool engine doing SB2SB
 
-The thing [1.13](../arch/gpsimd-engine.md) and D-M11 call "GPSIMD" is the **external name of `EngineType Pool(1)`**. Its entire user-visible ISA surface is one fixed-function machine instruction:
+The thing [1.13](../arch/gpsimd-engine.md) calls "GPSIMD" is the **external name of `EngineType Pool(1)`**. Its entire user-visible ISA surface is one fixed-function machine instruction:
 
 ```text
 InstGPSIMDSB2SB        InstructionType 33, opcode 0xBF (wire word 0x10BF)
@@ -88,10 +87,10 @@ The single question this page exists to answer: *same hardware seen twice, or tw
 ### Algorithm
 
 ```c
-function ReconcileGPSIMD():                       // D-AC07 §1c
+function ReconcileGPSIMD():
     // Ground (i): the EngineType external-alias string in libBIR
     s = rg(libBIR, "External: GPSIMD Internal: Pool")
-    if s present:                                 // CONFIRMED — verbatim, 1 hit
+    if s present:                                 // verbatim, 1 hit
         // "GPSIMD" in the BIR/compiler world is DEFINED to be the display
         // name of the internal Pool sequencer. View-A GPSIMD == Pool engine.
         viewA_is_pool = true
@@ -110,34 +109,34 @@ function ReconcileGPSIMD():                       // D-AC07 §1c
         sealed_namespaces = true                  // neither binary models the other
 
     assert viewA_is_pool && two_distinct_ops && sealed_namespaces
-    return "NAME COLLISION — two different units, not one"   // CONFIRMED
+    return "NAME COLLISION — two different units, not one"
 ```
 
-### The three grounds, re-verified
+### The three grounds
 
-Every ground below was re-run on the wheel binaries (cp312 layout; the cp310 frame is byte-equivalent for these strings):
+Each ground holds on the wheel binaries (cp312 layout; the cp310 frame is byte-equivalent for these strings):
 
 ```text
 (i)  libBIR.so   "ExternalEngineType used as EngineType. External: GPSIMD Internal: Pool"
-       → 1 hit (verbatim). The single most decisive fact.                  [CONFIRMED]
+       → 1 hit (verbatim). The single most decisive fact.
 
 (ii) two InstructionTypes / encoders:
        InstGPSIMDSB2SB (IT33) — CoreV3GenImpl::visitInstGPSIMDSB2SB
          nm -DC libwalrus → "neuronxcc::backend::CoreV3GenImpl::visitInstGPSIMDSB2SB"
        InstCustomOp   (IT53) — the path that ships libbuiltincustomop_cpu{0..7}.so
-       Two distinct InstructionTypes, two encoders, two engines.           [CONFIRMED]
+       Two distinct InstructionTypes, two encoders, two engines.
 
 (iii) disjoint namespaces (rg -a -c):
-       cpu0.so      ∋ sbuf|sb2sb|gpsimd|partition          → 0  (CONFIRMED disjoint)
-       libwalrus.so ∋ SUNDA_APB_BASE|MEM_WINDOW0|data_scratch_map → 0  (CONFIRMED)
-       libBIR.so    ∋ SUNDA_APB_BASE|MEM_WINDOW0           → 0  (CONFIRMED)
+       cpu0.so      ∋ sbuf|sb2sb|gpsimd|partition                  → 0
+       libwalrus.so ∋ SUNDA_APB_BASE|MEM_WINDOW0|data_scratch_map  → 0
+       libBIR.so    ∋ SUNDA_APB_BASE|MEM_WINDOW0                   → 0
 ```
 
 > **QUIRK —** both names are *locally correct*. The Xtensa cluster is named "GPSIMD" because on Trainium the programmable scalar/SIMD custom-op cores are marketed as "GP-SIMD" / "Penguin". The Pool engine is named "GPSIMD" because the compiler's `EngineType` table literally renames `Pool → GPSIMD`. The apparent conflict is a vocabulary clash inside two sealed namespaces, not a factual one — which is exactly why the disjoint-namespace test (ground iii) resolves it cleanly.
 
 ### Considerations
 
-There is no third reading. The `getDefaultEngine` accessor for `InstGPSIMDSB2SB` returns `EngineType 1` (Pool) — `mov eax,1` per D-M11 — and `ArithOps` routes to `ArithOpsZeroArithInst`, confirming View A is a pure mover on the Pool sequencer, never a "run arbitrary SIMD code" surface. User custom code targets the kernel-class ops (IT53–55: `CustomOp`=IT53, `BIRKernel`=IT54, `NKIKernel`=IT55), i.e. View B, never a GPSIMD opcode. The two paths cannot be merged because they are scheduled as separate instructions on separate engines.
+There is no third reading. The `getDefaultEngine` accessor for `InstGPSIMDSB2SB` returns `EngineType 1` (Pool) — `mov eax,1` — and `ArithOps` routes to `ArithOpsZeroArithInst`, confirming View A is a pure mover on the Pool sequencer, never a "run arbitrary SIMD code" surface. User custom code targets the kernel-class ops (IT53–55: `CustomOp`=IT53, `BIRKernel`=IT54, `NKIKernel`=IT55), i.e. View B, never a GPSIMD opcode. The two paths cannot be merged because they are scheduled as separate instructions on separate engines.
 
 ---
 
@@ -151,14 +150,14 @@ Because the two "GPSIMD" are different units, the unified map is **not a merge o
 
 | Region | Range / Key | Owner / Accessor | Width | Confidence |
 |---|---|---|---|---|
-| **(A) per-CPU private window** | `0x84000000 + cpu_id·0x200000` (2 MiB stride; 8 windows tile `0x84000000..0x85000000` = 16 MiB) | the Xtensa custom-op CPU `cpu_id` — its own `.text/.data/.bss/heap/stack`, non-PIC, absolute-linked | ELF32 vaddr | CONFIRMED |
-| **(B) shared DRAM scratch / mailbox** | `[0x80000, 0x90000)` (64 KiB), DRAM-relative offset | ALL 8 Xtensa CPUs (cross-CPU mailbox); `data_scratch_map_t` + the `doSyncPhysicalCores` barrier live here | DRAM offset | CONFIRMED |
-| **(C) the APB window aperture** | `MEM_WINDOW0_LO == SUNDA_APB_BASE` (numeric `SUNDA_APB_BASE` NOT recoverable) | the Xtensa CPU's DMA/window hardware, programmed by firmware, verified by the SDK | 64-bit UREG | CONFIRMED (predicate) |
-| **(D) SBUF (State Buffer)** | partition-addressed (NOT a flat `0x…` addr; per-partition tiles, ≤1024 B/partition) | the **Pool engine** (= View-A GPSIMD) via `InstGPSIMDSB2SB` `bundle+0x21` peer SB partition addr; the Xtensa CPU NEVER addresses SBUF directly | partition × byte | CONFIRMED disjoint |
+| **(A) per-CPU private window** | `0x84000000 + cpu_id·0x200000` (2 MiB stride; 8 windows tile `0x84000000..0x85000000` = 16 MiB) | the Xtensa custom-op CPU `cpu_id` — its own `.text/.data/.bss/heap/stack`, non-PIC, absolute-linked | ELF32 vaddr | CERTAIN |
+| **(B) shared DRAM scratch / mailbox** | `[0x80000, 0x90000)` (64 KiB), DRAM-relative offset | ALL 8 Xtensa CPUs (cross-CPU mailbox); `data_scratch_map_t` + the `doSyncPhysicalCores` barrier live here | DRAM offset | CERTAIN |
+| **(C) the APB window aperture** | `MEM_WINDOW0_LO == SUNDA_APB_BASE` (numeric `SUNDA_APB_BASE` NOT recoverable) | the Xtensa CPU's DMA/window hardware, programmed by firmware, verified by the SDK | 64-bit UREG | CERTAIN (predicate) |
+| **(D) SBUF (State Buffer)** | partition-addressed (NOT a flat `0x…` addr; per-partition tiles, ≤1024 B/partition) | the **Pool engine** (= View-A GPSIMD) via `InstGPSIMDSB2SB` `bundle+0x21` peer SB partition addr; the Xtensa CPU NEVER addresses SBUF directly | partition × byte | CERTAIN |
 
-### Region (A) — the per-CPU private window (CONFIRMED, read off the ELF)
+### Region (A) — the per-CPU private window
 
-The 2 MiB stride is not inferred — it is read directly off the eight ELF `LOAD` segment virtual addresses:
+The 2 MiB stride is read directly off the eight ELF `LOAD` segment virtual addresses:
 
 ```text
 readelf -l libbuiltincustomop_cpu{0,1,2}.stripped.so  (first LOAD segment):
@@ -169,7 +168,7 @@ readelf -l libbuiltincustomop_cpu{0,1,2}.stripped.so  (first LOAD segment):
 
 Each image is ELF32 `EXEC`, machine "Tensilica Xtensa Processor", fully absolute-linked at its own base. The eight windows tile a contiguous 16 MiB aperture (`0x84000000`–`0x85000000`); with ~578 KiB used per core, each leaves ~1.4 MiB headroom for heap/stack. This region is **private**: a core sees only its own image. (Full layout: [11.1](gpsimd-xtensa-layout.md).)
 
-### Region (B)/(C) — the shared scratch and its aperture (CONFIRMED asserts)
+### Region (B)/(C) — the shared scratch and its aperture
 
 The cross-CPU coordination region is a 64 KiB DRAM window, and the firmware-programmed aperture onto the APB is asserted by the SDK before it DMAs. Three verbatim `data_transfer.cpp` asserts from `cpu0.so`:
 
@@ -179,9 +178,9 @@ data_transfer.cpp:171   cpu_id < 8                                       // 8 Xt
 data_transfer.cpp:240   READ_LOCAL_UREG64(MEM_WINDOW0_LO) == SUNDA_APB_BASE  // region (C) seam
 ```
 
-Region (A) (`0x84xxxxxx` 32-bit code aperture) and region (B) (a low `0x8xxxx` DRAM-relative offset) are **disjoint address ranges** — a core's own image versus the shared mailbox. The disjointness is arithmetic on two CONFIRMED literals, so it is **STRONG** even though no single string asserts "(A) and (B) do not overlap".
+Region (A) (`0x84xxxxxx` 32-bit code aperture) and region (B) (a low `0x8xxxx` DRAM-relative offset) are **disjoint address ranges** — a core's own image versus the shared mailbox. No single string asserts "(A) and (B) do not overlap"; the disjointness follows by arithmetic on the two literals above.
 
-### Region (D) — the SBUF substrate (CONFIRMED disjoint)
+### Region (D) — the SBUF substrate
 
 SBUF is a **separate namespace entirely**, owned by the Pool engine. It is *partition-addressed*, not byte-flat: an SBUF address is a `(partition, byte-offset)` pair, not a `0x…` immediate. It does **not appear in the Xtensa map at all** — `cpu0.so` has zero SBUF/partition strings (ground iii). View-B's eight CPUs never address SBUF directly; only the Pool engine does, via the `InstGPSIMDSB2SB` peer-partition field. SBUF/PSUM geometry itself (partition count, per-partition byte budget) is owned by [SBUF / PSUM Bank Geometry](../arch/sbuf-psum-geometry.md), not this page.
 
@@ -198,7 +197,7 @@ The two units contact the same bytes at exactly **one seam**: a custom-op's tens
 ### Algorithm
 
 ```c
-function CustomOpDataPath():                      // D-AC07 §3
+function CustomOpDataPath():
     // COMPILER LEVEL (libBIR verifier — verbatim strings, this build)
     assert tensor.home in {SBUF, HBM}             // "All args to a customop must be
                                                   //  located in SBUF or HBM"
@@ -235,36 +234,36 @@ The Pool engine **is** an SBUF-native datapath (View A, region D). The Xtensa CP
 
 ### Considerations
 
-This seam is the one place the two views touch the same *bytes*, and it is also the only place the reconciliation stays **open** — see the ledger row R16 below.
+This seam is the one place the two views touch the same *bytes*, and it is also the only place the reconciliation stays open — see row R16 below.
 
 ---
 
-## Confirmed-vs-Speculative Ledger
+## Evidence Summary
 
 ### Purpose
 
-Per-claim grounding so a reimplementer knows which rows to trust verbatim and which to re-derive. `B-string` = verbatim string in the named binary; `B-symbol` = nm/demangled symbol; `B-byte` = readelf/objdump/xxd. The headline result (R1–R5) is uniformly **CONFIRMED**; the *unification* of the address map is where the **SPECULATIVE** rows sit.
+Per-claim grounding so a reimplementer knows which rows to trust verbatim and which to re-derive. `B-string` = verbatim string in the named binary; `B-symbol` = nm/demangled symbol; `B-byte` = readelf/objdump/xxd. The headline result (R1–R5) is read directly off the binaries; the *unification* of the address map is where the open rows sit.
 
-| # | Claim | Grounding | Tag |
+| # | Claim | Grounding | Confidence |
 |---|---|---|---|
-| R1 | View-A GPSIMD == external alias of internal Pool engine | `libBIR` B-string `"External: GPSIMD Internal: Pool"` | **CONFIRMED** |
-| R2 | View-B GPSIMD == the 8-core Xtensa custom-op cluster (IT53, `cpu*.so`, `cpu_id`) | `libwalrus` B-symbol + `cpu*.so` B-byte | **CONFIRMED** |
-| R3 | The two are DIFFERENT units (name collision), not one HW seen twice | R1 + R2 + disjoint-namespace test | **CONFIRMED** |
-| R4 | `cpu0.so` has NO sbuf/sb2sb/pool/partition/gpsimd strings | `cpu0.so` `rg` → 0 | **CONFIRMED** |
-| R5 | `libwalrus`/`libBIR` have NO `SUNDA_APB_BASE`/`MEM_WINDOW0` strings | `rg` → 0 | **CONFIRMED** |
-| R6 | per-CPU window = `0x84000000 + cpu_id·0x200000` (2 MiB stride) | `readelf -l` cpu0/1/2 `LOAD` vaddrs (Δ=0x200000) | **CONFIRMED** |
-| R7 | shared DRAM scratch `[0x80000, 0x90000)` (64 KiB) | `cpu0.so` B-string `data_transfer.cpp:160` | **CONFIRMED** |
-| R8 | `cpu_id < 8` (8 Xtensa CPUs) | `cpu0.so` B-string `data_transfer.cpp:171` + 8 image files | **CONFIRMED** |
-| R9 | `MEM_WINDOW0_LO == SUNDA_APB_BASE` aperture | `cpu0.so` B-string `data_transfer.cpp:240` | **CONFIRMED** (predicate) |
-| R10 | `InstGPSIMDSB2SB` operands BOTH in SBUF (MemLocType 16) | `libBIR`/`libwalrus` (D-M11) | **CONFIRMED** |
-| R11 | `InstGPSIMDSB2SB` LNC2 gate `arch+0x1A4 == 2` | `libwalrus` disasm `cmpl $0x2,0x1a4(%rax)` (encoder body) | **CONFIRMED** |
-| R12 | custom-op tensors constrained to SBUF or HBM (compiler) | `libwalrus` B-string `"All args to a customop must be located in SBUF or HBM"` | **CONFIRMED** |
-| R13 | Xtensa CPU reaches tensors via DMA through `MEM_WINDOW0` into the DRAM window; computes on local copy | R7 + R9 + R12 synthesis | **STRONG** |
-| R14 | region (A) and region (B) are disjoint address spaces | arithmetic on R6 / R7 literals | **STRONG** |
-| R15 | numeric value of `SUNDA_APB_BASE` | not recoverable (Xtensa L32R literal pool) | **SPECULATIVE** |
-| R16 | whether DRAM window `[0x80000,0x90000)` is HBM / dedicated DRAM / an alias of SBUF backing | no string ties the window to SBUF or HBM | **SPECULATIVE** |
-| R17 | the per-CPU DMA-engine identity (SW-DGE vs DMA ring) on the Xtensa side | not string-resident on the cpu side | **INFERRED** |
-| R18 | `data_scratch_map_t` exact field layout | no field strings | **INFERRED** |
+| R1 | View-A GPSIMD == external alias of internal Pool engine | `libBIR` B-string `"External: GPSIMD Internal: Pool"` | CERTAIN |
+| R2 | View-B GPSIMD == the 8-core Xtensa custom-op cluster (IT53, `cpu*.so`, `cpu_id`) | `libwalrus` B-symbol + `cpu*.so` B-byte | CERTAIN |
+| R3 | The two are DIFFERENT units (name collision), not one HW seen twice | R1 + R2 + disjoint-namespace test | CERTAIN |
+| R4 | `cpu0.so` has NO sbuf/sb2sb/pool/partition/gpsimd strings | `cpu0.so` `rg` → 0 | CERTAIN |
+| R5 | `libwalrus`/`libBIR` have NO `SUNDA_APB_BASE`/`MEM_WINDOW0` strings | `rg` → 0 | CERTAIN |
+| R6 | per-CPU window = `0x84000000 + cpu_id·0x200000` (2 MiB stride) | `readelf -l` cpu0/1/2 `LOAD` vaddrs (Δ=0x200000) | CERTAIN |
+| R7 | shared DRAM scratch `[0x80000, 0x90000)` (64 KiB) | `cpu0.so` B-string `data_transfer.cpp:160` | CERTAIN |
+| R8 | `cpu_id < 8` (8 Xtensa CPUs) | `cpu0.so` B-string `data_transfer.cpp:171` + 8 image files | CERTAIN |
+| R9 | `MEM_WINDOW0_LO == SUNDA_APB_BASE` aperture | `cpu0.so` B-string `data_transfer.cpp:240` | CERTAIN (predicate) |
+| R10 | `InstGPSIMDSB2SB` operands BOTH in SBUF (MemLocType 16) | `libBIR`/`libwalrus` | CERTAIN |
+| R11 | `InstGPSIMDSB2SB` LNC2 gate `arch+0x1A4 == 2` | `libwalrus` disasm `cmpl $0x2,0x1a4(%rax)` (encoder body) | CERTAIN |
+| R12 | custom-op tensors constrained to SBUF or HBM (compiler) | `libwalrus` B-string `"All args to a customop must be located in SBUF or HBM"` | CERTAIN |
+| R13 | Xtensa CPU reaches tensors via DMA through `MEM_WINDOW0` into the DRAM window; computes on local copy | R7 + R9 + R12 synthesis | HIGH |
+| R14 | region (A) and region (B) are disjoint address spaces | arithmetic on R6 / R7 literals | HIGH |
+| R15 | numeric value of `SUNDA_APB_BASE` | not recoverable (Xtensa L32R literal pool) | LOW |
+| R16 | whether DRAM window `[0x80000,0x90000)` is HBM / dedicated DRAM / an alias of SBUF backing | no string ties the window to SBUF or HBM | LOW |
+| R17 | the per-CPU DMA-engine identity (SW-DGE vs DMA ring) on the Xtensa side | not string-resident on the cpu side | MEDIUM |
+| R18 | `data_scratch_map_t` exact field layout | no field strings | MEDIUM |
 
 ### The contradiction, explicitly resolved
 
@@ -283,7 +282,7 @@ RESOLUTION (binary-grounded):
   different things and never needed to be unified into one address space.
 ```
 
-> **NOTE —** the **residual tension** is row R16, and only R16. The SBUF/HBM ↔ DRAM-window physical relationship (§"The Bridge") is the one place the two views touch the same bytes, and these binaries do not say whether that is a cross-memory DMA or an address re-view of one store. The STRONG reading — from the "SBUF or HBM" compiler constraint plus a distinct APB-windowed DRAM at runtime — is that the custom-op CPU has its own DMA-fed DRAM staging region distinct from SBUF, and the DMA crosses memories. But "the window aliases SBUF" is not *excluded* by these binaries. Closing R16 needs an HBM/DRAM address-map task or the Sunda APB register docs; it is correctly left SPECULATIVE rather than guessed.
+> **NOTE —** the residual tension is row R16, and only R16. The SBUF/HBM ↔ DRAM-window physical relationship (§"The Bridge") is the one place the two views touch the same bytes, and these binaries do not say whether that is a cross-memory DMA or an address re-view of one store. The best-supported reading — from the "SBUF or HBM" compiler constraint plus a distinct APB-windowed DRAM at runtime — is that the custom-op CPU has its own DMA-fed DRAM staging region distinct from SBUF, and the DMA crosses memories. But "the window aliases SBUF" is not *excluded* by these binaries; closing R16 needs the HBM/DRAM address map or the Sunda APB register documentation. [UNRESOLVED]
 
 ---
 

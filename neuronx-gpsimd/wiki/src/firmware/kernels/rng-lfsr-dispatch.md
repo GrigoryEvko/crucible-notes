@@ -14,17 +14,17 @@ software-Xorwow, TIE-Xorwow, LFSR, Dropout, and Rand2 pieces together.
 This is the **Cadence Vision-Q7 GPSIMD compute core's** own firmware — windowed-ABI Xtensa
 code on the `ncore2gp` (Cairo) core — and the companion **NX/SEQ sequencer** firmware that
 validates the operand before it reaches the compute core. Every device fact below is
-byte-pinned to a carve re-derived this session from `libnrtucode_internal.so`; every
+byte-pinned to a carve from `libnrtucode_internal.so`; every
 host-ISA fact is read out of the public `aws_neuron_isa_tpb_*.h` headers shipped in the same
 customop-lib package. Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the carved objects.** The firmware
 > container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so`
-> (`10,276,288 B`, sha256 `b7c67e898a116454…` — the FW-26/FW-27/FW-41 anchor, re-verified
-> in-task). The per-generation POOL images are `.rodata`-resident `_get.data` symbols
+> (`10,276,288 B`, sha256 `b7c67e898a116454…` — the FW-26/FW-27/FW-41 anchor).
+> The per-generation POOL images are `.rodata`-resident `_get.data` symbols
 > (so **file offset == symbol VA**, `.rodata` `Address==Off==0x46b0`; no `.data` delta
 > applies). Carved with `dd`, disassembled with the native `xtensa-elf-objdump`
 > (`XTENSA_CORE=ncore2gp`, GNU Binutils 2.34.20200201 / Xtensa Tools 14.09) shipped inside
@@ -42,7 +42,7 @@ customop-lib package. Confidence and evidence tags follow the project
 > | `SUNDA_Q7_POOL_RELEASE_DRAM` | `0x4cec0` / `0xa540` | — | per-gen negative |
 >
 > The MARIANA IRAM sha `47f76629` and DRAM sha `02cacff0` reproduce FW-27 exactly; the
-> CAYMAN IRAM sha `513a8a22` reproduces the FW-00 anchor. `[HIGH/OBSERVED]`
+> CAYMAN IRAM sha `513a8a22` reproduces the FW-00 anchor.
 
 ---
 
@@ -53,7 +53,7 @@ customop-lib package. Confidence and evidence tags follow the project
    `NEURON_ISA_TPB_RAND_ALGORITHM { LFSR=0, PCG32=1, PHILOX=2, XORWOW=3 }`. On the POOL/Q7
    software RNG, exactly **two** of the four are wired: `LFSR(0)` and `XORWOW(3)`. `PCG32(1)`
    and `PHILOX(2)` are ISA-defined but hit the SEQ
-   *"rand_algorithm(0x%x) not currently supported on POOL"* arm. `[HIGH/OBSERVED]`
+   *"rand_algorithm(0x%x) not currently supported on POOL"* arm.
 2. **The LFSR is a single-`u32`-word-per-lane generator** (vs Xorwow's 5–6 words). The
    `d4_rand.h` header states it verbatim, and the Q7 `LfsrSetSeeds` body's structural
    minimalism — frame **192**, one FLIX bundle, no `memset`, no multi-word seed chain, no
@@ -61,7 +61,7 @@ customop-lib package. Confidence and evidence tags follow the project
 3. **There is no separate `LfsrRng` function and no dedicated LFSR opcode.** The per-draw
    advance is **shared** with the Xorwow(TIE) driver `0xbc78`; only the *seed init* differs
    (`LfsrSetSeeds 0xb700` vs `XorwowSetSeeds(TIE) 0xb744`). The fork lives only in the shared
-   `Set`/`GetSeeds` bodies. `[HIGH/OBSERVED]`
+   `Set`/`GetSeeds` bodies.
 4. **The LFSR feedback polynomial / tap form is not byte-recoverable.** No classical tap-mask
    constant appears anywhere in the Q7 POOL IRAM/DRAM, and the state-write lives in a
    FLIX-desync'd bundle. The recurrence is a 32-bit single-word xorshift-style LFSR over
@@ -69,10 +69,10 @@ customop-lib package. Confidence and evidence tags follow the project
    `[width=32 HIGH; taps LOW/UNRECOVERED]`
 5. **The output contract is the `RAND_POST_PROC` enum:** `RAW_U32(0)` / `UNIFORM_IN_RANGE(1)` /
    `NORMAL(2, unsupported)`. `RAW_U32` is the `uint32` Dropout/Rand2 consume; `UNIFORM_IN_RANGE`
-   is the `0x3F800000` float seam. `[HIGH/OBSERVED]`
+   is the `0x3F800000` float seam.
 6. **Dropout's inline RNG is the LFSR:** `s3d3_dropout.h` says *"generates a u32 LFSR for each
    lane for each element; converts it to an f32 in range (0.0 to 1.0); compares to threshold"*.
-   This pins the [Dropout](dropout.md) consumer to the LFSR arm. `[HIGH/OBSERVED]`
+   This pins the [Dropout](dropout.md) consumer to the LFSR arm.
 
 ---
 
@@ -92,8 +92,7 @@ typedef enum NEURON_ISA_TPB_RAND_ALGORITHM {
 } NEURON_ISA_PACKED NEURON_ISA_TPB_RAND_ALGORITHM;
 ```
 
-`[HIGH/OBSERVED — all four arch headers re-grepped: SUNDA stops at PHILOX=2; the other three
-carry XORWOW=3.]`
+`[HIGH/OBSERVED]`
 
 Two companion enums fix the **output** and the **state source**:
 
@@ -112,7 +111,7 @@ typedef enum NEURON_ISA_TPB_RAND_SRC {           /* mariana common.h:1001 */
 } NEURON_ISA_PACKED NEURON_ISA_TPB_RAND_SRC;
 ```
 
-`[HIGH/OBSERVED]` Note the asymmetry between the two enums: `RAND_ALGORITHM` and `RAND_SRC`
+Note the asymmetry between the two enums: `RAND_ALGORITHM` and `RAND_SRC`
 are **different namespaces** with different integer encodings — `XORWOW` is `3` as an
 algorithm but `1` as a source (`RNG_XORWOW`), and `LFSR` is `0` as both an algorithm *and* a
 source (`RNG_LFSR`), with a fourth source `OUTPUT_CVT_LFSR(3)` being a conversion variant that
@@ -127,7 +126,7 @@ when it forks (§4).
 > mutual consistency but never used to pick the code path. The `has_valid_*` constraint blocks
 > in `d4_rand.h` enumerate the *legal pairings* — e.g. `(RandSrc::RNG_XORWOW, RandAlgorithm::
 > XORWOW)`, `(RandSrc::RNG_LFSR, RandAlgorithm::LFSR)`, `(RandSrc::OUTPUT_CVT_LFSR,
-> RandAlgorithm::LFSR)` — and reject mismatches at decode. `[HIGH/OBSERVED]`
+> RandAlgorithm::LFSR)` — and reject mismatches at decode.
 
 ### 2.1 The "general Rand" vs the "POOL Rng" distinction
 
@@ -138,8 +137,8 @@ Rand op* effectively does only PHILOX. That is a **different** instruction from 
 GPSIMD software RNG documented here. The POOL `Rng` handler (the `'S: Rng …'` SEQ front-end,
 opcode `RNG`, see [Rand2](rand2.md)) is a *software* generator running on the POOL compute
 engine, and it implements **LFSR + XORWOW**. The `XORWOW=3` enum value was *added at cayman*
-(absent on SUNDA) specifically for this POOL software RNG. `[HIGH/OBSERVED — header text +
-the per-gen enum diff in §6]`
+(absent on SUNDA) specifically for this POOL software RNG.
+`[HIGH/OBSERVED — header + §6 enum diff]`
 
 ---
 
@@ -190,7 +189,7 @@ body stores/loads at `0xb6df`/`0xb6e2`, and `dst_mem_pattern@44` is the `[a4+45]
 reads. The struct↔opcode binding is fixed by the shipped `instruction_mapping.json`
 (`struct2opcode`): `D4_RAND_STRUCT → {RAND, RAND_GET_STATE}`, `S1_RAND_STRUCT →
 {RAND_SET_STATE}`, `D3_RAND_STRUCT → {RAND2, RNG}`, `PSEUDO_SET_RNG_SEED_STRUCT →
-{PSEUDO_SET_RNG_SEED}`. `[HIGH/OBSERVED — header offsets + JSON mapping re-read in-task]`
+{PSEUDO_SET_RNG_SEED}`. `[HIGH/OBSERVED]`
 
 > **NOTE — Rand2 and the POOL `Rng` op share `D3_RAND_STRUCT`, hence share the `rand_algo`
 > field.** The `D3_RAND` validation block references both `RandAlgorithm::XORWOW` and
@@ -239,7 +238,7 @@ DRAM `0xe89` is, byte-exact:
 `"S: RandGetState : rand_algorithm(0x%x) not currently supported on POOL\n"`. So **POOL
 admits exactly `rand_algo ∈ {0=LFSR, 3=XORWOW}`**; `{1=PCG32, 2=PHILOX}` fall to the
 "not currently supported on POOL" arm — exactly the ISA enum's POOL subset.
-`[HIGH/OBSERVED — disasm + both error strings read directly from NX DRAM]`
+`[HIGH/OBSERVED]`
 
 > **CORRECTION (vs an earlier draft).** The error strings read *"not **currently** supported
 > on POOL"* (the word `currently` is present in both `0xe89` and `0xe41`). Any prose dropping
@@ -292,7 +291,7 @@ b6d1:  call8   0xb6dc               ; -> SHARED SetSeeds, passing the select bit
 > algo-select bit `[a1+36]`, but both arms converge at the enable gate `0xb6c0`; the `==0`
 > (LFSR) arm merely performs a few extra state-field writes before re-joining. The *only*
 > function-level fork is at the shared `SetSeeds 0xb6dc`. Treat `0xb683` as conditional
-> in-line setup, not a dispatch. `[HIGH/OBSERVED — both arms re-join at 0xb6c0]`
+> in-line setup, not a dispatch.
 
 ### 4.3 The fork instruction — shared `SetSeeds 0xb6dc`
 
@@ -314,12 +313,11 @@ b75a:  const16 a10, 0x1ecb          ; log "P%i: XorwowSetSeeds(TIE)\n"
 ```
 
 DRAM `0x1eb8 = "P%i: LfsrSetSeeds\n"`; DRAM `0x1ecb = "P%i: XorwowSetSeeds(TIE)\n"` — both read
-directly. `[HIGH/OBSERVED — fork bytes 07 62 0c at 0xb6e5; both body entries + both log
-strings.]`
+directly.
 
 `RandGetState`'s shared `GetSeeds 0xb9ec` mirrors it exactly — same `bbci a2, 0, 0xba05`
 (bytes `07 62 0c`), LFSR arm log `0x1f1d = "P%i: LfsrGetSeeds"`, Xorwow arm log
-`0x1f30 = "P%i: XorwowGetSeeds(TIE)"`. `[HIGH/OBSERVED]`
+`0x1f30 = "P%i: XorwowGetSeeds(TIE)"`.
 
 ### 4.4 The net polarity
 
@@ -333,9 +331,7 @@ algo_select_bit = saltu(rand_algo, 1) = (rand_algo == 0)
 ```
 
 This matches the ISA enum exactly (`LFSR=0, XORWOW=3`) and is **cross-validated three ways**:
-the `saltu` chain, the SEQ `{0,3}` gate (§4.1), and the host enum (§2). `[HIGH/OBSERVED for
-the `bbci` fork + the two body entries; the integer→algo mapping HIGH by triple
-cross-validation.]`
+the `saltu` chain, the SEQ `{0,3}` gate (§4.1), and the host enum (§2).
 
 ### 4.5 The generator dispatcher does **not** fork on `rand_algo`
 
@@ -367,15 +363,13 @@ be0a:  const16 a2, 0x87c5           ; const16-pair builds 0x587c5 = 362437  (Wey
 > `movi.n a2, 5`, then the low half `const16 a2, 0x87c5`), yielding `(5 << 16) | 0x87c5 =
 > 0x587c5 = 362437` — the classic XORWOW Weyl-sequence additive constant (the same `362437`
 > seen in the [software-Xorwow](rng-xorwow-sw.md) path). The bare low half `0x87c5` alone is
-> `34757` and is meaningless in isolation. `[HIGH/OBSERVED — arithmetic identity on the
-> const16 pair at 0xbe08/0xbe0a.]`
+> `34757` and is meaningless in isolation.
 
 So **the seed init is the only thing that forks; the advance is shared.** Whether the LFSR arm
 applies the Weyl step or the shared recurrence degenerates to a pure single-word shift under
 the LFSR's differently-initialized state is *not* byte-decidable — there is no clean
 algo-conditional at the driver entry; any per-algo behaviour is either state-driven or buried
-in a FLIX-desync'd bundle. `[HIGH that there is no clean algo fork in the driver; MED/INFERRED
-that the driver is fully algo-agnostic.]`
+in a FLIX-desync'd bundle. `[HIGH no algo fork; MED algo-agnostic]`
 
 ---
 
@@ -399,7 +393,7 @@ stream distributed across all lanes — *not* per-lane). The `S1_RAND` operand c
 `imm_state[8]` (eight `u32`, the maximum state envelope); for LFSR only `imm_state[0]` is the
 seed (the rest constrained to `0` for the LFSR pairings per the `has_valid_*` blocks). The
 `pseudo_set_rng_seed` operand likewise carries a single 4-byte `seed` (offset 16), consistent
-with the one-word LFSR seed. `[HIGH/OBSERVED — header verbatim + struct offsets]`
+with the one-word LFSR seed. `[HIGH/OBSERVED]`
 
 ### 5.2 The structural smoking gun — `LfsrSetSeeds` vs `XorwowSetSeeds`
 
@@ -416,8 +410,7 @@ The two seed-set bodies, decoded side by side, confirm the 1-word-vs-6-word asym
 | `GetSeeds` counterpart | single `call8 0xcca8` | `entry a1, 0x580` |
 
 The frame-size and body-size gap directly mirrors the **1-word LFSR state** vs the **6-word
-Xorwow state**. `[HIGH/OBSERVED — both `entry` frames byte-read; body structure observed past
-the FLIX desync via explicit `--start-address`.]`
+Xorwow state**.
 
 ### 5.3 `rand_num_steps` — the LFSR-only multi-step advance
 
@@ -435,12 +428,12 @@ fn has_valid_rand_num_steps(i: Inst) -> bool {
 
 So the LFSR is iterated `rand_num_steps` times per draw; the other algorithms exactly once.
 The Q7 multi-step loop is *not* cleanly observable (it lives in the FLIX-desync'd inner core):
-the step-count **semantics** are `[HIGH/OBSERVED header + constraint]`; the exact Q7 loop
+the step-count **semantics** are `[HIGH/OBSERVED]`; the exact Q7 loop
 construct is `[MED]`.
 
 ### 5.4 The recurrence / polynomial — what is and is not recoverable
 
-* **Width = 32 bits** (one `u32` word per lane; output is one `u32`). `[HIGH/OBSERVED]`
+* **Width = 32 bits** (one `u32` word per lane; output is one `u32`).
 * **Galois vs Fibonacci / exact taps / feedback polynomial: UNRECOVERED.** An exhaustive
   little-endian scan of the MARIANA Q7 POOL IRAM **and** DRAM for the eight classical 32-bit
   LFSR tap masks `{0x80000057, 0x800000C2, 0xA3000000, 0x80200003, 0x04C11DB7, 0xEDB88320,
@@ -480,34 +473,33 @@ enum per arch header, and **(B)** the per-generation Q7 POOL RNG **log strings**
 | **MARIANA_PLUS** (v4+) | YES | same `(TIE)` + `Lfsr` set; fork bytes byte-match MARIANA | **LFSR + XORWOW** (TIE) |
 | **MAVERICK** (v5) | YES | same `(TIE)` + `Lfsr` set (string-confirmed; IRAM body nm-aliased onto DRAM, **not separately carved**) | **LFSR + XORWOW** (header-OBSERVED → interior INFERRED) |
 
-`[HIGH/OBSERVED — enum per-arch header grep + per-gen string sweep + MARIANA_PLUS fork-address
-byte-match.]`
+`[HIGH/OBSERVED]`
 
 The proofs:
 
 * **SUNDA negative.** The SUNDA Q7 POOL image (only a RELEASE build ships; no DEBUG) contains
   the `…/sunda/pool/src/…` source-path strings (proving the carve hit SUNDA) but **zero**
   `Lfsr`/`Xorwow`/`Rng`/`RandSetState`/`RandGetState` strings. SUNDA defined the `LFSR` *enum*
-  value (`=0`) before POOL implemented *any* RNG handler. `[HIGH/OBSERVED]`
+  value (`=0`) before POOL implemented *any* RNG handler.
 * **CAYMAN is Xorwow(SW)-only.** Its Q7 POOL DRAM carries `XorwowSetSeeds(SW)`,
   `XorwowRng(SW)`, `XorwowGetSeeds(SW)`, `Xorwow(SW) : Initializing XORWOW state…` — and **no**
   `Lfsr*` strings and **no** `(TIE)` suffix. CAYMAN added the `XORWOW=3` enum value and shipped
-  the *software* Xorwow only. `[HIGH/OBSERVED]`
+  the *software* Xorwow only.
 * **MARIANA / MARIANA_PLUS / MAVERICK carry LFSR + Xorwow(TIE).** All three Q7 POOL DRAMs
   carry `LfsrSetSeeds`, `LfsrGetSeeds`, and the `Xorwow*(TIE)` family. The MARIANA_PLUS fork
   is byte-identical to MARIANA: bytes `07 62 39` @`0xb683`, `07 62 11` @`0xb6c3`, `07 62 0c`
-  @`0xb6e5`. `[HIGH/OBSERVED byte-match]`
+  @`0xb6e5`.
 
 > **NOTE — LFSR was added at MARIANA, not CAYMAN.** The progression is: SUNDA = no POOL RNG;
 > CAYMAN = `XORWOW(SW)` only (the enum value's debut); MARIANA+ = the `(TIE)`-build Xorwow +
 > the LFSR. MAVERICK adds **no new algorithm** (still `{LFSR, XORWOW}` on POOL; PCG32/PHILOX
-> remain ISA-defined-but-"not currently supported on POOL"). `[HIGH/OBSERVED]`
+> remain ISA-defined-but-"not currently supported on POOL").
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 LFSR+Xorwow
 > *presence* is OBSERVED (its Q7 POOL DRAM carries the `Lfsr*`/`Xorwow*(TIE)` strings), but the
 > v5 IRAM image is **nm-aliased onto its DRAM symbol and not separately carvable**, so the
-> fork-body *bytes* are **INFERRED identical-family** from MARIANA/MARIANA_PLUS, not re-read.
+> fork-body *bytes* are **INFERRED identical-family** from MARIANA/MARIANA_PLUS, not byte-read.
 > Do not cite a Maverick fork address as byte-observed. `[presence HIGH/OBSERVED; body
 > MED/INFERRED]`
 
@@ -518,13 +510,12 @@ The proofs:
 * **Raw product.** Both LFSR and Xorwow emit a `uint32` per lane (LFSR: `rand_state[0]`
   advanced `rand_num_steps` times → `u32`; Xorwow: `v + d` → `u32`). The `RAW_U32`/`uint32`
   ABI is **generation-invariant and algorithm-invariant** — only `post_process` optionally
-  floats it. `[HIGH/OBSERVED — header + the shared driver]`
+  floats it. `[HIGH/OBSERVED]`
 * **The `post_process` field is the contract** (§2):
   * `RAW_U32(0)` → the raw `uint32` (what [Dropout](dropout.md) / [Rand2](rand2.md) consume).
   * `UNIFORM_IN_RANGE(1)` → fp32 uniform in `(min_fp32=params[0], max_fp32=params[1])`; this is
     the `0x3F800000` (`1.0f`) + `0x7FFFFF` mantissa-fill float seam built at `0xbf2d…0xbf3f`
-    inside `0xbed8`. `[the `0x3F80`/`127`/`-1` constants HIGH; the exact mantissa-fill cast
-    MED through the FLIX desync — same condition as the Xorwow pages.]`
+    inside `0xbed8`. `[HIGH constants; MED mantissa-fill cast]`
   * `NORMAL(2)` → *"Not supported yet"* (`d4_rand.h`: *"Normal is not supported by HW yet"*).
 * **Dropout reconciliation.** `s3d3_dropout.h` states the Dropout op *"generates a u32 LFSR for
   each lane for each element; converts it to an f32 in range (0.0 to 1.0); compares to
@@ -532,7 +523,6 @@ The proofs:
   output 0.0` and `if threshold_type == KeepRate: if (rand < threshold) output 0.0`. So the DVE
   Dropout's **inline** random source is the **LFSR** (`RAW_U32` produced, then cast
   `uint32→fp32`, then compared). This pins the [Dropout](dropout.md) consumer to the LFSR arm.
-  `[HIGH/OBSERVED header verbatim]`
 
 ---
 

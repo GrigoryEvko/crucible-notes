@@ -19,15 +19,15 @@ silicon/aperture level in
 The pass roster and `emit_*→opcode` map are in [The GPSIMD-Relevant Compiler Map](compiler-map.md);
 the inter-engine sync detail in [Optimization + Inter-Engine Sync Insertion](opt-sync-insertion.md).
 
-All symbols, docstrings, addresses and strings below are read directly this pass from the
+All symbols, docstrings, addresses and strings below are read directly from the
 shipped, **not-stripped** `neuronx-cc 2.24.5133.0+58f8de22` wheel — the Cython codegen passes
 carry verbatim `.py` method names as `__pyx_*` symbols + trace strings + docstrings, and
 `libwalrus.so` carries C++ RTTI + assert strings + build-path leaks. The plaintext geometry
 comes from the `neuronx-cc-stubs` `.pyi`. No string is paraphrased where it is quoted;
 libwalrus addresses are from `nm -D libwalrus.so | c++filt`.
 
-> **Confidence tags.** `[OBSERVED]` byte-exact from a shipped string/symbol/docstring this
-> pass; `[INFERRED]` reasoned over observed control/data flow; `[CARRIED]` carried from a
+> **Confidence tags.** `[OBSERVED]` byte-exact from a shipped string/symbol/docstring;
+> `[INFERRED]` reasoned over observed control/data flow; `[CARRIED]` carried from a
 > cited sibling page, re-grounded here. `HIGH/MED/LOW` = confidence.
 
 ---
@@ -64,7 +64,7 @@ floor is the one this page targets.
 > 512 fp32/partition. The compiler's `kernel_helpers.py` constants, the allocator and
 > `psum.pyi` all use the **8-bank (2048 B)** view; that is the modulo-allocator's rotation
 > modulus and the matmul accumulator unit. Do not seed the modulo allocator with 16. See
-> [SBUF/PSUM Bank Model §4.2](../dma/sbuf-psum-banks.md#42-reconciling-8-banks-partition-with-32-ecc-banks--48).
+> [SBUF/PSUM Bank Model §4.2](../dma/sbuf-psum-banks.md#42-reconciling-8-bankspartition-with-32-ecc-banks--48).
 > `[HIGH/CARRIED]`
 
 ---
@@ -239,7 +239,7 @@ The verifier strings that re-check it `[HIGH/OBSERVED]`:
 | `Matmult inputs must start at SB Partition 0` | the systolic load alignment |
 | ` bytes in partitions [0, 31]` (also `[32, 63]`, `[64, 95]`) | the quadrant SB-demand prints |
 
-> **CORRECTION (vs the DX-CC-05 synthesis).** That synthesis cited the verifier string
+> **CORRECTION (vs an earlier synthesis).** That synthesis cited the verifier string
 > ` (must be <= 176)` as the SBUF 176 KiB usable-byte bound. **That string is a DMA-engine
 > count message** (its neighbours in the string table are `DMA Engines` / ` GB)`), *not* an
 > SBUF byte limit. The 176 KiB usable bound is grounded instead by `sbuf.pyi`
@@ -395,7 +395,7 @@ can reach) is in
 [SBUF/PSUM Bank Model §7.4](../dma/sbuf-psum-banks.md#74-why-gpsimd-cannot-touch-psum--the-keystone-proof)
 and [Keystone Facts](../orientation/keystone-facts.md) K2.
 
-> **CORRECTION (vs the DX-CC-05 synthesis).** That synthesis quoted the custom-op rule as
+> **CORRECTION (vs an earlier synthesis).** That synthesis quoted the custom-op rule as
 > *"All args to a customop must be located in **SBUF**"* / *"…outputs must be located in
 > **SBUF**"*. The actual verifier string is **"…in SBUF or HBM"** for *both* args and outputs.
 > The no-PSUM constraint is unchanged (PSUM is excluded in every case), but a GPSIMD
@@ -680,7 +680,7 @@ For an int32 `tensor_tensor add` over `[128, F]`:
 
 ## 8. Adversarial self-verification of the five strongest claims
 
-Each claim re-grounded against the binary this pass; a sceptic's re-run is given. (Two earlier
+Each claim re-grounded against the binary; a sceptic's re-run is given. (Two earlier
 draft "corrections" were themselves wrong — caught here — so the surviving corrections in §9
 are only the byte-confirmed ones.)
 
@@ -721,14 +721,14 @@ are only the byte-confirmed ones.)
    Engine cycles"*; the latency getter `get_intrinsic_latency` exists in
    `InstructionLatencyModel.so` (docstring *"A cycle based cost model that uses instruction
    latency as the cost"*), and `get_pipeline_ii` in `KernelLatencyInfo.so`. **The 150-cycle
-   constant is byte-read from the ISA pyi this pass; both getters exist in the split cost
+   constant is byte-read from the ISA pyi; both getters exist in the split cost
    model (§6.2). Holds.**
 
 ---
 
 ## 9. Confidence ledger & corrections
 
-**HIGH / OBSERVED** (byte-exact this pass): the `SundaSizeTiling` docstring + the SIMD-macro
+**HIGH / OBSERVED** (byte-exact): the `SundaSizeTiling` docstring + the SIMD-macro
 tiling surface (`simd_partition_axes`, `simd_free_axes`, `extractAxesForSIMDMacro`,
 `packInstsToSIMDMacro`, `partition_max_elts`, `max_computation_tile_size_in_bytes`,
 `low_psum_usage_threshold` + its docstring, `hull_size`, `coalesce_dim`); the geometry (128
@@ -758,7 +758,7 @@ physical proof (CARRIED [SBUF/PSUM Bank Model](../dma/sbuf-psum-banks.md)); the 
 
 **Corrections issued** (only the byte-confirmed ones survive):
 
-| # | claim corrected (DX-CC-05 synthesis) | truth (this pass) |
+| # | claim corrected (earlier synthesis) | truth |
 | - | --- | --- |
 | 1 | customop operands must be in **SBUF** | verifier: *"…must be located in **SBUF or HBM**"* (both args and outputs) — PSUM excluded, HBM allowed |
 | 2 | the verifier ` (must be <= 176)` string is the SBUF usable-byte bound | that string is a **DMA-engine count** message; the 176 KiB usable bound is grounded by `sbuf.pyi` (*"192KiB-16KiB=(192-16)\*1024"*), not that string |
@@ -771,7 +771,7 @@ physical proof (CARRIED [SBUF/PSUM Bank Model](../dma/sbuf-psum-banks.md)); the 
 > *incomplete* `nm`/`strings` greps. A second pass found every one of them present
 > (`kernel_helpers.py` at the `private_nkl/utils/` path, the docstring in `InferPSumTensor.so`,
 > the scheduler symbols in `nm -D`, and `AllocateSemaphores::assignDMASemaphore @0x1138f10`).
-> Those four spurious "corrections" were removed; the DX-CC-05 synthesis was right on each.
+> Those four spurious "corrections" were removed; the earlier synthesis was right on each.
 > The lesson: ground a *negative* claim against `nm -D` **and** the full path tree before
 > publishing it. `[HIGH/OBSERVED]`
 

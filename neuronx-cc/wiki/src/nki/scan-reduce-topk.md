@@ -168,9 +168,9 @@ function _grouped_reduce_max(input, index, fold_factor):   // cascaded_max.py:28
 - **Predicated path** (`:132-152`) — when `V` is not divisible, a per-row two-segment DMA: the first `remainder` columns get `fold_factor` rows, the rest get `fold_factor - 1`. The buffer is pre-filled with `fill_value = -9948.0` (`:63`), the bf16 sentinel, so padding never wins a max.
 - The asserted invariant (`:106-109`) is `batch_size_sharded * fold_factor <= 128` — the fold cannot exceed the partition dimension.
 
-> **CORRECTION (O21-1) —** `cascaded_max` is **not** a recursive `log_8(N)`-deep 8-ary max tree, despite the "cascaded" name suggesting one. It is a **2-level fold+combine**: Level 0 folds `V` across `n_stages` partition rows (a DMA, fully parallel), Level 1 does one `tensor_reduce`+`nc_find_index8` per fold-row, and Level 2 transposes onto the free axis and runs one grouped mask-select argmax. The 8-wide `max8` silicon appears *only* at the leaf, via `nc_find_index8`. "Cascaded" names the fold-into-partitions plus the two combine levels — there is no recursion. A reimplementation built as a deep 8-ary tree will not match this code.
+> **GOTCHA —** "cascaded" does not mean a recursive `log_8(N)`-deep 8-ary max tree. `cascaded_max` is a flat 2-level fold+combine — the fold into partition rows, then the two combine levels described above — and the 8-wide `max8` silicon appears only at the leaf, via `nc_find_index8`. A reimplementation built as a deep 8-ary tree will not match this code.
 
-> **NOTE —** the older `neuronxcc/nki/_pre_prod_kernels/max/cascaded_max.py` (222 lines) is the same algorithm — the same fold → `tensor_reduce` → `find_index8` → matmul-transpose → grouped reduce — in its earlier value-returning form. The nkilib version refactors it behind `CascadedMaxConfig` and explicit access-pattern plumbing. Algorithmically equal; no correction needed.
+> **NOTE —** the older `neuronxcc/nki/_pre_prod_kernels/max/cascaded_max.py` (222 lines) is the same algorithm in its earlier value-returning form: the same fold → `tensor_reduce` → `find_index8` → matmul-transpose → grouped reduce. The nkilib version refactors it behind `CascadedMaxConfig` and explicit access-pattern plumbing.
 
 ---
 
@@ -311,7 +311,9 @@ SUPPORTED_TOPK_METHOD_MAPPING = {                  // rotational_topk.py:365
 }                                                  // CASCADED enumerated but NOT a key
 ```
 
-> **CORRECTION (O21-2) —** the claim "`CASCADED` is enumerated but not dispatch-wired" is true **only of the readable `nkilib/core/topk` registry**, where `SUPPORTED_TOPK_METHOD_MAPPING` (`:365`) carries exactly two keys (`SCANNING`, `ROTATIONAL`). The **production** registry is a separate compiled module, `neuronxcc/nki/_private_kernels/topk/topk_method_mapping.cpython-310-…so`, whose `__pyx` string table imports and wires **all three**: `naive_scanning_topk`, `rotational_topk`, **and** `cascaded_2_stage_topk` — a distinct kernel (`_private_kernels/topk/cascaded_2_stage_topk.so`, with its own `_helpers.so`) that has no readable nkilib twin. So `CASCADED` *is* dispatchable in the shipped compiler; it is the readable convenience copy that drops it. Treat the readable 2-key map as the library surface, the 3-key `.so` as the production ABI. This divergence is documented from the [internal-kernel-registry](internal-kernel-registry.md#the-second-registry--supported_topk_method_mapping) "second registry" analysis.
+That two-key map is only the *readable* library surface. The registry the shipped compiler actually dispatches through is a separate compiled module, `neuronxcc/nki/_private_kernels/topk/topk_method_mapping.cpython-310-…so`, whose `__pyx` string table imports and wires **all three** methods: `naive_scanning_topk`, `rotational_topk`, and `cascaded_2_stage_topk`. That third kernel is a distinct implementation (`_private_kernels/topk/cascaded_2_stage_topk.so`, with its own `_helpers.so`) and has no readable nkilib twin.
+
+> **GOTCHA —** `CASCADED` *is* dispatchable in the shipped compiler even though the readable `nkilib/core/topk` map has no key for it. Treat the 2-key Python map as the library surface and the 3-key `.so` as the production ABI — see [internal-kernel-registry](internal-kernel-registry.md#the-second-registry--supported_topk_method_mapping).
 
 ### Dispatch Flow
 
@@ -334,7 +336,7 @@ topk(inp, k, sorted_flag, method, lnc)            ── rotational_topk.py:397
 
 ## nisa Primitive → BIR → Engine Map
 
-Every op these kernels emit and its lowering, confirmed via the cited DVE-search / TensorScalar encodings. All op names are live binary strings in `neuronxcc/nki/isa/neuron_isa.cpython-310-…so`.
+Every op these kernels emit and its lowering, cross-read against the DVE-search / TensorScalar encodings. All op names are live binary strings in `neuronxcc/nki/isa/neuron_isa.cpython-310-…so`.
 
 | nisa op | Lowers to | TSCMode / note | Engine | Confidence |
 |---|---|---|---|---|

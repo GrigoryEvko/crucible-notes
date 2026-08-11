@@ -22,7 +22,7 @@ cycle-accurate model needs.
 
 > **NOTE — three claims here correct an earlier backing analysis.** A prior port study asserted that
 > `gvr` and `b32_pr` carry *zero* schedule operands and that the integer quad-MAC reads exactly four
-> `vec` registers. Re-grounding directly against the `libcas-core.so` operand-accessor symbols shows
+> `vec` registers. Grounding directly against the `libcas-core.so` operand-accessor symbols shows
 > all three are wrong: `gvr` is the **scatter/gather address-vector** port, `b32_pr` carries
 > multiply/replicate operands, and the quad-MAC touches **five** `vec` operands (four reads plus a
 > `vt` read-modify-write accumulator). Each correction is flagged in place with its witness symbol.
@@ -66,8 +66,8 @@ read-port count (§4).
 > from the port count. (Counting them would inflate every file's port demand ~3–6×.)
 
 The eight files and their geometry are fixed by `regfiles[]` at VMA `0x74a800` in `libisa-core.so`
-(`num_regfiles` @ `0x3b5c20` → `mov $0x8,%eax; ret`); the geometry is re-pinned and witnessed on
-[The Eight Register Files](../isa/core/register-files.md) and is not re-derived here.
+(`num_regfiles` @ `0x3b5c20` → `mov $0x8,%eax; ret`); the geometry is pinned and witnessed on
+[The Eight Register Files](../isa/core/register-files.md) and is not derived here.
 
 ---
 
@@ -378,8 +378,8 @@ ships **1 746** of them (and **2 149** `_issue` functions, the dual-issue legali
 data hazards:
 
 > **CORRECTION — the `_stall` count is `1746`, not `1651`.** An earlier draft of this page (and
-> [pipeline-timing §7]) cited **1651** `_stall` functions. The binary, re-counted this pass
-> (`nm libcas-core.so | rg -c '_stall$'`), returns **1746** — matching [co-issue-matrix §4] and the
+> [pipeline-timing §7]) cited **1651** `_stall` functions. The binary
+> (`nm libcas-core.so | rg -c '_stall$'`) returns **1746** — matching [co-issue-matrix §4] and the
 > consolidating [Microarchitecture Synthesis §2.4](microarch-synthesis.md). The `2149` `_issue` /
 > `~160 k` `_stage<N>` counts are unchanged. Pin **1746**. `[HIGH/OBSERVED]`
 
@@ -437,22 +437,22 @@ data hazards:
 
 | claim | this page (binary) | prior analysis | verdict |
 |---|---|---|---|
-| `vec` read port single stage 10 | all architectural `vec` `_use` @10 | DX-HW-02 §1/§7 | CONFIRMED |
-| `vec` write staggered 10/11/12/13 | per-latency-class result stages | DX-HW-02 §2 | CONFIRMED |
+| `vec` read port single stage 10 | all architectural `vec` `_use` @10 | — | CONFIRMED |
+| `vec` write staggered 10/11/12/13 | per-latency-class result stages | — | CONFIRMED |
 | `vec` reads/op by the MAC | **5** (`vp/vq/vr/vs` + `vt` RMW) | "4 (`vp/vq/vr/vs`)" | **CORRECTED (+1 `vt` RMW)** |
 | `wvec` RMW operands | **2** (`multiply_wvt` + `multiply_wvu`), both `(12,12)` | "1 (`wvt`)" | **CORRECTED (+`wvu`)** |
-| `wvec` accumulator read stage | `@12` (same-stage RMW), not `@10` | DX-HW-02 "@10" | CORRECTED (per prior re-pin) |
-| `wvec` 2-cyc recurrence, II=1 | write@12 → next read@12 | DX-HW-02 §6 | CONFIRMED + mechanism |
-| forwarding 11/12/13 → read@10 | dep-lat = wstage − 10 exact | DX-HW-02 §6 | CONFIRMED |
+| `wvec` accumulator read stage | `@12` (same-stage RMW), not `@10` | "@10" | CORRECTED |
+| `wvec` 2-cyc recurrence, II=1 | write@12 → next read@12 | — | CONFIRMED + mechanism |
+| forwarding 11/12/13 → read@10 | dep-lat = wstage − 10 exact | — | CONFIRMED |
 | `gvr` schedule operands | **scatter/gather `gt`/`gs`** (+ CSR via RUR/WUR) | "zero operands" | **CORRECTED** |
 | `b32_pr` schedule operands | **`multiply_arr`, `vec_rep_prr/prt`** | "no operand" | **CORRECTED** |
 | FP-FMA slot | `s2` **or** `s3` | "`S3_ALU` only" | **CORRECTED** |
 | `valign` operands | unaligned-L/S (`uul`/`uus`/`valignr`) **and** divide `vu` | "divide-step only" | REFINED (both) |
-| scalar MUL32 2-cyc stall (no fwd) | `arr@6`, ALU read @4 | DX-HW-02 §6 | CONFIRMED |
-| scalar load-use 1-cyc bubble | `L16UI_stall`, read @4 | DX-HW-02 §6 | CONFIRMED |
+| scalar MUL32 2-cyc stall (no fwd) | `arr@6`, ALU read @4 | — | CONFIRMED |
+| scalar load-use 1-cyc bubble | `L16UI_stall`, read @4 | — | CONFIRMED |
 | AR write @12 (vision-scalar) | `vbool_alu_ltr_art`, `IVP_SQZN`, `RUR.FSR/FCR` | (new) | CONFIRMED |
-| peak `vec` read-port demand | F3/F11 = ~10–11 | (derived) | CONFIRMED (re-derived per-slot) |
-| `num_regfiles` | `8` (`0x3b5c20` → `mov $0x8`) | DX-HW-01 §1 | CONFIRMED |
+| peak `vec` read-port demand | F3/F11 = ~10–11 | (derived) | CONFIRMED (derived per-slot) |
+| `num_regfiles` | `8` (`0x3b5c20` → `mov $0x8`) | — | CONFIRMED |
 
 The corrections all *strengthen* the model: a `vt`+`wvt`+`wvu` triple-accumulator MAC, a real
 gather port on `gvr`, and a slot-2-or-3 FMA are each tighter, more faithful constraints than the
@@ -478,8 +478,8 @@ coarser prior claims, and each is a direct `nm` witness rather than an inference
 ---
 
 *Provenance: the per-`(format, slot, opcode)` `_stage_functions` tables, the `my_<rf>_<slot>_opnd_…`
-operand accessors, and the `_stall`/`_issue` hazard hooks are `[HIGH/OBSERVED]` — re-disassembled and
-`nm`-tallied in-checkout from the shipped `libcas-core.so`; the format/slot inventory and `regfiles[]`
+operand accessors, and the `_stall`/`_issue` hazard hooks are `[HIGH/OBSERVED]` — disassembled and
+`nm`-tallied from the shipped `libcas-core.so`; the format/slot inventory and `regfiles[]`
 geometry are `[HIGH/OBSERVED]` from `libisa-core.so` (`Slot_<fmt>_s<n>_<class>` getters,
 `regfiles[]` @ `0x74a800`, `num_regfiles` @ `0x3b5c20`). The physical port *counts* (vs. the
 worst-case demand derived here) are not stated in the shipped artifacts; the demand bounds (§3/§4) are

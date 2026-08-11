@@ -37,8 +37,8 @@ Both passes follow the dual-overload shape shared by every multi-core backend pa
 (`LncSplitter`, `LncVerifier`): a per-`Module&` overload that is a no-op / abort shim, and a
 `vector<unique_ptr<Module>>&` overload that is the real worker. The `BackendPass` dispatcher
 drives the vector overload because the work is inherently cross-module / cross-core — the
-per-`Module&` shim is never run for these passes. [CONFIRMED — `nm -DC libwalrus.so`; the
-shim/worker split matches `LncSplitter` D-H03 and `LncVerifier` D-G11.]
+per-`Module&` shim is never run for these passes. The same shim/worker split appears on
+`LncSplitter` and `LncVerifier`.
 
 `LowerLocalCollectives` (factory `register_generator_lower_local_collectives__` @`0x162a6a0`):
 
@@ -79,7 +79,7 @@ shim/worker split matches `LncSplitter` D-H03 and `LncVerifier` D-G11.]
 
 ## What "local" means — the on-chip vs remote split
 
-`InstCollectiveCompute` carries its `CollectiveKind` at `Inst+0xf8`. The enum (D-D07) is:
+`InstCollectiveCompute` carries its `CollectiveKind` at `Inst+0xf8`. The enum is:
 
 ```
 0 SendRecv   1 SendRecvCCE  2 AllReduce  3 ReduceScatter  4 AllGather
@@ -90,13 +90,12 @@ shim/worker split matches `LncSplitter` D-H03 and `LncVerifier` D-G11.]
 A single IT-48 opcode multiplexes all of them; the kind field is the discriminator. The worker
 prologue first gates on the LNC width and then dispatches on the kind.
 
-**The LNC gate** [CONFIRMED — run prologue `0x1624876`]: `cmp DWORD[Module->PassOptions+0x1A4],
-1; je return`. `PassOptions+0x1A4` is `lnc_size` / number of cores (confirmed S2-08, D-H03). When
-`lnc == 1` (a single core), there is no cross-core exchange to lower, so the worker returns
-cleanly — the pass is a no-op on single-core configs.
+**The LNC gate.** The run prologue at `0x1624876` is `cmp DWORD[Module->PassOptions+0x1A4], 1;
+je return`, where `PassOptions+0x1A4` is `lnc_size`, the number of cores. When `lnc == 1` there
+is no cross-core exchange to lower, so the worker returns cleanly — the pass is a no-op on
+single-core configs.
 
-**The kind dispatch** [CONFIRMED — worker dispatch `0x1629337`; STRONG that only 0/1/2 reach a
-`lowerXXX` helper]:
+**The kind dispatch** (worker dispatch `0x1629337`):
 
 ```c
 // LowerLocalCollectives::run(vector<Module>&)  @0x1624850 (worker dispatch @0x1629337)
@@ -122,11 +121,10 @@ groups behave very differently:
 - **Kind ≥ 3** (`ReduceScatter` / `AllGather` / `AllToAll` / `AllToAllV` / `Permute` family) —
   the **remote / ICI** path. The collective op is **not** decomposed here. The run loop still
   calls `insertCoreBarrier` per remote core (`0x16299f7`) to *fence* it, but the IT-48 op is
-  left intact for a different cross-node lowering downstream (the runtime collective library /
-  ICI fabric). [STRONG — only kinds 0/1/2 reach a `lowerXXX` helper; kind ≥ 3 reaches only
-  `insertCoreBarrier`. The precise boundary between "fence-only here" and the true downstream
-  remote lowering is INFERRED to be the runtime collective lib / ICI; this is not pinned in the
-  binary.]
+  left intact for a different cross-node lowering downstream. In the call graph, kinds 0/1/2 are
+  the only ones that reach a `lowerXXX` helper; kind ≥ 3 reaches nothing but `insertCoreBarrier`.
+  [INFERRED] That the downstream consumer is the runtime collective library over the ICI fabric
+  is not pinned anywhere in this binary.
 
 The decomposition target is on-die SBUF↔SBUF transport: either the GPSIMD cross-core SB2SB copy
 engine (`InstGPSIMDSB2SB`, IT 33) or core-to-core DMA (`InstDMACopy`), synchronized by
@@ -178,23 +176,22 @@ void run(vector<unique_ptr<Module>> &modules) {
 Two helpers do the work that makes the lowering *joint* across cores rather than independent
 per-core:
 
-- **`extractAndGroupCCOps`** (`0x1618440`) [CONFIRMED]: walks every basic block of every core
+- **`extractAndGroupCCOps`** (`0x1618440`): walks every basic block of every core
   module (`getFirstWithin` / `getNextInstFlat`), selects insts with `InstructionType == 48`
   (the `cmp [I+0x58],0x30` test), and clusters them into a `vector<vector<InstCollectiveCompute*>>`
   — one inner vector per *logical* collective (the matching SPMD copies that `lnc_splitter`
   cloned across cores). The grouping is exactly what turns a lowering into a joint cross-core
   operation: the swap on core A and the swap on core B are members of one group.
 
-- **`getRemoteCores(self)`** (`0x1617940`) [CONFIRMED]: loops `core = 0..lnc-1`, pushes `core`
+- **`getRemoteCores(self)`** (`0x1617940`): loops `core = 0..lnc-1`, pushes `core`
   into the result iff `core != self` (`cmp eax,ebx; je skip`); re-reads `lnc` each iteration
   from `PassOptions+0x1A4`. Returns `{0..lnc-1}\{self}` — the set of peers each core must
-  exchange with. This is the same `getRemoteCores` D-H03 names as the feed for the
-  `vnc_remote_addr_map` `RemoteLocalTarget` minting.
+  exchange with. It is also what feeds the `vnc_remote_addr_map` `RemoteLocalTarget` minting.
 
 `getPrecedingCoreBarrierOrLocalCCMap` (`0x1615e30`) and `precededByLocalCC` (`0x1615d50`) record,
 per core, the most recent preceding `InstCoreBarrier` or already-lowered local CC (a `local`
 flag at `Inst+0x1b0`), so a redundant barrier is not inserted when a region is already
-fenced. [STRONG — `MapVector<CC*,Inst*>` destroyed at `0x162984f`.]
+fenced. (The `MapVector<CC*,Inst*>` is destroyed at `0x162984f`.)
 
 ---
 
@@ -204,7 +201,7 @@ A `SendRecv` is a paired send+recv "swap" between two cores' SBUF tiles — the 
 swap. This is the only kind where the data-mover engine is chosen per instruction; the other
 two are fixed.
 
-**The engine-selection gate** [CONFIRMED — `0x161dfc3..0x161e8c5`]:
+**The engine-selection gate** (`0x161dfc3..0x161e8c5`):
 
 ```c
 // lowerSendRecv  @0x161cc70  — engine selection
@@ -212,7 +209,7 @@ bool compatible =
     InstGPSIMDSB2SB::isCompatible(lnc, module, srcAP, dstAP, inst);   // 0x161dfc3
     // libBIR-native SB2SB shape/context predicate (libBIR @0x2931d0).
     // FIRST check inside isCompatible is `cmp rdi,0x2` (ctx==2): the
-    // cross-core context must be exactly 2 cores-per-LNC. [D-M11/D-E22]
+    // cross-core context must be exactly 2 cores-per-LNC.
 
 if (!compatible) {
     // -> DMA fallback
@@ -241,31 +238,28 @@ So the GPSIMD-vs-DMA choice is a two-stage filter:
 
 1. **Shape/context predicate.** `InstGPSIMDSB2SB::isCompatible` (libBIR `@0x2931d0`) must hold —
    the source/dest access patterns must form a legal SB2SB shape and the cross-core context must
-   be 2 cores (`cmp rdi,0x2` is the first predicate). If not compatible at all → DMA. [CONFIRMED
-   — D-M11 pins `isCompatible@0x2931d0`, ctx==2 first predicate.]
+   be 2 cores (`cmp rdi,0x2` is the first predicate). If not compatible at all → DMA.
 
 2. **Byte budget.** Even when compatible, the *effective* bytes-per-partition
    (`getEffectiveBytesPerPartition`, libBIR `@0x291a50`, applying the dtype byte-pad factor)
    must not exceed the pass-side `cl::opt` value `sendRecvToGPSIMDMaxBytesPerPartition`. Above
    it → DMA; at or below it → GPSIMD. The `cl::opt` is named `sendrecv-to-gpsimd-max-bpp`
    (`.rodata 0x1c88377`) with help text *"Bytes/partition under which local swapping SendRecvs
-   will be mapped to GPSIMDSB2SB"* (`.rodata 0x1d7ff48`). [CONFIRMED — string byte-evidence.]
+   will be mapped to GPSIMDSB2SB"* (`.rodata 0x1d7ff48`).
 
 This pass-side knob sits **under** the hard libBIR ceiling
 `InstGPSIMDSB2SB::MaxBytesPerPartition = 0x400 = 1024` (libBIR `.rodata @0x784a00`, byte-read
-`00 04 00 00`; assert `GPSIMDSB2SB.cpp:52`, D-E22/D-M11). The libBIR `isCompatible` enforces the
-1024 ceiling unconditionally; the pass knob is a *softer* threshold the deployment can set lower
-to bias more swaps toward DMA. [CONFIRMED — the 1024 ceiling and the pass knob are two distinct
-gates, cross-confirmed in D-M11.] **GAP:** the numeric *default* of `sendrecv-to-gpsimd-max-bpp`
-is the `cl::opt` initializer, which is not read out of the binary here. [SPECULATIVE — the
-default is unverified; only the existence and semantics of the knob are CONFIRMED.]
+`00 04 00 00`; assert `GPSIMDSB2SB.cpp:52`). They are two distinct gates: libBIR's `isCompatible`
+enforces the 1024 ceiling unconditionally, while the pass knob is a *softer* threshold a
+deployment can set lower to bias more swaps toward DMA. The numeric **default** of
+`sendrecv-to-gpsimd-max-bpp` lives in the `cl::opt` initializer and is not read out here — only
+the knob's existence and semantics are established. [SPECULATIVE on the default value.]
 
 **Addressing & sync.** `createRemoteAP(srcAP, allAPs, coreIdx, …, isRemote, denseMaps)`
 (`0x161cad0`) clones `srcAP` and calls `getMemoryLocation` to bind it to the *peer* core's
 `MemoryLocation`; `setLocation` rebinds it. `insertCoreBarrier(group, allCores, …)` fences the
 swap. Unless `enableRemoteSemaphoreDMA` (`.bss 0x3e05160`) is set, the run loop adds an extra
 per-remote-core `CoreBarrier` for the SendRecv swap (the kind-0-only branch at `0x16296f6`).
-[STRONG.]
 
 ---
 
@@ -277,8 +271,8 @@ no GPSIMD option. The call set is the DMA-engine sibling of `lowerSendRecv`: `cr
 `insertElement<InstDMACopy>` **only** — there is no `isCompatible` probe and no `GPSIMDSB2SB`
 symbol anywhere in the body. The same remote-AP minting and `CoreBarrier` sync as kind 0, but
 the data mover is unconditionally `InstDMACopy` (the CCE descriptor flavour is selected later by
-`lower_dma` / `LegalizeCCEDMA`, D-H06). [STRONG — the call-set diff vs `lowerSendRecv` is the
-absence of every GPSIMD symbol.]
+`lower_dma` / `LegalizeCCEDMA`). The whole difference from `lowerSendRecv` is the absence of
+every GPSIMD symbol.
 
 ---
 
@@ -320,50 +314,49 @@ void lowerAllReduce(group, newInsts, denseMaps, unsigned long *semCounter) {
 ```
 
 - **`getScatterDimension`** (`0x1615d40`, tail-jmp to `getFirstSplittableNonPartitionDimension`
-  `0x1615c70`) [CONFIRMED]: skips the partition dim (`MemoryLocation::getPartitionDim @0x5f2c00`)
+  `0x1615c70`): skips the partition dim (`MemoryLocation::getPartitionDim @0x5f2c00`)
   and walks the free dims (`cmp [ML+0x110],0x4` numDims check), returning the first dim with
   extent ≥ 4 that divides evenly across `lnc` cores — the axis the reduction is sharded on. It
-  has exactly one caller (`lowerAllReduce`, 4 calls / 2 AP arms; NX-156): one arm is the
-  *scatterDim*, the other the *gatherDim*. [CONFIRMED — NX-156.]
+  has exactly one caller, `lowerAllReduce`, which calls it four times across two AP arms: one
+  arm yields the *scatterDim*, the other the *gatherDim*.
 
-- **`createPartialAP`** (`0x1620fb0`) [CONFIRMED]: builds a per-core **sub-tensor** AP —
+- **`createPartialAP`** (`0x1620fb0`): builds a per-core **sub-tensor** AP —
   `setOffset(coreIdx * partStride)` / `setPattern` / `setType` / `setLocation` — so each core's
   DMA touches only its `1/lnc` slice; `getMemoryLocation` then binds it to the owning core's
   memloc. This is what makes the reduce a *scatter* (each core owns one slice) rather than an
   all-to-one. Its splittable-axis argument `a5` is exactly the `getScatterDimension` result,
-  which downstream becomes the 2-bit `gather_dim`/`scatter_dim` DGE descriptor field (NX-163).
-  [STRONG; the a5→DGE-axis bridge is CONFIRMED in NX-163.]
+  which downstream becomes the 2-bit `gather_dim`/`scatter_dim` DGE descriptor field.
 
-The `AllReduce` therefore **never** uses GPSIMD — it is always `InstDMACopy` + `InstCoreBarrier`
-(NX-156: "one `InstDMACopy` per replica-core, + `InstCoreBarrier` (`_cb_end`) fences"). The
-body contains no `isCompatible` probe and no `GPSIMDSB2SB`: the reduced payload is generally
-larger than the GPSIMD per-partition budget and the reduce-scatter shape is not an SB2SB swap.
-[INFERRED from the call set — no GPSIMD symbols in `lowerAllReduce`; corroborated by NX-156.]
+The `AllReduce` therefore **never** uses GPSIMD — it is always one `InstDMACopy` per replica-core
+plus `InstCoreBarrier` (`_cb_end`) fences. The body contains no `isCompatible` probe and no
+`GPSIMDSB2SB` symbol at all. [INFERRED] The likely reason is that the reduced payload generally
+exceeds the GPSIMD per-partition budget and the reduce-scatter shape is not an SB2SB swap, but
+the binary only shows the absence, not the rationale.
 
 ---
 
 ## Remote addressing — the `vnc_remote_addr_map`
 
 `getMemoryLocation(allAPs, idx, core, denseMaps&)` (`0x161ab30`) is the cross-core address
-minter D-H03 names as the source of the `vnc_remote_addr_map` `RemoteLocalTargets`:
+minter that produces the `vnc_remote_addr_map` `RemoteLocalTargets`:
 
 - `denseMaps` is a `vector<DenseMap<MemoryLocation*,MemoryLocation*>>` — **one remote map per
   core**; `DenseMapBase::operator[]` caches src-memloc → remote-memloc so the same remote target
-  is reused across the group. [CONFIRMED — `DenseMap<ML*,ML*>` grow + `operator[]` calls.]
+  is reused across the group.
 - It resolves the target by tensor id via `MemoryLocationSet::getMemlocByTensorId` within the
-  *remote* core's `MemoryLocationSet`. [CONFIRMED.]
+  *remote* core's `MemoryLocationSet`.
 - It mints/labels remote targets with names carrying `_remote_<core>` and `_set` suffixes
-  (`.rodata "remote" @0x1c86837`, `"_remote_" @0x1c88352`, `"_set" @0x1c867ac`). [CONFIRMED.]
+  (`.rodata "remote" @0x1c86837`, `"_remote_" @0x1c88352`, `"_set" @0x1c867ac`).
 - It marks the target with `MemoryLocation::setIsWrittenByAnotherCore(true)` so downstream
   allocators (`coloring_allocator_dram_shared`, `sync_shared_allocations`) and `vnc_link`
   keep the cross-core writer alive and resolve the physical VNC address. The diagnostic strings
-  *" has a tensor id of "* (`0x1c88328`) and *" and isAllocated is "* (`0x1c8833d`) confirm the
-  tensor-id + allocation reasoning. [CONFIRMED.]
+  *" has a tensor id of "* (`0x1c88328`) and *" and isAllocated is "* (`0x1c8833d`) spell out the
+  tensor-id and allocation reasoning.
 
-`legalizeAPs` (`0x161b9a0`) [STRONG] repacks the AP pattern
+`legalizeAPs` (`0x161b9a0`) repacks the AP pattern
 (`PhysicalAccessPattern::setPattern`) against the partition dim after retargeting so the cloned
 remote/partial APs are HW-legal SBUF/DRAM patterns. `insertCoreBarrier` (`0x161a150`)
-[CONFIRMED] inserts `InstCoreBarrier` (IT 87) over the given core-id vector — the
+inserts `InstCoreBarrier` (IT 87) over the given core-id vector — the
 semaphore/barrier between exchange phases — and `renumberCoreBarriers` (`0x5e9080`) re-assigns
 globally-unique barrier ids across all core modules after lowering.
 
@@ -371,16 +364,16 @@ globally-unique barrier ids across all core modules after lowering.
 
 ## `insert_ptcom_flat` — the point-to-point completion tokens
 
-PTCOM = **point-to-point COMpletion**. The pass inserts an `InstTensorCompletion` (IT 94, S2-04
-enum) per shared `MemoryLocation` at a convergence block, named `<…>-PTCOM` (`.rodata "-PTCOM"
+PTCOM = **point-to-point COMpletion**. The pass inserts an `InstTensorCompletion` (IT 94)
+per shared `MemoryLocation` at a convergence block, named `<…>-PTCOM` (`.rodata "-PTCOM"
 @0x1c87e87`). It is the wire-level p2p **sync token** — a completion / wait marker, *not* a data
 mover: a consumer core blocks on it until a producer core has finished writing the shared tensor.
 It complements the `CoreBarrier` (the collective fence) with finer point-to-point
-producer→consumer completion, so a reader need not wait on a full barrier. [CONFIRMED —
-`insertPTCOMs` inserts `InstTensorCompletion` + `attachWholeTensorInputAP`, no copy emitted.]
+producer→consumer completion, so a reader need not wait on a full barrier. `insertPTCOMs` emits
+`InstTensorCompletion` plus `attachWholeTensorInputAP` and no copy at all.
 
 ```c
-// InsertPTCOMFlat::run(vector<Module>&)  @0x16ad1c0  (linear, CONFIRMED)
+// InsertPTCOMFlat::run(vector<Module>&)  @0x16ad1c0  (linear)
 void run(vector<unique_ptr<Module>> &modules) {
     int subgraphs = modules.size() / lnc;             // div @0x16ad208
     // if (subgraphs == 1 && ...) { log; proceed; }   // 0x16ad210
@@ -390,12 +383,12 @@ void run(vector<unique_ptr<Module>> &modules) {
     insertPTCOMs(extended);                           // 0x16ad6a7 -> emit InstTensorCompletion
 }
 // Pass-enable gate: cl::opt enablePTCOM (.bss 0x3df6a40, string @0x1600b1) checked by the
-//   pipeline/PassAdder (not the lambda); off => pass omitted. [CONFIRMED]
+//   pipeline/PassAdder (not the lambda); off => pass omitted.
 ```
 
 The token-placement mechanism, in order:
 
-- **`identifyPTCOMBlocks`** (`0x16aa040`) [CONFIRMED]: per shared `MemoryLocation`, collects the
+- **`identifyPTCOMBlocks`** (`0x16aa040`): per shared `MemoryLocation`, collects the
   set of BBs that write it (`DenseMap<ML*, DenseSet<BB*>>`), then uses CFG dominance to pick the
   insertion block = the **first common postdominator** of all writer BBs
   (`CFG::getImmediatePostdominator`, `CFG::getFirstCommonPostdominator`). It filters via
@@ -403,39 +396,39 @@ The token-placement mechanism, in order:
   (`.rodata 0x1c8931e`) and `"blocks.size() == 1"` (`0x1c89337`) — exactly **one** convergence
   block per memloc.
 
-- **`meetsPTCOMRequirements`** (free fn `0x16a5840`) [STRONG]: a candidate BB qualifies only if
+- **`meetsPTCOMRequirements`** (free fn `0x16a5840`): a candidate BB qualifies only if
   it is **not** inside a non-trivial loop SCC (`CFG::getSCCForBB`). Completions are hoisted out
   of loops so the p2p token fires once after the producing region, not every iteration.
 
-- **`findMemLocOnCore0`** (`0x16a7540`) / **`findCBOnCore0`** (`0x16a8010`) [CONFIRMED]: the
+- **`findMemLocOnCore0`** (`0x16a7540`) / **`findCBOnCore0`** (`0x16a8010`): the
   "**FLAT**" addressing scheme. All per-core modules reference the *canonical core-0* names:
   `findMemLocOnCore0` looks a shared memloc up by string name in core-0's module;
   `findCBOnCore0` matches a `CoreBarrier` on core 0 by `Module::getName` + name-hash
   (`_Hash_bytes`, `memcmp`). "Flat" means a single flat namespace keyed on core 0, so cross-core
   producer/consumer pairs are correlated by **shared name** rather than by per-core pointer
-  identity — which differs after the `lnc_splitter` JSON clone (D-H03: the clone is a
-  `saveJson`→`loadJson` round-trip, so pointers are not preserved but names are).
+  identity — which differs after the `lnc_splitter` JSON clone, a `saveJson`→`loadJson`
+  round-trip that preserves names but not pointers.
 
-- **`identifyLastWrites`** (`0x16a9280`) / **`extendLastWrites`** (`0x16abd80`) [STRONG]:
+- **`identifyLastWrites`** (`0x16a9280`) / **`extendLastWrites`** (`0x16abd80`):
   `identifyLastWrites` finds, per (ML, BB), the last writer instruction; `extendLastWrites`
   propagates that `LastWriteInfo` across the per-core modules (so a completion on core B
   references the producing write on core A), asserting `"extendedWrite != nullptr"`
   (`.rodata 0x1c89378`). `findNewLastWrite` (`0x16a8df0`) re-locates the writer after
-  re-lowering, gated by `meetsPTCOMRequirements`. **GAP:** the exact `LastWriteInfo` struct
-  layout is not pinned. [SPECULATIVE on the field offsets.]
+  re-lowering, gated by `meetsPTCOMRequirements`. The exact `LastWriteInfo` struct layout is not
+  pinned. [SPECULATIVE on the field offsets.]
 
-- **`insertPTCOMs`** (`0x16acc50`) [CONFIRMED]: for each (ML, insertInst) pair, insert
+- **`insertPTCOMs`** (`0x16acc50`): for each (ML, insertInst) pair, insert
   `InstTensorCompletion` before `BasicBlock::getFirstTerminator` (`0x16acd1f` / `0x16acd3c`),
   then `attachWholeTensorInputAP(newInst, ML)` (`0x16acd4b`) so the completion waits on the
   **whole** shared tensor; `bir::isDataPathEngine` routes it to the proper sync engine. The
-  `"_sb2sb"` string (`0x1c88425`) confirms the completions target the on-chip SB2SB transport
-  produced by the kind-0 lowering.
+  `"_sb2sb"` string (`0x1c88425`) ties the completions to the on-chip SB2SB transport produced by
+  the kind-0 lowering.
 
 ---
 
 ## Why each pass runs twice — dual placement
 
-Both passes are registered at two static pipeline slots (S2-06 order table):
+Both passes are registered at two static pipeline slots:
 
 - **Default (post-schedule) phase**, contiguous: `80 lower_local_collectives → 81
   extend_shared_lifetimes → 83 sync_shared_allocations → … → 95 insert_ptcom_flat`.
@@ -444,21 +437,19 @@ Both passes are registered at two static pipeline slots (S2-06 order table):
 
 The selector is the `cl::opt` `--run-shared-allocation-before-post-sched`, help text verbatim:
 *"Run lower_local_collectives and coloring_allocator_dram_shared before post_sched. Only
-relevant for trn2."* (D-A11). The same pass body is registered at two static slots; the
+relevant for trn2."* The same pass body is registered at two static slots; the
 pipeline builder positions the collective lowering + its PTCOM completions either **after**
 `post_sched` (default) or **before** `post_sched` (when the flag is set — Trn2 / CoreV3 only).
-[CONFIRMED — flag text and arch restriction are verbatim.]
 
 The two are **mutually exclusive at runtime**, not both-run:
 
 - `lower_local_collectives` is idempotent across placements because its `run()` deletes the
   original IT-48 CC op (`removeInstruction @0x1629742`) once lowered. Whichever slot fires first
   consumes the work; the other finds `extractAndGroupCCOps` returns no IT-48 ops → no-op. The
-  `lnc == 1` early-return likewise makes single-core a no-op at either slot. [CONFIRMED — the
-  deletion is in `run`.]
+  `lnc == 1` early-return likewise makes single-core a no-op at either slot.
 - `insert_ptcom_flat` is paired with whichever `lower_local_collectives` slot is active (80→95
   vs 111→112) so the PTCOM completions are inserted in the **same** scheduling regime as the
-  collective DMAs they fence (pre- vs post-RA / post-sched addresses). [STRONG.]
+  collective DMAs they fence (pre- vs post-RA / post-sched addresses).
 
 On Trn2 the shared-DRAM allocation (`coloring_allocator_dram_shared`) and the collective
 lowering must run **before** `post_sched` so the post-RA scheduler sees the real cross-core
@@ -468,44 +459,25 @@ static pipeline serve both orderings.
 
 ---
 
-## Adversarial re-verification
+## Limits of this reading
 
-The five highest-value claims, re-checked against the binary evidence and the sibling
-cross-references:
+The pass structure on this page — the kind dispatch and its `CC+0xf8` field, the two-stage
+GPSIMD-vs-DMA gate with its libBIR predicates and the 1024-byte ceiling, the DMA-only
+reduce-scatter/all-gather shape of `lowerAllReduce`, the `vnc_remote_addr_map` minting with
+`setIsWrittenByAnotherCore`, and the PTCOM insertion at the writers' first common postdominator —
+is read off `libwalrus.so` and `libBIR.so` directly.
 
-1. **Kind dispatch is unsigned `ja` past 1 plus explicit 0/1/2 compares** — CONFIRMED at the
-   worker dispatch `0x1629337`; the field is `CC+0xf8` (D-D07), and only kinds 0/1/2 reach a
-   `lowerXXX` helper while ≥3 reaches only `insertCoreBarrier`. The "fence-only" nature of ≥3 is
-   STRONG (call-graph evidence); the *destination* of the remote lowering is INFERRED (runtime
-   collective lib / ICI), not pinned.
+Three things are not:
 
-2. **GPSIMD-vs-DMA two-stage gate** (`isCompatible` shape/ctx predicate, then
-   `getEffectiveBytesPerPartition` vs `sendrecv-to-gpsimd-max-bpp`) — CONFIRMED. D-M11
-   independently pins `isCompatible@0x2931d0` (ctx==2 first predicate),
-   `getEffectiveBytesPerPartition@0x291a50` (dtype byte-pad), and the `MaxBytesPerPartition=1024`
-   ceiling in libBIR. The `cl::opt` name + help strings are byte-confirmed. The numeric
-   *default* of the knob is the genuine GAP (SPECULATIVE).
+- **The `cl::opt` numeric defaults.** `sendrecv-to-gpsimd-max-bpp` and its siblings are named and
+  their semantics are clear, but the initializer values were not extracted. [SPECULATIVE]
+- **The `LastWriteInfo` struct layout.** The helper call chain is clear; the field offsets are
+  not. [SPECULATIVE]
+- **The downstream lowering of the kind-≥3 remote collectives.** They are fenced here and left
+  intact; the cross-node decomposition happens in a different translation unit that is not part
+  of this binary. [INFERRED] that it is the runtime collective library over the ICI fabric.
 
-3. **`lowerAllReduce` is DMA-only (reduce-scatter + all-gather)** — CONFIRMED structure;
-   NX-156 corroborates "one `InstDMACopy` per replica-core + `InstCoreBarrier` fences",
-   `getScatterDimension` (scatter arm vs gather arm), and `createPartialAP`. The *reason* GPSIMD
-   is never chosen (payload > budget, non-SB2SB shape) is INFERRED from the call set.
-
-4. **`getMemoryLocation` mints the `vnc_remote_addr_map` with `setIsWrittenByAnotherCore`** —
-   CONFIRMED via the `_remote_<core>` / `_set` rodata strings and the diagnostic strings;
-   D-H03 independently names this as the `RemoteLocalTarget` source feeding `vnc_link` and the
-   shared-DRAM allocators.
-
-5. **`insert_ptcom_flat` places `InstTensorCompletion` at the writers' first common
-   postdominator, hoisted out of loops, keyed on flat core-0 names** — CONFIRMED for the IT-94
-   insert + `attachWholeTensorInputAP` + the `-PTCOM` name; STRONG for the postdominator +
-   non-loop-SCC placement and the flat-naming correlation. The `LastWriteInfo` struct layout is
-   the GAP (SPECULATIVE field offsets).
-
-**Re-verify ceiling.** The libwalrus binary is present in the corpus as IDA DBs and
-decompiled/disasm sidecars, and the addresses above were resolved by `nm -DC` and disassembly
-captured in the D-H23 analysis; the five claims are each independently corroborated by a second
-sibling note (D-D07, D-M11/D-E22, NX-156/NX-163, D-H03, S2-04). The remaining unverifiable
-items are the `cl::opt` numeric defaults (initializers not read out), the `LastWriteInfo` struct
-layout, and the precise downstream lowering of the kind-≥3 remote collectives (fenced here, but
-the cross-node decomposition is in a different translation unit).
+One softer structural claim: that PTCOM placement is hoisted out of loop SCCs and that
+cross-core producer/consumer pairs are correlated by flat core-0 *names* rather than pointers
+follows from the call set and the `lnc_splitter` JSON round-trip, not from a single decisive
+instruction.

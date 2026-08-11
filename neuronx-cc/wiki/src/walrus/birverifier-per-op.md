@@ -141,7 +141,7 @@ function checkMatmultMxInputs(I):                       // 0x1007420
 | 10 | 3099 | `outputNumPartitionsAccessed * 4 == weightsNumElementsPerPartition` | output N × 4 == weights K | 236 |
 | 11 | 3102 | `outputNumElementsPerPartition * 4 == ifMapNumElementsPerPartition` | output free × 4 == ifmap K | 237 |
 
-> **CORRECTION (D-G02 §3.1) —** an earlier compute-family report transcribed the codes for asserts 9/10/11 in scrambled order (listing `outputNumElementsPerPartition*4==ifMap…` as code 235, `ifmap==weights` as 236, `outputNumPartitions*4==weights` as 237). The binary's throw sites, read in body order at `0x1007420`, are unambiguous: line 3091→234, 3096→235, 3099→236, 3102→237, with the predicate strings exactly as tabled above. The dedicated MX report (D-G05 §1) had the correct mapping; this page follows the binary.
+The throw sites in `0x1007420`, read in body order, pair line to code as `3091`→234, `3096`→235, `3099`→236, `3102`→237 — the four partition/element-count asserts are easy to transpose, so match them by source line rather than by reading order in a summary.
 
 #### `max_ifmap_elements` (assert #5) derivation
 
@@ -162,7 +162,7 @@ index:  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
 bytes:  1  1  2  1  1  1  1  1  4  4  2  2  2  2  4  4  4  4  8  8
 ```
 
-This table is byte-identical to the simulator's dtype stride table — encoder, simulator, and verifier share one dtype-size source. `psumBankBytes` itself is a per-arch HWM value (Trn2/Cayman) not pinned here (the formula `32 · bankBytes/dtypeBytes` is CERTAIN; the concrete `bankBytes` is an HWM-table fact — `INFERRED` per-arch value).
+This table is byte-identical to the simulator's dtype stride table — encoder, simulator, and verifier share one dtype-size source. `psumBankBytes` itself is a per-arch HWM value (Trn2/Cayman) not pinned here — the formula `32 · bankBytes/dtypeBytes` is read directly, but the concrete per-arch `bankBytes` is an HWM-table value and remains [INFERRED] here.
 
 ### Algorithm — checkMatmultMxInstruction (7 asserts)
 
@@ -205,13 +205,13 @@ function checkMatmultMxInstruction(I):                  // 0x10139a0
 | 6 | 3028 | `(row_tile_size[i] == -1) \|\| ((unsigned)row_tile_size[i] == numPartitionsAccessed)` | row tile == partition count | 240 |
 | 7 | 3037 | `I.getReplicationShiftAmnt() == 0` | no weight-replication shift | 204 |
 
-> **CORRECTION (D-G02 §3.2) —** an earlier compute-family report listed the `checkMatmultMxInstruction` codes shifted by one row (assigning code 204 to `engine==PE` at 2994, code 205 to the *replication* assert, and 214/240/241 to the wrong lines). Read directly at `0x10139a0`, the throw sites pair as tabled: `2994`→205 (`EngineType::PE`), `3012`→212, `3014`→213, `3017`→214, `3031`→241 (col), `3028`→240 (row), `3037`→204 (`ReplicationShiftAmnt`). The dedicated MX report (D-G05 §2) was correct. Note the source lines for the row/col tile asserts are *out of address order* (the `3031` col check precedes the `3028` row check in the body), which is what produced the confusion.
+> **GOTCHA —** in `checkMatmultMxInstruction` @`0x10139a0` the tile asserts appear with their source lines *out of order*: the column check (line `3031`, code 241) is emitted **before** the row check (line `3028`, code 240). Pair codes to predicates by line number, not by position in the body, or the engine assert (`2994`→205) and the replication assert (`3037`→204) end up swapped.
 
 > **QUIRK — the block_size=32 is enforced structurally, never stored.** The verifier never writes a literal `32` as block-size. The 32-element OCP-MXFP block (8 partitions × 4 columns, one E8M0 byte) is *implied* by the conjunction of: the data:scale 4:1 element ratio (#1/#2), the same-quadrant + `%4`-aligned + `%32<16` scale placement (Instruction #2/#3/#4, Inputs #3/#4), and the `×4` output relationships (#10/#11). A reimplementer who only checks `block_size == 32` against a stored field will find no such field; the constraint *is* these eight asserts.
 
 ### Considerations
 
-`checkMatmultMxInstruction` reads `getReplicationShiftAmnt()` through a `std::variant` getter; the variant tag is checked first (a mis-tagged value throws `bad_variant_access` before the assert is even evaluated). The exact struct offset of that variant field (`~0xB0`/`0xC0` region) is `HIGH` not `CERTAIN` — the predicate text and code 204 are CERTAIN. The `sub_10125B0` tile-descriptor extractor produces four parallel `int32` vectors and self-asserts they are equal length (`row_tile_pos.size() == col_tile_pos.size() == row_tile_size.size() == col_tile_size.size()`); its per-tile derivation math from the AP geometry was not fully transcribed (`INFERRED`).
+`checkMatmultMxInstruction` reads `getReplicationShiftAmnt()` through a `std::variant` getter; the variant tag is checked first (a mis-tagged value throws `bad_variant_access` before the assert is even evaluated). The predicate text and code 204 are read directly; the exact struct offset of that variant field (`~0xB0`/`0xC0` region) is only HIGH confidence. The `sub_10125B0` tile-descriptor extractor produces four parallel `int32` vectors and self-asserts they are equal length (`row_tile_pos.size() == col_tile_pos.size() == row_tile_size.size() == col_tile_size.size()`); its per-tile derivation math from the AP geometry is [INFERRED].
 
 There is **no** separate `LdWeightMx`-vs-`MatmultMx` L1 assert: the MX wire bundle (`LdWeightMx` + `MatmultMx`) is constructed by the CoreV4 *encoder*, so the verifier checks the unified `InstMatmultMx` (the six APs above), not the two wire halves.
 
@@ -256,11 +256,11 @@ function checkCollectiveCompute(I):                     // 0x1033630
 
 > **QUIRK — "matching replica groups" is an element-ratio check, not a group-list compare.** The invariant that a collective's input/output sizes agree with the partitioning across ranks is enforced as a *ratio* between the input and output `getNumElementsAccessed`, checked against `replica_groups_shape` (the ranks-per-group), via the `"Illegal src/dst ratio for AllGather/ReduceScatter"` and `"src/dst element ratio must be the same for all inputs"` errors. There is **no** direct `memcmp` of a replica-group list at L1. A reimplementer reproducing this gate validates the ratio, not the group membership.
 
-> **NOTE — the AllToAllV argument count is more permissive than first reported.** The binary's predicate is `"I.num_arguments() == I.num_outputs() + 1 || I.num_arguments() == I.num_outputs()"` (the `+1` is the metadata input; the equal-count case applies when a channel-buffer output is present), with the human-readable string `"AllToAllV must have one more input than outputs (metadata), or equal count when a channel buffer output is present. Got …"`. An earlier report (D-G04) summarized only the `+1` case.
+> **NOTE — AllToAllV accepts two argument counts, not one.** The predicate is `"I.num_arguments() == I.num_outputs() + 1 || I.num_arguments() == I.num_outputs()"`: the `+1` covers the metadata input, and the equal-count case applies when a channel-buffer output is present. The human-readable string is `"AllToAllV must have one more input than outputs (metadata), or equal count when a channel buffer output is present. Got …"`.
 
 ### Considerations
 
-`checkCollectivesInDynamicCFG` @`0xfd0420` adds a context rule: a collective placed inside a dynamic-CFG basic block (a loop body, per `isDynamicCFGBasicBlock`) must be **local** — `assert(isLocal)` raises code **123** (`"isLocal"`, `inst_visitor.cpp:1024`); a `SendRecv` in that context raises code **1500**. The `kindSupported` map (`qword_3E01660`) is a `.bss` runtime-built two-level `unordered_map` keyed by `(arch/version, kind)`; its exact per-`(dim,kind)` contents are not byte-dumped (the rows live in the static-initializer stream, not a parseable `rodata` table) — `MED` confidence on the *set*, `CERTAIN` on the *mechanism*.
+`checkCollectivesInDynamicCFG` @`0xfd0420` adds a context rule: a collective placed inside a dynamic-CFG basic block (a loop body, per `isDynamicCFGBasicBlock`) must be **local** — `assert(isLocal)` raises code **123** (`"isLocal"`, `inst_visitor.cpp:1024`); a `SendRecv` in that context raises code **1500**. The `kindSupported` map (`qword_3E01660`) is a `.bss` runtime-built two-level `unordered_map` keyed by `(arch/version, kind)`; its exact per-`(dim,kind)` contents are not byte-dumped, because the rows live in the static-initializer stream rather than a parseable `rodata` table — the *mechanism* is certain, the *set* only MEDIUM.
 
 ---
 

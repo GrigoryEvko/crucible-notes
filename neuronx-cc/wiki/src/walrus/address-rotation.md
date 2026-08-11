@@ -12,7 +12,7 @@ If you know modulo scheduling, the analogy is exact in spirit but inverted in me
 
 For reimplementation, the contract is:
 
-- **The ring-window modulo addressing.** A rotated tensor's address is `base + (iter·stride) mod (N·slotSize)` — the same `(numer mod denom)` index `[pelican::ModuloExpr](../bir/pelican-moduleexpr.md)` produces, but this pass only chooses the **physical slot** the ring maps onto; it does not emit the `ModuloExpr` node (see the correction in [§6](#6-the-post-schedule-variant--multi-buffering-emerges)).
+- **The ring-window modulo addressing.** A rotated tensor's address is `base + (iter·stride) mod (N·slotSize)` — the same `(numer mod denom)` index `[pelican::ModuloExpr](../bir/pelican-moduleexpr.md)` produces, but this pass only chooses the **physical slot** the ring maps onto; it does not emit the `ModuloExpr` node (see the correction in [§6](#the-post-schedule-variant--multi-buffering-emerges)).
 - **The per-space period-selection rule.** PSUM rotates over the architectural **bank count** `N`; SBUF rotates over a per-engine-class **period** (`1/5/10/20/60`); DRAM rotates inside a **CLI-capped GiB window** (`dram_rotation_size ≤ 8`). Three different moduli, three different free-slot allocators.
 - **The dispatch and fixpoint structure.** Which path fires keyed on `Function` attribute flags 9/10/11/12; PSUM rotation runs as a **3-pass fixpoint**; SBUF rotation is partition-band-batched under TBB.
 
@@ -161,9 +161,9 @@ void rotateAddrs(this, bir::Module& M) {                 // 0x940e00
 }
 ```
 
-> **NOTE — the SBUF budget idiom.** The decompiler renders `8 * roundup8(x)` as `8 * (v + ((x - v) >> 3))` with `v = (x != 0)`. That `v + ((x−v)>>3)` is integer `ceil(x/8)`; the outer `×8` re-scales it to a byte slice. So `sbBudget = 8·ceil((2N/5)/8)` — two-fifths of the partition count, rounded up to a multiple of 8, times 8. CONFIRMED at `rotateAddrs+235/236` (disasm `shr rax,3` = the divide-by-8 of the `roundup8`), and re-derived per-kernel at line 542. The store target is object byte offset **`0x8C0`** (disasm `mov [r14+0x8C0], rax` @ `0x9411f7`), one qword below the ctor booleans — i.e. the decompiler's `_QWORD*+280` is `280·8 = 0x8C0`.
+> **NOTE — the SBUF budget idiom.** The decompiler renders `8 * roundup8(x)` as `8 * (v + ((x - v) >> 3))` with `v = (x != 0)`. That `v + ((x−v)>>3)` is integer `ceil(x/8)`; the outer `×8` re-scales it to a byte slice. So `sbBudget = 8·ceil((2N/5)/8)` — two-fifths of the partition count, rounded up to a multiple of 8, times 8. The `shr rax,3` at `rotateAddrs+235/236` is the divide-by-8 of the `roundup8`, and the same expression is re-derived per kernel at line 542. The store target is object byte offset **`0x8C0`** — a 64-bit `mov [r14+0x8C0], rax` @ `0x9411f7` (and `0x941348`), one qword below the ctor booleans.
 
-> **CORRECTION — the SB-budget field is at `0x8C0`, not `0x460`.** An earlier recovery note placed `sbBudget` at `obj+0x460` (1120 bytes), reading the decompiler's `_QWORD*+280` index as if it were a `_DWORD*` index (`280·4 = 0x460`). The store is a 64-bit `mov [r14+0x8C0], rax` (`0x9411f7` / `0x941348`), so the byte offset is `280·8 = 0x8C0` (2240). The arithmetic — `8·roundup8(2·numPartitions/5)` — and the `≥1` 3-sweep `psum_rotation` fixpoint are unaffected and CONFIRMED; only the field offset is corrected. (Verified firsthand in the disassembly.)
+> **GOTCHA —** the decompiler shows this store through a `_QWORD*` as index `+280`. Scale it by 8 (`280·8 = 0x8C0`, 2240); reading `+280` as a `_DWORD*` index instead gives `0x460` and lands the `sbBudget` field 1120 bytes short.
 
 > **QUIRK — `psum_rotation` runs exactly three times, by hand.** There is no convergence test; `rotateAddrs` calls `psum_rotation(f)` literally three times in a row (lines 333-336 and 413-415). It is a fixed 3-sweep fixpoint: each sweep can free banks that the previous sweep's relocations made schedulable, and three is enough for the (typically ≤3-deep) pipelines this targets. A reimplementation that loops to convergence is *more* general but will not match the binary's buffer assignment.
 
@@ -187,7 +187,7 @@ void get_psum_partition(MemoryLocation* M, u64* start, u64* end) {
 }
 ```
 
-`>> 5` is `/32`: partitions `0..31` → band 0, `32..63` → band 1, and so on. CONFIRMED firsthand — both shift-by-5 computations and the `getBasePartition` calls are visible in the 61-byte body.
+`>> 5` is `/32`: partitions `0..31` → band 0, `32..63` → band 1, and so on. Both shift-by-5 computations and the `getBasePartition` calls are visible in the 61-byte body.
 
 ### The occupancy grid
 
@@ -206,7 +206,7 @@ void update_psum_partition(M, vector<vector<u32>>& live, int delta, set<u32> ban
 }
 ```
 
-The grid is a `vector<vector<u32>>` — `live[band]` is a per-band row, `live[band][bank]` the occupancy count. Line 179 is literally `*(u32*)(live.data[band] + 4*bankId) += delta`, where the row stride is `24*band` (a 24-byte `vector` header per band) and the column stride is `4*bankId`. CONFIRMED.
+The grid is a `vector<vector<u32>>` — `live[band]` is a per-band row, `live[band][bank]` the occupancy count. Line 179 is literally `*(u32*)(live.data[band] + 4*bankId) += delta`, where the row stride is `24*band` (a 24-byte `vector` header per band) and the column stride is `4*bankId`.
 
 ### Algorithm
 
@@ -242,9 +242,9 @@ void psum_rotation(this, Function& f, PSUM_ROTATE_TARGET target, int) {   // 0x9
 }
 ```
 
-`getPsumBankAlignment` (`0x1088ad0`) is `divideCeil(memlocSize, psumBankSize)` — the number of banks the memloc spans, which doubles as the start-bank alignment. `prefer_bank_alignment` (`0x9185c0`) is the tie-break: `align==2 → s even`, `align==4 → s%4==0`, `align==3 → s%3==0`. All the log strings and the `%`/`prefer_bank_alignment` call sites are CONFIRMED in the 19 KB body.
+`getPsumBankAlignment` (`0x1088ad0`) is `divideCeil(memlocSize, psumBankSize)` — the number of banks the memloc spans, which doubles as the start-bank alignment. `prefer_bank_alignment` (`0x9185c0`) is the tie-break: `align==2 → s even`, `align==4 → s%4==0`, `align==3 → s%3==0`. All the log strings and the `%`/`prefer_bank_alignment` call sites are present in the 19 KB body.
 
-> **QUIRK — the ring is a priority queue, not a counter.** The choice of *which* free bank in the ring a memloc takes is not a literal circular `(iter mod N)` counter inside this pass. A `priority_queue<pair<MemoryLocation*, u32>, SortFn>` (`memQueue`, push `0x9721d0`) heap-orders the candidate buffers by `SortFn` and pops slots to assign. The modulo arithmetic lives in the *address* the consumer reads — the symbolic `(iter mod N)` index is the `ModuloExpr`, produced elsewhere (see [§6](#6-the-post-schedule-variant--multi-buffering-emerges)); this pass only decides which physical bank that ring index resolves to.
+> **QUIRK — the ring is a priority queue, not a counter.** The choice of *which* free bank in the ring a memloc takes is not a literal circular `(iter mod N)` counter inside this pass. A `priority_queue<pair<MemoryLocation*, u32>, SortFn>` (`memQueue`, push `0x9721d0`) heap-orders the candidate buffers by `SortFn` and pops slots to assign. The modulo arithmetic lives in the *address* the consumer reads — the symbolic `(iter mod N)` index is the `ModuloExpr`, produced elsewhere (see [§6](#the-post-schedule-variant--multi-buffering-emerges)); this pass only decides which physical bank that ring index resolves to.
 
 ### Ring semantics
 
@@ -271,7 +271,7 @@ SBUF is a 2-D `(partition, byte-offset)` space. `sb_rotation` moves a recurring 
 | 3 | 10 | 0 | `roundup8(sbBudget>>1)` | yes | 0 | 463 |
 | 12 | 60 | 0 | `roundup8(numPartitions/5)` | yes | 0 | 464 |
 
-Targets `1..12` are `SB_ROTATE_TARGET` — the engine/tile class to rotate (PE / Act / Pool / SP / GpSimd families). The **`period` ∈ {1,5,10,20,60} is the rotation modulus** — the number of buffers in that class's ring. The kernel-scope (attr-12) path uses a subset: targets `1,2,5,7,3` then `4` twice (engines 5 and 1), or just target `12` when `b1` is set. CONFIRMED — every tuple is visible in `rotateAddrs` lines 353-373 / 445-464 with the exact period constants.
+Targets `1..12` are `SB_ROTATE_TARGET` — the engine/tile class to rotate (PE / Act / Pool / SP / GpSimd families). The **`period` ∈ {1,5,10,20,60} is the rotation modulus** — the number of buffers in that class's ring. The kernel-scope (attr-12) path uses a subset: targets `1,2,5,7,3` then `4` twice (engines 5 and 1), or just target `12` when `b1` is set. Every tuple is visible in `rotateAddrs` lines 353-373 / 445-464 with the exact period constants.
 
 ### Band-batched fan-out
 
@@ -361,7 +361,7 @@ void dram_rotation(this, bir::Module& M, DRAM_ROTATE_TARGET target /*=1*/, u64 s
 }
 ```
 
-The assert string, the `<< 30` (GiB→byte) shift, and the two log strings are CONFIRMED firsthand at `dram_rotation` lines 539/686/756/761. The window bounds the rotation so the runtime HBM allocator stays in range; `dram_rotation_size` and `disable_dram_rotation` are both real knob strings in the binary.
+The assert string, the `<< 30` (GiB→byte) shift, and the two log strings sit at `dram_rotation` lines 539/686/756/761. The window bounds the rotation so the runtime HBM allocator stays in range; `dram_rotation_size` and `disable_dram_rotation` are both real knob strings in the binary.
 
 ### Ring semantics
 
@@ -392,11 +392,13 @@ void clearInstDeps(this, bir::Module& M) {
 }
 ```
 
-The `hasAttribute(12)` gate, the `tc_new(3)` 3-byte record, the `*(u16*)rec = 770` (`0x0302`) and `*(u8*)(rec+2) = 4`, and the TBB `parallel_for` over `get_inst_in_order` are all CONFIRMED firsthand at `clearInstDeps`. The constants `0x0302`/`0x04` map to the `EdgeKind` enum `Ordered1/Anti2/Output3/Flow4` — i.e. all edge kinds are cleared so the dep graph rebuilds clean.
+The `hasAttribute(12)` gate, the `tc_new(3)` 3-byte record, the `*(u16*)rec = 770` (`0x0302`) and `*(u8*)(rec+2) = 4`, and the TBB `parallel_for` over `get_inst_in_order` are all visible in `clearInstDeps`. The constants `0x0302`/`0x04` map to the `EdgeKind` enum `Ordered1/Anti2/Output3/Flow4` — i.e. all edge kinds are cleared so the dep graph rebuilds clean.
 
-> **CORRECTION — `AddressRotation` does *not* emit the `ModuloExpr`.** Earlier recovery notes attributed "materialises / commits / inserts the `pelican::ModuloExpr`" to `address_rotation_psum_post_schedule`. The companion page [7.20 `pelican::ModuloExpr`](../bir/pelican-moduleexpr.md) settles this from the binary's xref table: of the seven callers of `createModuloExpr`, six are pelican-internal and exactly one — `Unroll::LowerDynamicExprs` @ `0xb38a50` — is a backend pass; the whole `AddressRotation` pass calls `createModuloExpr` / `Expr::modulo` / `Expr::floordiv` **zero** times. `AddressRotation` performs **physical** rebinding only (`MemoryLocation::allocate` onto a new bank/tile/region). The **symbolic** `(iter mod N)` index is written by `Unroll`; this pass chooses the physical slot that ring index maps onto. The two are complementary — "physical rotation" ≠ "ModuloExpr emission" — and this page documents the physical half. CONFIRMED (the empty `AddressRotation` ∩ `createModuloExpr` intersection is read firsthand in 7.20).
+### Physical rebinding, not symbolic indexing
 
-> **NOTE — the precise post-schedule call site was not isolated.** That `address_rotation_psum_post_schedule` runs after the split and is the variant that rotates stage buffers is CONFIRMED (registration template `RA36_Kcbb`, pipeline placement after `separate_load_and_compute`). The exact in-body instruction that writes each rotated stage buffer's address inside the *post_schedule* body was not individually traced; the rotation mechanism it invokes is the same `psum_rotation` / `sb_rotation_batch` documented above. (HIGH — placement and variant confirmed; the per-instruction post-schedule walk is INFERRED to reuse the §3/§4 cores.)
+`AddressRotation` rebinds addresses and nothing else: every rotation it performs is a `MemoryLocation::allocate` onto a new bank / tile / region. It never constructs the symbolic `(iter mod N)` index — across the whole pass there are zero calls to `createModuloExpr`, `Expr::modulo` or `Expr::floordiv`. Of the seven callers of `createModuloExpr` in the binary, six are pelican-internal and exactly one is a backend pass: `Unroll::LowerDynamicExprs` @ `0xb38a50`. So `Unroll` writes the ring *index* and `AddressRotation` chooses the physical *slot* that index maps onto; the two halves are complementary, and this page documents the physical one. See [`pelican::ModuloExpr`](../bir/pelican-moduleexpr.md) for the symbolic half.
+
+> **NOTE —** `address_rotation_psum_post_schedule` runs after the load/compute split and is the variant that rotates stage buffers (registration template `RA36_Kcbb`, placed after `separate_load_and_compute`). The exact in-body instruction that writes each rotated stage buffer's address inside the *post_schedule* body has not been traced individually; that it reuses the same `psum_rotation` / `sb_rotation_batch` cores documented above is [INFERRED].
 
 ---
 
@@ -410,7 +412,7 @@ NKI kernels carry an `AddressRotationScope` field at `InstNKIKernel[+87]` (u32, 
 | `Kernel` | 1 | rotation confined to the kernel's own SB window — `rotateAddrs`' attr-9&10 tail loop re-derives the kernel's `numPartitions`/`basePartition` and rotates only inside it (the "Skipping kernel-scoped address rotation … SB shape not set" guard) |
 | `Global` | 2 | rotation spans the whole module's address space |
 
-The enum is the *user-facing* knob that controls rotation **scope**; the per-space passes control the rotation **mechanism**. CONFIRMED (verifier assert + the kernel-scope tail loop in `rotateAddrs`).
+The enum is the *user-facing* knob that controls rotation **scope**; the per-space passes control the rotation **mechanism**. Both the verifier assert and the kernel-scope tail loop in `rotateAddrs` read the same field.
 
 ---
 

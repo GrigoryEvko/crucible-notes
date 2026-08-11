@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Three distinct walrus passes turn `bir` ops that an engine cannot encode directly into ops it can. They are easy to conflate — the task that motivated this page conflated all three — so the first job here is to keep them apart. **`lower_select`** (order 64, pre-codegen) rewrites the ternary `Select(51)` op into a `GenericCopy(1)` + `CopyPredicated(52)` pair, because `Select` has no machine emitter. **`lower_control`** (order 128, the last pre-codegen pass) is **not** a branch emitter: it is a per-basic-block scheduling-fence pass that erases cross-BB data dependencies and inserts a fixed barrier/drain sequence before every terminator, at the basic-block ordering granularity. **`lower_branch`** (low-level order L20, post-codegen, after the per-engine split) is the pass that actually emits SP-engine branch micro-ops — predicate compares, loop back-edges, pre-headers.
+Three distinct walrus passes turn `bir` ops that an engine cannot encode directly into ops it can. Their names invite conflation, so the first job here is to keep them apart. **`lower_select`** (order 64, pre-codegen) rewrites the ternary `Select(51)` op into a `GenericCopy(1)` + `CopyPredicated(52)` pair, because `Select` has no machine emitter. **`lower_control`** (order 128, the last pre-codegen pass) is **not** a branch emitter: it is a per-basic-block scheduling-fence pass that erases cross-BB data dependencies and inserts a fixed barrier/drain sequence before every terminator, at the basic-block ordering granularity. **`lower_branch`** (low-level order L20, post-codegen, after the per-engine split) is the pass that actually emits SP-engine branch micro-ops — predicate compares, loop back-edges, pre-headers.
 
 The reference frame is LLVM's lowering pipeline. `lower_select` is a legalization pass exactly like LLVM's `expand-select` / `select → cmov` expansion: an op with no target instruction is split into target-legal primitives. `lower_control` has no clean LLVM analogue — it is closer to a software-fence insertion pass on a VLIW/spatial machine, where crossing a control edge requires every engine to quiesce. `lower_branch` is the structured-CFG-to-machine-branch lowering (LLVM's `StructurizeCFG` reversed: structured loops are *exploded* into explicit branches), specialized to the SP sequencer's `BranchCompareOp` encoding.
 
@@ -27,7 +27,7 @@ For reimplementation, the contract is:
 | **`lower_branch`** | `LowerBranch::run(bir::Module&)` @ `0x11c02d0` (low-level L20, post-codegen) |
 | ↳ loop back-edge | `LowerBranch::addBranchToLoop(bir::BasicBlock&)` @ `0x11be560` (0x17a0 B, heaviest helper) |
 | ↳ predicate → branch | `LowerBranch::convertPredToBranch(bir::BasicBlock&)` @ `0x11bca90` |
-| **Source path** | `…/neuronxcc/walrus/lower_control/src/lower_control.cpp` (`.rodata`, CONFIRMED) |
+| **Source path** | `…/neuronxcc/walrus/lower_control/src/lower_control.cpp` (intact in `.rodata`) |
 | **Key opcodes** | `Select=51`, `GenericCopy=1`, `CopyPredicated=52`; `AllEngineBarrier=15`, `GroupResetSemaphores=14`, `Drain=16`, `CoreBarrier=87` |
 
 ---
@@ -36,9 +36,9 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`Select(51)` is the ternary `out = preds ? onTrue : onFalse`. It is a DVE-family op conceptually, but it has **no ISA encoder** anywhere in the binary — there is no `CoreV{2,3,4}GenImpl::visitInstSelect`, only sim, verifier, const-prop, and simplify handlers (CONFIRMED — the only `visitInstSelect` emitter-class symbol absent from the `CoreV*GenImpl` family). By contrast `CoreV2GenImpl::visitInstCopyPredicated` @ `0x125eb20` *is* a real DVE bundle emitter. `lower_select` therefore exists to rewrite every `Select` into the two encodable primitives before codegen runs. It is the **sole and final** `Select` legalizer: nothing else in the pipeline splits a `Select`, and no pass after order 64 re-introduces one, so codegen never sees opcode 51.
+`Select(51)` is the ternary `out = preds ? onTrue : onFalse`. It is a DVE-family op conceptually, but it has **no ISA encoder** anywhere in the binary: there is no `CoreV{2,3,4}GenImpl::visitInstSelect`, only sim, verifier, const-prop, and simplify handlers. It is the one op in the family whose `visitInst…` emitter symbol is missing from the `CoreV*GenImpl` classes. By contrast `CoreV2GenImpl::visitInstCopyPredicated` @ `0x125eb20` *is* a real DVE bundle emitter. `lower_select` therefore exists to rewrite every `Select` into the two encodable primitives before codegen runs. It is the **sole and final** `Select` legalizer: nothing else in the pipeline splits a `Select`, and no pass after order 64 re-introduces one, so codegen never sees opcode 51.
 
-> **CORRECTION (H20-C2) —** an earlier analysis attributed the `SplitSelectVisitor` split to `early_peephole_opts` (order 31). That is wrong. `EarlyPeepholeOpts::run` @ `0xbf81c0` calls only `ActivationAccumulate` fusion and `SimplifyPermuteImplicitReduceAdd` — its body contains zero `SplitSelect` call sites. `LowerSelectPass::run` @ `0xbef6b0` is the *only* function in the entire binary that calls `IRVisitor<SplitSelectVisitor>::visit` (call sites `0xbef86b`, `0xbef9dd`, `0xbefa79`). There is no early-peephole Select split; all Selects are lowered at order 64.
+That sole-legalizer claim is exact. `LowerSelectPass::run` @ `0xbef6b0` is the only function in the binary that calls `IRVisitor<SplitSelectVisitor>::visit`, from three call sites — `0xbef86b`, `0xbef9dd`, `0xbefa79`. In particular the split does *not* happen in `early_peephole_opts` (order 31), a natural place to look for it: `EarlyPeepholeOpts::run` @ `0xbf81c0` does only `ActivationAccumulate` fusion and `SimplifyPermuteImplicitReduceAdd`, with no `SplitSelect` call site at all.
 
 ### Entry Point
 
@@ -52,10 +52,10 @@ LowerSelectPass::run(bir::Module&)                 @0xbef6b0  ── order-64 dr
 
 ### Algorithm
 
-`run` is a logging/driver shell around the recursive visitor; the substance is in `visitInstSelect`. The visitor descends into structured-control bodies (`Loop=105`, `DynamicForLoop=106`, `DoWhile=108`) so a `Select` nested at any loop depth is still rewritten; all other leaf opcodes are skipped, and an unknown opcode trips `llvm_unreachable("Unknown Instruction type encountered!")` (CONFIRMED — string lives in `.rodata`).
+`run` is a logging/driver shell around the recursive visitor; the substance is in `visitInstSelect`. The visitor descends into structured-control bodies (`Loop=105`, `DynamicForLoop=106`, `DoWhile=108`) so a `Select` nested at any loop depth is still rewritten; all other leaf opcodes are skipped, and an unknown opcode trips `llvm_unreachable("Unknown Instruction type encountered!")`, whose string sits in `.rodata`.
 
 ```c
-// LowerSelectPass::run  @0xbef6b0  (CONFIRMED, 1151 B)
+// LowerSelectPass::run  @0xbef6b0  (1151 B)
 function LowerSelectPass_run(Module& M):
     Logger.pushAttr("module_name", M.getName())       // boost-log scope only
     SplitSelectVisitor V;                              // V.count=0, V.removal=∅
@@ -71,8 +71,8 @@ function LowerSelectPass_run(Module& M):
 The core rewrite reproduces `out = preds ? onTrue : onFalse` as two ops: an **unconditional** copy that seeds the destination with the false branch, then a **predicated** copy that overwrites only the lanes where the mask is set with the true branch.
 
 ```c
-// SplitSelectVisitor::visitInstSelect  @0xbf1b30  (CONFIRMED, 1798 B; read at instruction level —
-//   Hex-Rays failed on this body, so all field offsets are disasm-pinned)
+// SplitSelectVisitor::visitInstSelect  @0xbf1b30  (1798 B; the decompiler fails on this body,
+//   so every field offset below is read off the disassembly)
 function visitInstSelect(InstSelect& S):
     preds   = S.getArgument<AccessPattern>(0)   // arg0 — the 0/1 MASK access pattern  @0x625b20
     onTrue  = S.getArgument(1)                  // arg1 — Argument (AP or scalar imm)  @0x60a5f0
@@ -110,7 +110,7 @@ CopyPredicated:  out[i] = preds[i] ? onTrue[i] : out[i]    (overwrite where pred
   ⟹            out[i] = preds[i] ? onTrue[i] : onFalse[i]              (Select semantics)
 ```
 
-This byte-matches the executable sim `Select` golden (`if pred==1: out=onTrue; elif pred==0: out=onFalse; else: runtime_error`): the GenericCopy supplies the `pred==0` lane, the CopyPredicated supplies the `pred==1` lane. **STRONG.**
+This byte-matches the executable sim `Select` golden (`if pred==1: out=onTrue; elif pred==0: out=onFalse; else: runtime_error`): the GenericCopy supplies the `pred==0` lane, the CopyPredicated supplies the `pred==1` lane.
 
 > **QUIRK —** the mask is **not** computed here. `arg0` (`preds`) is consumed verbatim as a pre-existing strict-0/1 tensor — the visitor never synthesizes a comparison or a 0/1 conversion. The producing compare (a `TensorTensor`/`TensorScalar` compare → 0/1 tensor) ran upstream. A reimplementation that expects `lower_select` to materialize the predicate will produce wrong results for every `Select`.
 
@@ -123,7 +123,7 @@ Both paths build the same two instructions; they differ only in how the false va
 | **A — main** | tensor `onTrue`/`onFalse`, or scalar but dtype-incompatible | `GenericCopy` seeds the false tensor; CopyPredicated leaves false lanes untouched | `+0xF0 = 1` (scalar-bool predicate), `+0x110 = 0` |
 | **B — imm-compatible** | `onTrue.isScalar() && checkImmValueTypeCompatible(onTrue,onFalse)` | `onFalse` is a scalar immediate the CopyPredicated can broadcast-fill directly into the false lanes | `+0x118 = 1` (`useFalseFill`), `+0x138 = 0` |
 
-The four byte offsets are `std::variant`/predicate discriminators, not data values (cross-checked against the `InstCopyPredicated` `sameInst` guards on bytes +240/+272/+280/+320). PATH B's `useFalseFill` (byte +280) is the same field the sim's CopyPredicated golden reads when `pred==0: dst[i]=optImm[i]`. **STRONG.**
+The four byte offsets are `std::variant`/predicate discriminators, not data values (cross-checked against the `InstCopyPredicated` `sameInst` guards on bytes +240/+272/+280/+320). PATH B's `useFalseFill` (byte +280) is the same field the sim's CopyPredicated golden reads when `pred==0: dst[i]=optImm[i]`.
 
 ### Function Map
 
@@ -136,7 +136,7 @@ The four byte offsets are `std::variant`/predicate discriminators, not data valu
 | `CoreV2GenImpl::visitInstCopyPredicated` | `0x125eb20` | the DVE ISA emitter for the lowered CopyPredicated | CERTAIN |
 | `KlirToBirCodegen::codegenCopyPredicated` | `0xf1a9c0` | KLIR→BIR codegen path for CopyPredicated | CERTAIN |
 
-> **NOTE —** the prior report cited `CoreV2GenImpl::visitInstCopyPredicated @0x5eb690` and `KlirToBirCodegen::codegenCopyPredicated @0x5f8080`; those are the `.plt` thunk-frame addresses. The real bodies are `0x125eb20` and `0xf1a9c0` (two-VA-frame artifact). Both pairs name the same symbol.
+> **GOTCHA — two VAs per symbol.** `CoreV2GenImpl::visitInstCopyPredicated` and `KlirToBirCodegen::codegenCopyPredicated` each resolve to two addresses: a `.plt` thunk frame (`0x5eb690` / `0x5f8080`) and the real body (`0x125eb20` / `0xf1a9c0`). A symbol lookup that lands in the low band has found the thunk, not the code.
 
 ---
 
@@ -146,11 +146,11 @@ The four byte offsets are `std::variant`/predicate discriminators, not data valu
 
 `lower_control` is the **last** pre-codegen pass (order 128) and is widely mis-described as the structured-control-to-branch lowering. It is not. Its source path `…/neuronxcc/walrus/lower_control/src/lower_control.cpp` is intact in `.rodata`, and the body emits **no SP branches and no register-ALU micro-ops**. What it does is install the per-basic-block synchronization boundary that makes a control edge safe: it (a) erases every cross-BB data dependency module-wide, then (b) inserts a fixed barrier/drain fence immediately before each real terminator and chains every real instruction in the block into that fence. The structured carriers `Loop(105)`/`DynamicForLoop(106)`/`DoWhile(108)` are descended but left **structurally intact** — their explosion into SP back-edges is deferred to `lower_branch` (§3).
 
-> **CORRECTION (H35-1.1) —** the SP-branch work (`convertPredToBranch`, `addBranchToLoop`, `addLoopEntry`, loop-counter register init) lives in a distinct class `LowerBranch` (@ `0x11c02d0` etc.), added to the pipeline *after* codegen by `sub_805870`. `lower_control` is op-level and multi-engine; `lower_branch` is SP-microcode. They are different passes at different pipeline positions on different opcodes (§3 boundary).
+The SP-branch work that the name `lower_control` suggests — `convertPredToBranch`, `addBranchToLoop`, `addLoopEntry`, loop-counter register initialization — lives in a different class entirely, `LowerBranch` (@ `0x11c02d0` and neighbours), which `sub_805870` adds to the pipeline *after* codegen. `lower_control` is op-level and multi-engine; `lower_branch` is SP-microcode. They sit at different pipeline positions and act on different opcodes (§3 draws the boundary).
 
 ### The 128 — what the granularity is
 
-The "128" is the pass's **pipeline order number**, not a tile size or a lane count. `lower_control` is registered at builder slot 128 (the tail of the pre-codegen pipeline `sub_80A6E0`, added via `addModParallelPass` — module-parallel granularity, matching its `run(bir::Module&)` signature), gated only by `!unk_3DFA5B8` (a default-off skip flag, so the pass **runs by default**). Slots 130 (`lnc_barriercheck`) and 131 (`bir_racecheck`) follow it and *verify* the barriers it mints. The ordering granularity at which the pass operates is the **basic block**: the fence is inserted once per BB that ends in a real terminator, and the cross-BB dependency erasure means inter-BB order is thereafter carried *solely* by these fences. **CONFIRMED.**
+The "128" is the pass's **pipeline order number**, not a tile size or a lane count. `lower_control` is registered at builder slot 128 (the tail of the pre-codegen pipeline `sub_80A6E0`, added via `addModParallelPass` — module-parallel granularity, matching its `run(bir::Module&)` signature), gated only by `!unk_3DFA5B8` (a default-off skip flag, so the pass **runs by default**). Slots 130 (`lnc_barriercheck`) and 131 (`bir_racecheck`) follow it and *verify* the barriers it mints. The ordering granularity at which the pass operates is the **basic block**: the fence is inserted once per BB that ends in a real terminator, and the cross-BB dependency erasure means inter-BB order is thereafter carried *solely* by these fences.
 
 ### Entry Point
 
@@ -166,7 +166,7 @@ LowerControl::run(bir::Module&)                       @0x118cab0  ── driver
 ### Algorithm
 
 ```c
-// LowerControl::run  @0x118cab0  (CONFIRMED)
+// LowerControl::run  @0x118cab0
 function LowerControl_run(Module& M):
     Logger.pushAttr("module_name", M.getName())
     EraseInterBbDeps(M, Logger)                        // §2.1 — drop all cross-BB data deps
@@ -185,7 +185,7 @@ function LowerControl_run(Module& M):
 The opcode dispatch descends the three structured carriers but does not rewrite them; everything else falls to the collector.
 
 ```c
-// IRVisitor<LowerControlImpl>::visit(Instruction&)  @0x118e940  (CONFIRMED)
+// IRVisitor<LowerControlImpl>::visit(Instruction&)  @0x118e940
 switch (inst.IT):                                      // dword at inst+0x58
     case 105 Loop:           for childBB in inst.region: visit(childBB)   // descend, intact
     case 106 DynamicForLoop: for childBB in inst.region: visit(childBB)
@@ -198,7 +198,7 @@ switch (inst.IT):                                      // dword at inst+0x58
 The collector keeps every real leaf instruction *except* the terminator-class control ops, so the fence can be made to happen-after all real work without depending on the terminator itself.
 
 ```c
-// LowerControlImpl::visitInstruction(Instruction&)  @0x118d4c0  (CONFIRMED — the COLLECTOR)
+// LowerControlImpl::visitInstruction(Instruction&)  @0x118d4c0  — the COLLECTOR
 function visitInstruction(Instruction& inst):
     inst.realDescendents(&range)
     if not range.empty: return                         // only leaves are collected
@@ -217,7 +217,7 @@ function visitInstruction(Instruction& inst):
 The fence itself is the heart of the pass — a fixed 4-op prologue plus a multi-core CoreBarrier epilogue, inserted just before the terminator.
 
 ```c
-// LowerControlImpl::leaveBasicBlock(BasicBlock& BB)  @0x118e0c0  (CONFIRMED — the TRANSFORM)
+// LowerControlImpl::leaveBasicBlock(BasicBlock& BB)  @0x118e0c0  — the TRANSFORM
 function leaveBasicBlock(BB):
     T = BB.getFirstTerminator()
     if !T or (T.IT - 81) <= 2: return                  // skip if Return(81)/Exit(82)/Break(83)
@@ -256,13 +256,13 @@ The resulting order at a control-transfer BB tail is:
                         →  Drain  →  [CoreBarrier(all cores)]  →  <terminator>
 ```
 
-The two `AllEngineBarrier`s bracket the semaphore reset so no engine ever observes a half-reset semaphore across the edge; `Drain` forces in-flight DMA/queue traffic to retire; the `CoreBarrier` (only when `lnc_size>1`) makes the inter-core rendezvous explicit. **CONFIRMED** — the literals `-barrier1`, `-sema-reset`, `-barrier0`, `-drain`, `-end-cb`, the assertion `Terminator instruction should not have any descendents`, the `lnc_size` gate `cmpl $1,0x1a4`, and the `EraseInterBbDeps removed` log are all live in the binary.
+The two `AllEngineBarrier`s bracket the semaphore reset so no engine ever observes a half-reset semaphore across the edge; `Drain` forces in-flight DMA/queue traffic to retire; the `CoreBarrier` (only when `lnc_size>1`) makes the inter-core rendezvous explicit. Every marker in that sequence is present in the binary: the name literals `-barrier1`, `-sema-reset`, `-barrier0`, `-drain`, `-end-cb`, the assertion `Terminator instruction should not have any descendents`, the `lnc_size` gate `cmpl $1,0x1a4`, and the `EraseInterBbDeps removed` log line.
 
 > **GOTCHA —** `CompareAndBranch(78)` is the **one** terminator whose data dependencies are preserved (the `d.IT != 78` guard). Its predicate operand chain must survive into `lower_branch`'s `convertPredToBranch`. A reimplementation that strips deps from *all* terminators uniformly will sever the predicate and produce an unconditional branch where a conditional one was intended.
 
 ### EraseInterBbDeps + renumberCoreBarriers
 
-`EraseInterBbDeps` @ `0x118c310` walks every instruction in every BB, removes each data-dependency edge whose target lives in a *different* BB, marks the function with `FunctionAttribute` id 18 (INFERRED name `controlLowered`), and logs `"EraseInterBbDeps removed <N> inter-BB deps"`. Rationale: after this step cross-BB order is enforced *solely* by the §2.2 fences, so the scheduler must not also see explicit inter-BB edges that would over-constrain or contradict the fence model. `renumberCoreBarriers` @ `0x1089250` (called only when `lnc_size>1`) re-sequences every `CoreBarrier(87)` index (`+272`) densely module-wide, because `lower_control` just minted new `-end-cb` barriers and the order-130 `lnc_barriercheck` needs a dense, consistent id space to range them. **CONFIRMED.**
+`EraseInterBbDeps` @ `0x118c310` walks every instruction in every BB, removes each data-dependency edge whose target lives in a *different* BB, marks the function with `FunctionAttribute` id 18 (INFERRED name `controlLowered`), and logs `"EraseInterBbDeps removed <N> inter-BB deps"`. Rationale: after this step cross-BB order is enforced *solely* by the §2.2 fences, so the scheduler must not also see explicit inter-BB edges that would over-constrain or contradict the fence model. `renumberCoreBarriers` @ `0x1089250` (called only when `lnc_size>1`) re-sequences every `CoreBarrier(87)` index (`+272`) densely module-wide, because `lower_control` just minted new `-end-cb` barriers and the order-130 `lnc_barriercheck` needs a dense, consistent id space to range them.
 
 ### Function Map
 
@@ -281,7 +281,7 @@ The two `AllEngineBarrier`s bracket the semaphore reset so no engine ever observ
 
 ### Purpose
 
-`lower_branch` (low-level order L20) runs **after** codegen-stage per-engine split (`expand_all_engine_pre_alloc`, L19), so every op it sees already lives on a concrete engine. On the SP engine (`EngineType 6`, ext "Sync") it rewrites the already-normalized control ops into **actual SP branch micro-instructions**: it materializes predicates into SP registers, picks the `BranchCompareOp` IMM/REG form, and emits physical back-edges and pre-headers. This is the pass the task's framing ("structured Loop/DoWhile → explicit branch + loop-counter register ops on the SP engine") actually describes — *not* `lower_control`. **CONFIRMED.**
+`lower_branch` (low-level order L20) runs **after** codegen-stage per-engine split (`expand_all_engine_pre_alloc`, L19), so every op it sees already lives on a concrete engine. On the SP engine (`EngineType 6`, ext "Sync") it rewrites the already-normalized control ops into **actual SP branch micro-instructions**: it materializes predicates into SP registers, picks the `BranchCompareOp` IMM/REG form, and emits physical back-edges and pre-headers. If you are looking for "structured `Loop`/`DoWhile` → explicit branch plus loop-counter register ops on the SP engine," this is that pass — not `lower_control`.
 
 ### Entry Point
 
@@ -314,7 +314,7 @@ for I in BB.terminators:                               // CompareAndBranch / str
 addUnconditionalBranch(BB, SP, name, target)           // @0x109bcf0 — fallthroughs
 ```
 
-The 13-arm `BranchCompareOp` enum factors as `predicate {LT,LE,EQ,NE,GE,GT}` in the low triple and `rhs-source {IMM=block 0, REG=block 1}` in `(val/6)`; the three `addCompareAndBranch` overloads map exactly to (no-reg = static 2-target), (+reg = REG form), (+reg,+reg = both operands register). `comp_op` lands at `InstCompareAndBranch+0xF0`. **CERTAIN** (cross-ref [SP Sync / Branch / Control Encoding](../isa/sp-sync-encoding.md)).
+The 13-arm `BranchCompareOp` enum factors as `predicate {LT,LE,EQ,NE,GE,GT}` in the low triple and `rhs-source {IMM=block 0, REG=block 1}` in `(val/6)`; the three `addCompareAndBranch` overloads map exactly to (no-reg = static 2-target), (+reg = REG form), (+reg,+reg = both operands register). `comp_op` lands at `InstCompareAndBranch+0xF0`. The wire form is documented in [SP Sync / Branch / Control Encoding](../isa/sp-sync-encoding.md).
 
 ### `addBranchToLoop` — the loop back-edge
 
@@ -333,7 +333,7 @@ function addBranchToLoop(BB):
     addUnconditionalBranch(BB, SP, name, headerBB)     // unconditional return to header
 ```
 
-Paired with `addLoopEntry` @ `0x11bc840` — which inserts a fresh pre-header `BasicBlock` (`insertBasicBlockBefore`) carrying the loop-init `regMov` plus the entry `addUnconditionalBranch` into the body — a structured `Loop(105)` is exploded into `{pre-header, body, back-edge}` SP branches with per-engine counter registers. **STRONG** (symbol-anchored; the per-engine `Rb_tree` walk and `update_loopnest` call are disasm-confirmed, the exact `IS_LT*` choice is inferred from the counter-vs-limit pattern).
+Paired with `addLoopEntry` @ `0x11bc840` — which inserts a fresh pre-header `BasicBlock` (`insertBasicBlockBefore`) carrying the loop-init `regMov` plus the entry `addUnconditionalBranch` into the body — a structured `Loop(105)` is exploded into `{pre-header, body, back-edge}` SP branches with per-engine counter registers. The per-engine `Rb_tree` walk and the `update_loopnest` call are read straight from the body; which of `IS_LTREG` / `IS_LTIMM` a given back-edge picks is reconstructed from the counter-vs-limit shape rather than observed at a specific site.
 
 ### Function Map
 
@@ -361,7 +361,7 @@ The single fact a reimplementer must internalize: these are three passes, not on
 | **Touches loops?** | descends, rewrites Selects inside | descends, leaves carriers intact | explodes `Loop(105)` into branches |
 | **Decides** | how to express a ternary | *where* control flows / when engines quiesce | *how* the SP sequencer encodes the flow |
 
-`lower_control` decides **where** control flows and erects the synchronization scaffold; `lower_branch` decides **how** the SP sequencer encodes that flow. `lower_control` is op-level and all-engines and runs before codegen; `lower_branch` is SP-microcode and runs after the per-engine split. They meet at the canonical control ops `lower_control` leaves behind, which `lower_branch` then serializes into physical SP branches. **STRONG, byte-anchored on the opcode tests and emitter call sets of both.**
+`lower_control` decides **where** control flows and erects the synchronization scaffold; `lower_branch` decides **how** the SP sequencer encodes that flow. `lower_control` is op-level and all-engines and runs before codegen; `lower_branch` is SP-microcode and runs after the per-engine split. They meet at the canonical control ops `lower_control` leaves behind, which `lower_branch` then serializes into physical SP branches.
 
 ---
 

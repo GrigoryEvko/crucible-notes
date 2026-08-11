@@ -22,7 +22,7 @@ The bar for this page is that a reimplementer can reconstruct **exactly how a qu
 | **Config knobs (.bss)** | `optNumDMAEngines` `@0x3e032e0`; `optEnableMaxIndirectDMAQueues` `@0x3e033a0`; log category `aqCat` `@~0x3e03460` |
 | **Source paths (baked `.rodata`)** | `…/neuronxcc/walrus/alloc_queues/src/alloc_queues.cpp` · `…/walrus/chain_dma_transposes/src/chain_dma_transposes.cpp` (verbatim) · `…/walrus/insert_dma_switch_queue/…` (truncated in assert) |
 
-All body-frame addresses are read off the `nm -DC` dynamic table and `objdump -d` bodies of the cp310 `libwalrus.so`; the EdgeKind constant, engine-id arms, queue-field stamps, and dedup call chain are byte-verified below. CONFIRMED unless a row says otherwise.
+All body-frame addresses are read off the `nm -DC` dynamic table and `objdump -d` bodies of the cp310 `libwalrus.so`; the EdgeKind constant, engine-id arms, queue-field stamps, and dedup call chain are byte-verified below. Everything is read directly unless a row says otherwise.
 
 ---
 
@@ -45,16 +45,16 @@ AllocQueues::run(Module&)  @0x111c1c0
      per indirect DMA; print {Num Queues, Num instructions} census into libfort
 ```
 
-The `run()` body is otherwise pure diagnostics: a libfort (`ft_*`) table with columns `"Num Queues"` / `"Num instructions"` / `"Alloc Queue info"` (`.rodata @0x1c83094`) and a trailing `"maximize-indirect-dma"` / `"num-queues"` note (`@0x1c8309f`). CONFIRMED.
+The `run()` body is otherwise pure diagnostics: a libfort (`ft_*`) table with columns `"Num Queues"` / `"Num instructions"` / `"Alloc Queue info"` (`.rodata @0x1c83094`) and a trailing `"maximize-indirect-dma"` / `"num-queues"` note (`@0x1c8309f`).
 
 ### The DMA-class gate
 
 `visitInstruction` is byte-verified end-to-end (`@0x111be20`):
 
 ```c
-// AllocQueuesImpl::visitInstruction(Instruction &I)  @0x111be20  [CONFIRMED]
+// AllocQueuesImpl::visitInstruction(Instruction &I)  @0x111be20
 void visitInstruction(Instruction &I) {
-  uint32_t it = *(uint32_t*)(&I + 0x58);          // InstructionType  (D-D01)
+  uint32_t it = *(uint32_t*)(&I + 0x58);          // InstructionType
   // gate — only DMA-family opcodes are queued:
   //   mov 0x58(%rsi),%eax ; cmp $0x12,%eax ; je accept            // IT 18 == DMA
   //   lea -0x13(%rax),%edx ; cmp $0x30,%edx ; jbe maskcheck       // idx = it-0x13, ≤48
@@ -78,14 +78,14 @@ void visitInstruction(Instruction &I) {
 }
 ```
 
-> **The accept set is the bir DMA-opcode taxonomy, reused verbatim.** The 49-byte mask at `0x1df22c0` (index `it-0x13`) has `1` at `it ∈ {0x13 Load, 0x16 Save, 0x20 TensorCopy, 0x29..0x2E Generic/Abstract-DMA family, 0x3B}`; the trailing `it ∈ {0x2F..0x32}` arm catches the remaining DMA-copy opcodes. This is the same family the D-D01 "IT 18 DMA" predicate accepts — `alloc_queues` does not invent its own opcode set. CONFIRMED (`cmp`/`cmpb` immediates read directly).
+> **The accept set is the bir DMA-opcode taxonomy, reused verbatim.** The 49-byte mask at `0x1df22c0` (index `it-0x13`) has `1` at `it ∈ {0x13 Load, 0x16 Save, 0x20 TensorCopy, 0x29..0x2E Generic/Abstract-DMA family, 0x3B}`; the trailing `it ∈ {0x2F..0x32}` arm catches the remaining DMA-copy opcodes. This is the same family the "IT 18 DMA" predicate accepts — `alloc_queues` does not invent its own opcode set. The `cmp`/`cmpb` immediates are read directly.
 
 > **Correction over the field note.** An earlier read recorded the third arm as a bare `it == 3`. The disassembly is `sub $0x2f,%eax; cmp $0x3,%eax; ja` — a *range* `it ∈ {0x2F, 0x30, 0x31, 0x32}`, not a single equality. Use the range.
 
 `visitInstActivation` (`@0x111bd50`) queues an activation **only** when its accumulate/spill flag is set:
 
 ```c
-// AllocQueuesImpl::visitInstActivation(InstActivation &I)  @0x111bd50  [CONFIRMED]
+// AllocQueuesImpl::visitInstActivation(InstActivation &I)  @0x111bd50
 void visitInstActivation(InstActivation &I) {
   if (*(uintptr_t*)(I.payload + 0x1F0) != 0)        // accumulator-dump flag set
       findQueue(I);                                 // the activation itself drives a DMA
@@ -95,10 +95,10 @@ void visitInstActivation(InstActivation &I) {
 
 ### Algorithm — `findQueue`, the allocate-or-reuse core
 
-This is the dedup. CONFIRMED — the entire call chain is read off `findQueue`'s body:
+This is the dedup; the entire call chain is read off `findQueue`'s body:
 
 ```c
-// AllocQueuesImpl::findQueue(Instruction &I)  @0x111b730  [CONFIRMED]
+// AllocQueuesImpl::findQueue(Instruction &I)  @0x111b730
 DMAQueue *findQueue(Instruction &I) {
   QueueTuple t   = findQueueTuple(I);               // call @0x61a200 → impl 0x111ae30
   Module    *m   = I.getModule();                   // call @0x5ede60
@@ -117,12 +117,12 @@ DMAQueue *findQueue(Instruction &I) {
 
 > **Queue identity is value-identity, not pointer-identity and not round-robin.** Two DMAs land on the **same** `DMAQueue` iff `getFullName()` returns **equal strings** — i.e. same engine identity ∧ same `Type` ∧ same engine-count tuple. The number of queues = the number of **distinct** full-name strings that appear, clamped per type/engine to `optNumDMAEngines`. There is no allocation counter, no `engine_id % N`; the hash table in `Module` *is* the allocator. This is the page's single most important fact: a reimplementer who allocates per-instruction, or round-robins, produces a different (and wrong) queue assignment.
 
-`Module::addQueue`'s demangled signature confirms the second argument is `bir::DMAQueue::Type` (`@plt _ZN3bir6Module8addQueueE…NS_8DMAQueue4TypeE`), so the `Type` the tuple computed is baked into the queue at creation. CONFIRMED.
+`Module::addQueue`'s demangled signature confirms the second argument is `bir::DMAQueue::Type` (`@plt _ZN3bir6Module8addQueueE…NS_8DMAQueue4TypeE`), so the `Type` the tuple computed is baked into the queue at creation.
 
 ### Building the tuple — `findQueueTuple`
 
 ```c
-// AllocQueuesImpl::findQueueTuple(Instruction const &I)  @0x111ae30  [STRONG]
+// AllocQueuesImpl::findQueueTuple(Instruction const &I)  @0x111ae30
 QueueTuple findQueueTuple(const Instruction &I) {
   QueueTuple t;                                     // default ctor @0x11182f0
   // iterate I's Arguments (boost filter/join iterators), llvm::cast<AccessPattern>;
@@ -135,7 +135,7 @@ QueueTuple findQueueTuple(const Instruction &I) {
 }
 ```
 
-`fillQueueTuple` computes the three keying fields. CONFIRMED — the `TensorKind → DMAQueue::Type` map and the engine-count clamp are read directly:
+`fillQueueTuple` computes the three keying fields; the `TensorKind → DMAQueue::Type` map and the engine-count clamp are read directly:
 
 ```c
 // AllocQueuesImpl::fillQueueTuple(AccessPattern const &ap, QueueTuple &t) @0x111ab80
@@ -156,7 +156,7 @@ bool fillQueueTuple(const AccessPattern &ap, QueueTuple &t) {
   else if (kind == 9)                 t.type = 2;    //          9 → DATA
   else if (isTensorKindInput(kind))   t.type = 0;    //            → INPUT
   else if (isTensorKindOutput(kind))  t.type = 1;    //            → OUTPUT
-  else  assert(0 && "Unexpected tensor kind");       // .rodata string CONFIRMED
+  else  assert(0 && "Unexpected tensor kind");       // .rodata string
 
   // engine-count clamp (caps requested queues at the HW DMA-engine count):
   t.field[0x24] = optNumDMAEngines->[0x78];
@@ -167,11 +167,11 @@ bool fillQueueTuple(const AccessPattern &ap, QueueTuple &t) {
 }
 ```
 
-The `DMAQueue::Type` enum (cross-checked against D-E16): `0 input, 1 output, 2 data, 3 pinned_weight, 4 indirect_loadsave, 5 embedding_update, 6 collective_compute, 7 dynamic_act_table, 8 dynamic`. CONFIRMED.
+The `DMAQueue::Type` enum is `0 input, 1 output, 2 data, 3 pinned_weight, 4 indirect_loadsave, 5 embedding_update, 6 collective_compute, 7 dynamic_act_table, 8 dynamic`.
 
 ### Picking the descriptor-gen engine — `determineEngine`
 
-`determineEngine` reconciles the H33 engine hint (`I+0x90`) with the `DGEType` (`I+0xF8`) to decide which engine owns the queue, and writes the engine id to `t+0x30`. CONFIRMED — the engine-id arms are byte-verified:
+`determineEngine` reconciles the H33 engine hint (`I+0x90`) with the `DGEType` (`I+0xF8`) to decide which engine owns the queue, and writes the engine id to `t+0x30`. The engine-id arms are byte-verified:
 
 ```c
 // AllocQueuesImpl::determineEngine(Instruction const &I, QueueTuple &t) @0x1118540
@@ -189,7 +189,7 @@ void determineEngine(const Instruction &I, QueueTuple &t) {
       if (it == 0x12 || isDMAFamily(it)) {
           int dge = I.field[0xF8];                   // DGEType (None0/SWDGE1/HWDGE2/Unassigned3)
           if ((unsigned)(dge - 1) <= 1) {            // dge ∈ {1 SWDGE, 2 HWDGE}
-              if (I.getModule()->field[0xAC] == 0x31) { /* arch gate, STRONG */ }
+              if (I.getModule()->field[0xAC] == 0x31) { /* arch gate */ }
               t.field[0x30] = 6;                     // route SW/HW-DGE DMAs to engine 6
           }
       }
@@ -198,15 +198,15 @@ void determineEngine(const Instruction &I, QueueTuple &t) {
 }
 ```
 
-> **`cmpl $0x8,0x20(%rbx)` (dynamic) and `cmpl $0x31,0xac(%rax)` (arch id) are byte-proven; the engine-1 and engine-6 stores are literal `movq $0x1,0x30(%rbx)` / `movq $0x6,0x30(%rbx)`.** The exact branch *structure* (which guard reaches which store) is STRONG: the two arch-id paths are inferred from the `getModule()->[0xAC] == 0x31` compare and are not exhaustively traced through every predecessor block.
+> **`cmpl $0x8,0x20(%rbx)` (dynamic) and `cmpl $0x31,0xac(%rax)` (arch id) are byte-proven; the engine-1 and engine-6 stores are literal `movq $0x1,0x30(%rbx)` / `movq $0x6,0x30(%rbx)`.** The exact branch *structure* — which guard reaches which store — is reconstructed: the two arch-id paths follow from the `getModule()->[0xAC] == 0x31` compare and are not exhaustively traced through every predecessor block.
 
 ### The dedup key — `QueueTuple::getFullName`
 
-`getFullName` (`@0x11183b0`) concatenates `EngineInfo2string(engineInfo)` (`@plt`) with the `Type` and the two size fields into one `std::string`. That string is the argument to `Module::getQueueByName`, so the equivalence class "same queue" is precisely **same engine-info ∧ same Type ∧ same size tuple**. Queue identity is ENGINE+TYPE keyed. CONFIRMED. (`QueueTuple::shorten(string)` `@0x1118300` is a name-truncation helper used for the human-readable display name, not for the dedup key.)
+`getFullName` (`@0x11183b0`) concatenates `EngineInfo2string(engineInfo)` (`@plt`) with the `Type` and the two size fields into one `std::string`. That string is the argument to `Module::getQueueByName`, so the equivalence class "same queue" is precisely **same engine-info ∧ same Type ∧ same size tuple**. Queue identity is ENGINE+TYPE keyed. (`QueueTuple::shorten(string)` `@0x1118300` is a name-truncation helper used for the human-readable display name, not for the dedup key.)
 
 ### Why order 124
 
-`assign_hwdge_engine` (order 123) sets the per-DMA `engine_id` (`I+0x90`) and `DGEType` (`I+0xF8`); `alloc_queues` consumes **both** (`determineEngine`). It cannot run earlier — the engine binding does not exist yet — and must run before chaining/switch-insertion (125/126), which operate on the `DMAQueue*` this pass stamps onto each inst (`I+0xF0`). STRONG (ordering inferred from the field-dependency chain; the order numbers are CONFIRMED from the pass registry).
+`assign_hwdge_engine` (order 123) sets the per-DMA `engine_id` (`I+0x90`) and `DGEType` (`I+0xF8`); `alloc_queues` consumes **both** (`determineEngine`). It cannot run earlier — the engine binding does not exist yet — and must run before chaining/switch-insertion (125/126), which operate on the `DMAQueue*` this pass stamps onto each inst (`I+0xF0`). The order numbers come from the pass registry; the "must precede" reasoning is inferred from the field-dependency chain.
 
 ---
 
@@ -214,7 +214,7 @@ void determineEngine(const Instruction &I, QueueTuple &t) {
 
 ### Purpose
 
-A DMA transpose programs a 4-D transpose descriptor (the verifier `checkDMATranspose` requires a 4-D in/out AP, `TranOp ∈ {XZYW, XYZW}`, HBM→SB only). Re-arming that descriptor per transpose is expensive. `chain_dma_transposes` forces consecutive **same-queue** transposes into one ordered chain so the queue executes them back-to-back, setting the descriptor preamble once and re-using the queue's warm descriptor context. The source path `…/walrus/chain_dma_transposes/src/chain_dma_transposes.cpp` is baked verbatim in `.rodata`. CONFIRMED.
+A DMA transpose programs a 4-D transpose descriptor (the verifier `checkDMATranspose` requires a 4-D in/out AP, `TranOp ∈ {XZYW, XYZW}`, HBM→SB only). Re-arming that descriptor per transpose is expensive. `chain_dma_transposes` forces consecutive **same-queue** transposes into one ordered chain so the queue executes them back-to-back, setting the descriptor preamble once and re-using the queue's warm descriptor context. The source path `…/walrus/chain_dma_transposes/src/chain_dma_transposes.cpp` is baked verbatim in `.rodata`.
 
 ### Entry Point
 
@@ -228,10 +228,10 @@ ChainDMATransposes::run(Module&)  @0x16a3880
 
 ### Algorithm — local transpose chain
 
-CONFIRMED — the same-queue compare, the null guards, and the `EdgeKind` constant are byte-verified:
+The same-queue compare, the null guards, and the `EdgeKind` constant are all byte-verified:
 
 ```c
-// ChainDMATransposes::chainDMATransposes(BasicBlock &bb)  @0x169f330  [CONFIRMED]
+// ChainDMATransposes::chainDMATransposes(BasicBlock &bb)  @0x169f330
 void chainDMATransposes(BasicBlock &bb) {
   DMAQueue    *prevQueue      = nullptr;   // rsp+0x48
   Instruction *prevTransposeI = nullptr;   // rsp+0x30
@@ -260,7 +260,7 @@ void chainDMATransposes(BasicBlock &bb) {
 }
 ```
 
-> **CHAIN CRITERION = adjacency in program order ∧ `isTransposeDMA` ∧ same `DMAQueue`.** The `mov $0x3,%edx` immediately before `addDependency` is byte-proven: `EdgeKind = 3 = Output` (D-E19 precedence `Invalid0 < Ordered1 < Anti2 < Output3 < Flow4`). It is a strict *ordering* edge, **not** a data edge — the scheduler serialises the transposes on their shared queue without inventing a false data dependence. The diagnostic `"DMATranspose dependency check: I …"` (`@0x1d85e60`) dumps each link.
+> **CHAIN CRITERION = adjacency in program order ∧ `isTransposeDMA` ∧ same `DMAQueue`.** The `mov $0x3,%edx` immediately before `addDependency` is byte-proven: `EdgeKind = 3 = Output` (precedence `Invalid0 < Ordered1 < Anti2 < Output3 < Flow4`). It is a strict *ordering* edge, **not** a data edge — the scheduler serialises the transposes on their shared queue without inventing a false data dependence. The diagnostic `"DMATranspose dependency check: I …"` (`@0x1d85e60`) dumps each link.
 
 ### Algorithm — XBar transpose ↔ SB ordering
 
@@ -278,7 +278,7 @@ void chainDMATransposes(BasicBlock &bb) {
 [xbar-transpose] LastXbarTranspose:   LastRemoteSBPush:   LastSBCollective:
 ```
 
-> **The XBar ordering is BIDIRECTIONAL.** The latches `JustGotSBCollective` / `JustGotRemoteSBPush` plus `LastXbarTranspose` / `LastSBCollective` / `LastRemoteSBPush` produce edges in **both** directions: `xbar transpose → SB collective/sb DMA` **and** `sb DMA/collective → xbar transpose`. A reimplementer who only adds the forward `transpose → consumer` edge (the simpler reading) under-constrains the schedule — the binary tracks the *last* of each kind on both sides and emits the reverse edge when an XBar transpose follows an SB push/collective. Two internal diagnostic queue labels, `"TransposeInstQueue"` and `"RemoteSBQueue"` (`@0x1c892b1` / `@0x1c892c4`), name the streams. CONFIRMED (string roster read directly).
+> **The XBar ordering is BIDIRECTIONAL.** The latches `JustGotSBCollective` / `JustGotRemoteSBPush` plus `LastXbarTranspose` / `LastSBCollective` / `LastRemoteSBPush` produce edges in **both** directions: `xbar transpose → SB collective/sb DMA` **and** `sb DMA/collective → xbar transpose`. A reimplementer who only adds the forward `transpose → consumer` edge (the simpler reading) under-constrains the schedule — the binary tracks the *last* of each kind on both sides and emits the reverse edge when an XBar transpose follows an SB push/collective. Two internal diagnostic queue labels, `"TransposeInstQueue"` and `"RemoteSBQueue"` (`@0x1c892b1` / `@0x1c892c4`), name the streams. (The string roster is read directly.)
 
 ---
 
@@ -286,12 +286,12 @@ void chainDMATransposes(BasicBlock &bb) {
 
 ### Purpose
 
-Two opcodes carry the queue-context switch (D-D01 / D-G03):
+Two opcodes carry the queue-context switch:
 
 - **IT 85 `SwitchQueueInstance`** — directs subsequent DMAs of a queue to a specific queue-**instance** (a `BasicBlockHolder` in the `DMAQueue`'s `dma_blocks` list).
 - **IT 86 `ResetQueueInstance`** — re-arms / resets the queue-instance pointer (same `{Q, Instance}` compare, no new holder).
 
-Both carry two operands: `Q` (the `DMAQueue`) and `Instance` (a `BasicBlockHolder`) whose parent must be exactly `Q`. The verifier (`check{Switch,Reset}QueueInstance` `@0xfe6690` / `@0xfe7170`) asserts `Q != nullptr`, `Instance != nullptr`, and `llvm::cast<DMAQueue>(Instance->getParent()) == Q`. CONFIRMED.
+Both carry two operands: `Q` (the `DMAQueue`) and `Instance` (a `BasicBlockHolder`) whose parent must be exactly `Q`. The verifier (`check{Switch,Reset}QueueInstance` `@0xfe6690` / `@0xfe7170`) asserts `Q != nullptr`, `Instance != nullptr`, and `llvm::cast<DMAQueue>(Instance->getParent()) == Q`.
 
 ### Entry Point
 
@@ -302,11 +302,11 @@ InsertDMASwitchQueueInstance::run(vector<Module>&)  @0x169c420   // multi-module
 BirLinker::fpassInsertSwitchQueueInstances()  @0x15d9080         // pipeline wiring (fpass)
 ```
 
-`run()` itself is fmt-based logging; the work is in `enterBasicBlock`. The `BirLinker` hook (`@0x15d9080`) iterating `BasicBlockHolder::blocks()` confirms this is a finalisation fpass, consistent with order 126. CONFIRMED.
+`run()` itself is fmt-based logging; the work is in `enterBasicBlock`. The `BirLinker` hook (`@0x15d9080`) iterating `BasicBlockHolder::blocks()` marks this as a finalisation fpass, consistent with order 126.
 
 ### Algorithm — the insertion worker
 
-CONFIRMED — every call and every field stamp is byte-verified:
+Every call and every field stamp is byte-verified:
 
 ```c
 // InsertDMASwitchQueueInstanceImpl::enterBasicBlock(BasicBlock &bb)  @0x169d1d0
@@ -335,9 +335,9 @@ void enterBasicBlock(BasicBlock &bb) {
 }
 ```
 
-> **One `SwitchQueueInstance` at the FRONT of every non-loop-body block, per DATA queue.** Loop bodies are excluded (`isLoopBody → return`) on purpose: a loop re-uses the same instance across iterations, and inserting a switch per iteration would defeat the warm-descriptor reuse `chain_dma_transposes` just set up. Each non-loop block that re-enters a DATA queue points the hardware at a fresh descriptor ring so producers in different blocks do not stomp each other's in-flight descriptors. CONFIRMED — `cmpl $0x2,0xa8` and the three field stores (`+0xF8`, `+0xF0`, `+0x90`) are read directly.
+> **One `SwitchQueueInstance` at the FRONT of every non-loop-body block, per DATA queue.** Loop bodies are excluded (`isLoopBody → return`) on purpose: a loop re-uses the same instance across iterations, and inserting a switch per iteration would defeat the warm-descriptor reuse `chain_dma_transposes` just set up. Each non-loop block that re-enters a DATA queue points the hardware at a fresh descriptor ring so producers in different blocks do not stomp each other's in-flight descriptors. `cmpl $0x2,0xa8` and the three field stores (`+0xF8`, `+0xF0`, `+0x90`) are read directly.
 
-> **Reconciliation: which operand is `+0xF8`.** This pass writes `Instance → sqi+0xF8` and `Q → sqi+0xF0`. The codegen consumer ([DMA Encoding](../isa/dma-encoding.md)) treats, on the `InstSwitchQueueInstance`, `I+0xF8` as the `DMAQueue` object and `I+0xF0` as the `DMAQueue*` map key — the **same two slots**, read from the codegen side. On an ordinary `InstDMA`, by contrast, `I+0xF8` is the `DGEType`; the slot is overloaded by instruction layout. A reimplementer must not assume `+0xF8` has one fixed meaning across opcodes. CONFIRMED on both sides; the apparent `Instance` vs `DMAQueue` naming difference is the same physical field viewed at insertion vs. encode time.
+> **Reconciliation: which operand is `+0xF8`.** This pass writes `Instance → sqi+0xF8` and `Q → sqi+0xF0`. The codegen consumer ([DMA Encoding](../isa/dma-encoding.md)) treats, on the `InstSwitchQueueInstance`, `I+0xF8` as the `DMAQueue` object and `I+0xF0` as the `DMAQueue*` map key — the **same two slots**, read from the codegen side. On an ordinary `InstDMA`, by contrast, `I+0xF8` is the `DGEType`; the slot is overloaded by instruction layout. A reimplementer must not assume `+0xF8` has one fixed meaning across opcodes. Both sides are read directly; the apparent `Instance` vs `DMAQueue` naming difference is the same physical field viewed at insertion vs. encode time.
 
 ### Relationship to `ResetQueueInstance` (86)
 
@@ -347,7 +347,7 @@ void enterBasicBlock(BasicBlock &bb) {
 
 ## Codegen handoff (J-strand)
 
-Each DMA now carries (a) `DMAQueue* @+0xF0` + queue-type `@+0x90` (`alloc_queues`), (b) `Output`-edge transpose chains (`chain_dma_transposes`), (c) front-of-block `SwitchQueueInstance` ops referencing `{Q, Instance}` (`insert_dma_switch_queue_instance`). The codegen consumers are present and CONFIRMED:
+Each DMA now carries (a) `DMAQueue* @+0xF0` + queue-type `@+0x90` (`alloc_queues`), (b) `Output`-edge transpose chains (`chain_dma_transposes`), (c) front-of-block `SwitchQueueInstance` ops referencing `{Q, Instance}` (`insert_dma_switch_queue_instance`). The codegen consumers are all present:
 
 | Consumer | Address | Role |
 |---|---|---|
@@ -356,30 +356,30 @@ Each DMA now carries (a) `DMAQueue* @+0xF0` + queue-type `@+0x90` (`alloc_queues
 | `CoreV2GenImpl::visitInstSwitchQueueInstance` | `@0x1264240` | emit instruction binary (`createInstBin`/`findBin`), length-guarded by `checkQueueNameLen` |
 | `CoreV2GenImpl::visitInstResetQueueInstance` | `@0x1264830` | emit the re-arm binary; opens with a hard pre-assert on `ModuleAttribute::neff_feature_SQI_no_rearm` |
 
-> **The no-rearm feature gate.** `CoreV2Gen` is gated by `ModuleAttribute::neff_feature_SQI_no_rearm` (assert `@0x1d6b670`): when the NEFF carries this feature, codegen suppresses the implicit queue re-arm — the SQI alone switches the instance without an automatic `Reset`. `SwitchQueue` *writes* a feature attr; `ResetQueue` *reads* the no-rearm attr (errcode 1106 if absent) — they are the set/read pair of the hardware Swap-Queue-Instance feature. CONFIRMED. The full wire encoding (op `0xCF` SwitchQueue / `0xC2` ResetQueue, the `+0x3B` instance flag, the per-trigger `DenseMap<DMAQueue*,BasicBlock*>` queue-name lookup) is documented in [DMA Encoding](../isa/dma-encoding.md).
+> **The no-rearm feature gate.** `CoreV2Gen` is gated by `ModuleAttribute::neff_feature_SQI_no_rearm` (assert `@0x1d6b670`): when the NEFF carries this feature, codegen suppresses the implicit queue re-arm — the SQI alone switches the instance without an automatic `Reset`. `SwitchQueue` *writes* a feature attr; `ResetQueue` *reads* the no-rearm attr (errcode 1106 if absent) — they are the set/read pair of the hardware Swap-Queue-Instance feature. The full wire encoding (op `0xCF` SwitchQueue / `0xC2` ResetQueue, the `+0x3B` instance flag, the per-trigger `DenseMap<DMAQueue*,BasicBlock*>` queue-name lookup) is documented in [DMA Encoding](../isa/dma-encoding.md).
 
 This closes the DMA-resource binding: `assign_hwdge_engine` bound the **engine**, and these three passes bind the **queue** + **instance** + inter-transpose **order** that codegen serialises into the per-engine NEFF DMA stream (trigger → DMABlock → descriptors), partitioned by `DMAQueue`.
 
 ---
 
-## Confidence and Gaps
+## Evidence anchors and limits
 
 | Claim | Confidence | Anchor |
 |---|---|---|
-| `findQueue` allocate-or-reuse chain (`findQueueTuple → getFullName → getQueueByName → addQueue`) | CONFIRMED | `@0x111b730` body; calls `@0x61a200/0x625c20/0x5fbad0/0x62bf90` |
-| `getFullName` string == dedup key; queue identity is value-identity | CONFIRMED | `getQueueByName(name)` is the only lookup; `addQueue(name,Type)` on miss |
-| DMA-class gate (`it==0x12 ∨ mask[it-0x13] ∨ it∈{0x2F..0x32}`) | CONFIRMED | `cmp`/`cmpb`/`sub` immediates `@0x111be51..` |
-| `kind2QueType` TensorKind→Type map + engine-count `pminud` clamp | CONFIRMED | `fillQueueTuple` `@0x111ab80`; assert string `"…kind2QueType…"` |
-| Transpose chain criterion (same-queue adjacency, `EdgeKind=3`) | CONFIRMED | `mov $0x3,%edx` + `cmp %rax,%rbx;je` `@0x169fb5f` |
-| XBar ordering is bidirectional | CONFIRMED | reverse-edge diag strings `"sb DMA -> xbar transpose"` etc. |
-| SQI inserted at front of non-loop-body block, DATA queues only; `{Q@+0xF0, Instance@+0xF8}` stamps | CONFIRMED | `cmpl $0x2,0xa8`; `mov …,0xf8/0xf0/0x90(%r14)` `@0x169dead..` |
-| `neff_feature_SQI_no_rearm` codegen gate | CONFIRMED | assert `@0x1d6b670`; `CoreV2Gen` `@0x1264240/0x1264830` |
-| `determineEngine` exact branch structure (engine 1 vs 6, arch-id `0x31` gate) | STRONG | engine-id `movq` arms read; predecessor reachability not exhaustively traced |
-| Pass-ordering rationale (124 after 123, before 125/126) | STRONG | order numbers CONFIRMED; "must precede" inferred from field-dependency chain |
-| `DMAQueue` discriminant `+0xA8` vs type `+0xAC` | INFERRED | both read in this pass (skip on `+0xA8==2`, stamp from `+0xAC`); a 4-byte aliasing in the walrus view of `DMAQueue` is the likely reconciliation, not byte-proven here |
+| `findQueue` allocate-or-reuse chain (`findQueueTuple → getFullName → getQueueByName → addQueue`) | CERTAIN | `@0x111b730` body; calls `@0x61a200/0x625c20/0x5fbad0/0x62bf90` |
+| `getFullName` string == dedup key; queue identity is value-identity | CERTAIN | `getQueueByName(name)` is the only lookup; `addQueue(name,Type)` on miss |
+| DMA-class gate (`it==0x12 ∨ mask[it-0x13] ∨ it∈{0x2F..0x32}`) | CERTAIN | `cmp`/`cmpb`/`sub` immediates `@0x111be51..` |
+| `kind2QueType` TensorKind→Type map + engine-count `pminud` clamp | CERTAIN | `fillQueueTuple` `@0x111ab80`; assert string `"…kind2QueType…"` |
+| Transpose chain criterion (same-queue adjacency, `EdgeKind=3`) | CERTAIN | `mov $0x3,%edx` + `cmp %rax,%rbx;je` `@0x169fb5f` |
+| XBar ordering is bidirectional | CERTAIN | reverse-edge diag strings `"sb DMA -> xbar transpose"` etc. |
+| SQI inserted at front of non-loop-body block, DATA queues only; `{Q@+0xF0, Instance@+0xF8}` stamps | CERTAIN | `cmpl $0x2,0xa8`; `mov …,0xf8/0xf0/0x90(%r14)` `@0x169dead..` |
+| `neff_feature_SQI_no_rearm` codegen gate | CERTAIN | assert `@0x1d6b670`; `CoreV2Gen` `@0x1264240/0x1264830` |
+| `determineEngine` exact branch structure (engine 1 vs 6, arch-id `0x31` gate) | HIGH | engine-id `movq` arms read; predecessor reachability not exhaustively traced |
+| Pass-ordering rationale (124 after 123, before 125/126) | HIGH | order numbers read from the pass registry; "must precede" inferred from the field-dependency chain |
+| `DMAQueue` discriminant `+0xA8` vs type `+0xAC` | MEDIUM | both read in this pass (skip on `+0xA8==2`, stamp from `+0xAC`); a 4-byte aliasing in the walrus view of `DMAQueue` is the likely reconciliation, not byte-proven here |
 | `DMAQueueAttribute` member names (`num_queues`/`sync_type`/`priority_class`) | GAP | written structurally; enumerator names unrecoverable from this binary |
 
-**Re-verify ceiling.** The three pass entry points, worker bodies, the `findQueue` dedup chain, the `EdgeKind=3` chain constant, the DATA-only SQI insertion and its `{Q,Instance}` field stamps, and the codegen gate are all byte-anchored — these will not move. The two places a re-implementer should re-derive rather than trust verbatim are `determineEngine`'s exact engine-selection branch tree (STRONG, not every guard's predecessor traced) and the `DMAQueue +0xA8`/`+0xAC` field reconciliation (INFERRED). Nothing on this page was taken from any source other than the cp310 `libwalrus.so` disassembly and its baked `.rodata` strings.
+The three pass entry points, their worker bodies, the `findQueue` dedup chain, the `EdgeKind=3` chain constant, the DATA-only SQI insertion with its `{Q,Instance}` field stamps, and the codegen gate are all byte-anchored. Two things are worth re-deriving rather than trusting verbatim: `determineEngine`'s exact engine-selection branch tree, where the individual stores are read but not every guard's predecessor is traced, and the `DMAQueue +0xA8`/`+0xAC` field reconciliation, which is a reading rather than a proof. Everything on this page comes from the cp310 `libwalrus.so` disassembly and its baked `.rodata` strings.
 
 ---
 

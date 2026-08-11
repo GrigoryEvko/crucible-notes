@@ -13,7 +13,7 @@ Every byte offset, shift, and mask on this page is recovered two ways and cross-
 
 * The **host-side JSON pretty-printers** in `libncfw.so` (`ELF64 x86-64`, **not stripped**,
   615 640 B; SHA-256 `598920d7…aa3e49`; BuildID `a98f8e1c…db5`; SONAME
-  `libncfw.so.2.31.1.0.cf13a49f` — all four re-verified this session) walk the exact runtime
+  `libncfw.so.2.31.1.0.cf13a49f` — all four confirmed) walk the exact runtime
   structs the LX core builds. They are the device-data ground truth.
 * The **host packer + struct DB** in `libnrt.so.2.31.24.0` (`.text` VMA==fileoffset) builds
   the same records. `create_spad_ctrl_entry @0x232cd0` writes them; the IDA-recovered
@@ -27,9 +27,10 @@ Every byte offset, shift, and mask on this page is recovered two ways and cross-
 > so the `_ZTV+0x10` rule is irrelevant. All counts are `nm`/`objdump`-grounded, never
 > grepped from a decompile.
 
-Confidence tags: **HIGH / MED / LOW** × **OBSERVED** (read from bytes/disasm) /
-**INFERRED** (deduced from names + sibling reports) / **CARRIED** (asserted by a sibling
-page, restated here).
+The page default is `[OBSERVED HIGH]` (read from bytes/disasm); claims that depart
+from it carry an explicit tag — **HIGH / MED / LOW** × **OBSERVED** / **INFERRED**
+(deduced from names + sibling pages) / **CARRIED** (asserted by a sibling page,
+restated here).
 
 ---
 
@@ -142,7 +143,7 @@ The entry pointer (`entry_base + 1`) is held in `[rbp-0x110]`. Every load + mask
 `"reporter"@0x65058`, `"ring_wait_complete"@0x65063`, `"ring_send_complete"@0x65078`,
 ring-tag `"ring"@0x6508d` + `"channel_list"@0x65092`, mesh-tag `"mesh"@0x650a1` +
 `"sema_shift_offset"@0x650a6` + `"sema_mask"@0x650be`. `[OBSERVED HIGH — every shift/mask
-immediate and every key string read this session.]`
+immediate and every key string read.]`
 
 ### 3.2 · The full struct (from the `libnrt` struct DB) — including the fields the printer omits
 
@@ -250,11 +251,11 @@ the packer's 5-bit `& 0x1F` nibble (§4).]`
 
 ---
 
-## 4 · The host packer — `create_spad_ctrl_entry @0x232cd0` (re-verified byte-exact)
+## 4 · The host packer — `create_spad_ctrl_entry @0x232cd0` (byte-exact)
 
 The host (`libnrt`) packs each 8-byte entry; the packer's shifts land exactly where the
 firmware decoder (§3) reads. The header word `(trigger_next << 15) | (sub_type << 12) |
-(algo_type << 8) | 1` was re-disassembled this session — **not trusted blind**:
+(algo_type << 8) | 1` was disassembled — **not trusted blind**:
 
 ```asm
 ; create_spad_ctrl_entry @0x232cd0   (range 0x232cd0..0x2331c6, 300 insns, 8-B entry)
@@ -429,7 +430,7 @@ sz = encd_arch_get_sp_spad_slot_tpb_iram_size();   // cayman → 0x8000  (32 KiB
 dma_load((char*)sp->spad + 0x100000, sz, "TOPSP SLOT SPAD", slot_spad_base[0].soc_addr);
 ```
 
-> **NOTE — SPAD region sizes (re-verified via the sibling's `libnrt` accessors).**
+> **NOTE — SPAD region sizes (via the sibling's `libnrt` accessors).**
 > **CTRL SPAD → SP SRAM = `0x1000` (4 KiB)** (`cayman_get_sp_spad_ctrl_sram_size @0x25af00`);
 > **SLOT SPAD → TPB IRAM = `0x8000` (32 KiB)** (`cayman_get_sp_spad_slot_tpb_iram_size
 > @0x25af10`). The NCFW-ctx ctrl/slot SPAD offsets are `0x42d0`/`0x42a0`
@@ -451,7 +452,7 @@ MARIANA_PLUS`. Each of the five decoders is cloned once per arch (stride table):
 | `…_dev_configs` | `0xc371` | `0x25118` | `0x3debf` | `0x56c66` |
 
 **Both the `cc_op` schema and the tsync struct are byte-identical across all four arches.**
-Verified this session by extracting the schema-defining immediates from each copy:
+Verified by extracting the schema-defining immediates from each copy:
 
 * `cc_op_entry` — the bitfield extractors (`and 0xf`, `shr al,4`, `and 7`, `shr al,7`,
   `[rax+0x1]` masks, `mov ebx,[rax+0x3]`, `movzx [rax+0x3]`, `movzx [rax+0x5]`) are

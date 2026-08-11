@@ -30,7 +30,7 @@ For reimplementation, the contract is:
 
 ## Layout Vocabulary
 
-Every pass on this page reduces to one question: *is this shape's layout descending, and if not, make it so.* Three binary-confirmed primitives encode that question.
+Every pass on this page reduces to one question: *is this shape's layout descending, and if not, make it so.* Three primitives encode that question.
 
 **The predicate — `LayoutUtil::IsMonotonicWithDim0Major(const Layout&)` @`0x97ca3e0`.** It reads the Layout's `minor_to_major` inlined vector (size at `[L+0x10]`, data at `[L+0x18]` or inline) and returns TRUE iff the sequence is non-increasing across its whole length — i.e. `{rank−1, …, 1, 0}`. Empty or single-element layouts are trivially TRUE. Both #71's parameter check and #23's constant check call this by symbol (`call _ZN3xla10LayoutUtil24IsMonotonicWithDim0MajorERKNS_6LayoutE` from #71 Run @`0x1f84fd6` and from `canonicalizeConstant` @`0x1ed4861`).
 
@@ -205,7 +205,7 @@ Phase B is a cheap escape hatch: rather than diff every root leaf, it builds a *
 
 Phase C's insert is a **`kCopy`**, never a transpose or bitcast. `MakeValidatedShapeWithDescendingLayout(elem_type, dims)` builds the canonical target shape; `Shape::Equal` decides if a copy is even needed; the `unique_id → copy` SwissTable ensures that if the same operand feeds the root tuple twice, a single shared copy is inserted, not two. The pass swaps operands only — it does not run HloDCE, so any now-dead producers are left for a later DCE.
 
-> **CORRECTION (D-B31-1) —** the two TUPLE element-type tests in Phase A/C are `cmp dword ptr [rax], 0Dh`, i.e. a 32-bit compare of the `element_type` slot, not a byte compare. The sentinel value `0x0D`/TUPLE is unchanged; only the operand width is corrected here (verified at `0x1f852e3` and `0x1f855f9`).
+> **NOTE —** the two TUPLE element-type tests in Phase A/C (`0x1f852e3`, `0x1f855f9`) are 32-bit compares — `cmp dword ptr [rax], 0Dh` — against the `element_type` slot, not byte compares. The sentinel value is `0x0D`/TUPLE either way; only the operand width differs from the byte tests elsewhere in this subsystem.
 
 > **NOTE —** despite running among the collective passes, #71 has nothing to do with collectives. It is named for *layout in root*; its sole graph edit is the root-tuple `kCopy`. Its placement late in the pipeline is so that it sees the final post-layout-assignment shapes, not collective semantics.
 
@@ -222,7 +222,7 @@ This is an `xla::OpExpanderPass`: it shares `OpExpanderPass::Run` @`0x29f0bb0` a
 ### Algorithm
 
 ```c
-bool InstructionMatchesPattern(HloInstruction* inst):           // 0x20025e0 (37 B, fully transcribed)
+bool InstructionMatchesPattern(HloInstruction* inst):           // 0x20025e0 (37 B)
     if (inst->opcode() != kAllReduce/7) return false;           // cmp byte [inst+0x14], 7
     ar = Cast<HloAllReduceInstruction>(inst);                   // 0x1eeebf0
     return ar->constrain_layout;                                // movzx eax, byte [ar+0x250]

@@ -23,22 +23,24 @@
 > Confidence tags use the `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` model defined in
 > [`../../reference/confidence-model.md`](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 > read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-> re-used at a sibling's confidence without re-reading the artifact this pass.
+> re-used at a sibling's confidence without re-reading the artifact.
 
 ---
 
 ## 1. TL;DR — the pinned facts
 
-| # | Fact | Evidence | Tag |
-|---|------|----------|-----|
-| 1 | `TensorScalarImmLdArith` = **`0x70`**, `TensorScalarImmLdBitvec` = **`0x71`**; both carry `// n, ucode/kaenadve exists, not maintained/used` — byte-identical on **all four gens**. | `common.h:209/210` (mariana) | HIGH/OBSERVED |
-| 2 | **ImmLd is a LOAD, not a compute op.** `S2_BN` is *"one 2d SRC, no DST"* — **no** `dst_mem_pattern`, **no** `op0`/`op1` AluOp, **no** `reverse_operands`, **no** accumulator. It preloads ≤8 per-channel scalars into DVE storage flops for the *next* op to read. | `s2_bn.h:11–16/72–92` header verbatim | HIGH/OBSERVED |
-| 3 | The **consumer** is [`TensorScalarPtrMulti`](ts-ptrmulti.md) (`0x4F`/`0x5F`, struct `S4D4_TSM`): `for i in range(W): dst[i,…] = (src[i,…] op scalar[i])`, where `scalar[i]` is the i-th ImmLd-preloaded value and `W = num_elem[3]` must equal the count ImmLd loaded. | `s4d4_tsm.h:23–49` verbatim | HIGH/OBSERVED |
-| 4 | **Struct = `NEURON_ISA_TPB_S2_BN_STRUCT`, 64 B**, shared by exactly **four** opcodes: `BatchNormParamLoad`, `MatchValueLoad`, `ImmLdArith` (`0x70`), `ImmLdBitvec` (`0x71`). Compile-verified `sizeof == 64` on sunda/cayman/mariana/maverick. | `instruction_mapping.json` `struct2opcode` + `gcc` `offsetof`/`sizeof` this pass | HIGH/OBSERVED |
-| 5 | The **Arith-vs-Bitvec split is a DTYPE/CONVERSION split, not an AluOp-set split.** `S2_BN` has no AluOp field; the *only* `0x70`/`0x71` difference is the accepted load dtype set + bit-interpretation (`tsm_immld_dtypes`): Arith = 12 dtypes → **converted to fp32**; Bitvec = 4 dtypes → **raw bits, zero-extended**. | `s2_bn.h:215–234` (`tsm_immld_dtypes`) verbatim | HIGH/OBSERVED |
-| 6 | The values to load come **entirely from `src_mem_pattern`** (1..8 elements); `imm1`/`imm0_ptr`/`imm0_src` are **forced zero** (`has_s2_bn_zero_immediates`). ImmLd carries **no inline scalar** — it loads a *vector* of up-to-8 scalars from memory. | `s2_bn.h` `has_tsm_immediates_load_src_element_cnt` + `has_s2_bn_zero_immediates` | HIGH/OBSERVED |
-| 7 | **Universally present, universally stubbed.** Eight `"S: TensorScalarImmLd{Arith,Bitvec}"` self-name strings (2/gen × 4 DVE regions). The on-device workers are **40-byte LOG-only stubs** (`entry a1,32`; log self-name; `retw.n` — **no compute**), kernel-registered via the stub template. | `grep -abo` (8 hits) + native `xtensa-elf-objdump` of the MARIANA stub block | HIGH/OBSERVED |
-| 8 | **One CORRECTION to the family premise:** `S2_BN` is **not** shared with `NonzeroWithCount` (which uses `S3D3_NONZERO_WITH_COUNT`). The real `S2_BN` co-residents besides `MatchValueLoad` are `BatchNormParamLoad` + the two ImmLd ops. | `instruction_mapping.json` `struct2opcode` | HIGH/OBSERVED |
+All pinned facts below are `[HIGH/OBSERVED]`.
+
+| # | Fact | Evidence |
+|---|------|----------|
+| 1 | `TensorScalarImmLdArith` = **`0x70`**, `TensorScalarImmLdBitvec` = **`0x71`**; both carry `// n, ucode/kaenadve exists, not maintained/used` — byte-identical on **all four gens**. | `common.h:209/210` (mariana) |
+| 2 | **ImmLd is a LOAD, not a compute op.** `S2_BN` is *"one 2d SRC, no DST"* — **no** `dst_mem_pattern`, **no** `op0`/`op1` AluOp, **no** `reverse_operands`, **no** accumulator. It preloads ≤8 per-channel scalars into DVE storage flops for the *next* op to read. | `s2_bn.h:11–16/72–92` header verbatim |
+| 3 | The **consumer** is [`TensorScalarPtrMulti`](ts-ptrmulti.md) (`0x4F`/`0x5F`, struct `S4D4_TSM`): `for i in range(W): dst[i,…] = (src[i,…] op scalar[i])`, where `scalar[i]` is the i-th ImmLd-preloaded value and `W = num_elem[3]` must equal the count ImmLd loaded. | `s4d4_tsm.h:23–49` verbatim |
+| 4 | **Struct = `NEURON_ISA_TPB_S2_BN_STRUCT`, 64 B**, shared by exactly **four** opcodes: `BatchNormParamLoad`, `MatchValueLoad`, `ImmLdArith` (`0x70`), `ImmLdBitvec` (`0x71`). Compile-verified `sizeof == 64` on sunda/cayman/mariana/maverick. | `instruction_mapping.json` `struct2opcode` + `gcc` `offsetof`/`sizeof` |
+| 5 | The **Arith-vs-Bitvec split is a DTYPE/CONVERSION split, not an AluOp-set split.** `S2_BN` has no AluOp field; the *only* `0x70`/`0x71` difference is the accepted load dtype set + bit-interpretation (`tsm_immld_dtypes`): Arith = 12 dtypes → **converted to fp32**; Bitvec = 4 dtypes → **raw bits, zero-extended**. | `s2_bn.h:215–234` (`tsm_immld_dtypes`) verbatim |
+| 6 | The values to load come **entirely from `src_mem_pattern`** (1..8 elements); `imm1`/`imm0_ptr`/`imm0_src` are **forced zero** (`has_s2_bn_zero_immediates`). ImmLd carries **no inline scalar** — it loads a *vector* of up-to-8 scalars from memory. | `s2_bn.h` `has_tsm_immediates_load_src_element_cnt` + `has_s2_bn_zero_immediates` |
+| 7 | **Universally present, universally stubbed.** Eight `"S: TensorScalarImmLd{Arith,Bitvec}"` self-name strings (2/gen × 4 DVE regions). The on-device workers are **40-byte LOG-only stubs** (`entry a1,32`; log self-name; `retw.n` — **no compute**), kernel-registered via the stub template. | `grep -abo` (8 hits) + native `xtensa-elf-objdump` of the MARIANA stub block |
+| 8 | **One CORRECTION to the family premise:** `S2_BN` is **not** shared with `NonzeroWithCount` (which uses `S3D3_NONZERO_WITH_COUNT`). The real `S2_BN` co-residents besides `MatchValueLoad` are `BatchNormParamLoad` + the two ImmLd ops. | `instruction_mapping.json` `struct2opcode` |
 
 ---
 
@@ -55,24 +57,20 @@ table (`nm`). No source was consulted. The `extracted/` tree is gitignored — r
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified this pass |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Disassembler | `…/gpsimd_tools_tgz/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
-| MARIANA `NX_DVE` DEBUG IRAM | `MARIANA_NX_DVE_DEBUG_IRAM_get.data` file offset `0x408fc0` / size `0x1c560` (`.rodata` VA == file offset; disassembled at VA 0) — carved & decoded this pass |
+| MARIANA `NX_DVE` DEBUG IRAM | `MARIANA_NX_DVE_DEBUG_IRAM_get.data` file offset `0x408fc0` / size `0x1c560` (`.rodata` VA == file offset; disassembled at VA 0) — carved & decoded |
 | MARIANA `NX_DVE` DEBUG DRAM | `MARIANA_NX_DVE_DEBUG_DRAM_get.data` file offset `0x425520` / size `0x7000` (the `S:` self-name strings) |
 | CAYMAN `NX_DVE` DEBUG IRAM | file offset `0x16f660` / size `0x1bcc0` |
 | MAVERICK `NX_DVE` DEBUG IRAM | file offset `0x8945c0` / size `0x19000` |
 | ISA headers (compile-authoritative) | `…/c10/include/neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/aws_neuron_isa_tpb_{s2_bn,common,s4d4_tsm}.h` + `instruction_mapping.json` |
-
-The `nm -S` symbol-table offsets, the eight self-name strings, the MARIANA stub-block disassembly,
-and the four-gen `gcc` compile-verify were all **reproduced this pass**; `objdump` exit 0.
-`[HIGH/OBSERVED]`
 
 ---
 
 ## 3. The opcodes — ImmLd in the `TensorScalar*` family block
 
 Read verbatim from `aws_neuron_isa_tpb_common.h` (mariana; byte-identical value **and** marker on
-every gen — diff'd this pass):
+every gen — diff'd):
 
 ```c
 NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_IMM_LD_ARITH    = 0x70,   // n, ucode/kaenadve exists, not maintained/used
@@ -91,7 +89,7 @@ form the **deprecated/unwired** ImmLd→PtrMulti sub-family — all four carryin
 > rest of the family ([`tensor-scalar.md` §3 NOTE](tensor-scalar.md)), keep the two axes distinct:
 > the ~140-entry `NEURON_ISA_TPB_OPCODE_*` enum is the *firmware kernel-lane* dispatch axis; the
 > `ivp_*` vector roster is the *Xtensa ISA* axis. ImmLd's opcode dispatches a DVE handler — which on
-> this build is a stub (§7). `[HIGH/OBSERVED]`
+> this build is a stub (§7).
 
 ### 3.1 The deprecation marker, decoded
 
@@ -114,11 +112,11 @@ firmware-level meaning proven in §7]`
 ]
 ```
 
-`S2_BN` binds **exactly four** opcodes — `jq`-read this pass. All four are **load/setup ops**
+`S2_BN` binds **exactly four** opcodes — `jq`-read. All four are **load/setup ops**
 (src-only, load-into-DVE-state): `BatchNormParamLoad` stages the BN back-prop params,
 `MatchValueLoad` stages the 8 match keys `mv[0..7]`, and ImmLd stages the ≤8 PtrMulti scalars.
 That shared *"load N values into the engine's storage flops"* role is exactly why ImmLd lives on
-`S2_BN`. `[HIGH/OBSERVED — `jq` this pass]`
+`S2_BN`. `[HIGH/OBSERVED — `jq`]`
 
 > **CORRECTION — `S2_BN` is NOT shared with `NonzeroWithCount`.** An earlier family map placed
 > `NonzeroWithCount` on `S2_BN`. The `struct2opcode` table refutes this: `NonzeroWithCount` rides
@@ -136,7 +134,7 @@ This is the **same** 64-byte struct decoded for `BatchNormParamLoad` in
 differ. The header banner is verbatim: *"Neuron 'S2_BN' Format — one 2d SRC — no DST. Use for:
 BatchNormParamLoad / MatchValueLoad / TensorScalarImmLd."*
 
-A standalone `gcc` `offsetof`/`sizeof` probe over **all four gens'** headers **passed** this pass,
+A standalone `gcc` `offsetof`/`sizeof` probe over **all four gens'** headers **passed**,
 byte-identical every gen:
 
 ```
@@ -147,7 +145,7 @@ maverick sizeof=64 src=16 imm1=28 dtype=32 nac=34 imm0_ptr=44 imm0_src=48
   TENSOR2D=12 IMM_VAL=4 DTYPE=1 IMM_SRC=1   (all gens)
 ```
 
-`[HIGH/OBSERVED — `gcc` `offsetof`/`sizeof` over the shipped headers, all four gens this pass]`
+`[HIGH/OBSERVED — `gcc` `offsetof`/`sizeof` over the shipped headers, all four gens]`
 
 | off | size | field | type | role **for TensorScalarImmLd** |
 |----:|-----:|-------|------|--------------------------------|
@@ -415,14 +413,13 @@ offset `0x425520`) holds them at in-image DRAM offsets:
 | MARIANA / MARIANA_PLUS | `0x283f` | `0x285a` |
 | MAVERICK | `0x286f` | `0x288a` |
 
-Byte-read this pass: the bytes at MARIANA DRAM `0x283f` are `"S: TensorScalarImmLdArith\0"` and at
+Byte-read: the bytes at MARIANA DRAM `0x283f` are `"S: TensorScalarImmLdArith\0"` and at
 `0x285a` are `"S: TensorScalarImmLdBitvec\0"`. `[HIGH/OBSERVED — `grep -abo` + `dd` byte-read +
 `nm`-region mapping]`
 
 ### 7.2 The stub workers (40 bytes, LOG + `retw.n`, no compute)
 
-The MARIANA ImmLd workers, disassembled natively (`xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`) this
-pass — the byte-clean skeleton:
+The MARIANA ImmLd workers, disassembled natively (`xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`) — the byte-clean skeleton:
 
 ```asm
 0000ca5c <ImmLdArith worker>:
@@ -461,8 +458,7 @@ block are direct byte counts]`
 ### 7.3 The registration stubs (the funcVA is wired, the body is a stub)
 
 The ImmLd workers **are** kernel-registered (they have a `kernel_info` slot + a worker funcVA) —
-they are *registered placeholders*, not absent. The MARIANA registration stubs, byte-decoded this
-pass:
+they are *registered placeholders*, not absent. The MARIANA registration stubs, byte-decoded:
 
 ```asm
 0x1faa:  entry a1,48 ; const16 a2,0xca5c ; s32i a2,[a1+12] ;     ; stage ImmLdArith funcVA 0xca5c
@@ -559,8 +555,7 @@ worker is a 40-byte LOG-and-return placeholder on **every** gen (no real load bo
 > delta is SUNDA *lacking* a cayman+/mariana/maverick addition: the `shape_from_register(start_addr)`
 > escape on the element-count predicate (§5.2), the `s2_bn_zgen_restriction` function, and the ZGEN
 > backward-compat comments. The `typedef` body, the `tsm_immld_dtypes` op-set, the 1..8 count rule,
-> and the forced-zero-immediate gate are **byte-identical** v2→v5. `[HIGH/OBSERVED — `diff` this
-> pass]`
+> and the forced-zero-immediate gate are **byte-identical** v2→v5. `[HIGH/OBSERVED — `diff`]`
 
 > **MAVERICK (v5) interior — header-OBSERVED, interior INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 `0x70`/`0x71` opcode +
@@ -572,7 +567,7 @@ worker is a 40-byte LOG-and-return placeholder on **every** gen (no real load bo
 
 So: ImmLd is a **universally-present-but-universally-stubbed** op — ISA-defined and
 `kernel_info`-registered on all gens, never given a maintained compute body. This is fully
-consistent with the `// n, not maintained/used` flag. `[HIGH/OBSERVED]`
+consistent with the `// n, not maintained/used` flag.
 
 ---
 
@@ -603,7 +598,7 @@ parallel is structural]`
 
 ## 11. Confidence ledger
 
-**HIGH / OBSERVED (disassembly, byte-read, header-read, or compile-verify this pass):**
+**HIGH / OBSERVED (disassembly, byte-read, header-read, or compile-verify):**
 
 * Opcodes `TENSOR_SCALAR_IMM_LD_ARITH = 0x70`, `…_BITVEC = 0x71`, both
   `// n, ucode/kaenadve exists, not maintained/used`, byte-identical all four gens (`common.h`).
@@ -612,7 +607,7 @@ parallel is structural]`
   `S3D3_NONZERO_WITH_COUNT`).
 * `S2_BN` SRC-only, `sizeof == 64`, `header`@0 / `events`@4 / `reserved0`@12 / `src TENSOR2D`@16 /
   `imm1`@28 / `dtype`@32 / `num_active`@34 / `imm0_ptr`@44 / `imm0_src`@48 — compile-verified
-  byte-identical sunda/cayman/mariana/maverick (`gcc` `offsetof`/`sizeof` this pass; matches
+  byte-identical sunda/cayman/mariana/maverick (`gcc` `offsetof`/`sizeof`; matches
   [`batchnorm-paramload.md`](batchnorm-paramload.md) / [`search-cluster.md`](search-cluster.md)).
 * Semantics: *"load up to 8 elements per channel into DVE storage flops … for use as the immediate
   values for the following TensorScalarPtrMulti instruction"* (`s2_bn.h:72–80` verbatim) — a
@@ -630,7 +625,7 @@ parallel is structural]`
 * The 40-byte LOG-only stub workers (`entry a1,32`; log self-name; `retw.n` — no compute) at MARIANA
   `0xca5c`/`0xca84`, the contiguous 4-stub block with the PtrMulti twins (`…/0xcaac/0xcad4`); the
   registration stubs (`0x1faa`→`0xca5c`, `0x1fc6`→`0xca84`; `call8 0x9920`); the entry-frame census
-  (137 `a1,32` stub vs 18 `a1,80` maintained) — all disassembled natively this pass.
+  (137 `a1,32` stub vs 18 `a1,80` maintained) — all disassembled natively.
 * The ImmLd→PtrMulti pairing (`s4d4_tsm.h:23–49` verbatim: *"Preload immediate using
   TensorScalarImmLd{Arith,Bitvec}"*; the `for i in range(W)` broadcast loop). PtrMulti opcodes
   `0x4F`/`0x5F`, same `// n` marker.

@@ -25,8 +25,7 @@ images are **flat (non-ELF) relocated blobs** loaded at VA `0x01000000`; carving
 binary means L32R literal-pool loads cannot always be auto-resolved (such claims are flagged
 `MED`/`INFERRED`). Tags follow the [Confidence & Walls Model](../../reference/confidence-model.md).
 
-> **NOTE — exact objects re-carved this session, with `sha256`.** Every device fact below was
-> re-carved independently out of the static archive
+> **NOTE — the objects used, with `sha256`.** The device facts are carved out of the static archive
 > `extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/.../custom_op/c10/lib/libnrtucode.a`.
 > The image bytes live in each member's `.rodata` (file offset `0x60`); I sliced that section
 > and verified the digest:
@@ -89,7 +88,7 @@ is realized as **two assert sites** whose stringified conditions survive verbati
 `Q7_POOL` DRAM image, and whose compare instructions are byte-pinned in the IRAM via the
 `ncore2gp` disassembler.
 
-### 2.1 The constant: `NUM_POOL_CORES = 8`  `[HIGH/OBSERVED]`
+### 2.1 The constant: `NUM_POOL_CORES = 8`
 
 The `8` is **not** a symbol read — it is the encoded `b4const` immediate of the Xtensa `BNEI`
 instruction, baked into the firmware at compile time:
@@ -108,7 +107,7 @@ Vision-Q7 cores exactly (`Q7_CORE0..7`; CSR `run_state_0..7`) — see §7.
 > (`0x100142d`, `0x1001501`) and the dispatch branch (`0x1001553`). The constant is reused as
 > *both* the integrity guard and the broadcast discriminator (§2.4).
 
-### 2.2 Line-283 assert — `total_cpus ∈ {1, 8}`  `[HIGH/OBSERVED]`
+### 2.2 Line-283 assert — `total_cpus ∈ {1, 8}`
 
 Loaded at VA `0x01000000`, disassembled with `XTENSA_CORE=ncore2gp`:
 
@@ -134,7 +133,7 @@ The assert string at **DRAM `0x469`** reads verbatim
 So line 283 enforces `total_cpus ∈ {1, 8}`. There is **no `== 0`** case here — a freshly loaded
 entry must occupy at least one core.
 
-### 2.3 Line-318 assert — `total_cpus ∈ {0, 1, 8}`  `[HIGH/OBSERVED]`
+### 2.3 Line-318 assert — `total_cpus ∈ {0, 1, 8}`
 
 This site reads the entry pointer from a *different* stack slot (`+20`, not `+12`) and adds the
 `== 0` case:
@@ -162,7 +161,7 @@ The assert string at **DRAM `0x4ed`**:
 > the load-time predicate `{1,8}` would not. The two predicates are the same invariant evaluated
 > at two lifecycle points.
 
-### 2.4 What the constraint means, and how it drives dispatch  `[HIGH/OBSERVED]`
+### 2.4 What the constraint means, and how it drives dispatch
 
 `total_cpus` is a **1-byte** entry field (`l8ui …, 4` at every check site) recording how many
 POOL Q7 cores the library image occupies. The legal values:
@@ -226,7 +225,7 @@ emitted and before any record is sent to the device. A host failure means the pr
 nonzero, the library is never staged, and the device is never touched. Every byte below was
 re-disassembled from the un-stripped twin (`objdump -d`).
 
-### 3.1 ELF magic / class / endianness — `xtlib_verify_magic @0x9b6d40`  `[HIGH/OBSERVED]`
+### 3.1 ELF magic / class / endianness — `xtlib_verify_magic @0x9b6d40`
 
 ```asm
 0x9b6d40  mov    $0xffffffff, %eax   ; preload rc = -1
@@ -250,7 +249,7 @@ Magic `\x7fELF`, `EI_CLASS == 1` (32-bit), `EI_DATA ∈ {1,2}`. Returns **`-1` o
 > bswap) that every subsequent field read (`xtlib_host_word`, `xtlib_host_half`) consults. The
 > check is also the endianness handshake.
 
-### 3.2 Split-load segment structure — `validate_dynamic_load @0x9b71f0`  `[HIGH/OBSERVED]`
+### 3.2 Split-load segment structure — `validate_dynamic_load @0x9b71f0`
 
 ```asm
 0x9b720e  call   xtlib_verify_magic
@@ -274,7 +273,7 @@ stores error **`1`**; a structural-shape failure stores error **`7`**.
 > *both* bit 1 and bit 2 set (PF_W\|PF_R) by testing the complement against `0x6`. The intent
 > (data segment must be R+W) is unchanged; the instruction form is corrected here.
 
-### 3.3 Segment bounds vs the device region map — `prelink_load_lib @0x9b5e70`  `[HIGH/OBSERVED]`
+### 3.3 Segment bounds vs the device region map — `prelink_load_lib @0x9b5e70`
 
 The bounds check is inline (object `prelink_memory_bounds.c.o`). Each copied segment is
 range-checked against a device region map: code region at struct offsets `[0x10]`(base)/`[0x18]`
@@ -297,7 +296,7 @@ range-checked against a device region map: code region at struct offsets `[0x10]
 The error string is at host `.rodata` offset **`0x49bd`** and the failure return code is
 **`13`** (`mov $0xd, %ebp` @ `0x9b6044`).
 
-### 3.4 Relocation completeness — `prelink_relocate_lib @0x9b6160`  `[HIGH/OBSERVED]`
+### 3.4 Relocation completeness — `prelink_relocate_lib @0x9b6160`
 
 The relocator iterates **all** reloc entries (count = signed 32-bit at descriptor `+0x28`),
 applying each into the staged buffer in place:
@@ -327,7 +326,7 @@ relocator running to completion.
 > for a `relocate_op` that fails on a valid type (`0x9b664e`). Both are bare immediates with no
 > associated diagnostic string.
 
-### 3.5 The `UCPL ` header emit — and what it does *not* contain  `[HIGH/OBSERVED]`
+### 3.5 The `UCPL ` header emit — and what it does *not* contain
 
 On success, `prelink` writes the header magic and a handful of size/offset fields:
 
@@ -360,7 +359,7 @@ These run in `load_external_libraries_impl` **after** the UCPL image is DMA'd in
 across the two firmware build flavors (§6): the **core-count invariant** is the assert-build
 (SUNDA) face; the **UCPL content sanity** is the log-build (DKL) face.
 
-### 4.1 `(b1)` the `NUM_POOL_CORES` / `total_cpus` invariant — §2  `[HIGH/OBSERVED]`
+### 4.1 `(b1)` the `NUM_POOL_CORES` / `total_cpus` invariant — §2
 
 Fully decoded above (§2). It is the central FW-17 device check: `total_cpus ∈ {1,8}` at load
 (line 283) / `{0,1,8}` post (line 318), enforced by `bnei a*, 8`, routed to `__assert_fail` on
@@ -416,7 +415,7 @@ The validation strings, verbatim from the DKL DEBUG DRAM:
 
 Three distinct failure responses, by surface:
 
-### 5.1 Device core-count assert → `__assert_fail` (abort)  `[HIGH/OBSERVED]`
+### 5.1 Device core-count assert → `__assert_fail` (abort)
 
 Both `total_cpus` assert sites build the assert-string pointer (`const16 a10, <DRAM off>`) and
 `call8 0x10039e0`. The DEBUG handler at `0x10039e0` is a classic `__assert_fail`: it formats
@@ -449,7 +448,7 @@ success log `"P%i: Library loaded"` (`0x18d5`) is reached only on the all-checks
 fall-through. The per-error device return code is **not** byte-pinned from the flat carve (`MED`
 — the guard region is FLIX-desynced, §8).
 
-### 5.3 Host prelink → xtlib error code + abort-before-stage  `[HIGH/OBSERVED]`
+### 5.3 Host prelink → xtlib error code + abort-before-stage
 
 The host returns a bare integer error code and aborts: nothing is staged, no record is emitted,
 the device is never touched. The provable codes:
@@ -513,7 +512,7 @@ so the DKL build trusts it without the redundant device check.
 
 ---
 
-## 7. Per-generation `NUM_POOL_CORES`  `[HIGH/OBSERVED]`
+## 7. Per-generation `NUM_POOL_CORES`
 
 `NUM_POOL_CORES = 8` on **every** generation, cross-checked three independent ways:
 
@@ -558,7 +557,7 @@ exact *bind instruction* (named, not insn-pinned); the string and its `const16` 
 
 ---
 
-## 9. FLIX / flat-image decode quality  `[HIGH/OBSERVED]`
+## 9. FLIX / flat-image decode quality
 
 The Q7_POOL images are flat (non-ELF) relocated blobs at VA `0x01000000`. Two decode regimes
 were measured:
@@ -586,9 +585,9 @@ were measured:
 - [kernel_info_table Binary Layout](kernel-info-table.md) — the table whose presence the host
   emits and the device binds (#681).
 - [tpb-pool / ADDR-05](../../control/address/tpb-pool.md) — the architectural source of the
-  8-core POOL cluster = `NUM_POOL_CORES` (*forward — Part 13*, **NOTE:** not yet authored).
+  8-core POOL cluster = `NUM_POOL_CORES` (*forward — Part 13*).
 - [runtime / prelinker-ucpl](../../runtime/prelinker-ucpl.md) — the host UCPL prelink chain in
-  full (*forward — Part 8*, **NOTE:** not yet authored).
+  full (*forward — Part 8*).
 - [abi / multicore-spmd](../../abi/multicore-spmd.md) — the per-core SPMD model the
-  `{1,8}` contract realizes (*forward — Part 7*, **NOTE:** not yet authored).
+  `{1,8}` contract realizes (*forward — Part 7*).
 - [Confidence & Walls Model](../../reference/confidence-model.md) — the tag system used above.

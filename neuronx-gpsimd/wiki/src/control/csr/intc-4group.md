@@ -26,8 +26,8 @@ the security-hardened, decentralized v5 view of this same fleet is in
 > description below was read byte-exact from the two shipped schema JSONs
 > (`intc_4grp_no_msix_unit.json` md5 `d3e509688793b1a320b9e988dc77484d`;
 > `intc_4grp_msix_unit.json` md5 `f6521dfefedd220dc971ca5b16277590`) and their RTL-generator
-> Mako template — all RTL-derived descriptor artifacts, freely citeable. Confidence tags:
-> `[HIGH · OBSERVED]` = literal value read from the JSON/Mako; `[* · INFERRED]` = my
+> Mako template — all RTL-derived descriptor artifacts, freely citeable. The page default
+> is `[HIGH · OBSERVED]` = literal value read from the JSON/Mako; `[* · INFERRED]` = a
 > semantic reconstruction; the per-bit→group ordering (`g*32+b`) and the group→domain cut
 > are flagged INFERRED throughout — they are **not** encoded in the intc schema itself.
 > The Cayman/NC-v3 schema is **structurally identical** to the Mariana / Mariana+ / Sunda /
@@ -37,7 +37,7 @@ the security-hardened, decentralized v5 view of this same fleet is in
 
 ---
 
-## 0. The unit at a glance `[HIGH · OBSERVED]`
+## 0. The unit at a glance
 
 The INTC is an Alpine/AL-lineage interrupt aggregator. A 4 KiB (`0x1000`) APB aperture, 12-bit
 address, 32-bit word-addressed data, `RegfileFlavor=POSEDGE`. The two variants share an
@@ -59,8 +59,7 @@ machinery vs the host-facing PCIe MSI-X apparatus.
 | bitfield DEFS | 33 (ctrl 23 + Sunda 10) | 30 (recursive) |
 
 All parameters are `NonOverridable=true`. `HalName` and `Description` are empty strings in
-both. Every count above is re-derived directly from the JSON with `jq`, **not** grepped from
-a decompile.
+both. Every count above is read directly from the JSON.
 
 The address space is sparse in both flavors:
 
@@ -70,13 +69,13 @@ msix:     ctrl 0x000–0x0FF | gap 0x100–0x2FF | Sunda 0x300–0x3EF |
           PBA  0x3F0–0x3FF | VecTable 0x400–0x7FF | MSIX_VTS 0x800–0xFFF
 ```
 
-The 512-byte `0x100–0x2FF` reserve is present in **both** variants `[HIGH · OBSERVED]`; the
+The 512-byte `0x100–0x2FF` reserve is present in **both** variants; the
 MSI-X table does **not** reuse it — the msix table instead starts at `0x400` (`reason MED ·
 INFERRED`).
 
 ---
 
-## 1. Capacity / stride model `[HIGH · OBSERVED]`
+## 1. Capacity / stride model
 
 The whole capacity model falls out of one bundle. `ctrl` is a **`RegistersBundleArray`** with
 `ArraySize = INTC_NUM_GROUPS = 4` and `BundleSizeInBytes = 0x40`. Indexing the array steps the
@@ -97,7 +96,7 @@ Each group is an **identical 12-register per-group "unit"** of 32 cause bits. Th
 > the `g*32+b` packing is inferred from the PBA "one word per group" layout and the
 > per-trigger MSI-X table (§6).
 
-### Per-group register bank (relative offset; absolute = `g*0x40 + rel`) `[HIGH · OBSERVED]`
+### Per-group register bank (relative offset; absolute = `g*0x40 + rel`)
 
 The 0x40 block is laid out on a deliberate 8-byte stride for the cause/set and mask/clear
 *pairs* (each live word has a shadow word), then 4-byte spacing for the control / severity
@@ -141,7 +140,7 @@ group layout `[layout HIGH · spacing-reason MED]`.
 
 ---
 
-## 2. `no_msix` vs `msix` — the exact delta `[HIGH · OBSERVED]`
+## 2. `no_msix` vs `msix` — the exact delta
 
 The entire variant split reduces to four byte-level changes. Everything else is shared
 byte-for-byte (the 10 unchanged ctrl registers — cause / cause_set / mask / mask_clear /
@@ -189,7 +188,7 @@ group block that differ:
 
 ---
 
-## 3. `int_control_grp` — the per-group control word (rel `0x28`) `[HIGH · OBSERVED]`
+## 3. `int_control_grp` — the per-group control word (rel `0x28`)
 
 Identical in both variants. 12 bitfields. Absolute address = `g*0x40 + 0x28`. Semantics are
 the descriptor's own embedded strings, condensed.
@@ -216,7 +215,7 @@ the descriptor's own embedded strings, condensed.
 
 ---
 
-## 4. Bundle `Sunda` — abort/spare (`no_msix`) vs MSIX-TC (`msix`) `[HIGH · OBSERVED]`
+## 4. Bundle `Sunda` — abort/spare (`no_msix`) vs MSIX-TC (`msix`)
 
 Base `0x300`, `ArraySize=1`, `BundleSizeInBytes=0xf0`, `Description="Sunda-specific
 registers"`. The name `Sunda` is a **fixed template label across every generation**
@@ -254,7 +253,7 @@ abort path.
 
 ---
 
-## 5. Per-bit cause / mask / status / set / clear / severity semantics `[HIGH · OBSERVED]`
+## 5. Per-bit cause / mask / status / set / clear / severity semantics
 
 All semantics below are the descriptor's own embedded strings. Bit `b` in any `*_grp` register
 corresponds to trigger input `g*32 + b`.
@@ -299,7 +298,7 @@ bypass the trigger-input CDC **edge-gen + tog2pul** (toggle-to-pulse) stage. *"T
 is still in the path regardless of value of this bit."* Used for sources already in the INTC
 clock domain.
 
-### 5a. The four severity masks (error / abort / fatal / log) `[HIGH · OBSERVED]`
+### 5a. The four severity masks (error / abort / fatal / log)
 
 Each is a 32-bit per-bit mask, reset `0xFFFFFFFF` (all masked), producing an **independent
 wire-OR severity line**. One cause bit can simultaneously feed up to four classified summary
@@ -321,7 +320,7 @@ lines:
 
 ---
 
-## 6. MSI-X apparatus (`msix` variant only) `[HIGH · OBSERVED]`
+## 6. MSI-X apparatus (`msix` variant only)
 
 Three of the `msix` bundles use **two coexisting indexing schemes**: `PBA` and `VecTable` are
 **group-aligned** (`g*32+b`); the MSI-X table itself is packed **consecutively** by trigger
@@ -375,7 +374,7 @@ were associated with structure-aligned maps."*
 
 ---
 
-## 7. The Mako generator — one template, the whole `{ngrp} × {type}` matrix `[HIGH · OBSERVED]`
+## 7. The Mako generator — one template, the whole `{ngrp} × {type}` matrix
 
 Both units on this page (and the 1-group siblings) are emitted from a single Mako template,
 `intc_ngrp_unit.json.mako`. The parametric contract:
@@ -410,7 +409,7 @@ points inside one template:
 > its `ctrl`/`PBA`/`VecTable` scale down to **one** 32-bit group (32 cause bits), yet its MSI-X
 > table is still **128 entries** and still closes the `0x1000` aperture exactly (`0x800 + 128×16
 > = 0x1000`). So the 1-group MSI-X unit is **over-provisioned**: 128 MSI-X table entries back
-> only 32 live cause bits `[HIGH · OBSERVED]`. The `no_msix` 1-group unit has no such mismatch
+> only 32 live cause bits. The `no_msix` 1-group unit has no such mismatch
 > (no MSI-X table at all; its aperture tail is simply unused past `Sunda`). The 1-group / IOFIC
 > family is detailed in [`intc-1group-apintc.md`](intc-1group-apintc.md).
 
@@ -488,7 +487,7 @@ Each intc instance latches ≤ 128 sources (4 grp × 32). An errtrig has **two**
 
 ---
 
-## 9. `ap_intc` — the MEM-mapped sibling (cross-reference) `[HIGH · OBSERVED]`
+## 9. `ap_intc` — the MEM-mapped sibling (cross-reference)
 
 For completeness (full treatment in [`intc-1group-apintc.md`](intc-1group-apintc.md)):
 `ap_intc_4grp_unit.json` is a **wrapper** — top `RegistersBundleArrays=[]`, pulling the group via
@@ -509,7 +508,7 @@ this page are the chip-fabric aggregators with full CDC + posedge + 4-way severi
 
 ---
 
-## 10. Verification summary `[HIGH · OBSERVED]`
+## 10. Verification summary
 
 - `ctrl` `ArraySize=INTC_NUM_GROUPS=4`, BundleSize `0x40` → groups @ `0x00/0x40/0x80/0xC0`. ✓
 - `no_msix` vs `msix` `ctrl` diff = **exactly 2** registers (`int_cdc_bypass_grp`@`0x24`,
@@ -518,7 +517,7 @@ this page are the chip-fabric aggregators with full CDC + posedge + 4-way severi
   `MSIX_TC`(`0x3E0`); `NUM_OF_TRIGS=128 = 4 grp × 32 = MSIX_VTS.ArraySize`. ✓
 - Aperture closes **only** with decimal `BundleSizeInBytes` for `"16"`/`"8"`: `0x800 + 128×16 =
   0x1000`; hex `0x16` overflows to `0x1300`. ✓
-- Re-derived counts (jq, from scratch): `no_msix` 16 reg / 33 field defs (RW:13/WO:2/RO:1);
+- Counts: `no_msix` 16 reg / 33 field defs (RW:13/WO:2/RO:1);
   `msix` 16 top + 2 nested reg defs, 30 field defs recursive. ✓
 - No `0xb1` placeholder reset; the only `b1` is the `13'b1_…` Verilog literal in a description. ✓
 - Cross-gen structural diff (Cayman / Mariana / Mariana+ / Sunda / Maverick) = **nil** for both

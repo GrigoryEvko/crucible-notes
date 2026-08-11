@@ -17,7 +17,7 @@
 > from `nm`/`objdump`/`readelf`/`c++filt`/`strings` on a shipped ELF, from its
 > IDA `*_structures.json`/`*_enums.json`/`*_rtti.json`/`*_xrefs.json` sidecar, or
 > from a shipped `.h`), `INFERRED` (an ABI/CFG rule applied to an observed fact),
-> `CARRIED` (taken from a backing pass and re-confirmed here against the binary).
+> `CARRIED` (taken from a backing pass and confirmed here against the binary).
 
 > **NOTE — artifact provenance.** Every figure on this page is grounded **solely
 > in static analysis** of the shipped binaries and their shipped headers: the
@@ -201,7 +201,7 @@ cross-checked against the per-arch ISA headers
 
 ## 2. The corpus census
 
-Counts re-grounded against each shipped binary. RTTI columns are
+Counts grounded against each shipped binary. RTTI columns are
 `nm <file> | rg -c '_ZTI'` / `'_ZTV'` / `'_ZTS'`; struct/enum columns are the IDA
 `*_structures.json`/`*_enums.json` array lengths (`jq length`). `[HIGH × OBSERVED]`
 

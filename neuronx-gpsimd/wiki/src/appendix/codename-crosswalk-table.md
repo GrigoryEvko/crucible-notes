@@ -11,8 +11,8 @@ symbol / disassembly site / header line that establishes it**. A reimplementer
 who needs "what is MARIANA_PLUS's NCFW selector byte and which lib establishes
 it" reads exactly one row here.
 
-Nothing here is asserted from a naming pattern. Every value was re-grounded
-against the shipped binaries this pass (`nm` / `objdump` / `readelf` /
+Nothing here is asserted from a naming pattern. Every value is grounded
+against the shipped binaries (`nm` / `objdump` / `readelf` /
 `strings` + the clean C arch-ISA headers); the four primary artifacts, with the
 exact symbol or address that pins each column, are named in §0. The single most
 important discipline on the page is the **MAVERICK identity wall** (§3): the
@@ -20,8 +20,8 @@ device `coretype 37` is OBSERVED, the NCFW `arch_id 36` is *doubly* INFERRED and
 carries a `*` on every appearance.
 
 **Confidence tags.** Every row and every per-cell footnote carries **HIGH / MED /
-LOW** crossed with **OBSERVED** (read from bytes / disassembly / a shipped header
-this session), **INFERRED** (deduced from a structural relation with no
+LOW** crossed with **OBSERVED** (read from bytes / disassembly / a shipped header),
+**INFERRED** (deduced from a structural relation with no
 contradicting evidence), or **CARRIED** (taken from a cross-referenced sibling
 surface at its stated confidence). Escaped `\|` inside a table cell is a literal
 pipe. `36*` is never to be presented as binary-observed.
@@ -35,7 +35,7 @@ absolute (the `extracted/` tree is gitignored, so `fd --no-ignore` / absolute
 paths are mandatory); each artifact is named by the **one symbol or address** the
 cross-walk reads from it. `[HIGH/OBSERVED]`
 
-| tag | artifact | what it pins | the anchor read this pass |
+| tag | artifact | what it pins | the anchor read |
 |---|---|---|---|
 | **INT** | `…/custom_op/c10/lib/libnrtucode_internal.so` (5-gen twin, not stripped) | `coretype` (the `*_libs` jump-table targets); the ct-37 resolver masks; the MAVERICK string split | `nm INT \| rg '_libs$'` → 5 symbols; `objdump` `cmp $0x25` + `movabs $0x2020202000` |
 | **NCFW** | `…/aws/neuron/lib/libncfw.so` (management-core firmware host lib) | `arch_id` (the `get_image` selector immediates); the NCFW `v#` blob symbols; shipped ceiling | `objdump … <libncfw_get_image>` ladder `{0x1c,0x14,0x05,0x0c}`; 8 `v{2,3,4,4_plus}_ncfw_{iram,dram}_bin` |
@@ -71,7 +71,7 @@ every cell pinned to its artifact (§0).
 | **MAVERICK** | NC-v5 | **37** `H/OBS` (`maverick_libs@0x9b9050`) | **36\*** = `0x24` `M/INFERRED` (`coretype−1`; **no NCFW byte**) | **(none)** \| **(no v#)** `H/OBS-neg` | *(unshipped — no product binding in corpus)* `LOW/OPEN` | — | — | **4 libs** (idx0 `a92c8ba0…87f4`, sz `0x7fb0`; ET_DYN/PIC, stripped); exist **only** in INT `.rodata`; XT-15.05/clang-15 | **INTERNAL-ONLY** (INT only; **0** in SO) `H/OBS` |
 | *TONGA* | *NC-v1 (outlier)* | *— (none)* `H/OBS-neg` | *— (Product-ID `0x01`)* `H/OBS` | *— \| (none)* `H/OBS-neg` | *Inf1* `H/CARRIED` | *—* | *(legacy V1)* `H/CARRIED` | *— (no EXTISA blob, no NCFW image)* `H/OBS-neg` | *legacy ISA headers only (`arch-isa/` family)* `H/OBS` |
 
-**Column grounding, in one line each** (all re-run this pass):
+**Column grounding, in one line each:**
 
 - **coretype `{6,13,21,29,37}`** — the five `*_libs` symbol addresses in **INT**
   (`nm INT | rg '_libs$'`), keyed by the `coretype − 6` jump table at `.rodata`
@@ -141,7 +141,7 @@ independent anchor (§3).
 ### 2.2 · The NCFW `get_image` ladder, byte-exact (the `arch_id` source)
 
 `libncfw_get_image` (dynsym `T` @ `0x1179` in **NCFW**) maps an `arch_id` to a
-`{iram, dram}` NCFW firmware image. The ladder, re-disassembled this pass, compares
+`{iram, dram}` NCFW firmware image. The ladder compares
 **exactly** `{0x1c, 0x14, 0x05, 0x0c}` with a `ja` default:
 
 ```
@@ -168,8 +168,8 @@ The `*_libs` jump table is not the only structure that fixes `{6,13,21,29,37}`. 
 with set bits at **exactly `{13,21,29,37}`** (SUNDA `ct6` handled by a separate
 `cmp $0x6` leg). The sibling `opset_get_library_index` mask is `0x2020202040` →
 `{6,13,21,29,37}` (bit 6 set directly). Both accept `coretype 37`; the shipped
-front **SO** rejects it (24-entry table, `cmp $0x17` → `coretype ≤ 29`). Bit-decode
-this pass: `0x2020202000 → {13,21,29,37}`, `0x2020202040 → {6,13,21,29,37}`. `[HIGH/OBSERVED]`
+front **SO** rejects it (24-entry table, `cmp $0x17` → `coretype ≤ 29`). Bit-decode:
+`0x2020202000 → {13,21,29,37}`, `0x2020202040 → {6,13,21,29,37}`. `[HIGH/OBSERVED]`
 
 ---
 
@@ -212,7 +212,7 @@ this distinction exactly; it is the single most important caveat on the page.
 > that holds for SUNDA…MARIANA_PLUS *fails* for MAVERICK — the index-36 enum slot is
 > a `__REMOVED__` placeholder (`nrtucode.h:55`), and the real `MAVERICK_NX_TOPSP` is
 > at 54. Mark it **`36*`**, tag it **MED/INFERRED**, and never present it as
-> binary-observed. (Confirmed this pass: `nrtucode.h:50,54,55,56`.) The Part-6
+> binary-observed. (Confirmed: `nrtucode.h:50,54,55,56`.) The Part-6
 > [Codename ↔ Generation Map](../generations/codename-generation-map.md) §4 records
 > the same wall.
 
@@ -246,7 +246,7 @@ It occupies the *chronology* row of §1 for completeness and nothing more.
 
 - **Byte-grounded "older than SUNDA":** the SPIS Product-ID register description
   reads `"Product ID. (Tonga - 0x01, Sunda - 0x02, Cayman - 0x03, Mariana - 0x4)"`
-  (`INC/arch-headers/mariana/csrs/spis/spis_model.json:107`, read this pass). TONGA
+  (`INC/arch-headers/mariana/csrs/spis/spis_model.json:107`). TONGA
   = Product-ID `0x01`, one generation *before* SUNDA. **[HIGH/OBSERVED]**
 - **No runtime identity:** no `coretype`, no `arch_id`, no `NRTUCODE_CORE_TONGA`, no
   `tonga_libs`, no NCFW image, no EXTISA blob; absent from every `get_image` /
@@ -257,7 +257,7 @@ It occupies the *chronology* row of §1 for completeness and nothing more.
   different enum *name family* means a different, older ISA. **[HIGH/OBSERVED]**
 - **On-disk shape:** `INC/arch-headers/` has **six** dirs (the five codenames +
   `tonga`, register maps only); `INC/neuron_*_arch_isa/` has only **four** ISA dirs
-  `{sunda, cayman, mariana, maverick}` (confirmed this pass — no `mariana_plus`, no
+  `{sunda, cayman, mariana, maverick}` (no `mariana_plus`, no
   `tonga`). TONGA appears only in the legacy `arch-isa/` tree, never as a
   `neuron_tonga_arch_isa` GPSIMD ISA. **[HIGH/OBSERVED]**
 
@@ -298,7 +298,7 @@ SUNDA weak-undef plus the four MAVERICK-only Q7 ELFs. ³ The **flat
 `neuronx-runtime` corpus, so its row is `CARRIED` across the package boundary (see
 [bibliography §1 CORRECTION](bibliography-source-binaries.md)).
 
-**The split is sharp in the tallies** (re-counted this pass): a `maverick` literal
+**The split is sharp in the tallies:** a `maverick` literal
 appears **189 times** via `strings INT | rg -oi maverick | wc -l` and **125 times**
 as symtab symbols via `nm INT | rg -ci maverick`, vs **0** in the shipped front
 **SO** (`strings SO | rg -oi maverick | wc -l` → 0). Whether a field deployment
@@ -307,7 +307,7 @@ links the 4-gen front or a 5-gen internal build is out of scope of these binarie
 shipped" reading is MED/INFERRED.]`
 
 > **CORRECTION — `189` strings / `125` symbols, not "187".** An earlier survey
-> recorded the MAVERICK string tally as "internal = 187". The session re-count is
+> recorded the MAVERICK string tally as "internal = 187". The re-count is
 > **189** strings-occurrences (`strings INT | rg -oi maverick | wc -l`) and **125**
 > symtab-symbols (`nm INT | rg -ci maverick`); the `187` was a `rg -ac` raw-byte
 > count that under-counts vs `strings`-tokenised occurrences. Use **189
@@ -337,8 +337,8 @@ anchored on the explicit "trn3pre variant" label.]`
 
 > **NOTE — a third "v5"-ish token: `NEURON_CORE_VERSION_V5 = 5`.** The arch-ISA
 > header carries `NEURON_ISA_TPB_NEURON_CORE_VERSION_V5 = 5`
-> (`INC/neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h:136`, confirmed this
-> pass; ABSENT from the mariana header, which caps at `V4 = 4` `:134`). This
+> (`INC/neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h:136`; ABSENT from
+> the mariana header, which caps at `V4 = 4` `:134`). This
 > `NeuronCoreVersion` token is the **codegen-target ISA version** axis — distinct
 > again from both `CoreV5` (the compiler ArchLevel, = MARIANA_PLUS-region) and
 > `coretype 37` (the device dispatch key). Three parallel enumerations; none derives
@@ -376,7 +376,7 @@ table (§2.3).
 
 The `*_libs` tables: `sunda_libs@0x9b8f80 < cayman_libs@0x9b8f90 <
 mariana_libs@0x9b8fd0 < mariana_plus_libs@0x9b9010 < maverick_libs@0x9b9050`
-(`nm INT`, confirmed this pass). The opcode *contract* (`lib0 = 17 / lib1 = 1 /
+(`nm INT`). The opcode *contract* (`lib0 = 17 / lib1 = 1 /
 lib2 = 2 / lib3 = 9` entries) is identical across all four shipped generations —
 only the compiled machine code differs. `[HIGH/OBSERVED]`
 
@@ -395,7 +395,7 @@ only the compiled machine code differs. `[HIGH/OBSERVED]`
 
 ## 8 · Confidence rollup
 
-**HIGH / OBSERVED** (binary/header-exact, re-verified this pass): the five
+**HIGH / OBSERVED** (binary/header-exact): the five
 codenames; `coretype {6,13,21,29,37}` (the five `*_libs` symbols + two resolver
 bitmasks); `arch_id {5,12,20,28}` (`NX_TOPSP` ordinals + NCFW `get_image`
 immediates); `coretype = arch_id + 1` (the enum-layout consequence, four rows); the

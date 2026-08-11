@@ -13,7 +13,8 @@ semantics are pinned by driving the `libfiss-base.so` `module__xdref_r*` oracle 
 Everything below is derived from static analysis of the shipped GPSIMD device images, the shipped
 `ncore2gp/config/` ISS oracle (`libfiss-base.so`), and the shipped CAYMAN/SUNDA/MAVERICK arch-isa
 interface headers, read with the Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) and stock
-binutils/`ctypes`. Every claim carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+binutils/`ctypes`. Claims that depart from the page default `HIGH/OBSERVED` carry an explicit
+confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
 
 ---
 
@@ -52,7 +53,6 @@ preserving the within-partition lane layout.
 > (`SDMA_CCETYPE {ADD0, FMA1, MAX2, MIN3}`). The three **compose**: lane-fold (this kernel) →
 > partition-fold (Tensor-Reduce) → ring/mesh buffer-fold (SDMA CCE). The header's own associativity license
 > ("the order … is not architecturally guaranteed") is what makes the composition order-free.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -97,12 +97,12 @@ linear sweep, the documented native-disasm limitation).
 `idx2 → 0x7d → 0x01000410`. The SEQ master dispatch hub carries `0x7c '|' → CrossLaneReduce` and
 `0x7d '}' → CrossLaneReduce (variant)`; the sequencer name string `"CrossLaneReduce"` is baked at DRAM
 `0x820b4`, and the device-side log token `"S: CrossLaneReduce"` is OBSERVED at `libnrtucode_internal.so`
-file-offset `0x1cfcf4`. `[HIGH/OBSERVED]`
+file-offset `0x1cfcf4`.
 
 > **NOTE — the SEQ hub also carries a *separate* Tensor-Reduce family `'F'`=`0x46` / `'G'`=`0x47` /
 > `'R'`=`0x52` (DRAM string `"Tensor-Reduce"` @ `0x81f8b`).** That is the **cross-partition** reduce
 > engine, a *distinct* datapath from this kernel — do not conflate the two. CrossLaneReduce's worker is
-> `cross_lane_reduce_impl` @ `0x440`; the `'F'`/`'R'` impl lives elsewhere. See §8. `[HIGH/OBSERVED]`
+> `cross_lane_reduce_impl` @ `0x440`; the `'F'`/`'R'` impl lives elsewhere. See §8.
 
 The opcode numbering is **stable across generations**: the SUNDA (newest-gen) `all.stripped.so` opcode→
 pool-function JSON map lists `pool_cross_lane_reduce_arith` @ `124` and `pool_cross_lane_reduce_bitvec` @
@@ -158,13 +158,13 @@ typedef struct NEURON_ISA_TPB_TENSOR4D {
 > **NOTE — CrossLaneReduce uses a *4-D* access pattern (`TENSOR4D`), unlike the Tensor-Tensor 3-D
 > `TENSOR3D`.** The extra dimension is the **reduce dimension** the lane fold walks. The `start_addr`
 > `ADDR4` union carries the SBUF partition-offset encoding; src spans `num_active_channels` partitions, dst
-> spans exactly 1 (the reduce collapses partitions to one). `[HIGH/OBSERVED]`
+> spans exactly 1 (the reduce collapses partitions to one).
 
 ### 3.3 DTYPE encoding (`NEURON_ISA_TPB_DTYPE`, 4-bit)
 
 `INVALID 0x0` (used in RTL for bitvec) · `UINT64 0x1` · `INT8 0x2` · `UINT8 0x3` · `INT16 0x4` ·
 `UINT16 0x5` · `BFLOAT16 0x6` · `FP16 0x7` · `INT32 0x8` · `UINT32 0x9` · `FP32 0xA` · `FP32R 0xB` ·
-`INT64 0xC` · `FP8_EXP3 0xD` · `FP8_EXP4 0xE` · `FP8_EXP5 0xF`. `[HIGH/OBSERVED]`
+`INT64 0xC` · `FP8_EXP3 0xD` · `FP8_EXP4 0xE` · `FP8_EXP5 0xF`.
 
 ### 3.4 Validity predicates (the rust-style assertion comments, OBSERVED)
 
@@ -188,7 +188,7 @@ typedef struct NEURON_ISA_TPB_TENSOR4D {
 > `AllowFP32R=False`; the accumulator/dest is read with `AllowFP32R=True`. A reimplementer who allows the
 > round-mode `FP32R` (`0xB`) on the *input* side will accept an instruction the hardware decoder rejects.
 > Both src and dst must live in **SBUF** (`AllowedInPSUM=False`); the src tensor is read-only, the dst is
-> written. `[HIGH/OBSERVED]`
+> written.
 
 ---
 
@@ -218,7 +218,7 @@ same six values, same packing). `[HIGH/OBSERVED]`
 > associative/commutative and the order in which the operations is done is not architecturally
 > guaranteed."* This is the architectural permission for the device to use a **balanced log-step tree**
 > (32 → 16 → 8 → 4 → 2 → 1) or any lane-pairing; the result is order-independent. The ISS oracle realises
-> the *same* fold as a flat left-to-right scan — bit-identical for the associative ops. `[HIGH/OBSERVED]`
+> the *same* fold as a flat left-to-right scan — bit-identical for the associative ops.
 
 ### 4.1 `reduce_op → ivp r-prefix` value-primitive mapping
 
@@ -250,8 +250,7 @@ The full `ivp_r*` cross-lane vocabulary harvested across the ISA
 (`radd`/`radds`/`raddu`/`rmin`/`rmax`/`rminu`/`rmaxu`/`rminnum`/`rmaxnum`/`rbmin`/`rbmax`/`randb`/`rorb`
 and the `_t` predicated forms — see [B08 §2](../../isa/ref/b08-reduce.md)) is larger than the 6 ops
 CrossLaneReduce's enum reaches: the `MIN` and signed/unsigned int min/max forms in the ISA serve the
-Tensor-Reduce / Tensor-Scalar consumers, not all reachable from this kernel's 6-op enum. `[HIGH]` for the
-6 ops CrossLaneReduce uses; `[HIGH]` for the broader vocabulary.
+Tensor-Reduce / Tensor-Scalar consumers, not all reachable from this kernel's 6-op enum.
 
 ---
 
@@ -262,7 +261,7 @@ those ops realise, the in-package ISS functional model `libfiss-base.so` is disa
 Each `ivp_r*` op maps to a `module__xdref_r*` primitive whose body *is* the executable lane fold. The
 `.text` is VMA==file-offset; the leaves are callable in-process with no license. ABI (OBSERVED from the
 `radd` prologue): `rdi` = ctx (unused), `rsi` = pointer to the 512-bit `vec`, `rdx` = pointer to the
-output. Eleven leaves driven live this pass.
+output. Eleven leaves driven live.
 
 ### 5.1 REDUCE-ADD — widening, exact (the required sum case)
 
@@ -309,7 +308,7 @@ radd_n_2x32(16 × 0x10000000)= 0x00000000  (= 0x100000000 WRAPS — the one non-
 > **GOTCHA — the 16×int32 sum (`raddn_2x32`) is the one that wraps.** Unlike `radd_2nx8` (8→16) and
 > `radd_nx16` (16→32), `radd_n_2x32` does **not** widen — 32-bit lanes accumulate into a 32-bit result, so
 > `16 × 0x10000000 = 0x100000000` wraps to `0`. A reimplementer modelling all `radd` forms as "widening
-> never overflows" diverges here: the int32 reduce can overflow. `[HIGH/OBSERVED by execution]`
+> never overflows" diverges here: the int32 reduce can overflow.
 
 ### 5.2 SATURATING REDUCE-ADD — `radds` (a fractional pack, NOT an int16 clamp)
 
@@ -339,7 +338,7 @@ radds([100,-50,0…])= 0x0032 (50)        <- in-range: pass-through
 > `INT16_MIN`. The 21-bit accumulator + sign-and-magnitude re-pack is the fixed-point/normalized
 > saturation idiom (the same "normalize-not-clamp" philosophy as the vector `baddnorm`), aimed at
 > fixed-point dot-product tails where the sum is a Q-format fraction. A reimplementer who models `radds`
-> as `clamp(Σ, INT16_MIN, INT16_MAX)` diverges on every overflow case. `[HIGH/OBSERVED by execution]`
+> as `clamp(Σ, INT16_MIN, INT16_MAX)` diverges on every overflow case.
 
 ### 5.3 REDUCE-MAX / MIN — the fold, signed vs unsigned (the required tie case)
 
@@ -374,14 +373,13 @@ lanes = [0x8000, 0x0001, 0 ×30]
 ```
 
 The same physical lane bits reduce to **different** extrema under the signed vs unsigned interpretation —
-the cleanest proof that `rmax`/`rmaxu` are genuinely distinct ops, not aliases. `[HIGH/OBSERVED by
-execution]`
+the cleanest proof that `rmax`/`rmaxu` are genuinely distinct ops, not aliases.
 
 The fp forms `rmaxnum`/`rminnum` use the **NaN-suppressing** primitive: `module__xdref_rmaxnum_nx16f_1_16f_512f`
 @ `0x524e00` tail-calls `function__fp_hp_rmaxnum_32` (the IEEE-754-2019 `maximumNumber` flavour — a NaN
 lane is treated as the identity, never poisoning the reduction), consistent with the header's "fp32 math".
 `[HIGH/OBSERVED]` on the leaf call; `[MED/INFERRED]` on the exact NaN/−0 corner (read from the `num` leaf
-name + the fp16 tail-call, not sweep-driven this pass).
+name + the fp16 tail-call, not sweep-driven).
 
 ### 5.4 BITWISE REDUCE — `randbn` (AND) / `rorbn` (OR) — the bitvec path
 
@@ -413,8 +411,7 @@ v = 0x1 (lane0 low bit only)   randbn = 0   rorbn = 1
 
 `randbn` = AND-reduce (`BITWISE_AND`), `rorbn` = OR-reduce (`BITWISE_OR`); the `0xAAAA…` row proves the
 predicate is the **low** bit of each 2-bit lane pair. The bitwise reduces keep the raw integer width — no
-widen, no fp conversion (matching the header's "raw u8/u16/u32, no fp32 conversion"). `[HIGH/OBSERVED by
-execution]`
+widen, no fp conversion (matching the header's "raw u8/u16/u32, no fp32 conversion").
 
 ### 5.5 PREDICATED / SEGMENT-BOUNDED reduce — the `_t` and `rb*` forms
 
@@ -442,7 +439,7 @@ void rbmax_step(int16_t nv, int lane, const acc_t *in, acc_t *out) {
 > new lane's bit into the running predicate rather than replacing it, so an `rbmax` over a vector with the
 > maximum in two lanes returns a `vbool` with **both** bits set — the full equality set, not a one-hot
 > first/last argmax. A reimplementer building one-hot argmax on top of `rbmax` must add a priority-encode
-> pass. `[HIGH/OBSERVED]` (tie branch disassembled).
+> pass.
 
 > **CORRECTION — the segmented reduce-max leaf calls its fold step `N−1` times, NOT "8 segments".** A call
 > census of `module__xdref_rbmax_nx16_64_512_512` @ `0x859f00` shows it calls `module__xdref_rbmax_16`
@@ -463,7 +460,6 @@ Recovered structurally (the body is FLIX VLIW with interleaved literal pools tha
 `xtensa-elf-objdump`'s linear sweep — the documented native-disasm limitation):
 
 * SP aligned to 64B (`movi a10,-64 ; and a8,a1,a10 ; movsp a1,a8`) for 512-bit vector-register spills.
-  `[HIGH/OBSERVED]`
 * A counted loop is present: `movi.n a9,17 ; loop a9,0x10005a0` (OBSERVED) — a 17-trip loop, the outer
   walk over the strided src `Tensor4d` / active-channel partitions; `movi.n a14,2` materialises a
   sub-op/dtype constant; many `l32r` to a `.text`-embedded literal pool (the decode/dispatch constants);
@@ -492,7 +488,7 @@ each terminated by a `0x00000001` marker (a lane-group descriptor), followed by 
 > prints `num_tensor_elements/alu_op`), the only baked token is the sequencer name `"S: CrossLaneReduce"`.
 > It is a leaner kernel: the 6-entry enum is validated by `has_cross_lane_reduce_opcode` +
 > `valid_reduce_axis_enum` at *decode* time, before the kernel runs, so there is no error-default string in
-> the worker. `[HIGH/OBSERVED — string search confirms no CLR error string exists]`
+> the worker.
 
 ---
 
@@ -504,12 +500,12 @@ each terminated by a `0x00000001` marker (a lane-group descriptor), followed by 
   from overflowing the element width. `out_dtype` carries the (wider) accumulator type. (The 16×int32
   form `radd_n_2x32` is the exception — no widen, wraps — §5.1 GOTCHA.) `[HIGH/OBSERVED]`
 * **reduce-ADD-SATURATING (`radds`)** does NOT widen the output — it uses a wide (21-bit) intermediate and
-  a final sign-and-magnitude 16-bit pack instead. `[HIGH/OBSERVED]`
-* **reduce-MAX/MIN do NOT widen** (output width == input width; max/min can't overflow). `[HIGH/OBSERVED]`
+  a final sign-and-magnitude 16-bit pack instead.
+* **reduce-MAX/MIN do NOT widen** (output width == input width; max/min can't overflow).
 * **ADD/AVERAGE/MAX use fp32 math** (header) — integer dtypes are accumulated as fp32 where the header
   says "fp32 math"; the soft-float path provides the fp16/fp32 reductions; the int `radd`/`rmax` oracle
   forms are the integer-engine realisations for the int dtypes.
-* **BITWISE_OR/AND/XOR operate on RAW u8/u16/u32 — no fp32 conversion, no widening.** `[HIGH/OBSERVED]`
+* **BITWISE_OR/AND/XOR operate on RAW u8/u16/u32 — no fp32 conversion, no widening.**
 * `in_dtype`: any valid dtype **except FP32R**. `out_dtype`: any valid dtype **including FP32R** (§3.4).
 
 ### 7.2 Segmented / partial reduce — the `reduce_axis` field
@@ -518,11 +514,11 @@ each terminated by a `0x00000001` marker (a lane-group descriptor), followed by 
 
 * **`ReduceAxis::All` (=0):** *"Reduce along all dimensions → single value out."* The whole src (all lanes,
   all active channels) folds to ONE element. `valid_axis_dst_element_cnt` requires
-  `dst.num_elem[0..3] == 1` (or a register-shaped dst). `[HIGH/OBSERVED]`
+  `dst.num_elem[0..3] == 1` (or a register-shaped dst).
 * **`ReduceAxis::Partitions` (=1):** *"Only reduce across different SBUF/PSUM partitions (no reduction
   within a single partition)."* Reduce **across partitions only**; dst shape == src shape
   (`same_element_count_t4d(dst, src)`). Lane `i` of every partition folds into lane `i` of the output — a
-  partition-axis reduce that **preserves** the within-partition lane layout. `[HIGH/OBSERVED]`
+  partition-axis reduce that **preserves** the within-partition lane layout.
 
 The validity predicate from the header:
 
@@ -540,9 +536,9 @@ how many partitions participate; the worker partitions the channels across POOL 
 ### 7.3 Output shape (scalar vs per-lane vector)
 
 * `ReduceAxis::All` → a **single scalar** element written to dst (dst is 1 element). It is **not**
-  broadcast back to all 32 lanes by this instruction — the consumer reads the one element. `[HIGH/OBSERVED]`
+  broadcast back to all 32 lanes by this instruction — the consumer reads the one element.
 * `ReduceAxis::Partitions` → a **per-lane vector** (one reduced value per within-partition lane position),
-  dst same shape as src. `[HIGH/OBSERVED]`
+  dst same shape as src.
 
 > **GOTCHA — `ReduceAxis::All` writes ONE element, not a broadcast.** A reimplementer who expects the
 > reduced scalar replicated across all lanes (as some SIMD ISAs do for `reduce_add`) will read garbage from
@@ -555,7 +551,7 @@ how many partitions participate; the worker partitions the channels across POOL 
 
 There are **three** distinct reduce layers in the Neuron stack; CrossLaneReduce is the innermost (lane)
 leg. They share abstract operation **names** (ADD/MAX/MIN) but each carries its own packed enum and folds
-over a different axis. `[HIGH/OBSERVED]`
+over a different axis.
 
 | | axis folded | engine / opcodes | op enum | this kernel? |
 |---|---|---|---|---|
@@ -574,13 +570,13 @@ NEURON_ISA_TPB_ALU_OP     (Tensor-Tensor):    ADD=0x04 MAX=0x08 MIN=0x09 …    
 They **agree only on the abstract names** (ADD/MAX/MIN), each in its own packed enum. The **value
 semantics are the same ground-truth element primitives** (`libfiss-base` `xdref add`/`max`/`min`): the
 cross-lane fold and the cross-core fold reduce with byte-identical per-element math, differing only in
-**what** they fold over (lanes vs partitions vs buffers) and the carrier enum. `[HIGH/OBSERVED]`
+**what** they fold over (lanes vs partitions vs buffers) and the carrier enum.
 
 > **QUIRK — `ReduceAxis::Partitions` overlaps the Tensor-Reduce engine conceptually, but is the POOL-engine
 > implementation.** CrossLaneReduce's `Partitions` mode reduces across partitions *within the POOL kernel*;
 > the dedicated `'F'`/`'G'`/`'R'` Tensor-Reduce opcodes are a *separate* datapath for the same conceptual
 > operation. They are distinct kernels: CrossLaneReduce's worker is `cross_lane_reduce_impl` @ `0x440`; the
-> Tensor-Reduce impl lives elsewhere. Do not assume one calls the other. `[HIGH/OBSERVED]`
+> Tensor-Reduce impl lives elsewhere. Do not assume one calls the other.
 
 **Composition.** A full reduce-scatter / all-reduce lowers as **lane-fold** (CrossLaneReduce) →
 **partition-fold** (Tensor-Reduce) → **ring/mesh buffer-fold** (SDMA CCE), each layer associative so the
@@ -594,16 +590,16 @@ guaranteed". `[HIGH/INFERRED-composition]`
 * The handler chain (`pool_cross_lane_reduce_arith` @ `0x3f8`, `_bitvec` @ `0x410`, the worker @ `0x440`,
   `clr_reduce_local` @ `0x88c`) sits at the front of the `0xa260` `EXTISA_0` image, shared
   **CAYMAN / MARIANA / MARIANA_PLUS** (the three generations that ship the `0xa260` image; the MARIANA
-  images are byte-identical to MARIANA_PLUS, CAYMAN differs only by a small build delta). `[HIGH/OBSERVED]`
+  images are byte-identical to MARIANA_PLUS, CAYMAN differs only by a small build delta).
 * **SUNDA** (newest gen) carries the same two opcodes in its `all.stripped.so` JSON map (124/125) — opcode
   numbering stable across generations. `[HIGH for op #]`
 * The S4D4_CR struct + `REDUCE_OP`/`REDUCE_AXIS` enums + the `0x7c`/`0x7d` opcodes are **byte-identical
   across the CAYMAN, MARIANA, SUNDA, and MAVERICK arch-isa headers** (verified: same six enum values, same
-  64B struct, same behavior comment, same opcode bytes). `[HIGH/OBSERVED]`
+  64B struct, same behavior comment, same opcode bytes).
 
 > **NOTE — v5 / MAVERICK.** The MAVERICK (NC-v5) arch-isa header exposes the identical `REDUCE_OP` enum
-> and `0x7c`/`0x7d` opcodes (header-OBSERVED), but the v5 kernel *interior* (the worker body) was not
-> byte-grounded this pass — the v2–v4 (cayman/mariana/sunda) device bodies are the byte-verified substrate;
+> and `0x7c`/`0x7d` opcodes (header-OBSERVED), but the v5 kernel *interior* (the worker body) is not
+> byte-grounded — the v2–v4 (cayman/mariana/sunda) device bodies are the byte-verified substrate;
 > the v5 interior is `[INFERRED]` from header + opcode-map parity. `[HIGH header / INFERRED interior]`
 
 ---
@@ -614,14 +610,13 @@ guaranteed". `[HIGH/INFERRED-composition]`
    two trampolines @ `0x3f8`/`0x410` are byte-identical except the `a0`/`a1` selector byte; `common.h` has
    `CROSS_LANE_REDUCE_ARITH=0x7c` / `_BITVEC=0x7d`; `instruction_mapping.json` binds **both** to the one
    `S4D4_CR_STRUCT`; the worker symbol is `cross_lane_reduce_impl(bool)`. Identical opcodes in
-   cayman/sunda/maverick. **Holds.** `[HIGH/OBSERVED]`
+   cayman/sunda/maverick. **Holds.**
 2. **"The S4D4_CR struct is 64 bytes with `reduce_op`@35, `reduce_axis`@36, `scale`@40."** Re-challenged
    against the header: `ISA_STATIC_ASSERT(sizeof == 64)`, field offsets sum exactly
    (`4+8+20+1+1+1+1+1+3+4+20 = 64`), `TENSOR4D` = `ADDR4(4) + int16[4](8) + uint16[4](8) = 20`. **Holds.**
-   `[HIGH/OBSERVED]`
 3. **"`REDUCE_OP = {ADD=0, AVERAGE=1, MAX=2, BITWISE_OR=3, AND=4, XOR=5}`, a closed 6-entry enum."**
    Re-challenged: read byte-exact from `aws_neuron_isa_tpb_s4d4_cr.h`, identical across all four gens; the
-   enum closes at `0x5`. **Holds.** `[HIGH/OBSERVED]`
+   enum closes at `0x5`. **Holds.**
 4. **"The `reduce_op → ivp_r*` mapping, confirmed by live xdref execution."** Re-challenged by driving
    eleven leaves live: `radd` exact/widening (`radd(32×32767)=1048544`), `radds` packed-sat (`0x7FFF`/
    `0x8000`, not int16 clamp), `rmax`/`rmaxu` diverge signed/unsigned (`+1` vs `0xFFFF`), `randbn`/`rorbn`
@@ -631,7 +626,7 @@ guaranteed". `[HIGH/INFERRED-composition]`
 5. **"The intra-lane vs cross-partition vs cross-core distinction."** Re-challenged: `REDUCE_OP` (6 ops,
    POOL) ≠ `SDMA_CCETYPE` (4 ops, +FMA, collective) ≠ `ALU_OP` (60 ops, Tensor-Tensor); the SEQ hub carries
    a *separate* `'F'`/`'G'`/`'R'` Tensor-Reduce family with its own DRAM string. Three disjoint enums, three
-   axes. **Holds.** `[HIGH/OBSERVED]`
+   axes. **Holds.**
 
 **Flagged / corrected items.** (i) **`BITWISE_XOR` value primitive** — no `module__xdref_rxorb*` reduce
 leaf exists (`nm | rg -c` = 0); only `xorb_64_64_64` (element prim). The reduce-XOR is realised by chaining

@@ -23,7 +23,7 @@ cleanly:
 > address** `0x286c` with **byte-identical real-slot trampolines**; the reset is
 > the **SAME +0x1c MARIANA NX shift with NO further shift** (`06 7d 00` → `j 0x1f8`,
 > byte-identical heads on both gens); PROF is `none` (so cannot diverge). SP gained
-> and lost nothing — across **both** generation transitions. `[HIGH/OBSERVED]`
+> and lost nothing — across **both** generation transitions.
 >
 > **HEADLINE #2 — the DGE fast-path is GEN-WIDE, not engine-selective. It is
 > PRESENT on SP.** The four DGE fast-path strings absent on MARIANA SP (`count 0`)
@@ -32,8 +32,8 @@ cleanly:
 > handler, so its carrying the fast-path code proves the optimization is a
 > **SEQ-infrastructure recompile feature shipped on every NX label**, independent
 > of each engine's handler subset. **The decisive resolution of the
-> gen-wide-vs-engine-selective question.** `[HIGH/OBSERVED — strings + absence +
-> dual-build presence; functional reading INFERRED-HIGH]`
+> gen-wide-vs-engine-selective question.**
+> `[HIGH/OBSERVED; functional reading INFERRED-HIGH]`
 
 `MARIANA_PLUS SP = MARIANA SP-recompiled + the gen-wide DGE fast-path + a
 register-map refresh` — **no model, ISA, handler, opcode or dtype change.**
@@ -42,10 +42,11 @@ MARIANA_PLUS shares the MARIANA ISA: there is no `neuron_mariana_plus_arch_isa`
 dir (the four ISA dirs are `cayman`/`mariana`/`maverick`/`sunda`), and
 MARIANA_PLUS carries only its own `arch-headers/mariana_plus/` *register-map* dir.
 So the ISA/struct/dtype surface **is** MARIANA's; "v4+" is a register-map refresh
-+ a recompile + a DGE optimization, not a new model. The SP image inherits all of
-that. `[HIGH/OBSERVED — ISA-dir listing is the shipped artifact]`
++ a recompile + a DGE optimization, not a new model (the ISA-dir listing is the
+shipped artifact). The SP image inherits all of that.
 
-Confidence/evidence tags follow the project
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+tag, following the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. The engine *model* (the carve mechanics, the
 12-getter shape, the 5-way-intersection derivation, the SP-vs-`TOP_SP`
@@ -74,11 +75,11 @@ Related pages: [MARIANA × SP (the diff base)](./mariana-sp.md) ·
 > Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`,
-> uarch Cairo, `NX1.1.4`; `--version` exit 0). The archive `libnrtucode.a`
+> uarch Cairo, `NX1.1.4`). The archive `libnrtucode.a`
 > (sha256 `158dadc5…d7bd6130`) supplies the second carve source for the
 > byte-identity reconciliation. The clean C ISA header
 > `neuron_cayman_arch_isa/tpb/aws_neuron_isa_tpb_common.h` is cited for the engine
-> enum (MARIANA_PLUS shares the cayman/mariana ISA). `[HIGH/OBSERVED]`
+> enum (MARIANA_PLUS shares the cayman/mariana ISA).
 
 ---
 
@@ -87,9 +88,8 @@ Related pages: [MARIANA × SP (the diff base)](./mariana-sp.md) ·
 The whole page in one table. `(==)` marks an invariant row; the **bold** rows are
 the *only* real changes. Read the [MARIANA SP page](./mariana-sp.md) for the
 engine *model* — this table documents the cross-gen delta, leading with the null
-functional delta and the DGE-fast-path verdict. Every row re-verified this
-session against fresh carves from `libnrtucode_internal.so`.
-`[HIGH/OBSERVED unless tagged]`
+functional delta and the DGE-fast-path verdict. Every row is grounded in a carve
+from `libnrtucode_internal.so`.
 
 | PROPERTY | MARIANA SP ([baseline](./mariana-sp.md)) | MARIANA_PLUS SP (this page) | Δ |
 |---|---|---|---|
@@ -129,7 +129,7 @@ session against fresh carves from `libnrtucode_internal.so`.
 The diff reduces to **a full recompile, the new gen-wide DGE fast-path, and the
 `BEGIN`-name** — the +0x1c reset, the table base, the real-slot trampolines, the
 handler set, the opcode space, the dtype surface and the (absence of) PROF/Q7 are
-all invariant. `[HIGH/OBSERVED]`
+all invariant.
 
 ---
 
@@ -143,13 +143,13 @@ the `(img-ptr, size)` stub
 (`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`); the 6
 zero-size SRAM/EXTRAM getters all execute `movq $0x0,(%rsi)` and resolve to the
 next-blob layout cursor — SP uses **no SRAM/EXTRAM** (runs entirely out of IRAM +
-DRAM), exactly as MARIANA SP and CAYMAN SP. `[HIGH/OBSERVED]`
+DRAM), exactly as MARIANA SP and CAYMAN SP.
 
 Carve rule (identity map): `blob = so[IMG-PTR : IMG-PTR+SIZE]`. The 6 real
-MARIANA_PLUS carves and their sha256 (re-hashed this session; **all 6** reconciled
+MARIANA_PLUS carves and their sha256 (**all 6** reconciled
 byte-identical to the `libnrtucode.a` member `.rodata` via `ar x` +
 `objcopy -O binary --only-section=.rodata` + `cmp -s` — full 6/6, not a
-spot-check): `[HIGH/OBSERVED]`
+spot-check):
 
 | IMAGE | FILE-OFF | SIZE | MPLUS sha256 (8) | `.a` member | MARIANA sha (8) |
 |---|---|---:|---|:---:|---|
@@ -163,9 +163,9 @@ spot-check): `[HIGH/OBSERVED]`
 All 6 are **distinct** from their MARIANA counterparts (a full recompile, not a
 patch — §7). All 12 getter `(img-ptr, size)` stubs match the catalog
 ([image-catalog-index.md](./image-catalog-index.md), MARIANA_PLUS NX_SP rows). The
-MARIANA SP baseline was re-carved + re-hashed this session and **all 6 anchors
-MATCH** the committed [mariana-sp.md](./mariana-sp.md) — the diff below is against
-authentic MARIANA SP. `[HIGH/OBSERVED]`
+MARIANA SP baseline is carved and hashed from the same container, and **all 6
+anchors MATCH** the committed [mariana-sp.md](./mariana-sp.md) — the diff below is
+against authentic MARIANA SP.
 
 ---
 
@@ -175,7 +175,6 @@ The MARIANA_PLUS `.rodata` layout is **VARIANT-MAJOR, ENGINE-MINOR**
 (ACT → DVE → PE → POOL → SP within each variant family), the **same order** as
 MARIANA. Read directly from `nm` `.data` addresses, SP is the **terminal NX
 sequencer** in every family, immediately before the POOL Q7 compute core:
-`[HIGH/OBSERVED]`
 
 ```text
 PERF : ACT 0x5a5480 → DVE 0x5bcd20 → PE 0x5d6e60 → POOL 0x5f0fe0 → SP_PERF_IRAM @0x60be40 (last)
@@ -184,13 +183,13 @@ TEST : … → SP_TEST_*; cursor → ACT_DEBUG_IRAM @0x6af7e0 (next family head)
 DEBUG: … → SP_DEBUG_DRAM @0x752f80; end 0x7595e0 == MARIANA_PLUS_Q7_POOL_PERF_IRAM @0x7595e0
 ```
 
-Two contiguity anchors close the layout (both `nm`-verified this session):
+Two contiguity anchors close the layout (both `nm`-verified):
 **(a)** within PERF, `SP_PERF_IRAM` is the fifth and last NX head at `0x60be40`,
 its DRAM ending exactly at the `ACT_TEST_IRAM @0x62b180` family head;
 **(b)** `SP_DEBUG_DRAM` ends at `0x752f80 + 0x6660 = 0x7595e0` — exactly the VA of
 `MARIANA_PLUS_Q7_POOL_PERF_IRAM_get.data` (`nm`: `7595e0 r …Q7_POOL_PERF_IRAM`).
 SP's DEBUG block **precedes** the Q7_POOL compute core; SP is the last NX
-sequencer. `[HIGH/OBSERVED]`
+sequencer.
 
 ---
 
@@ -198,8 +197,7 @@ sequencer. `[HIGH/OBSERVED]`
 
 The SP IRAM head is byte-identical across all three variants (DEBUG/PERF/TEST)
 and **byte-identical between gens** — MARIANA_PLUS SP carries the MARIANA-gen NX
-`+0x1c` reset shift with **no further relocation**. Read this session:
-`[HIGH/OBSERVED]`
+`+0x1c` reset shift with **no further relocation**:
 
 ```text
                        MARIANA SP            MARIANA_PLUS SP       Δ
@@ -212,29 +210,28 @@ DRAM head          34 cb 99 60  (magic 0x6099cb34)  ───── byte-identic
 ```
 
 The boot trampoline decoded **instruction-exact** with the shipped `ncore2gp`
-objdump (exit 0): `0x1f8 const16 a0,0 ; 0x1fb const16 a0,144 ; 0x1fe jx a0 →
+objdump: `0x1f8 const16 a0,0 ; 0x1fb const16 a0,144 ; 0x1fe jx a0 →
 enter_run @0x90 ; 0x204 halt 0`. The reset+boot stub is byte-for-byte the **same**
 as MARIANA SP — the first MPLUS-vs-MARIANA divergence in PERF IRAM is at `@0xa2`
 (`001640ec` vs `601540ec`, a literal-address constant, the recompile-relocation
 point); the reset/boot/dispatch-trampoline prefix `0x000..0xa2` is identical. The
 DRAM `.globstruct` magic `0x6099cb34` and its init block `[0x18:0x38]`
 (`4×0x00001000` + `4×0x00ffffff`) are byte-identical CAY↔MAR↔MPLUS.
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — the +0x1c is the MARIANA shift CARRIED, not a new v4+ shift.** Reading
 > head bytes alone, the +0x1c relocation (`06 76`→`06 7d`) belongs to the
 > CAYMAN→MARIANA transition; MARIANA→MARIANA_PLUS adds **zero** further shift —
 > `j 0x1f8`/`j 0x204` on both gens, byte-identical. The boot target
-> `→ enter_run @0x90` is unchanged across all three generations. `[HIGH/OBSERVED]`
+> `→ enter_run @0x90` is unchanged across all three generations.
 
 The DEBUG IRAM decodes a genuine, separately-compiled `cayman/seq/` sequencer —
-not a stub. Census (native `ncore2gp` objdump, exit 0): MARIANA_PLUS SP DEBUG IRAM
+not a stub. Census (native `ncore2gp` objdump): MARIANA_PLUS SP DEBUG IRAM
 **524 `entry` / 743 `retw` / 1621 `call8` / 2167 `const16`** vs MARIANA
 **532 / 735 / 1539 / 1977** — **larger** on MARIANA_PLUS (more `call8`/`const16`),
 consistent with the bigger DEBUG_IRAM (`0x1a3e0` vs `0x190e0`) and the inlined DGE
 fast-path bulk (§6). The FLIX-vector datapath is partly bundle-interleaved by the
-linear sweep (the documented SX-FW-00 limitation); the windowed-ABI control spine
-decodes cleanly. `[HIGH/OBSERVED]`
+linear sweep (the documented FLIX-desync limitation); the windowed-ABI control spine
+decodes cleanly.
 
 ---
 
@@ -244,7 +241,7 @@ Method (identical to the baseline and the sibling pages): extract every
 single-token `S: <OpName>` from each DEBUG DRAM (regex
 `^S: [A-Za-z][\w/-]*$`), `sort -u`, set-diff. SP's leaner string pool yields
 **clean single-token** lines (no glued-prefix trap), so the regex isolates the 18
-names with no false positives on either gen. `[HIGH/OBSERVED]`
+names with no false positives on either gen.
 
 **RESULT — the headline:**
 
@@ -270,7 +267,7 @@ SP's 18 contain `NOP` (scalar no-op) but never `EngineNop`, so SP remains the on
 engine with no member outside the all-five intersection. The sync triple is the
 **shared** EVT_SEM core present on all five engines; the full EVT_SEM/barrier
 mechanism is derived in [mariana-sp.md §5](./mariana-sp.md) and is **unchanged**.
-`[HIGH/OBSERVED that the roster is byte-identical; EVT_SEM mechanism CARRIED.]`
+`[roster HIGH/OBSERVED; EVT_SEM mechanism CARRIED]`
 
 > **QUIRK — SP is the engine that proves the "common chassis" model, twice.** The
 > other four engines each *add* a compute/RNG subset onto the shared 18-handler
@@ -279,7 +276,7 @@ mechanism is derived in [mariana-sp.md §5](./mariana-sp.md) and is **unchanged*
 > handler image is, by construction, gen-invariant. The chassis with nothing
 > bolted on cannot diverge; SP's stability across *both* the v4 and v4+
 > transitions is the strongest single piece of evidence that the MARIANA family
-> engines are the *same* SEQ firmware recompiled, not a new model. `[HIGH/OBSERVED]`
+> engines are the *same* SEQ firmware recompiled, not a new model.
 
 ### 5.1 SEQ dispatch table — segmented/base-subtraction, opcode space STABLE
 
@@ -288,7 +285,6 @@ subtraction `sub a2,a2,a3` (encoding `3022c0`) feeding const16-base `addx4` jump
 tables — **not** the `addi a2,a2,-65` ASCII normalization of DVE/POOL, nor the
 raw-compare chain of PE/ACT. The dispatch head decodes instruction-exact and is
 **byte-identical between gens** at the **byte-identical IRAM address** `0x286c`:
-`[HIGH/OBSERVED]`
 
 ```text
 MARIANA_PLUS SP @0x2862: const16 a2,8 ; const16 a2,0x4c14 ; l32i.n a2,a2,0 ;
@@ -321,13 +317,13 @@ are **gen-stable. No opcode-space growth** (contrast the v4 PE 25→29 and DVE
 `S: Sunda seq Loop`), `sunda_fast_fetch`, and the `ErrorHandler` arms
 (`Bad Opcode(0x%x)` / `Illegal Instruction` / `FP Error` / `Int Div Zero Error`,
 source `cayman/seq/src/handlers/exception_handler.hpp`) are byte-for-name
-identical both gens. `[HIGH/OBSERVED for base/real-slot-identity/default-reloc;
-the exact per-opcode→handler row binding is the FLIX-desync frontier, MED]`
+identical both gens.
+`[base/real-slot-identity/default-reloc HIGH; per-opcode row binding MED]`
 
 > **NOTE — the "~161" count.** The dispatch table tail bleeds into a small
 > adjacent jump table on both gens; `~161` is the clean trampoline run, identical
 > in length on both. The default-only relocation does not affect the no-growth
-> conclusion. `[HIGH/OBSERVED]`
+> conclusion.
 
 ---
 
@@ -344,7 +340,7 @@ the decisive case.
 **Answer — PRESENT. The fast-path is TRULY GEN-WIDE.** The four DGE fast-path
 strings, **absent on MARIANA SP (`count 0`)**, are **PRESENT on MARIANA_PLUS SP**
 — in the DEBUG DRAM **and** the symbol-bearing TEST DRAM (×1 each — *compiled
-code*, not stray text): `[HIGH/OBSERVED]`
+code*, not stray text):
 
 | string | MARIANA SP | MPLUS SP DEBUG DRAM | MPLUS SP TEST DRAM |
 |---|:---:|:---:|:---:|
@@ -360,7 +356,7 @@ delta** (likely folded into the fast path). The shared DGE machinery present on
 *both* gens (`dge_reshape.cpp`, `dge_shape`, `S: DGE: Select backend Pool/RTL`,
 `S: DGE Reshape: Analyzed/Assessed tensor …`) confirms the four new strings
 **refine an existing subsystem**, they are not a new dispatch handler (the handler
-set is unchanged, §5). `[HIGH/OBSERVED]`
+set is unchanged, §5).
 
 > **THE VERDICT — gen-wide, not engine-selective.** The DGE fast-path landed on
 > **all five** MARIANA_PLUS NX sequencers — ACT, DVE, PE, POOL, **and SP** — even
@@ -372,8 +368,8 @@ set is unchanged, §5). `[HIGH/OBSERVED]`
 > there); but the fast-path translation unit is **linked into every NX image**, SP
 > included. With SP — the engine that has no functional reason to carry it — the
 > "recompile" is confirmed as the only gen-wide change and the fast-path as its
-> single functional payload. `[HIGH/OBSERVED — strings + absence + dual-build
-> presence; the "throughput-optimization" functional reading INFERRED-HIGH]`
+> single functional payload.
+> `[HIGH/OBSERVED; the "throughput-optimization" reading INFERRED-HIGH]`
 
 This DGE fast-path code is the **only** substantive functional change at the SP
 image level, and it accounts for the IRAM *growth* (§7) — the opposite of the
@@ -391,7 +387,7 @@ byte-for-name unchanged.
   *"highest priority is full-register moves. TODO other dtypes"*), byte-identical
   to MARIANA. SP is the scalar/control core with no MX/dequant surface, so the
   MARIANA_PLUS FP4/MX expansion — numeric and named only on the POOL Q7 core —
-  leaves **no SP footprint**. `[HIGH/OBSERVED]`
+  leaves **no SP footprint**.
 
 * **PROF — none, so no divergence OR reuse is possible.** SP ships no
   `PROF_CAM`/`PROF_TABLE` on either gen (`nm | rg -c 'MARIANA_PLUS_NX_SP.*PROF'`
@@ -399,19 +395,17 @@ byte-for-name unchanged.
   NX engine without PROF). So the gen-wide per-engine PROF **byte-identical reuse**
   the other four engines exhibit (ACT `326bc0dd`, DVE `ca588683`, PE `43475cec`,
   POOL `0951b326`, all reused verbatim from MARIANA) simply **has no SP instance.**
-  `[HIGH/OBSERVED]`
 
 * **Q7 / EXTISA — none.** Every carve is a flat device segment with no ELF magic
   (`head -c4` = the reset vector `06 7d 00 00` for IRAM, the magic `34 cb 99 60`
   for DRAM — *not* `7f 45 4c 46`). No Q7 core, no EXTISA — those are POOL-Q7-only.
-  `[HIGH/OBSERVED]`
 
 * **size — 6/6 distinct, IRAM GREW (the v4+ direction).** Where the
   CAYMAN→MARIANA SP transition **shrank** IRAM, MARIANA→MARIANA_PLUS SP **grew**
   it in every variant — the same direction as MARIANA_PLUS ACT/DVE/PE/POOL, the
   bulk being the new DGE fast-path code (§6). Positional 16-byte-block similarity
   is low (IRAM 5–7%, DRAM 31–44%): a full recompile with relocated layout +
-  inserted code, **not** a patch. `[HIGH/OBSERVED]`
+  inserted code, **not** a patch.
 
   | IMAGE | MAR size | MPLUS size | dSize | identical? |
   |---|---:|---:|---:|---|
@@ -431,7 +425,7 @@ byte-for-name unchanged.
   `exception_handler.hpp` path is
   `/opt/workspace/NeuronUcode/cayman/seq/src/handlers/`, the `move.cpp` path
   `/opt/workspace/NeuronUcode/src/decode/move.cpp` on both — a build-string
-  artifact across the generation). `[HIGH/OBSERVED]`
+  artifact across the generation).
 
 * **engine_idx = 4 (TPB_SP), confirmed.** The shipped ISA enum
   `neuron_cayman_arch_isa/tpb/aws_neuron_isa_tpb_common.h`
@@ -446,13 +440,13 @@ byte-for-name unchanged.
   five NX engines share the identical reset+boot stub. MARIANA_PLUS shares the
   cayman/mariana ISA (no `neuron_mariana_plus_arch_isa` dir), so the
   ISA/struct/dtype surface **is** MARIANA's.
-  `[HIGH/OBSERVED — enum + identity string; runtime-compute INFERRED-HIGH]`
+  `[HIGH/OBSERVED; runtime-compute INFERRED-HIGH]`
 
 > **NOTE — PERF/TEST strip the logs, mechanism invariant.** SP DEBUG DRAM = 141
 > `S:` lines on MARIANA_PLUS (vs MARIANA 142 — the `push REGWRITE to DMA[%d]` log
 > dropped, §6); SP PERF/TEST DRAM = 0. The dispatch mechanism (reset vector, table
 > architecture, ErrorHandler/Dispatch arms) is invariant across builds. A
-> DEBUG→PERF swap is a pure observability change. `[HIGH/OBSERVED]`
+> DEBUG→PERF swap is a pure observability change.
 
 ---
 
@@ -460,21 +454,15 @@ byte-for-name unchanged.
 
 With SP carved and diffed, **all five MARIANA_PLUS NX engines are now
 cross-gen-diffed vs MARIANA.** The per-engine MARIANA→MARIANA_PLUS divergence,
-each row anchored to its committed/in-flight page:
-`[HIGH/OBSERVED for ACT/DVE/SP; PE/POOL CARRIED until #763/#764 land]`
+each row anchored to its committed page:
 
 | engine | idx | handlers M→M+ | opcode space | PROF (vs MARIANA) | DGE fast-path | the v4+ change | page |
 |---|---:|---|---|---|:---:|---|---|
-| **PE** | 0 | 29 == 29 (`+0/−0`) | stable (raw-compare) | `43475cec` byte-ident | PRESENT | recompile + DGE fast-path; PROF reused; IRAM grew. | mariana-plus-pe (#763) |
+| **PE** | 0 | 29 == 29 (`+0/−0`) | stable (raw-compare) | `43475cec` byte-ident | PRESENT | recompile + DGE fast-path; PROF reused; IRAM grew. | [pe](./mariana-plus-pe.md) #763 |
 | **ACT** | 1 | 29 == 29 (`+0/−0`) | stable (raw-compare) | `326bc0dd` byte-ident | PRESENT | recompile + DGE fast-path; PROF reused; +0x1c no-further; IRAM grew. | [act](./mariana-plus-act.md) #761 |
-| **POOL** | 2 | 41 == 41 (`+0/−0`, NX) | stable (addi-0x41) | `0951b326` byte-ident | PRESENT (**HOME**) | recompile + DGE fast-path every variant; POOL = fast-path home (SW-DGE backend); PROF reused; IRAM grew. | mariana-plus-pool (#764) |
+| **POOL** | 2 | 41 == 41 (`+0/−0`, NX) | stable (addi-0x41) | `0951b326` byte-ident | PRESENT (**HOME**) | recompile + DGE fast-path every variant; POOL = fast-path home (SW-DGE backend); PROF reused; IRAM grew. | [pool](./mariana-plus-pool.md) #764 |
 | **DVE** | 3 | 53 == 53 (`+0/−0`) | stable (addi-0x41) | `ca588683` byte-ident | PRESENT | recompile + DGE fast-path; PROF reused; IRAM grew. | [dve](./mariana-plus-dve.md) #762 |
 | **SP** | 4 | **18 == 18 (`+0/−0`)** | ~161 (seg/sub, real-slots byte-ident) | **NONE** (no PROF) | **PRESENT** | recompile + DGE fast-path (**even on the lean sync/control core**); +0x1c no-further; IRAM grew. The degenerate lower bound. | **this page** |
-
-> **NOTE — PE/POOL MARIANA_PLUS deltas are the in-flight pages.** The PE/POOL rows
-> are CARRIED from the sibling-page model (#763/#764 still stubs at authoring
-> time); the ACT/DVE/SP rows are byte-grounded from the committed pages + this
-> carve. `[HIGH for ACT/DVE/SP; MED-CARRIED for PE/POOL until #763/#764 land]`
 
 ### 8.1 The gen-wide v4→v4+ invariants (all five engines)
 
@@ -507,49 +495,48 @@ common chassis. SP is the degenerate lower bound that anchors the whole model: t
 chassis with NOTHING added to dispatch — yet still carrying the gen-wide DGE
 fast-path, the decisive proof that the fast-path is gen-wide rather than
 engine-selective. THE MARIANA_PLUS ENGINE MATRIX IS COMPLETE.**
-`[HIGH/OBSERVED, drawing on the committed mariana-plus-act/dve + this carve.]`
 
 ---
 
 ## 9. Adversarial self-verify
 
-The five strongest claims, re-challenged against the binary this session:
+The five strongest claims, challenged against the binary:
 
-1. **18-handler stability (`+0/−0`).** Re-extracted single-token `S:` rosters from
+1. **18-handler stability (`+0/−0`).** Single-token `S:` rosters extracted from
    both DEBUG DRAMs and set-diffed against the known 18: MPLUS = 18, MAR = 18,
    `ADDED = []`, `REMOVED = []`, full 18-set present in MPLUS, `EngineNop` absent
-   on both. **HOLDS.** `[HIGH/OBSERVED]`
+   on both. **HOLDS.**
 2. **NO PROF/Q7/EXTISA.** `nm | rg -c 'MARIANA_PLUS_NX_SP.*PROF'` = 0; `…Q7_SP` =
    0; 12 getters total (no PROF pair). All carves flat (DEBUG_IRAM head `06 7d…`,
-   DEBUG_DRAM head `34 cb 99 60` — no ELF magic). **HOLDS.** `[HIGH/OBSERVED]`
+   DEBUG_DRAM head `34 cb 99 60` — no ELF magic). **HOLDS.**
 3. **DGE-fast-path gen-wide verdict.** All 4 strings = 0 on MARIANA SP, = 1 on
    MARIANA_PLUS SP in *both* DEBUG and symbol-bearing TEST DRAM (compiled code);
    `push REGWRITE to DMA` retired (1→0). SP hosts no DGE handler → **gen-wide, not
-   engine-selective. HOLDS.** `[HIGH/OBSERVED]`
+   engine-selective. HOLDS.**
 4. **SAME +0x1c (no further shift).** IRAM heads byte-identical across gens
    (`06 7d 00 00 00 00 86 7e 00 00…` both), boot `→ enter_run @0x90` unchanged.
-   **HOLDS.** `[HIGH/OBSERVED]`
+   **HOLDS.**
 5. **Matrix-rollup accuracy.** The four PROF hashes (`326bc0dd`/`ca588683`/
-   `43475cec`/`0951b326`) re-confirmed present in the committed
+   `43475cec`/`0951b326`) are present in the committed
    `mariana-plus-act.md`; the engine-order tail anchor `SP_DEBUG_DRAM` end
-   `0x7595e0` == `MARIANA_PLUS_Q7_POOL_PERF_IRAM_get.data @0x7595e0` (`nm`). PE/POOL
-   rows flagged CARRIED (stub pages). **HOLDS.** `[HIGH/OBSERVED; PE/POOL CARRIED]`
+   `0x7595e0` == `MARIANA_PLUS_Q7_POOL_PERF_IRAM_get.data @0x7595e0` (`nm`).
+   **HOLDS.**
 
 All five survive. The one residual frontier is the exact per-opcode→trampoline row
-decode (FLIX-desync limited, SX-FW-00) — table base, real-slot byte-identity and
+decode (FLIX-desync limited) — table base, real-slot byte-identity and
 default-reloc are HIGH; per-row binding is the documented MED frontier.
 
 ---
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - Container sha `b7c67e89…632fc329b` MATCH; 12 MARIANA_PLUS NX_SP getters indexed
   (6 real + 6 zero-size cursors); `nm | rg -c` PROF/Q7 = 0/0. 6 real carves
   byte-identical (sha256) to the `libnrtucode.a` member `.rodata` — **full 6/6**
   (`3a815569`/`79c2e2fa`/`11527767`/`c9aaac9f`/`84ee1c05`/`2958154e`). MARIANA
-  baseline 6/6 re-hashed, MATCH the committed page.
+  baseline 6/6 hashed, MATCH the committed page.
 - Reset heads **byte-identical** both gens (`06 7d 00` `j 0x1f8`; `86 7e` `j
   0x204`) — SAME +0x1c, no further shift. Boot decoded native `ncore2gp`
   (`0x1f8 const16 a0,0 ; 0x1fb const16 a0,144 ; 0x1fe jx a0 → enter_run @0x90`).
@@ -578,8 +565,8 @@ default-reloc are HIGH; per-row binding is the documented MED frontier.
 
 **MED / INFERRED:**
 
-- The exact per-opcode SEQ-table row decode — the FLIX-desync-limited frontier
-  (SX-FW-00). Table base/real-slot-identity/default-reloc are HIGH; per-row binding
+- The exact per-opcode SEQ-table row decode — the FLIX-desync-limited frontier.
+  Table base/real-slot-identity/default-reloc are HIGH; per-row binding
   is the documented frontier. `~161` is the clean trampoline run (tail bleeds into
   a small adjacent jump table on both gens).
 - "The MARIANA_PLUS_NX_SP image runs on the `TPB_SP` (engine 4) NX core" —
@@ -588,8 +575,6 @@ default-reloc are HIGH; per-row binding is the documented MED frontier.
 - "MARIANA_PLUS SP adds the DGE fast-path *throughput optimization*" — the strings
   + absence + dual-build presence are OBSERVED; the functional reading is
   INFERRED-HIGH from the names + the shared DGE context.
-- The PE/POOL matrix rows — CARRIED from the sibling-page model until the
-  byte-grounded #763/#764 pages land.
 
 **LOW / NOT CLAIMED:**
 
@@ -610,8 +595,9 @@ default-reloc are HIGH; per-row binding is the documented MED frontier.
 - [MARIANA_PLUS × ACT](./mariana-plus-act.md) (#761) /
   [MARIANA_PLUS × DVE](./mariana-plus-dve.md) (#762) — the committed v4+ sibling
   diffs feeding the §8 roll-up (ACT/DVE: recompile + DGE fast-path + PROF reuse).
-- MARIANA_PLUS × PE (#763) / MARIANA_PLUS × POOL (#764) — the in-flight v4+ PE/POOL
-  diffs (POOL = the DGE fast-path architectural home).
+- [MARIANA_PLUS × PE](./mariana-plus-pe.md) (#763) /
+  [MARIANA_PLUS × POOL](./mariana-plus-pool.md) (#764) — the v4+ PE/POOL diffs
+  (POOL = the DGE fast-path architectural home).
 - [MARIANA+ generation delta](../generations/mariana-plus-delta.md) — the v4+
   register-map-refresh + recompile + DGE-fast-path generation model.
 - [DGE Reshape Engine](../firmware/dge/dge-reshape.md) /

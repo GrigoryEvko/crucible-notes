@@ -6,9 +6,9 @@
 
 Penguin — the Python middle-end of neuronx-cc (`neuronxcc.starfish.penguin.ir`) — addresses every tensor and predicates every instruction with a **quasi-affine expression algebra**. This page is the *Penguin-side* view of that algebra: the node kinds an index or address is built from (`SumExpr` / `MultExpr` / `ModuloExpr` / `FloorDivExpr` / `CompoundExpr` / `ICmpExpr`), the collective-cyclic `CC{Div,Mod,GetRank}` quasi-affine family used to address tensors sharded across a collective replica set, and the access-pattern descriptors (`AffineLoad` / `AffineStore` / `AffineAtomicRMW`, and the post-tiling `TileAccessBase`) that bind an instruction operand to a tensor sub-region.
 
-The central reverse-engineering finding (D-U08 §5, re-confirmed here) is that **the algebra is not implemented in Python**. `ir/AffineExpr.cpython-310…so` is a thin Cython wrapper whose module docstring is verbatim `"AffineExpr - Affine and Quasi-Affine expressions."`; the real class hierarchy is the LLVM-RTTI'd `pelican::Expr` tree in `pelican.cpython-310…so`, hash-consed in an `llvm::FoldingSet`. A reader familiar with MLIR's `AffineExpr` / `AffineMap` will recognize the shape — `c + Σ cᵢ·idxᵢ` with floordiv/mod locals — but Penguin adds two things MLIR's affine dialect does not have: a **collective-cyclic** sub-family that encodes `floor(rank/group_size)` / `rank mod group_size` as first-class nodes carrying a `replica_groups_id`, and an explicit **access descriptor layer** that pairs the address-expression list with a partition/free-axis annotation for the 128-lane SBUF/PE geometry.
+The central finding is that **the algebra is not implemented in Python**. `ir/AffineExpr.cpython-310…so` is a thin Cython wrapper whose module docstring is verbatim `"AffineExpr - Affine and Quasi-Affine expressions."`; the real class hierarchy is the LLVM-RTTI'd `pelican::Expr` tree in `pelican.cpython-310…so`, hash-consed in an `llvm::FoldingSet`. A reader familiar with MLIR's `AffineExpr` / `AffineMap` will recognize the shape — `c + Σ cᵢ·idxᵢ` with floordiv/mod locals — but Penguin adds two things MLIR's affine dialect does not have: a **collective-cyclic** sub-family that encodes `floor(rank/group_size)` / `rank mod group_size` as first-class nodes carrying a `replica_groups_id`, and an explicit **access descriptor layer** that pairs the address-expression list with a partition/free-axis annotation for the 128-lane SBUF/PE geometry.
 
-The page proceeds: the `pelican::Expr` class hierarchy and what each node represents (`§ Node Hierarchy`); how an index forms from a loop axis (`§ Building an Index`); the `CC{Div,Mod,GetRank}` family (`§ Collective-Cyclic`); the affine access descriptors and `TileAccessBase` (`§ Access Descriptors`); the predicate atom `ICmpExpr` (`§ Predicate Atom`); then the algorithm-level flatten and an adversarial self-verification. The **byte-level `pelican::Expr` wire-form / `toJsonv2` encoding** is owned by Part 7 (7.16–7.20) and is cross-referenced rather than duplicated here; this page is the algebra and the descriptors as Penguin sees them.
+The page proceeds: the `pelican::Expr` class hierarchy and what each node represents (`§ Node Hierarchy`); how an index forms from a loop axis (`§ Building an Index`); the `CC{Div,Mod,GetRank}` family (`§ Collective-Cyclic`); the affine access descriptors and `TileAccessBase` (`§ Access Descriptors`); the predicate atom `ICmpExpr` (`§ Predicate Atom`); then the algorithm-level flatten and the evidence anchors. The **byte-level `pelican::Expr` wire-form / `toJsonv2` encoding** is owned by Part 7 (7.16–7.20) and is cross-referenced rather than duplicated here; this page is the algebra and the descriptors as Penguin sees them.
 
 For reimplementation, the contract is:
 
@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 ### Class Hierarchy
 
 ```c
-// pelican::Expr — CONFIRMED node names from pelican.so string pool +
+// pelican::Expr — node names from the pelican.so string pool +
 // the AffineExpr.so Python-face class pool (1:1 wrappers).
 Expr                          // base; LLVM-RTTI (isa/dyn_cast/cast)
  ├─ SimpleExpr                // a leaf: a constant (CExpr) or a single index term
@@ -61,7 +61,7 @@ The Python faces in `AffineExpr.so` are 1:1 with the C++ classes (all interned i
 
 ### The FoldingSet Invariant
 
-Every `AffineExpr` node is hash-consed: structurally identical expressions are the *same* object. The uniquing table is an `llvm::FoldingSet` whose node type is `pelican::FoldingIdx` — confirmed by the mangled symbol `_ZN4llvm10FoldingSetIN7pelican10FoldingIdxEE10NodeEqualsEPKNS_14FoldingSetBaseEPNS4_4NodeERKNS_16FoldingSetNodeIDEjRS9_` and by `pelican::Expr::hash_value`. Consequences for a reimplementer:
+Every `AffineExpr` node is hash-consed: structurally identical expressions are the *same* object. The uniquing table is an `llvm::FoldingSet` whose node type is `pelican::FoldingIdx`, read from the mangled symbol `_ZN4llvm10FoldingSetIN7pelican10FoldingIdxEE10NodeEqualsEPKNS_14FoldingSetBaseEPNS4_4NodeERKNS_16FoldingSetNodeIDEjRS9_` and by `pelican::Expr::hash_value`. Consequences for a reimplementer:
 
 - Pointer identity *is* value equality for canonicalized expressions — the dependency analyzer and the layout solver compare addresses with impunity.
 - `createFromCtx` / the per-kind factories must intern through the `PelicanContext` (the `FoldingSet` owner), not allocate freely; a duplicate `SumExpr` is silently deduplicated.
@@ -130,7 +130,7 @@ CCDivExpr(r, g, rgid)  =  floor(r / g)    // SHARD INDEX  (which group the rank 
 CCModExpr(r, g, rgid)  =  r mod g         // WITHIN-SHARD OFFSET (rank's position in its group)
 ```
 
-`CCGetRankExpr` is the rank term that feeds the other two. Its factory is the confirmed mangled symbol `pelican::PelicanContext::createCCGetRankExpr(long, long)` (`_ZN7pelican14PelicanContext19createCCGetRankExprEll`) — the two `long` arguments are the `iteration_id` and `channel_id`, gated by the embedded assert `AffineExpr.h:326: iteration_id >= 0 && channel_id >= 0` and the diagnostic string `"Invalid iteration_id or channel_id for CCGetRankExpr!"`. The node has the full RTTI complement (`_ZTVN7pelican13CCGetRankExprE` vtable, `clone`, `equal(const Expr*)`, `hash_value`, `str`), so it is a genuine `Expr` subclass and participates in the same `FoldingSet` uniquing as the rest.
+`CCGetRankExpr` is the rank term that feeds the other two. Its factory is the mangled symbol `pelican::PelicanContext::createCCGetRankExpr(long, long)` (`_ZN7pelican14PelicanContext19createCCGetRankExprEll`) — the two `long` arguments are the `iteration_id` and `channel_id`, gated by the embedded assert `AffineExpr.h:326: iteration_id >= 0 && channel_id >= 0` and the diagnostic string `"Invalid iteration_id or channel_id for CCGetRankExpr!"`. The node has the full RTTI complement (`_ZTVN7pelican13CCGetRankExprE` vtable, `clone`, `equal(const Expr*)`, `hash_value`, `str`), so it is a genuine `Expr` subclass and participates in the same `FoldingSet` uniquing as the rest.
 
 ### The denom > 0 Invariant
 
@@ -138,7 +138,7 @@ Both `CCDivExpr` and `CCModExpr` are `DivLike` nodes and inherit the strict-posi
 
 ### Python Constructors
 
-`AffineExpr.so` exposes `cc_div(...)` and `cc_mod(...)` as the Python factory front-doors (both confirmed by `strings`, both ~`0x760` bytes and byte-for-byte the same call topology). Each resolves the `CCDivExpr`/`CCModExpr` class from `neuronxcc.pelican.ir` and constructs it, passing the integer `(denom, replica_groups_id)` operands through a C-level `__pyx_ctuple_long`.
+`AffineExpr.so` exposes `cc_div(...)` and `cc_mod(...)` as the Python factory front-doors (both present in `strings`, both ~`0x760` bytes and byte-for-byte the same call topology). Each resolves the `CCDivExpr`/`CCModExpr` class from `neuronxcc.pelican.ir` and constructs it, passing the integer `(denom, replica_groups_id)` operands through a C-level `__pyx_ctuple_long`.
 
 > **NOTE —** the "CC-ness" is a Penguin/pelican distinction that *collapses* once the expression reaches the polyhedral layer: a `CCDivExpr` maps to an isl ceiling `scale_down_val`, a `CCModExpr` to `mod_val` — exactly as an ordinary `FloorDivExpr`/`ModuloExpr` would. The `replica_groups_id` has already selected *which* rank affine feeds the numerator, so isl sees only an ordinary integer-division local. The cross-ref for that mapping is [Part 5.21](affine-isl-pelican-bridge.md#collective-cyclic).
 
@@ -153,7 +153,7 @@ An instruction operand is a *(Tensor, Access)* pair. The `Access` (`ir/Access.py
 ### Class Hierarchy
 
 ```c
-// ir/Access.py — CONFIRMED class names from Access.so string pool.
+// ir/Access.py — class names from the Access.so string pool.
 Access                        // base descriptor: tensor + addrs[] (per-dim AffineExpr)
  ├─ AffineAccess              // "Describe affine read/write access to tensor" (verbatim docstring)
  │   ├─ AffineLoad            //  a read  (LoadStore.is_load)
@@ -170,22 +170,22 @@ The `LoadStore` base provides the load/store discriminator (`is_load`/`is_store`
 
 ### The Address List
 
-Every `Access` holds `addrs` (and `full_addrs`): a per-dimension list of quasi-affine `AffineExpr` over the enclosing loop axes. The probe `has_all_affine_addrs` (a genexpr over the list, confirmed symbol `…Access_6Access_10has_all_affine_addrs`) tests whether every dimension is affine — a `GenericAccess` with an `IndirectArgExpr`/`OpaqueFnExpr` term fails it and forces the indirect codegen path. The flatten from a multi-dim `addrs` list to a single linear offset is `linearize_indices` / `linearize_address`, driving the pelican `AffineExpr::flattenTerms` / `getLinearExpr` (`flattenTerms` confirmed in `pelican.so`).
+Every `Access` holds `addrs` (and `full_addrs`): a per-dimension list of quasi-affine `AffineExpr` over the enclosing loop axes. The probe `has_all_affine_addrs` (a genexpr over the list, symbol `…Access_6Access_10has_all_affine_addrs`) tests whether every dimension is affine — a `GenericAccess` with an `IndirectArgExpr`/`OpaqueFnExpr` term fails it and forces the indirect codegen path. The flatten from a multi-dim `addrs` list to a single linear offset is `linearize_indices` / `linearize_address`, driving the pelican `AffineExpr::flattenTerms` / `getLinearExpr` (`flattenTerms` lives in `pelican.so`).
 
 ### Atomic-RMW Serialize Format
 
-The verbatim textual form (from `Access.so`, exact binary string — note the leading `{indent}` that D-U08 §5.4 omitted):
+The verbatim textual form, exactly as it appears in `Access.so` — note that it opens with an `{indent}` token, which is easy to drop when transcribing:
 
 ```text
 {indent}{type} {dst} = atomic_rmw_{op}({dst}, {src}, {{{reduce_axes}}}){partition_axes}{predicate}{dl}, id = {id}
 {indent}{type} {dst} = generic_atomic_rmw_{op}({dst}, {src}, {{{reduce_axes}}}){partition_axes}{predicate}{dl}, id = {id}
 ```
 
-> **CORRECTION (5.4-A) —** D-U08 §5.4 cited the atomic-RMW serialize without the leading `{indent}` token. The binary string in `Access.so` begins `{indent}{type} {dst} = atomic_rmw_{op}(…`. The version on this page is the exact binary form. The `generic_` prefix marks the data-dependent (`GenericAtomicRMW`) variant; note also the embedded `"generic_atomic_rmw eval not supported yet"` — the constant-folder `eval` is unimplemented for the indirect form.
+The `generic_` prefix marks the data-dependent (`GenericAtomicRMW`) variant. That variant cannot be constant-folded: `Access.so` also carries `"generic_atomic_rmw eval not supported yet"`, so the `eval` path is unimplemented for the indirect form.
 
 ### Modes and OOB Policy
 
-`AccessMode` (load / store / indirect-load / indirect-store) selects the descriptor flavor; `OOBMode` is the out-of-bounds policy for indirect (gather/scatter) access. Both are confirmed enums in `Access.so`. The OOB policy only matters on the `Generic*` path — an `AffineAccess` is bounds-checked statically by the polyhedral domain.
+`AccessMode` (load / store / indirect-load / indirect-store) selects the descriptor flavor; `OOBMode` is the out-of-bounds policy for indirect (gather/scatter) access. Both are enums in `Access.so`. The OOB policy only matters on the `Generic*` path — an `AffineAccess` is bounds-checked statically by the polyhedral domain.
 
 ---
 
@@ -193,12 +193,12 @@ The verbatim textual form (from `Access.so`, exact binary string — note the le
 
 ### Purpose
 
-After the tiler (D-U02) cuts each axis to tile size, the abstract `Access` is lowered to a *tile* access pattern split into a **partition AP** (the 128-partition SBUF/PE dimension) and **free APs** (the in-tile contiguous dimensions). `TileAccessBase` (`ir/TileAccess.py`) is that concrete descriptor — the exact form `BirCodeGenLoop` consumes when it emits the BIR `sNdM` access struct.
+After the tiler cuts each axis to tile size, the abstract `Access` is lowered to a *tile* access pattern split into a **partition AP** (the 128-partition SBUF/PE dimension) and **free APs** (the in-tile contiguous dimensions). `TileAccessBase` (`ir/TileAccess.py`) is that concrete descriptor — the exact form `BirCodeGenLoop` consumes when it emits the BIR `sNdM` access struct.
 
 ### Fields and the Partition/Free Split
 
 ```c
-// ir/TileAccess.py — CONFIRMED fields from TileAccess.so string pool.
+// ir/TileAccess.py — fields from the TileAccess.so string pool.
 class TileAccessBase:
     partition_ap          // the 128-partition-dim access pattern
     free_ap               // the in-tile contiguous free-dim access pattern(s)
@@ -222,15 +222,13 @@ The `(partition_ap, [free_ap…])` split is the literal bridge between a Penguin
 
 ### Purpose
 
-Penguin encodes loop-nest guards as per-instruction `AffinePredicate`s (D-U08 §2.2: ~25 of `Instruction`'s 51 methods are the predicate sub-model), not as CFG branches. The atom of a predicate is `ICmpExpr` — an integer comparison node in the same `pelican::Expr` hierarchy.
+Penguin encodes loop-nest guards as per-instruction `AffinePredicate`s — roughly 25 of `Instruction`'s 51 methods make up the predicate sub-model — not as CFG branches. The atom of a predicate is `ICmpExpr` — an integer comparison node in the same `pelican::Expr` hierarchy.
 
 ### Structure
 
-`ICmpExpr` (`ICmpKind`) carries a compare-op and two `Expr` operands (`lhs`, `rhs`). The Python `AffinePredicate` layer normalizes *every* comparison to one of two native forms — `e >= 0` or `e == 0` — so the only compare-ops an `ICmpExpr` ever holds from the Python side are `SGE` and `EQ`. The five public constructors (`pred_ge`/`pred_le`/`pred_gt`/`pred_lt`/`pred_eq`) reduce to these two by sign-flipping the subtraction and adding a `-1` for the strict pair; the lone discriminator is a boolean `ge` kwarg (`True` → inequality, `False` → equality). The validity gate `is_legal_predicate` rejects any predicate whose expression has a runtime value or non-affine term — diagnostic string `"Invalid Predicate!"` (confirmed in `AffineExpr.so`).
+`ICmpExpr` (`ICmpKind`) carries a compare-op and two `Expr` operands (`lhs`, `rhs`). The Python `AffinePredicate` layer normalizes *every* comparison to one of two native forms — `e >= 0` or `e == 0` — so the only compare-ops an `ICmpExpr` ever holds from the Python side are `SGE` and `EQ`. The five public constructors (`pred_ge`/`pred_le`/`pred_gt`/`pred_lt`/`pred_eq`) reduce to these two by sign-flipping the subtraction and adding a `-1` for the strict pair; the lone discriminator is a boolean `ge` kwarg (`True` → inequality, `False` → equality). The validity gate `is_legal_predicate` rejects any predicate whose expression has a runtime value or non-affine term — diagnostic string `"Invalid Predicate!"` (in `AffineExpr.so`).
 
 > **NOTE —** `ICmpExpr` is a *control* atom, never an address expression — it is not serialized to the tensor wire-form. The full predicate normalization, the `ge`-kwarg mechanics, and the round-trip to/from isl constraints are owned by [Part 5.21](affine-isl-pelican-bridge.md); this section establishes only that the predicate atom is a member of the same `Expr` algebra. Byte-level `ICmpExpr` layout is in [Part 7.16–7.20](../bir/pelican-wire.md).
->
-> **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../bir/pelican-expr-wireform.md`, which does not exist in the shipped wiki; the Pelican `Expr` wire-serialization page is `bir/pelican-wire.md`. Retargeted; no factual claim changed.
 
 ---
 
@@ -245,7 +243,7 @@ The common currency between Penguin, BIR, and the isl polyhedral layer is the **
 ```c
 // linearize_affineexpr(expr)  — AffineExpr.so @0x17e00 (thin orchestrator).
 // The real arithmetic is pelican AffineExpr::flattenTerms / getLinearExpr /
-// accumulateTerm (C++, CONFIRMED symbol flattenTerms in pelican.so).
+// accumulateTerm (C++; symbol flattenTerms lives in pelican.so).
 function linearize_affineexpr(expr):
     // walk the Sum/Mult/Mod/FloorDiv/CC tree; fold nested Mult/Sum into
     // one coefficient per AffineIdx plus a scalar constant c.
@@ -265,21 +263,17 @@ function linearize_affineexpr(expr):
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims on this page, re-challenged against the binary:
+Read directly from the binaries:
 
-1. **"The algebra is C++ `pelican::Expr`, not Python."** — CONFIRMED. `AffineExpr.so`'s module docstring is verbatim `"AffineExpr - Affine and Quasi-Affine expressions."`; the kind enum (`SumKind`/`MultKind`/`ModuloKind`/`FloorDivKind`/`CCDivKind`/`CCModKind`/`ICmpKind`), `flattenTerms`, and `dyn_cast<…FloorDivExpr…From = pelican::Expr>` all live in `pelican.so`. The Python `.so` interns the face-class names but the arithmetic symbols are in pelican. **Holds.**
+- **The algebra is C++ `pelican::Expr`, not Python.** `AffineExpr.so`'s module docstring is verbatim `"AffineExpr - Affine and Quasi-Affine expressions."`, while the kind enum (`SumKind`/`MultKind`/`ModuloKind`/`FloorDivKind`/`CCDivKind`/`CCModKind`/`ICmpKind`), `flattenTerms`, and `dyn_cast<…FloorDivExpr…From = pelican::Expr>` all live in `pelican.so`. The Python `.so` interns the face-class names; the arithmetic symbols are in pelican.
+- **`CCGetRankExpr` is a real `Expr` subclass** with factory `_ZN7pelican14PelicanContext19createCCGetRankExprEll`, vtable `_ZTVN7pelican13CCGetRankExprE`, assert `AffineExpr.h:326: iteration_id >= 0 && channel_id >= 0`, and diagnostic `"Invalid iteration_id or channel_id for CCGetRankExpr!"`. That the two `long` args are `(iteration_id, channel_id)` is read off the `ll` mangling.
+- **Nodes are `FoldingSet`-uniqued**, per `_ZN4llvm10FoldingSetIN7pelican10FoldingIdxEE10NodeEquals…` and `pelican::Expr::hash_value`, with node type `pelican::FoldingIdx`.
+- **The atomic-RMW serialize begins with `{indent}`**: the exact `Access.so` string is `{indent}{type} {dst} = atomic_rmw_{op}({dst}, {src}, {{{reduce_axes}}})…`.
+- **`AffineIdx` depth doubles on a div/mod split**, tagged by `isDivNotMod`: `AffineIndices.h:170: loopdepth == (getParent()->getLoopdepth() * 2 + int64_t(isDivNotMod))`, with the `:152` parent-chain and `:171 factor > 0` companions.
 
-2. **"`CCGetRankExpr` is a real `Expr` subclass with factory `createCCGetRankExpr(ll)`."** — CONFIRMED by the exact mangled symbol `_ZN7pelican14PelicanContext19createCCGetRankExprEll`, the vtable `_ZTVN7pelican13CCGetRankExprE`, and the assert `AffineExpr.h:326: iteration_id >= 0 && channel_id >= 0` plus the diag `"Invalid iteration_id or channel_id for CCGetRankExpr!"`. The two `long` args = `(iteration_id, channel_id)` is read off the `ll` mangling. **Holds.**
-
-3. **"Nodes are `FoldingSet`-uniqued."** — CONFIRMED by `_ZN4llvm10FoldingSetIN7pelican10FoldingIdxEE10NodeEquals…` and `pelican::Expr::hash_value`. The node type is `pelican::FoldingIdx`. **Holds.** The *immutability consequence* (the GOTCHA) is INFERRED from FoldingSet semantics, tagged as such in prose.
-
-4. **"Atomic-RMW serialize begins with `{indent}`."** — CONFIRMED; the exact `Access.so` string is `{indent}{type} {dst} = atomic_rmw_{op}({dst}, {src}, {{{reduce_axes}}})…`. This overturns the D-U08 §5.4 form (flagged as CORRECTION 5.4-A). **Holds.**
-
-5. **"`AffineIdx` depth doubles on div/mod split, tagged by `isDivNotMod`."** — CONFIRMED verbatim: `AffineIndices.h:170: loopdepth == (getParent()->getLoopdepth() * 2 + int64_t(isDivNotMod))`, with the `:152` parent-chain and `:171 factor > 0` companions. The *tiling interpretation* (`i//t`/`i%t` split) is STRONG (consistent with the :170 form + the tiler's div/mod split) but the literal "tile size `t`" naming is INFERRED — the assert proves the doubling and the `isDivNotMod` tag, not the tile-size source. Tagged in prose.
-
-No fabricated addresses or symbols: every `sub_`/offset cited (`0x17e00`, `0x171c0`) is from D-Y06 §0's wrapper roster; every class name and assert string was re-grepped from the `.so` this session.
+Reconstructed rather than read: the immutability consequence of `FoldingSet` uniquing (the GOTCHA above) follows from `FoldingSet` semantics, not from an observed guard; and the *tiling* reading of the `:170` invariant — that the split axis is `i//t` / `i%t` for a tile size `t` — is an interpretation. The assert establishes the depth doubling and the `isDivNotMod` tag, not where the factor comes from. The wrapper offsets `0x17e00` and `0x171c0` are `AffineExpr.so` addresses.
 
 ---
 

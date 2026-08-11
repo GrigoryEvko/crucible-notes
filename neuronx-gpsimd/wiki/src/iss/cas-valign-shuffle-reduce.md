@@ -45,8 +45,7 @@ stripped**).
 > `0x2280ed8` → file `0x2080ed8`) both carry a **`0x200000` delta** — **not** libtpu's
 > `0x400000`. Every cas/fiss routine cited below is in `.text`, so the disassembly
 > addresses are raw VMA; only the decode-record `xxd` of §2 subtracts `0x200000`.
-> `[HIGH/OBSERVED]`
-
+>
 The aligned-load primitive VALIGN is built on is [cas/fiss Load/Store](./cas-load-store.md);
 the per-instruction ISA roster is [B08 reduce](../isa/ref/b08-reduce.md),
 [B12 shift](../isa/ref/b12-shift.md) and [B21 select/shuffle](../isa/ref/b21-select-shuffle.md);
@@ -60,7 +59,6 @@ the firmware consumers are [CrossLaneReduce](../firmware/kernels/cross-lane-redu
 
 The three legs issue in **three distinct units**, which is the cleanest structural test
 separating them. Read from the `*_issue` symbol prefixes (`nm libcas-core.so`):
-`[HIGH/OBSERVED]`
 
 | leg | issue unit | representative mnemonics | what it does |
 |---|---|---|---|
@@ -86,8 +84,7 @@ carries; it is not re-listed per op. `[CARRIED — B21 §2.1]`
 
 ## 2. VALIGN — the prime / flush funnel state machine
 
-### 2.1 The four-mnemonic streaming cycle `[HIGH/OBSERVED]`
-
+### 2.1 The four-mnemonic streaming cycle
 A misaligned 512-bit vector access cannot be served by a single 64-byte line read (the
 plain LSU primitive of [load/store §3](./cas-load-store.md) fetches *one* line, tolerant of
 *element* alignment but not *byte* misalignment). VALIGN assembles it from **two** aligned
@@ -116,8 +113,7 @@ aligned loads composed by the funnel" memory shape is the standard Tensilica val
 > `SA<w>`/`SAV<w>` = *aligning store*. `LA_PP`/`LA_PPXU` = the *priming-pair* variant.
 > `[HIGH/OBSERVED roster; MED for the per-name role split]`
 
-### 2.2 The prime — `LALIGN_IP` issue, byte-exact `[HIGH/OBSERVED]`
-
+### 2.2 The prime — `LALIGN_IP` issue, byte-exact
 `F0_F0_S1_Ld_16_inst_IVP_LALIGN_IP_issue` @ `0x71dc20` is the keystone. It decodes the base
 AR twice (read + post-update, the `_ip` doubled-`and $0xf` of [load/store §2.3](./cas-load-store.md)),
 then the **`valign` register both as a use and as a def** — that read-then-redefine is the
@@ -149,16 +145,14 @@ Three facts fall straight out of this:
 * The **align register is read AND written by the same op** (two `opnd_sem_valign_addr`
   calls, one use at `0x71dc85`, one def at `0x71dccb`/`0x71dcf1`) — this *is* the funnel
   carry: the op consumes the previous-load tail (`u_prev`) and writes back the fresh tail
-  (`u := fresh_word`). `[HIGH/OBSERVED]`
+  (`u := fresh_word`).
 * The valign index is masked **`& 0x3`** → the **4-entry** `valign` regfile, confirming
-  [core surface §4](./cas-core-surface.md)'s `opnd_sem_valign_addr & 0x03`. `[HIGH/OBSERVED]`
+  [core surface §4](./cas-core-surface.md)'s `opnd_sem_valign_addr & 0x03`.
 * The align-register def/use posts at **LAT 9** — **one stage earlier** than a plain load's
   LAT-10 destination vector ([load/store §6.1](./cas-load-store.md)). The align register is
   ready a cycle before a normal load-use because it is a register-internal carry, not a
-  memory drain. `[HIGH/OBSERVED]`
-
-### 2.3 The funnel-produce — `LA2NX8_IP` reads-and-rewrites the primed register `[HIGH/OBSERVED]`
-
+  memory drain.
+### 2.3 The funnel-produce — `LA2NX8_IP` reads-and-rewrites the primed register
 The aligning load funnels the carried tail with the fresh aligned word into the destination
 vector while re-priming the align register. The byte-tier funnel-load that carries the
 byte-exact analyzable `_issue` body is **`F0_F0_S0_LdSt_4_inst_IVP_LA2NX8_IP_issue` @
@@ -204,10 +198,8 @@ The `valignr` operand role makes the read-only nature of the *consumer* explicit
 > internal helpers** (`my_valign_commit_value`, `my_valign_set_commit_value`,
 > `my_valign_stage_value`, `my_valign_set_stage_value`, `my_valign_stall` — the lowercase
 > `t`-bound deferred-commit + stall hooks). The "20" omits the staging helpers and rounds
-> the role set; the reproducible figure is **24 total / 19 operand-role**. `[HIGH/OBSERVED]`
-
-### 2.4 The store flush — `SAPOS_FP` `[HIGH/OBSERVED]`
-
+> the role set; the reproducible figure is **24 total / 19 operand-role**.
+### 2.4 The store flush — `SAPOS_FP`
 The store side mirrors the load: `SALIGN`/`SAPOS` prime a store-align register; `SA<w>`/`SAV<w>`
 funnel each source vector *into* the partially-filled 64-byte line; `SAPOS_FP` ("store-align
 position, **F**lush **P**artial") drains the residual tail line at the end of a misaligned
@@ -217,10 +209,9 @@ buffered partial) **and** as a **def** (write the flushed/reset align state back
 LAT 10**. So the store-align register runs at **LAT 10** (the store-execute stage), one stage
 later than the load prime's LAT 9 — the store funnel drains at the writeback latency. This is
 the store counterpart of [Group II §3.1](../isa/semantics/group-semantics-ii.md)'s
-`IVP_SALIGN_I` (`xdsem_st_shifter_512 + mask_sav`). `[HIGH/OBSERVED — the 3-operand decode, the use+def of the store-align reg, and the LAT 10 read this pass]`
+`IVP_SALIGN_I` (`xdsem_st_shifter_512 + mask_sav`).
 
-### 2.5 The fiss VALUE — the same funnel as the plain load `[HIGH/OBSERVED]`
-
+### 2.5 The fiss VALUE — the same funnel as the plain load
 There is **no `module__xdref_valign_*` leaf**. The value side reuses the *plain load's*
 funnel `module__xdref_wideldshift_W_512_6` ([load/store §3.2](./cas-load-store.md)) — the
 exact same family — but applies it **across two adjacent 64-byte lines** instead of within
@@ -244,25 +235,22 @@ v512 valign_funnel(v512 carried /*u_prev, the align reg*/, v512 fresh /*new alig
   `amt += 16`. `[HIGH/OBSERVED — live-driven there]`
 * The `_6` token is the 6-bit `addr_lo` (`addr & 0x3f`), the byte phase within the line —
   the **same phase bit** the plain aligned load carries ([load/store §3.3](./cas-load-store.md)),
-  which is *why* the plain load composes cleanly into valign's two-phase streaming. `[HIGH/OBSERVED]`
+  which is *why* the plain load composes cleanly into valign's two-phase streaming.
 * Store side: `module__xdref_widestshift_512_W_6` is the inverse — it splices the source
   datum *into* the line at bit `(addr & 0x3f) << 3`, with `mask_sav` gating the live bytes.
-  `[HIGH/OBSERVED]`
-
+ 
 > **NOTE — VALIGN is the front-end, the LSU is the unit.** The complete reimplementation
 > recipe: `LALIGN` primes the align register from one aligned 64-byte line (LAT 9 def);
 > each `LA<w>` reads that carried tail (`valignr` use) + the next aligned line, funnels them
 > with `wideldshift_W_512_6` by the low address bits, writes the byte-misaligned 512-bit
 > vector (LAT 10), and re-primes the align register with the new tail. Same slots
 > (`S0_LdSt`/`S1_Ld`), same funnel, same phase bit as the aligned load — only the *two-line*
-> composition and the align-register carry are new. `[HIGH/OBSERVED]`
-
+> composition and the align-register carry are new.
 ---
 
 ## 3. Shuffle / Select — the lane-permute crossbar
 
-### 3.1 The crossbar wall — per-output-lane index `[HIGH/OBSERVED]`
-
+### 3.1 The crossbar wall — per-output-lane index
 The unifying property of this leg is the **per-output-lane index vector**: a *different*
 source lane may be chosen for *every* output lane, in one issue. That is the structural test
 separating it from the single-scalar-indexed `rep`/`extr` ([B16](../isa/ref/b16-vec-rep.md),
@@ -272,8 +260,7 @@ with no memory touch. The deeper RTL mux is the **`xdsem_tiesel_5_32`** 5-bit 32
 mux + the **`xdsem_bitkill`** per-lane predicate kill — [Group II](../isa/semantics/group-semantics-ii.md)'s
 domain; this page documents the cas decode/timing and the fiss value shape. `[HIGH/CARRIED — B21 §0]`
 
-### 3.2 The control word — how many sources reach the mux `[HIGH/OBSERVED]`
-
+### 3.2 The control word — how many sources reach the mux
 The four compute shapes differ purely in **how wide the control index is** and **how many
 result vectors are written**, read byte-exact from the operand decode of each `*_issue`:
 
@@ -304,8 +291,7 @@ The decisive cas-side evidence is the **vec-operand count and the control latenc
 then `sr` @ LAT 12 — three operands, not four), and `DSELNX16` @ `0x14b4940` has **five**
 vec operands (the dual `vu`/`vt` outputs both at LAT 10). The control-vector `sr` resolving
 at **LAT 12** while the data/result resolve at **LAT 10** is the crossbar's signature: the
-extra two-stage read depth is the lane mux selecting its sources. `[HIGH/OBSERVED — every
-LAT byte read this pass; operand counts cross-checked against B21 §2.2 descriptor table]`
+extra two-stage read depth is the lane mux selecting its sources.
 
 > **GOTCHA — `SEL`'s index is one bit wider than `SHFL`'s.** `SHFLNX16` selects among **32**
 > lanes of one source (5-bit index); `SELNX16` selects among **64** lanes of `{vr ++ vs}`
@@ -313,8 +299,7 @@ LAT byte read this pass; operand counts cross-checked against B21 §2.2 descript
 > truncate `SEL`'s top index bit and silently fold the second source out. The `xdsem_tiesel_5_32`
 > mux name encodes the 5-bit SHFL width; SEL widens it by the concat bit. `[HIGH/OBSERVED operand count; CARRIED for the mux width]`
 
-### 3.3 The fiss VALUE — the per-lane gather `[HIGH/OBSERVED]`
-
+### 3.3 The fiss VALUE — the per-lane gather
 The value leaves spell the operand arity directly (`512` = a 512-bit vector argument):
 
 ```text
@@ -344,21 +329,19 @@ not a sub-element byte (B21 §1.1). The scalar-broadcast `sels*` forms (`sels_nx
 spell like this family but ride the `vec_rep` single-scalar-index datapath ([B16](../isa/ref/b16-vec-rep.md));
 they are cited here only as adjacency. `[HIGH/OBSERVED — leaf signatures; the per-lane loop is the INFERRED reference shape behind them, MED]`
 
-### 3.4 DSEL and DCMPRS — the butterfly and the compactor `[HIGH/OBSERVED]`
-
+### 3.4 DSEL and DCMPRS — the butterfly and the compactor
 * **DSEL** writes **two** result vectors (`vu`, `vt`) from the same source pair in one issue
   — two `'o'`-marked operand descriptors in the encoding table (B21 §2.2), the cas issue's
   five vec operands (§3.2). It is the de-interleave / butterfly stage that
   [StreamTranspose](../firmware/kernels/stream-transpose.md) (POOL opcode `0x6b`, the 32×32
   datapath transpose) builds its lane-permute from — `op@36` pinned to `Bypass`, pure data
-  movement. `[HIGH/OBSERVED]`
+  movement.
 * **DCMPRS2NX8** is the predicate-driven stream-compaction primitive: `out[k] = vbr[k] ?
   src[popcount(vbr[0..k])] : src[63]` — it packs the predicate-true bytes to the front. Its
   cas issue (`@0x14b7bb0`) reads `vbr`/`vr` at LAT 10 and drains through the pack network at
   LAT 12, pulling a `b32_pr` packed predicate. `[HIGH/CARRIED — B21 §6]`
 
-### 3.5 The predicated `.T` forms — RMW with lane kill `[HIGH/OBSERVED]`
-
+### 3.5 The predicated `.T` forms — RMW with lane kill
 `SELNX16T` / `SHFLNX16T` / `DSELNX16T` add a `vbr` `vbool` operand and mark the destination
 `'m'` (inout): killed lanes **keep the destination's prior value** (a read-modify-write). The
 kill is the same per-lane `xdsem_bitkill` predicate guard the `_t` arithmetic ops use
@@ -368,8 +351,7 @@ kill is the same per-lane `xdsem_bitkill` predicate guard the `_t` arithmetic op
 
 ## 4. Reduce — the cross-lane fold tree
 
-### 4.1 The fold collapses the lane axis `[HIGH/OBSERVED]`
-
+### 4.1 The fold collapses the lane axis
 Reduce is the only `ivp_` vector family that **collapses the 32-lane `vec` register to a
 scalar/narrowed result** instead of operating lane-wise (B08 §0). The five sub-families:
 
@@ -394,8 +376,7 @@ scalar/narrowed result** instead of operating lane-wise (B08 §0). The five sub-
 > subtract; `rxorb` is a member of neither fold block (only `randb`/`rorb` exist). Do not
 > emit a phantom reduce-subtract / reduce-XOR. `[HIGH/OBSERVED — roster; CARRIED from Group II §3.2]`
 
-### 4.2 The cas TIMING — result LAT 10, fold-source LAT 12 `[HIGH/OBSERVED]`
-
+### 4.2 The cas TIMING — result LAT 10, fold-source LAT 12
 `F0_F0_S3_ALU_36_inst_IVP_RADDNX16_issue` @ `0x14b2f40` decodes exactly two vec operands —
 the **result lane** and the **full-vector fold source** — at the same staggered latency as
 the crossbar:
@@ -413,7 +394,6 @@ The result posts at **LAT 10** (the S3-ALU vector-execute stage, forwardable lik
 op), while the **fold source resolves at LAT 12** — the same two-stage extra read depth the
 crossbar shows, here because the fold tree must read all 32 lanes before it can produce the
 scalar. So reduce and select share the S3-ALU `(data@10, deep-read@12)` timing shape.
-`[HIGH/OBSERVED]`
 
 The reduce decode reuses the per-`(format,slot,mnemonic)` decode-bitmap dispatch of
 [cas arith §3.1](./cas-arith-sem.md): each reduce-op's `stage10` wrapper sets a **distinct
@@ -423,10 +403,8 @@ opcode-selector bit** in the `0x734..0x73a` region before the **one shared**
 it on return. The shared body funnels to the host VALUE callback via the per-instruction
 vtable (`mov $0xa,%esi ; call *0x222ea8(%rbx)`), confirming **execute fires at stage 10**,
 exactly like the lane-wise ALU. So the op identity is carried by one decode bit; the fold
-*value* is host-side. `[HIGH/OBSERVED]`
-
-### 4.3 The fiss VALUE — device tree vs oracle flat fold `[HIGH/OBSERVED]`
-
+*value* is host-side.
+### 4.3 The fiss VALUE — device tree vs oracle flat fold
 This is the sharpest cas/fiss split on the page. The **device realises a balanced log-step
 reduce tree** (for timing — what the cas latency models), while the **fiss `xdref_r*` oracle
 realises a FLAT, fully-unrolled left-to-right fold** (for value). They are
@@ -447,8 +425,7 @@ realises a FLAT, fully-unrolled left-to-right fold** (for value). They are
 The body reads each of the 32 int16 lanes with `movzwl 0xNN(%r12),%esi` at descending source
 offsets stepping by 2 bytes (one int16 lane each) — a **flat unrolled accumulate**, not a
 log-depth butterfly. The `movzwl` (zero-extend) into the wider accumulator is the byte
-witness for the `nx16 → 32b` widening. `[HIGH/OBSERVED]`
-
+witness for the `nx16 → 32b` widening.
 ```c
 /* fiss reduce VALUE (the oracle's flat fold) -- value-equivalent to the device tree */
 int32_t radd_nx16_32_512(v512 v) {       /* radds_* would clamp to int16 instead */
@@ -471,8 +448,7 @@ int32_t radd_nx16_32_512(v512 v) {       /* radds_* would clamp to int16 instead
 > saturates) and the fp *NaN-suppression* (`RMAXNUM`/`RMINNUM` implement IEEE `maxNum`/`minNum`).
 > `[HIGH/OBSERVED + CARRIED from Group II §3.2]`
 
-### 4.4 The block / butterfly reduce `RB*` and the bool fold `[HIGH/OBSERVED]`
-
+### 4.4 The block / butterfly reduce `RB*` and the bool fold
 * **`RBMINNX16`** (`@0x14b5220`) and the `rb*` family fold the same way **plus** emit a
   `vbool` marking the argmin/argmax lane(s). Its cas issue decodes **three** operands: a
   **`vbool` def** (the flag/argmin mask, `opnd_sem_vbool_addr`) at LAT 12, the single vector
@@ -541,7 +517,7 @@ ISS itself supplies the cycle-accurate timing oracle to check the LAT-9/10/12 sc
 
 ## 7. Honesty / uncertainty ledger
 
-**`[HIGH/OBSERVED]` (disassembled / read-from-byte this pass):**
+**`[HIGH/OBSERVED]` (disassembled / read-from-byte):**
 
 * **VALIGN prime state machine** — `LALIGN_IP` @ `0x71dc20`: base AR ×2 (`& 0xf`, LAT 1) +
   the `valign` register read **and** written (`opnd_sem_valign_addr & 0x3` → 4-entry file)
@@ -569,7 +545,7 @@ ISS itself supplies the cycle-accurate timing oracle to check the LAT-9/10/12 sc
 * The `randb`/`rorb` select-bit dispatch under the shared LSU semantic (no distinct issue
   symbol observed); the `SAPOS_FP` per-routine flush detail.
 
-**`[…/CARRIED]` (re-grounded from a HIGH sibling):**
+**`[…/CARRIED]` (grounded on a HIGH sibling):**
 
 * The `randb`/`rorb` `S1_Ld` slot (B08 §1, HIGH there; corroborated by `LTRN`-S1 OBSERVED
   here); the `xdsem_tiesel_5_32` / `xdsem_bitkill` RTL mux (Group II); the device reduce-tree
@@ -584,4 +560,4 @@ ISS itself supplies the cycle-accurate timing oracle to check the LAT-9/10/12 sc
 > *is* the lane mux / fold tree). And for reduce, **model the timing as a log-step tree but
 > compute the value with any associative order** — the shipped oracle proves the value is a
 > flat fold. Do not look for a permuted or reduced datum inside `libcas-core`; it is
-> physically not there — get it from the `module__xdref_*` leaves. `[HIGH/OBSERVED]`
+> physically not there — get it from the `module__xdref_*` leaves.

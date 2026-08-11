@@ -17,7 +17,8 @@ This page inherits the certified-perfect denominator from
 [the coverage tally](../core/coverage-tally.md): the `1534 / 12569` shipped mnemonic/placement
 cover and the `864/864` value-leaf cover. Counts are grounded with `nm | rg -c` against the
 binary `.symtab`, never a decompile grep; the `extracted/` tree is gitignored (reach it with
-`fd --no-ignore` or an absolute path). Confidence tags follow
+`fd --no-ignore` or an absolute path). The page default is `[HIGH/OBSERVED]`; claims that depart
+from it carry an explicit tag, following
 [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte / immediate
 / symbol / **executed** value read from the shipped binary; `INFERRED` = reasoned over OBSERVED;
 `CARRIED` = re-used at a cited page's confidence; crossed with `HIGH`/`MED`/`LOW`. All prose is
@@ -27,7 +28,6 @@ binary / static-analysis derived only.
 > mul-**sub**) plus the packed (`mulp*`), sign-multiply (`mulsgn*`), quad-replicate (`mulq*`,
 > `mul4t*`) and immediate (`mul*i*`) signed variants, in lane widths **8 / 16 / 32 bit**,
 > accumulating into **24 / 48 / 96-bit** `wvec` lanes. **71 mnemonics, 373 placements.**
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -60,29 +60,30 @@ Columns: `mnemonic` · `FLIX format·slot` (the slots hosting it; all sit in the
 `opcode-sel imm` (the `F0_S2_Mul` encode-thunk template `WORD0`, the
 [universal `C7 07 imm32 C3` ABI](../core/flix-encoding.md#61-the-universal-encode-thunk-abi); per-format
 packing differs) · `vec→wvec widths` (lane-bits → product/acc-bits) · `bytes` (16 wide / 8 narrow) ·
-semantics · `[conf]`. Templates are byte-exact from `objdump -d` this pass; widths from the joined
-[`xdref` leaf](#6-the-mnemonic--value-leaf-join).
+semantics. Templates are byte-exact from `objdump -d`; widths from the joined
+[`xdref` leaf](#6-the-mnemonic--value-leaf-join). Every row of §2.1–§2.4 is `[HIGH/OBSERVED]` except
+the five whose semantics cell is marked `[MED/OBSERVED]` inline.
 
 ### 2.1 Core full-vector signed MAC (the dot-product spine)
 
-| mnemonic | fmt·slot | opcode-sel imm (F0·s2) | vec→wvec | bytes | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_mul2nx8` | F0/F1/F2/F3/F6/F7/F11/N1 · s2_mul | `0x00c57000` | 8 → 24 | 16/8 | signed `int8` × `int8` → 24-bit, **overwrite** lane | `[HIGH/OBSERVED]` |
-| `ivp_mula2nx8` | (same 8 slots) | `0x00c57040` | 8 → 24 | 16/8 | signed `int8`×`int8`, **acc += prod** | `[HIGH/OBSERVED]` |
-| `ivp_muls2nx8` | (same 8 slots) | `0x0101f040`† | 8 → 24 | 16/8 | signed `int8`×`int8`, **acc −= prod** | `[HIGH/OBSERVED]` |
-| `ivp_mulnx16` | (same 8 slots) | `0x01003040`† | 16 → 48 | 16/8 | signed `int16`×`int16` → 48-bit, overwrite | `[HIGH/OBSERVED]` |
-| `ivp_mulanx16` | (same 8 slots) | `0x00c570c0` | 16 → 48 | 16/8 | signed `int16`×`int16`, acc += prod | `[HIGH/OBSERVED]` |
-| `ivp_mulsnx16` | (same 8 slots) | `0x01027040`† | 16 → 48 | 16/8 | signed `int16`×`int16`, acc −= prod | `[HIGH/OBSERVED]` |
-| `ivp_muln_2x32` | (same 8 slots) | `0x010…`† | 32 → 96 | 16/8 | signed `int32`×`int32` → 96-bit, overwrite | `[HIGH/OBSERVED]` |
-| `ivp_mulan_2x32` | (same 8 slots) | `0x010…`† | 32 → 96 | 16/8 | signed `int32`×`int32`, acc += prod | `[HIGH/OBSERVED]` |
-| `ivp_mulsn_2x32` | (same 8 slots) | — | 32 → 96 | 16/8 | signed `int32`×`int32`, acc −= prod | `[HIGH/OBSERVED]` |
-| `ivp_muln_2x16x32_0` | (same 8 slots) | `0x0100f040`† | 16×32 → 96 (even) | 16/8 | signed `int16`×`int32` widening, even lanes, overwrite | `[HIGH/OBSERVED]` |
-| `ivp_muln_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (odd) | 16/8 | … odd lanes | `[HIGH/OBSERVED]` |
-| `ivp_mulan_2x16x32_0` | (same 8 slots) | `0x00c5b080` | 16×32 → 96 (even) | 16/8 | signed `int16`×`int32`, even lanes, acc += | `[HIGH/OBSERVED]` |
-| `ivp_mulan_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (odd) | 16/8 | … odd lanes, acc += | `[HIGH/OBSERVED]` |
-| `ivp_mulhn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, overwrite | `[MED/OBSERVED]` |
-| `ivp_mulahn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, acc += | `[MED/OBSERVED]` |
-| `ivp_mulshn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, acc −= | `[MED/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F0·s2) | vec→wvec | bytes | semantics |
+|---|---|---|---|---|---|
+| `ivp_mul2nx8` | F0/F1/F2/F3/F6/F7/F11/N1 · s2_mul | `0x00c57000` | 8 → 24 | 16/8 | signed `int8` × `int8` → 24-bit, **overwrite** lane |
+| `ivp_mula2nx8` | (same 8 slots) | `0x00c57040` | 8 → 24 | 16/8 | signed `int8`×`int8`, **acc += prod** |
+| `ivp_muls2nx8` | (same 8 slots) | `0x0101f040`† | 8 → 24 | 16/8 | signed `int8`×`int8`, **acc −= prod** |
+| `ivp_mulnx16` | (same 8 slots) | `0x01003040`† | 16 → 48 | 16/8 | signed `int16`×`int16` → 48-bit, overwrite |
+| `ivp_mulanx16` | (same 8 slots) | `0x00c570c0` | 16 → 48 | 16/8 | signed `int16`×`int16`, acc += prod |
+| `ivp_mulsnx16` | (same 8 slots) | `0x01027040`† | 16 → 48 | 16/8 | signed `int16`×`int16`, acc −= prod |
+| `ivp_muln_2x32` | (same 8 slots) | `0x010…`† | 32 → 96 | 16/8 | signed `int32`×`int32` → 96-bit, overwrite |
+| `ivp_mulan_2x32` | (same 8 slots) | `0x010…`† | 32 → 96 | 16/8 | signed `int32`×`int32`, acc += prod |
+| `ivp_mulsn_2x32` | (same 8 slots) | — | 32 → 96 | 16/8 | signed `int32`×`int32`, acc −= prod |
+| `ivp_muln_2x16x32_0` | (same 8 slots) | `0x0100f040`† | 16×32 → 96 (even) | 16/8 | signed `int16`×`int32` widening, even lanes, overwrite |
+| `ivp_muln_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (odd) | 16/8 | … odd lanes |
+| `ivp_mulan_2x16x32_0` | (same 8 slots) | `0x00c5b080` | 16×32 → 96 (even) | 16/8 | signed `int16`×`int32`, even lanes, acc += |
+| `ivp_mulan_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (odd) | 16/8 | … odd lanes, acc += |
+| `ivp_mulhn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, overwrite — `[MED/OBSERVED]` |
+| `ivp_mulahn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, acc += — `[MED/OBSERVED]` |
+| `ivp_mulshn_2x16x32_1` | (same 8 slots) | — | 16×32 → 96 (high) | 16/8 | high-half signed widening, acc −= — `[MED/OBSERVED]` |
 
 † `mulnx16`/`muls*`/`muln_2x16x32` carry a *distinct iclass* whose `F0_S2_Mul` template is **not** a
 `+0x40` step off the overwrite form — accumulate is a separate opcode, not a single global bit
@@ -94,17 +95,17 @@ The `mulp` family produces **two** partial products per lane-pair (the leaf sign
 = two 8-bit × two 8-bit feeding one 24-bit lane) — a packed/parallel MAC used for `int8` GEMM
 inner loops where two weights ride one operand word.
 
-| mnemonic | vec→wvec | semantics | conf |
-|---|---|---|---|
-| `ivp_mulp2nx8` / `ivp_mulpa2nx8` | 8 → 24 | packed signed `int8` mul / mul-add (`mulp_24_8_8_8_8`) | `[HIGH/OBSERVED]` |
-| `ivp_mulps2nx8` | 8 → 24 | packed signed mul-**sub** | `[HIGH/OBSERVED]` |
-| `ivp_mulpd2nx8` / `ivp_mulpda2nx8` | 8 → 24 | packed-**dual** signed mul / mul-add (`mulpd_24_8_8_8_8`) | `[HIGH/OBSERVED]` |
-| `ivp_mulpnx16` / `ivp_mulpanx16` | 16 → 48 | packed signed `int16` mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulpsnx16` | 16 → 48 | packed signed `int16` mul-sub | `[HIGH/OBSERVED]` |
-| `ivp_mulpdnx16` / `ivp_mulpdanx16` | 16 → 48 | packed-dual signed `int16` mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulp2n8xr16` / `ivp_mulpa2n8xr16` | 8 → 24 | packed signed `int8` × replicated-16 mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulpan16xr16` / `ivp_mulpn16xr16` | 16 → 48 | packed signed `int16` × replicated-16 mul-add / mul | `[HIGH/OBSERVED]` |
-| `ivp_mulpai2nr8x16` / `ivp_mulpi2nr8x16` | 8×16 | packed signed immediate-replicated mul-add / mul | `[MED/OBSERVED]` |
+| mnemonic | vec→wvec | semantics |
+|---|---|---|
+| `ivp_mulp2nx8` / `ivp_mulpa2nx8` | 8 → 24 | packed signed `int8` mul / mul-add (`mulp_24_8_8_8_8`) |
+| `ivp_mulps2nx8` | 8 → 24 | packed signed mul-**sub** |
+| `ivp_mulpd2nx8` / `ivp_mulpda2nx8` | 8 → 24 | packed-**dual** signed mul / mul-add (`mulpd_24_8_8_8_8`) |
+| `ivp_mulpnx16` / `ivp_mulpanx16` | 16 → 48 | packed signed `int16` mul / mul-add |
+| `ivp_mulpsnx16` | 16 → 48 | packed signed `int16` mul-sub |
+| `ivp_mulpdnx16` / `ivp_mulpdanx16` | 16 → 48 | packed-dual signed `int16` mul / mul-add |
+| `ivp_mulp2n8xr16` / `ivp_mulpa2n8xr16` | 8 → 24 | packed signed `int8` × replicated-16 mul / mul-add |
+| `ivp_mulpan16xr16` / `ivp_mulpn16xr16` | 16 → 48 | packed signed `int16` × replicated-16 mul-add / mul |
+| `ivp_mulpai2nr8x16` / `ivp_mulpi2nr8x16` | 8×16 | packed signed immediate-replicated mul-add / mul — `[MED/OBSERVED]` |
 
 ### 2.3 Quad-replicate signed MAC (`mulq*`, `dmulq*`, `mul4t*`)
 
@@ -112,20 +113,20 @@ The quad family multiplies one `vec` operand against a **replicated scalar weigh
 ways (`q` = quad, `d`-prefix = double-quad, `4t` = 4-tap transpose). It is the systolic-style
 weight-stationary form. **Slotting splits on the replicate fan-out:**
 
-| mnemonic | fmt·slot | opcode-sel imm | vec→wvec | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_mulq2n8xr8` | **F4·s2_mul only** | `0x88000000` | 8 → 24 | signed `int8` × replicate-8 quad mul (needs dual-load F4) | `[HIGH/OBSERVED]` |
-| `ivp_mulqa2n8xr8` | **F4·s2_mul only** | `0x8c000000` | 8 → 24 | … quad **mul-add** | `[HIGH/OBSERVED]` |
-| `ivp_mulqn16xr16` | **F4·s2_mul only** | `0x98000000` | 16 → 48 | signed `int16` × replicate-16 quad mul | `[HIGH/OBSERVED]` |
-| `ivp_mulqan16xr16` | **F4·s2_mul only** | `0x90000000` | 16 → 48 | … quad mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulqn16xr8` / `ivp_mulqan16xr8` | F4·s2_mul | — | 16×8 → 48 | signed `int16` × replicate-8 quad mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulq2n8dxr8` / `ivp_mulq2n8qxr8` | F0/F2/F7/N1 · s2 | (per-format) | 8 → 24 | double / quad-fanout replicate quad mul | `[HIGH/OBSERVED]` |
-| `ivp_mulqa2n8dxr8` / `ivp_mulqa2n8qxr8` | F0/F2/F7/N1 · s2 | — | 8 → 24 | … quad mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulqn16dxr16` / `ivp_mulqan16dxr16` | F0/F2/F7/N1 · s2 | — | 16 → 48 | double-fanout signed quad mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_dmulq2n8xr8` … `ivp_dmulqa2n8qxr8` (6) | F0/F2/F7/N1 · s2 | — | 8 → 24 | **double**-quad signed mul / mul-add, ×r8 fanouts | `[HIGH/OBSERVED]` |
-| `ivp_mul4t2n8xr8` / `ivp_mul4ta2n8xr8` | 8 slots · s2 | — | 8 → 24 | 4-tap transpose signed mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mul4tn16xr16` / `ivp_mul4tan16xr16` | 8 slots · s2 | `0x00c00080` / `0x00c00040` (F0) | 16 → 48 | 4-tap transpose `int16`×r16 mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mul4tn16xr8` / `ivp_mul4tan16xr8` | 8 slots · s2 | — | 16×8 → 48 | 4-tap transpose `int16`×r8 mul / mul-add | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm | vec→wvec | semantics |
+|---|---|---|---|---|
+| `ivp_mulq2n8xr8` | **F4·s2_mul only** | `0x88000000` | 8 → 24 | signed `int8` × replicate-8 quad mul (needs dual-load F4) |
+| `ivp_mulqa2n8xr8` | **F4·s2_mul only** | `0x8c000000` | 8 → 24 | … quad **mul-add** |
+| `ivp_mulqn16xr16` | **F4·s2_mul only** | `0x98000000` | 16 → 48 | signed `int16` × replicate-16 quad mul |
+| `ivp_mulqan16xr16` | **F4·s2_mul only** | `0x90000000` | 16 → 48 | … quad mul-add |
+| `ivp_mulqn16xr8` / `ivp_mulqan16xr8` | F4·s2_mul | — | 16×8 → 48 | signed `int16` × replicate-8 quad mul / mul-add |
+| `ivp_mulq2n8dxr8` / `ivp_mulq2n8qxr8` | F0/F2/F7/N1 · s2 | (per-format) | 8 → 24 | double / quad-fanout replicate quad mul |
+| `ivp_mulqa2n8dxr8` / `ivp_mulqa2n8qxr8` | F0/F2/F7/N1 · s2 | — | 8 → 24 | … quad mul-add |
+| `ivp_mulqn16dxr16` / `ivp_mulqan16dxr16` | F0/F2/F7/N1 · s2 | — | 16 → 48 | double-fanout signed quad mul / mul-add |
+| `ivp_dmulq2n8xr8` … `ivp_dmulqa2n8qxr8` (6) | F0/F2/F7/N1 · s2 | — | 8 → 24 | **double**-quad signed mul / mul-add, ×r8 fanouts |
+| `ivp_mul4t2n8xr8` / `ivp_mul4ta2n8xr8` | 8 slots · s2 | — | 8 → 24 | 4-tap transpose signed mul / mul-add |
+| `ivp_mul4tn16xr16` / `ivp_mul4tan16xr16` | 8 slots · s2 | `0x00c00080` / `0x00c00040` (F0) | 16 → 48 | 4-tap transpose `int16`×r16 mul / mul-add |
+| `ivp_mul4tn16xr8` / `ivp_mul4tan16xr8` | 8 slots · s2 | — | 16×8 → 48 | 4-tap transpose `int16`×r8 mul / mul-add |
 
 > **GOTCHA — the `mulq*` single-replicate quad is *F4-exclusive*; the `dxr8`/`qxr8` multi-fanout and
 > the `mul4t*` transpose forms are *not*.** `mulq2n8xr8`, `mulqn16xr16`, `mulqan16xr16`,
@@ -136,27 +137,27 @@ weight-stationary form. **Slotting splits on the replicate fan-out:**
 > `Ld` slots. The `dxr8`/`qxr8` fan-out forms read the weight from a single load and place in
 > F0/F2/F7/N1; the `mul4t*` transpose forms place in all 8 wide+N1 slots (verified `nm`). A
 > reimplementer's bundler **must** schedule the `mulq*xr8`/`mulq*xr16` quad MAC into F4 or the bundle
-> is unencodable. `[HIGH/OBSERVED]`
+> is unencodable.
 
 ### 2.4 Immediate-scalar, sign-multiply, and pack-low
 
-| mnemonic | vec→wvec | semantics | conf |
-|---|---|---|---|
-| `ivp_muli2nx8x16` / `ivp_mulai2nx8x16` | 8×16 → 48 | signed `int8` × **immediate** `int16` mul / mul-add (`mul[a]i2nx8x16_48_…_16`) | `[HIGH/OBSERVED]` |
-| `ivp_muli2nr8x16` / `ivp_mulai2nr8x16` | 8×16 → 48 | signed immediate-replicated mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mul2n8xr16` / `ivp_mula2n8xr16` | 8×16 → 48 | signed `int8` × replicate-16 mul / mul-add | `[HIGH/OBSERVED]` |
-| `ivp_mulsgnnx16` | 16 → 16 | **multiply-by-sign**: `b · sign(a)` per lane (returns ±b) | `[HIGH/OBSERVED]` |
-| `ivp_mulsgnsnx16` | 16 → 16 | signed sign-multiply, saturating variant | `[HIGH/OBSERVED]` |
-| `ivp_mulsgnn_2x32` | 32 → 32 | 32-bit multiply-by-sign | `[HIGH/OBSERVED]` |
-| `ivp_mulnx16packl` / `ivp_mulanx16packl` | 16 → **16** | signed `int16`×`int16`, keep **low 16** packed into `vec` (no wide acc) — `mul_16_16_16_packl` | `[HIGH/OBSERVED]` |
-| `ivp_mulsnx16packl` / `ivp_mulanx16packlt` | 16 → 16 | low-half pack, sub / throttled (`_t`) variants | `[HIGH/OBSERVED]` |
+| mnemonic | vec→wvec | semantics |
+|---|---|---|
+| `ivp_muli2nx8x16` / `ivp_mulai2nx8x16` | 8×16 → 48 | signed `int8` × **immediate** `int16` mul / mul-add (`mul[a]i2nx8x16_48_…_16`) |
+| `ivp_muli2nr8x16` / `ivp_mulai2nr8x16` | 8×16 → 48 | signed immediate-replicated mul / mul-add |
+| `ivp_mul2n8xr16` / `ivp_mula2n8xr16` | 8×16 → 48 | signed `int8` × replicate-16 mul / mul-add |
+| `ivp_mulsgnnx16` | 16 → 16 | **multiply-by-sign**: `b · sign(a)` per lane (returns ±b) |
+| `ivp_mulsgnsnx16` | 16 → 16 | signed sign-multiply, saturating variant |
+| `ivp_mulsgnn_2x32` | 32 → 32 | 32-bit multiply-by-sign |
+| `ivp_mulnx16packl` / `ivp_mulanx16packl` | 16 → **16** | signed `int16`×`int16`, keep **low 16** packed into `vec` (no wide acc) — `mul_16_16_16_packl` |
+| `ivp_mulsnx16packl` / `ivp_mulanx16packlt` | 16 → 16 | low-half pack, sub / throttled (`_t`) variants |
 
 > **NOTE — `packl` writes `vec`, not `wvec`.** The `*packl` forms are the only B04 ops that do **not**
 > target the wide accumulator: they compute the full signed product and write back only the **low
 > lane-width bits** into a normal `vec` register (leaf `mul_16_16_16_packl`, output is one 16-bit
 > lane). They are the "I want the truncated product directly, no readout" path — useful for modular
 > arithmetic. Everything else in B04 lands in `wvec` and needs a
-> [pack/unpack readout](#7-readout-the-wvecvec-pack-cross-link-to-b10). `[HIGH/OBSERVED]`
+> [pack/unpack readout](#7-readout-the-wvecvec-pack-cross-link-to-b10).
 
 ---
 
@@ -178,13 +179,13 @@ This is exactly the Mul-slot roster from
 `N1` s2, **absent in N0/N2**. So a signed MAC can co-issue with a load/store (s0), a load (s1) and
 1–3 ALU ops (s3+) in the same 16-byte wide bundle — the structural basis of the weight-stationary
 inner loop. The `packl` forms drop the `F0/F3/F11` placements (they need the ALU-style writeback
-path), landing in F1/F2/F7/N1 only — confirmed `nm` this pass. `[HIGH/OBSERVED]`
+path), landing in F1/F2/F7/N1 only — confirmed by `nm`.
 
 The placement total over the 71 B04 mnemonics is **373** (summed `nm | rg -c` per mnemonic): the 65
 signed `ivp_mul*` contribute **355**, the 6 signed `dmul` add **18**. With 30 of the 71 carrying the
 canonical 8 Mul-slot placements and the F4-only quad / multi-fanout `dxr8`/`qxr8` / restricted-`packl`
 forms carrying fewer, `373` is the contribution of B04 to the certified `12569` placement cover
-([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary-this-pass)).
+([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary)).
 `[HIGH/OBSERVED]`
 
 ### 3.2 Accumulate is a *distinct opcode*, not a bit flip
@@ -207,11 +208,11 @@ differently per format). This reproduces the flix-encoding page's
 [two-tier selector CORRECTION](../core/flix-encoding.md#62-the-two-tier-selector-model): the
 add/sub/overwrite variant is a **distinct opcode** realized by per-format packing, *not* a
 roster-wide "accumulate bit". A reimplementer's assembler must carry the full `(mnemonic, slot) →
-template` table; it cannot synthesize `mula` from `mul` by OR-ing a constant. `[HIGH/OBSERVED]`
+template` table; it cannot synthesize `mula` from `mul` by OR-ing a constant.
 
 The quad F4 forms show the same pattern: `mulq2n8xr8 = 0x88000000` → `mulqa2n8xr8 = 0x8c000000`
 (`+0x04000000`), but `mulqn16xr16 = 0x98000000` → `mulqan16xr16 = 0x90000000` (`−0x08000000`). The
-accumulate delta is sign- and direction-dependent on the iclass, never a uniform bit. `[HIGH/OBSERVED]`
+accumulate delta is sign- and direction-dependent on the iclass, never a uniform bit.
 
 ---
 
@@ -307,7 +308,7 @@ and the same at 48-bit (`mula_48_48_16_16`, acc = `0x7FFF_FFFF_FFFF`):
 
 A reimplementer models the accumulate as a **modular** `acc = (acc ± a·b) mod 2^(3L)`, with **no**
 clamp on the accumulate itself. (Saturation, where it exists, is applied later at the
-[pack readout](#7-readout-the-wvecvec-pack-cross-link-to-b10), not on the accumulate.) `[HIGH/OBSERVED by execution]`
+[pack readout](#7-readout-the-wvecvec-pack-cross-link-to-b10), not on the accumulate.)
 
 ### 5.3 The wide accumulator earns its width — long-reduction precision (executed)
 
@@ -323,7 +324,7 @@ after 64×  acc += 32767*32767:
 
 The 48-bit lane holds the full 36-bit running sum; a 32-bit accumulator would have wrapped after the
 second step. This is the architectural justification for accumulating into `wvec` rather than back
-into `vec`. `[HIGH/OBSERVED by execution]`
+into `vec`.
 
 ### 5.4 Multiply-subtract and multiply-by-sign (executed/decoded)
 
@@ -331,10 +332,10 @@ into `vec`. `[HIGH/OBSERVED by execution]`
   *subtract-accumulate* direction (`muls_24_24_8_8` does `imul` then a borrow-handling `acc − prod`
   with the `test/sub $1/lea` big-int sequence). It is signed×signed with a subtracting accumulate —
   squarely B04. Do **not** confuse it with the mixed-sign `mulsu`/`mulus` ([B05](b05-mac-mixed.md));
-  the `su`/`us` token is a *two-letter* sign pair, distinct from the single `s`. `[HIGH/OBSERVED]`
+  the `su`/`us` token is a *two-letter* sign pair, distinct from the single `s`.
 - **`mulsgn` = multiply-by-sign.** `mulsgn_16_16_16` tests operand `a`'s sign bit (`and $0x8000`)
   and negates `b` accordingly (`neg %edx`), returning `±b` per lane — a sign-transfer op, not a true
-  product. Used to apply a stored sign to a magnitude. `[HIGH/OBSERVED]`
+  product. Used to apply a stored sign to a magnitude.
 
 ---
 
@@ -419,7 +420,7 @@ The accumulator is a **same-stage (12,12) read-modify-write**: a MAC reads its `
 `@12`. Write@12 → next-read@12 is a single-cycle bypass, so a MAC chain sustains **II = 1** (one MAC
 per cycle) with a **2-cycle result latency**. With only **4** `wvec` entries, at most four
 independent accumulation chains can be live; a fifth aliases an in-use accumulator — a
-software-scheduling constraint, not a port limit. `[HIGH/OBSERVED]` (see
+software-scheduling constraint, not a port limit (see
 [register-files §5](../core/register-files.md#5-readwrite-semantics-per-file)).
 
 ---
@@ -501,16 +502,14 @@ The classifier, applied to the `nm` `Opcode_ivp_mul*` mnemonic roster:
 > (`s`=subtract). Executed leaves confirm it: `muls_24_24_8_8` sign-extends *both* operands
 > (`movsbl`/`movsbl`) and subtracts the product, whereas `mulsu_24_8_8` sign-extends one and
 > zero-extends the other. Mis-binning `muls` into B05 would double-count and corrupt both batches'
-> tallies. `[HIGH/OBSERVED]`
+> tallies.
 
 ---
 
 ## 10. Adversarial self-verification — 5 strongest claims, re-challenged
 
-Each claim re-derived against the binary this pass; nothing taken on a report's word.
-
 1. **"71 signed-multiply MAC mnemonics, 373 placements (= 65 signed `ivp_mul*` + 6 signed `dmul`)."**
-   Re-derived `nm`-first: `nm libisa-core.so | rg -o 'Opcode_(ivp_mul…)…'` = **212** distinct
+   Derived `nm`-first: `nm libisa-core.so | rg -o 'Opcode_(ivp_mul…)…'` = **212** distinct
    `ivp_mul*`; the FP filter (`xf16`/`xf32`/`sone`) removes **24** → **188** integer; the
    `us`/`su`/`uu`/`c`/`j` classifier selects **123** (B05), leaving **65** signed `ivp_mul*` for B04
    (`188 = 65 + 123`, **0** overlap). Summing `nm | rg -c 'Opcode_<m>_Slot_*_encode'` over the 65 =
@@ -520,33 +519,31 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
    `muls_24_24_8_8` sign-extends both operands; it is signed×signed. *Challenge:* does folding the 6
    `dmul` into "71" double-count against the 188? No — `dmul` is a distinct mnemonic prefix outside
    the 212 `ivp_mul*` cover, so the 188-integer partition (§9) sees only the 65 signed `ivp_mul*`.
-   `[HIGH/OBSERVED]`
 
 2. **"Accumulate wraps mod 2^(3L), no saturation."** *Challenge:* maybe the leaf saturates and the
-   test just didn't hit the edge. Re-run at the exact edge: `mula_24_24_8_8(0x7FFFFF, 127, 100)` →
+   test just didn't hit the edge. At the exact edge: `mula_24_24_8_8(0x7FFFFF, 127, 100)` →
    `0x80319b` = the modular wrap of `+8401307`, **not** `0x7FFFFF` (which a saturator would return).
-   Same at 48-bit. Saturation is **refuted** for the accumulate. `[HIGH/OBSERVED by execution]`
+   Same at 48-bit. Saturation is **refuted** for the accumulate.
 
 3. **"Single-replicate quad (`mulq*xr8`/`mulq*xr16`) is F4-exclusive."** *Challenge:* maybe it places
    elsewhere too. `nm | rg 'Opcode_ivp_mulq2n8xr8_Slot_.*_encode'` returns **exactly one** symbol:
    `Slot_f4_s2_mul_encode`. Same for `mulqn16xr16`, `mulqan16xr16`, `mulqn16xr8`, `mulqan16xr8`. The
-   dual-load F4 requirement holds. *Counter-scoping (verified this pass):* the `mul4t*` transpose
+   dual-load F4 requirement holds. *Counter-scoping:* the `mul4t*` transpose
    forms and the *multi-fanout* `dxr8`/`qxr8` forms correctly place in all 8 wide+N1 slots (they read
-   one load), so the F4-exclusivity is scoped to the `mulq*` single-replicate quad only. `[HIGH/OBSERVED]`
+   one load), so the F4-exclusivity is scoped to the `mulq*` single-replicate quad only.
 
 4. **"Accumulate is a distinct opcode, not a global bit."** *Challenge:* the 8-bit `mul2nx8`→
-   `mula2nx8` delta is `+0x40`, which looks like a bit. Counter-evidence from the same pass:
+   `mula2nx8` delta is `+0x40`, which looks like a bit. Counter-evidence:
    `mulnx16`(`0x01003040`)→`mulanx16`(`0x00c570c0`) and `mulq2n8xr8`(`0x88000000`)→`mulqa2n8xr8`
    (`0x8c000000`) vs `mulqn16xr16`(`0x98000000`)→`mulqan16xr16`(`0x90000000`, a *negative* delta).
    No single bit produces all three; accumulate is a distinct iclass per the
-   [two-tier model](../core/flix-encoding.md#62-the-two-tier-selector-model). `[HIGH/OBSERVED]`
+   [two-tier model](../core/flix-encoding.md#62-the-two-tier-selector-model).
 
 5. **"`wvec` lanes = `vec` lane count, each 3× taller."** *Challenge:* maybe the lane count changes.
    From the file geometry ([register-files §3](../core/register-files.md#3-the-eight-register-files--the-authoritative-roster)):
    `vec` = 512 bits, `wvec` = 1536 bits = 3×512. The executed leaf widths confirm the per-lane 3×:
    `8→24`, `16→48`, `32→96` — exactly triple. 512/8 = 64 vec lanes ↔ 1536/24 = 64 acc lanes;
    512/16 = 32 ↔ 1536/48 = 32; 512/32 = 16 ↔ 1536/96 = 16. Lane count preserved, width tripled.
-   `[HIGH/OBSERVED]`
 
 ---
 
@@ -556,7 +553,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 |---|---|---|
 | 71 signed-multiply roster (65 signed `ivp_mul*` + 6 signed `dmul`); 373 placements (355 + 18); `ivp_mul*` integer = 65 + 123 (B05) = 188, overlap 0 | `[HIGH/OBSERVED]` | `nm libisa-core.so` `Opcode_*` roster + FP/sign classifier + per-mnemonic `rg -c` |
 | Every signed MAC is a `s2_mul`-slot opcode (8 placements typical) | `[HIGH/OBSERVED]` | `Opcode_*_Slot_<f>_s2_mul_encode` symtab |
-| Opcode-sel templates (byte-exact `F0_S2_Mul`/`F4` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks this pass |
+| Opcode-sel templates (byte-exact `F0_S2_Mul`/`F4` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks |
 | Accumulate is a distinct opcode/iclass (no global bit) | `[HIGH/OBSERVED]` | template deltas non-uniform across lane widths |
 | Lane→acc widths 8→24 / 16→48 / 32→96 (3× headroom) | `[HIGH/OBSERVED]` | `xdref` leaf width-signatures + `wvec` 1536/`vec` 512 geometry |
 | Signed multiply (both operands sign-extended), modular accumulate, no saturate | `[HIGH/OBSERVED by execution]` | ctypes-driven `mul/mula/muls_*` leaves, edge + multi-step |
@@ -586,7 +583,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 
 ---
 
-*Provenance: the encode templates and slot placements are `[HIGH/OBSERVED]` — re-disassembled
+*Provenance: the encode templates and slot placements are `[HIGH/OBSERVED]` — disassembled
 in-checkout from `libisa-core.so` (`ncore2gp/config/`); the value semantics in
 [§5](#5-value-semantics--driven-live) are `[HIGH/OBSERVED by execution]` — the `libfiss-base.so`
 `xdref` leaves were loaded via ctypes and run on the inputs shown; the Booth/CSA multiplier structure

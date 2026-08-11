@@ -7,12 +7,10 @@ It is the citation-grade companion to the working catalogue in
 [The Corpus, Tiers & Binary Inventory](../reference/corpus-inventory.md): that page tiers and
 narrates the corpus; **this page is the bibliography you cite a hash from.**
 
-Every hash and size below was **re-computed directly from the file on disk this pass**
-(`sha256sum`, `stat -c %s`, `readelf -h`) — none was copied from a prior report. A reader who
+Every hash and size below is **computed directly from the file on disk**
+(`sha256sum`, `stat -c %s`, `readelf -h`). A reader who
 meets any `OBSERVED` claim anywhere in the guide can come here, re-hash the named file on their
-own disk, and confirm they are looking at the same bytes. Where a figure re-derived this pass
-disagreed with the working inventory, an in-line **CORRECTION** says so and flags it for the
-Part-16 reconcile; **no such SHA/size disagreement was found** — every figure on this page
+own disk, and confirm they are looking at the same bytes. Every figure on this page
 matches [corpus-inventory](../reference/corpus-inventory.md) to the byte.
 
 > **NOTE — what "binary-derived" means here.** Everything catalogued is a *shipped, redistributable*
@@ -39,8 +37,8 @@ matches [corpus-inventory](../reference/corpus-inventory.md) to the byte.
   freely-callable value oracle; `jq` for JSON; `pickletools` **only** — never `pickle.load` — for
   the pickle).
 
-All confidence tags are `[HIGH/OBSERVED]` for every hash and size, because each was measured
-against the file this pass (see [The Confidence & Walls Model](../reference/confidence-model.md)).
+All confidence tags are `[HIGH/OBSERVED]` for every hash and size, because each is measured
+against the file (see [The Confidence & Walls Model](../reference/confidence-model.md)).
 
 ---
 
@@ -58,18 +56,18 @@ x86-64; the firmware it vends is Xtensa. `[HIGH/OBSERVED]`
 | `libnrtucode_internal.so` | Richer wrapper (946 `.symtab` syms, 66 EXTISA accessors); carries **16** embedded ELF32-Xtensa device images + the `NRTUCODE_CORE_*_NX_POOL` core-kind enum | `…/c10/lib/libnrtucode_internal.so` | `b7c67e898a116454` | 10 276 288 | ELF64 x86-64 DYN, **not stripped** | `nm`/IDA sidecar + carve → `xtensa-elf-objdump` | P2, P3, P4, P8 runtime |
 
 > **CORRECTION — `libnrtucode_extisa.so` and `libncfw.so` are NOT standalone files in this checkout.**
-> TASK #995's scope names `…_extisa.so` and `libncfw.so` among the firmware containers. Re-checked
-> against disk this pass (`fd --no-ignore` over the whole tree): **neither exists as a file here.**
+> TASK #995's scope names `…_extisa.so` and `libncfw.so` among the firmware containers. Checked
+> against disk (`fd --no-ignore` over the whole tree): **neither exists as a file here.**
 > - The **"EXTISA"** content is the embedded blob set *inside* `libnrtucode_internal.so`
 >   (`CAYMAN_Q7_POOL_PERF_EXTISA_<n>_SO_get`, …) — 66 EXTISA accessor symbols, not a separate `.so`.
 > - **NCFW** (the scalar-Xtensa-LX management core) ships only as an *embedded image*; no standalone
 >   `libncfw.so` is present. The flat-container `libnrtucode_extisa.so` variant ships in the sibling
 >   `neuronx-runtime` corpus, so any fact sourced from it is `CARRIED` across the package boundary.
 >
-> This matches [corpus-inventory §3 "NOT-PRESENT"](../reference/corpus-inventory.md) exactly; no
-> reconcile divergence — recorded here so a citation never reaches for a file that is not on disk.
+> This matches [corpus-inventory §3 "NOT-PRESENT"](../reference/corpus-inventory.md) exactly —
+> recorded here so a citation never reaches for a file that is not on disk.
 
-The embedded-image counts were re-counted this pass by scanning `\x7fELF` magic and reading
+The embedded-image counts come from scanning `\x7fELF` magic and reading
 `e_machine`: **16** ELF32/`e_machine=94` images in `libnrtucode_internal.so`, **12** in
 `libnrtucode.so`. `[HIGH/OBSERVED]` per-library; the cross-library aggregate **≈29** is
 `[HIGH/CARRIED]` (spans both libs — the dedup overlap is why it is not a simple 16+12).
@@ -161,8 +159,8 @@ The firmware-side **core-kind enum** that ties these names to the loader is read
 | Maverick `al_address_map_db.json` | JSON twin of the Maverick address DB | `CUSTOMOP/c10/include/arch-headers/maverick/ext/al_address_map_db.json` | `056d7b6123a5188b` | 514 276 583 | **JSON** | `jq --stream` | P13 address (Maverick) |
 
 > **GOTCHA — `al_address_map_db.pkl` is Maverick, not Cayman; and never deserialize it.**
-> The pickle lives under the **`maverick/`** customop arch-headers (`…/arch-headers/maverick/ext/`),
-> verified this pass — *not* in the `cayman-arch-regs` tarball. Its first two bytes are `80 04`
+> The pickle lives under the **`maverick/`** customop arch-headers (`…/arch-headers/maverick/ext/`)
+> — *not* in the `cayman-arch-regs` tarball. Its first two bytes are `80 04`
 > (pickle `PROTO 4`), confirming a valid pickle; inspect it with `pickletools.genops` / `stat` /
 > `sha256sum` **only**. A `pickle.load` of an untrusted 207 MB blob executes arbitrary `__reduce__`
 > opcodes — it is treated as opaque bytes here. `[HIGH/OBSERVED]` (path provenance + magic).
@@ -194,7 +192,7 @@ device code. `[HIGH/OBSERVED]`
 
 Three independently-shipped AWS Neuron corpora live in the same repo tree, used **only** to
 corroborate a gpsimd-internal fact from a separate build — never as the sole source of one.
-`[HIGH/OBSERVED]` (presence re-checked this pass.)
+`[HIGH/OBSERVED]`
 
 | Corpus | Role | Location | How-accessed | Grounds Parts |
 |---|---|---|---|---|
@@ -231,7 +229,7 @@ arbitrary-code path is reached. `[HIGH/OBSERVED]`
 
 ## Full SHA-256 digests
 
-The complete 64-hex digest for every hashed artifact (all `[HIGH/OBSERVED]`, computed this pass):
+The complete 64-hex digest for every hashed artifact (all `[HIGH/OBSERVED]`):
 
 | Artifact | SHA-256 (full) | Size (B) |
 |---|---|---|

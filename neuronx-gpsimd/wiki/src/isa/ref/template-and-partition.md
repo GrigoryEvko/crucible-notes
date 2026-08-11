@@ -19,12 +19,13 @@ package fit.
 
 This page does **not** emit a per-instruction roster of all 1534 mnemonics — that is the body of
 B01–B30. It emits the **partition**, the **template**, and the **methodology**. Every count, address,
-immediate, and symbol below was re-read or executed against the shipped binaries **this pass**.
+immediate, and symbol below is read or executed against the shipped binaries.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED`
 = a byte/immediate/symbol read from the shipped binary, or a value **computed by executing the shipped
 simulator**; `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = re-used at a cited report's
-confidence; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
+confidence; crossed with `HIGH`/`MED`/`LOW`. The page default is `[HIGH/OBSERVED]`; claims that depart
+from it carry an explicit tag. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orienting
 context).
 
@@ -33,12 +34,12 @@ context).
 > 9,690,712 B, ET_DYN x86-64, **not stripped**, no DWARF). The value side is `libfiss-base.so`
 > (sha256 `260b110c…`, 12,330,016 B). In `libisa-core.so`, `.text` (`0x312c10`) and `.rodata`
 > (`0x3b6e40`) are **VMA == file-offset**; `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) and
-> `.data` (VMA `0x764040` ↔ file `0x564040`) carry a **per-binary delta of `0x200000`** (`readelf -SW`,
-> re-read this pass). The count *accessors* (`num_*` getters) live in `.text` and need no delta; the
+> `.data` (VMA `0x764040` ↔ file `0x564040`) carry a **per-binary delta of `0x200000`**
+> (`readelf -SW`). The count *accessors* (`num_*` getters) live in `.text` and need no delta; the
 > *tables* they index (`opcodes` @ `0x6ce6c0`, `opcodedefs` @ `0x6e9640`, …) live in `.data.rel.ro`,
 > file = VMA − `0x200000`. Both libraries are in `extracted/` (gitignored; reach with an absolute path
 > or `fd --no-ignore`). **Do not** carry over the `0x400000` `.data` delta from `libtpu.so` — that is a
-> different binary; here it is `0x200000`. `[HIGH/OBSERVED]`
+> different binary; here it is `0x200000`.
 
 ---
 
@@ -69,16 +70,16 @@ recipe** so every row is binary-grounded the same way.
 > opcodes are a coarse compute-instruction enum; the 1534 mnemonics are the fine machine ISA that
 > *implements* the kernels. **B01–B30 partition the 1534**, with B30 reconciling the firmware-opcode
 > view (Appendix-P pseudo/fence + the kernel-lane completeness ledger). Never sum a `140`-axis count
-> into a `1534`-axis tally. `[HIGH/OBSERVED]`
+> into a `1534`-axis tally.
 
 ---
 
-## 2. The five denominators every batch inherits (re-grounded this pass)
+## 2. The five denominators every batch inherits
 
-The numbers a batch closes against, each re-read from the binary this pass — a getter immediate **and**
+The numbers a batch closes against, each read from the binary — a getter immediate **and**
 an `nm` symbol-family count where both exist:
 
-| # | Number | Counts | Binary witness (this pass) | Tag |
+| # | Number | Counts | Binary witness | Tag |
 |---|--:|---|---|---|
 | 1 | **1534** | shipped **mnemonics** | `num_opcodes()` @ `0x3b61d0` = `mov $0x5fe` (=1534); `nm \| rg -o 'Opcode_(.+)_Slot_…_encode' \| sort -u \| wc -l` = 1534 | `[HIGH/OBSERVED]` |
 | 2 | **12569** | shipped **placements** (`mnemonic × slot`) | `num_encode_fns()` @ `0x3b6130` = `mov $0x3119` (=12569); `nm \| rg -c 'Opcode_.*_Slot_.*_encode'` = 12569 | `[HIGH/OBSERVED]` |
@@ -86,16 +87,16 @@ an `nm` symbol-family count where both exist:
 | 4 | **864** | execution-validated **value leaves** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 | `[HIGH/OBSERVED]` |
 | 5 | **469 / 1065** | scalar / vector mnemonic split (name prefix) | `rg -v '^ivp_'` = 469, `rg '^ivp_'` = 1065, sum 1534 | `[HIGH/OBSERVED]` |
 
-Secondary dimensions a batch quotes (same transcript, this pass): `num_iclasses = 0x5a7 = 1447`,
+Secondary dimensions a batch quotes: `num_iclasses = 0x5a7 = 1447`,
 `num_operands = 0xe8 = 232`, `num_fields = 0xca5 = 3237`, `num_formats = 0xe = 14`,
-`num_slots = num_decode_fns = 0x2e = 46`, `num_regfiles = 8`, `num_regfile_views = 4`. `[HIGH/OBSERVED]`
+`num_slots = num_decode_fns = 0x2e = 46`, `num_regfiles = 8`, `num_regfile_views = 4`.
 
 > **GOTCHA — never cross-pair, and never count from the decompile.** The only valid pairings are
 > **`1534 ↔ 12569`** (shipped) and **`1607 ↔ 12642`** (pre-fold). Pairing `1534 ↔ 12642` or
 > `1607 ↔ 12569` manufactures a `±73` phantom. And every count must be grounded in **either** a `num_*`
 > getter immediate **or** an `nm | rg -c` symbol-family population — **never** a grep of the IDA/Hex-Rays
 > decompile, which inflates **2–12×** (one thunk is referenced from many call sites). A batch page that
-> states a count names its witness. `[HIGH/OBSERVED]`
+> states a count names its witness.
 
 ---
 
@@ -148,7 +149,7 @@ Every batch page B01–B30 is the same document with a different roster. The sch
 
 ### 3.2 The roster-row record format (the OBSERVED ground truth a row distills)
 
-Each roster row distills the per-mnemonic record the slice survey reads from the binary. The canonical
+Each roster row distills the per-mnemonic record read from the binary. The canonical
 record shape (one mnemonic, with its full placement list) is:
 
 ```
@@ -157,7 +158,7 @@ record shape (one mnemonic, with its full placement list) is:
     …                                                                          (one line per placement)
 ```
 
-This is **exactly** the schema the gateway roster survey produces from `opcodes[]` + `opcodedefs[]` +
+This is **exactly** the schema produced from `opcodes[]` + `opcodedefs[]` +
 the encode thunks. A batch page's roster table is the **compression** of these records: the
 `FLIX format(s)·slot(s)` column lists the placement slots, the `opcode-sel imm` column gives the
 representative `word0`, the `bundle byte-size` is the format length. The deep dive expands one record in
@@ -168,14 +169,14 @@ full where the encoding is non-obvious.
 > optionally `*(u32*)(rdi+4) = WORD1`, `ret`. **`WORD1 == 0x00000000` with zero exceptions across all
 > 12569 thunks** (the upper lane carries no opcode-selector bits — it is merely cleared). A batch quotes
 > only `word0`; if it shows a wide-slot template it states the `/0x00000000` explicitly. Operand fields
-> are deposited *separately* by `field_set`/`operand_encode`, **not** by this thunk. Re-verified this
-> pass: `Opcode_mov_n_Slot_f0_s3_alu_encode` @ `0x3386b0` = `movl $0x6498d800,(%rdi); movl $0x0,0x4(%rdi);
-> ret`. `[HIGH/OBSERVED]`
+> are deposited *separately* by `field_set`/`operand_encode`, **not** by this thunk. Worked:
+> `Opcode_mov_n_Slot_f0_s3_alu_encode` @ `0x3386b0` = `movl $0x6498d800,(%rdi); movl $0x0,0x4(%rdi);
+> ret`.
 
 > **GOTCHA — a slot's decoded operand width is NOT `next_offset − offset`.** The `_<bitoff>_` token in a
 > slot/field symbol marks where the slot's *low byte* starts; the rest of the field scatters across high
 > bits. A batch reads the operand bit-window from the `Field_<field>_Slot_<slot>_get` thunk body (the
-> `and`/`shr`/`shl` chain), never by subtracting adjacent offsets. `[HIGH/OBSERVED]`
+> `and`/`shr`/`shl` chain), never by subtracting adjacent offsets.
 
 ---
 
@@ -186,11 +187,11 @@ structures, in priority order:
 
 1. **The name prefix** — `ivp_*` (1065 vector) vs non-`ivp_` (469 scalar). This is the **top cut**:
    B01–B24 own the vector ISA, B25–B30 own the base-Xtensa scalar/system ISA. (`rg '^ivp_'` = 1065,
-   `rg -v '^ivp_'` = 469, this pass.) `[HIGH/OBSERVED]`
-2. **The `opcodes[].package`** — the 28-package census, **parsed directly from the binary this pass**
+   `rg -v '^ivp_'` = 469.)
+2. **The `opcodes[].package`** — the 28-package census, **parsed directly from the binary**
    (read `opcodes[i].package` at table offset `+0x08` for all 1534 rows). It sums to exactly 1534 and
    pins the base-Xtensa region: `xt_ivp32 = 1072`, `xt_ivpn_scalarfp = 102`, **base-Xtensa (all other 26
-   packages) = 360**. `[HIGH/OBSERVED]`
+   packages) = 360**.
 3. **The verb/suffix sub-family** within `xt_ivp32` — the functional split (ALU-int / ALU-fp / MAC /
    load / store / reduce / shift / pack / convert / transcendental / FMA / gather-scatter /
    select-shuffle / divide / composite) the batch boundaries follow, read from the mnemonic root verb
@@ -242,8 +243,8 @@ task id.
 > **CORRECTION — the `≈ mnemonics` are partition *targets*, not pre-counted truth; the batch pins the
 > exact count.** The exact membership of each batch is determined by the **precise slice classifier the
 > batch author runs over the roster** (the first-match-wins verb/suffix/package rule of §4.2). The `≈`
-> figures here are derived from a deterministic first-pass classification of the 1534-row roster (run
-> this pass) plus the package census, and are accurate to the family but **soft at the boundary** where
+> figures here are derived from a deterministic first-pass classification of the 1534-row roster
+> plus the package census, and are accurate to the family but **soft at the boundary** where
 > two verbs blur (plain `ivp_mul*` between B04/B05; abs-diff between B01/B03; `move` between B09/B11).
 > Each B-page is responsible for stating its **OBSERVED** `m` (from `nm`/roster) and proving the
 > partition closes (§6). The hard, non-negotiable anchors the targets must respect: the vector axis
@@ -303,7 +304,7 @@ on the package carve; `[MED/INFERRED]` on the `xt_ivp32` verb carve boundaries.
 > they are floating-point. Conversely, **7** ops *are* package `xt_ivp32` but lack the `ivp_` prefix
 > (`rur.fcr`, `wur.fcr`, `rur.fsr`, `wur.fsr`, `recipqli.s`, `mulsone.s`, `mulsone.h`) — so
 > `package == xt_ivp32` (1072) is **not** the same predicate as `name starts ivp_` (1065): they differ
-> by exactly these 7. B24 owns both groups (scalar-FP), which is why its target is large. `[HIGH/OBSERVED]`
+> by exactly these 7. B24 owns both groups (scalar-FP), which is why its target is large.
 
 > **QUIRK — B30 reconciles the firmware-opcode axis but adds *no* 1534-axis mnemonics beyond its base
 > forms.** Appendix-P pseudo-ops (`NEURON_ISA_TPB_OPCODE_PSEUDO_*`, 0xC1–0xDF, 31 of them) are
@@ -314,7 +315,6 @@ on the package carve; `[MED/INFERRED]` on the `xt_ivp32` verb carve boundaries.
 > `xt_wide_branch` (24) base forms whose `.W18`/virtual *variants* fold (§6). The `SortMerge` op is a
 > **phantom** — named only in a dead `// "SortMerge wip 0x97"` comment, with no `opcodes[]` row
 > (`rg -ci sortmerge` over the roster = 0); B30 records it as a fabrication wall, never a row.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -355,12 +355,12 @@ recipe is identical for every mnemonic; only the symbol names change.
 > firmware opcodes — it is the right cross-check for the **B30 kernel-lane reconciliation** and for any
 > firmware-facing semantics, but it does **not** index the 1534 libisa mnemonics. For a B01–B24 vector
 > row, the value cross-check is the `module__xdref_*` leaf; for a firmware-opcode mapping, it is
-> `instruction_mapping.json`. Keep the two axes separate. `[HIGH/OBSERVED]`
+> `instruction_mapping.json`. Keep the two axes separate.
 
 ### 5.2 Worked micro-example — `abs` (8-bit), driven live through `libfiss-base`
 
 Take the absolute-value op at 8-bit element width. Step 4 finds the value leaf
-`module__xdref_abs_8_8` (`@0x5c0b60` in `libfiss-base.so`). Its disassembled body, re-read this pass:
+`module__xdref_abs_8_8` (`@0x5c0b60` in `libfiss-base.so`). Its disassembled body:
 
 ```asm
 00000000005c0b60 <module__xdref_abs_8_8>:
@@ -375,8 +375,8 @@ Take the absolute-value op at 8-bit element width. Step 4 finds the value leaf
 The ABI is **`void leaf(int lane /*ignored here*/, int in, int *out)`** — `%esi` = input, `*%rdx` =
 output (3-input ops add a `%edx` and shift the out-pointer to `%rcx`, as `module__xdref_add_8_8_8`
 @`0x5bc380` shows: `add %esi,%edx ; and $0xff,%edx ; mov %edx,(%rcx)`). The leaf is **license-free,
-callable in-process** — so it can be *proven by execution*, not merely decoded. Driven live via ctypes
-this pass:
+callable in-process** — so it can be *proven by execution*, not merely decoded. Driven live via
+ctypes:
 
 ```python
 import ctypes
@@ -405,7 +405,7 @@ Both are OBSERVED-by-execution certificates — the value column of two roster r
 > `shr$0x1f ; neg ; xor ; add` idiom @`0x5c0b70`). A batch row reads the **leaf whose suffix matches the
 > placement's dtype**, not a single "abs". The leading integer argument is a lane/context selector the
 > simple element leaves ignore but the lane-dependent leaves consume — pass `0` for the scalar
-> element-function check. `[HIGH/OBSERVED]`
+> element-function check.
 
 ---
 
@@ -444,7 +444,7 @@ placement tallies sum to **12569** (`num_encode_fns = 0x3119`), the **shipped** 
 **12642** is the TIE-DB authoring superset (`12569 + 73`); a batch that touches a fold-source package
 (`xt_wide_branch`, `xt_virtualops` — both in B30) notes the `+73` authoring forms **do not ship** and so
 do **not** enter its `p`. The valid pairings stay **`1534 ↔ 12569`** (the batches' running total) and
-**`1607 ↔ 12642`** (the authoring superset); the reference never carries `1534 ↔ 12642`. `[HIGH/OBSERVED]`
+**`1607 ↔ 12642`** (the authoring superset); the reference never carries `1534 ↔ 12642`.
 
 ### 6.3 The value-leaf roll-up
 
@@ -454,7 +454,7 @@ dtype-family of mnemonics, e.g. `abs_8_8` underlies every 8-bit `abs` placement)
 base-Xtensa batches (B25–B30) contribute few or no value leaves (their semantics are the architecturally
 standard Xtensa core, validated by the objdump round-trip, not by `xdref` execution). The reference's
 value-coverage claim is `864/864` enumerated, ~95% execution-validated, **0 value bugs across ~2.09M
-comparisons** — inherited from [the coverage tally §5](../../isa/core/coverage-tally.md). `[HIGH/OBSERVED]`
+comparisons** — inherited from [the coverage tally §5](../../isa/core/coverage-tally.md).
 
 ### 6.4 The completeness invariant each batch proves
 
@@ -466,7 +466,7 @@ the final audit line. `[HIGH/INFERRED]` (the invariant is a derived contract ove
 
 ---
 
-## 7. Adversarial self-verification — the five strongest claims, re-checked this pass
+## 7. Adversarial self-verification — the five strongest claims
 
 1. **`1534 = 469 scalar + 1065 vector`, `12569` placements.** `num_opcodes()` @ `0x3b61d0` =
    `mov $0x5fe` (1534); `num_encode_fns()` @ `0x3b6130` = `mov $0x3119` (12569);
@@ -474,13 +474,13 @@ the final audit line. `[HIGH/INFERRED]` (the invariant is a derived contract ove
    | wc -l` = **1534**; `rg '^ivp_'` = **1065**, `rg -v '^ivp_'` = **469** over the roster. Five witnesses
    agree. **Confirmed.** `[HIGH/OBSERVED]`
 2. **The 28-package census sums to 1534; `xt_ivp32 = 1072`, `xt_ivpn_scalarfp = 102`, base-Xtensa = 360,
-   7 outliers.** Parsed `opcodes[i].package` (`+0x08`) for all 1534 rows directly from the binary this
-   pass: `xt_ivp32 = 1072`, `xt_ivpn_scalarfp = 102`, sum-of-all = **1534**, 28 distinct packages,
+   7 outliers.** Parsed `opcodes[i].package` (`+0x08`) for all 1534 rows directly from the binary:
+   `xt_ivp32 = 1072`, `xt_ivpn_scalarfp = 102`, sum-of-all = **1534**, 28 distinct packages,
    base-Xtensa (all but the two vector packages) = **360**; the 7 `xt_ivp32` non-`ivp_` outliers are
    exactly `{mulsone.h, mulsone.s, recipqli.s, rur.fcr, rur.fsr, wur.fcr, wur.fsr}`. **Confirmed.**
    `[HIGH/OBSERVED]`
-3. **The encode-thunk ABI is `C7 07 imm32 [C7 47 04 imm32] C3` with `word1 == 0`.** Re-disassembled this
-   pass: `Opcode_wur_fsr_Slot_inst_encode` @ `0x341110` = `movl $0xf3e900,(%rdi); ret` (= `WUR | FSR<<8`,
+3. **The encode-thunk ABI is `C7 07 imm32 [C7 47 04 imm32] C3` with `word1 == 0`.** Disassembled:
+   `Opcode_wur_fsr_Slot_inst_encode` @ `0x341110` = `movl $0xf3e900,(%rdi); ret` (= `WUR | FSR<<8`,
    UR=0xe9); the 2-lane `Opcode_mov_n_Slot_f0_s3_alu_encode` @ `0x3386b0` = `movl $0x6498d800,(%rdi);
    movl $0x0,0x4(%rdi); ret` — `word1 = 0`. **Confirmed.** `[HIGH/OBSERVED]`
 4. **The value leaf is proven by execution, bit-exact.** `module__xdref_abs_8_8` driven live via ctypes
@@ -488,12 +488,12 @@ the final audit line. `[HIGH/INFERRED]` (the invariant is a derived contract ove
    two's-complement edge; `module__xdref_add_8_8_8` matched `(a+b)&0xff` over all 65,536 pairs with **0
    mismatches**. `nm libfiss-base.so | rg -c 'module__xdref_'` = **864**. **Confirmed.**
    `[HIGH/OBSERVED by execution]`
-5. **The `.data.rel.ro` delta is `0x200000`, not `0x400000`.** `readelf -SW` this pass: `.text` VMA ==
+5. **The `.data.rel.ro` delta is `0x200000`, not `0x400000`.** Per `readelf -SW`: `.text` VMA ==
    file `0x312c10`; `.rodata` VMA == file `0x3b6e40`; `.data.rel.ro` VMA `0x67bb00` ↔ file `0x47bb00`;
    `.data` VMA `0x764040` ↔ file `0x564040` — delta `0x200000`. The `0x400000` figure belongs to
    `libtpu.so`, a different binary. **Confirmed.** `[HIGH/OBSERVED]`
 
-**What I could not ground to OBSERVED at the row level.** The per-batch `≈ mnemonics` in §4.1 are
+**What is not grounded to OBSERVED at the row level.** The per-batch `≈ mnemonics` in §4.1 are
 partition **targets** derived from a first-pass verb/suffix/package classifier plus the package census —
 `[MED/INFERRED]` at the family boundary, **not** exact `nm`-counted memberships. The three *hard* anchors
 (vector 1065, scalar 469, base-Xtensa 360) and the package census are `[HIGH/OBSERVED]`; the exact split

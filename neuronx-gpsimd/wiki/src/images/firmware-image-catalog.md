@@ -3,16 +3,17 @@
 The **image-lane capstone**: the single completeness-checked index of *every*
 GPSIMD firmware-image getter in `libnrtucode_internal.so`. The
 [accessor index](./image-catalog-index.md) (#750) is the flat per-getter matrix;
-this page is its **indexed, byte-re-grounded successor** — it organizes the same
+this page is its **indexed, byte-grounded successor** — it organizes the same
 getters into the `(generation × engine × flavor × region)` hierarchy, adds the
 inventory roll-up, the container model, the three resolvers reproduced as
 annotated C, the catalog-level evolution roll-up, and a closed completeness
 check.
 
-Everything below was re-grounded against the shipped binary **this session**
-(`nm` / `objdump -d` / `readelf -SW` / `dd` / `python hashlib`). Tagged
-`[HIGH/OBSERVED]` unless noted. Where a figure is re-derived directly from the
-binary rather than carried from a sibling page, it is marked **[re-verified]**.
+Everything below is grounded against the shipped binary
+(`nm` / `objdump -d` / `readelf -SW` / `dd` / `python hashlib`). The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag. Where a figure is
+derived directly from the binary rather than carried from a sibling page, it is marked
+**[binary-derived]**.
 
 > **Scope vs siblings.** The exhaustive per-getter `symbol / VA / img-ptr / size`
 > dump is the [accessor index](./image-catalog-index.md). The per-blob byte
@@ -27,8 +28,9 @@ binary rather than carried from a sibling page, it is marked **[re-verified]**.
 > Generation framing is the
 > [codename / generation map](../generations/codename-generation-map.md) and the
 > [Maverick profile](../generations/maverick-profile.md). The resolver-mechanism
-> deep dive is the Part-8 page `runtime/image-hwdecode-resolvers.md` (not yet
-> authored). This capstone **indexes the containers, not the kernels.**
+> deep dive is the Part-8 page
+> [runtime/image-hwdecode-resolvers.md](../runtime/image-hwdecode-resolvers.md).
+> This capstone **indexes the containers, not the kernels.**
 
 ---
 
@@ -43,16 +45,16 @@ binary rather than carried from a sibling page, it is marked **[re-verified]**.
 | BuildID | `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` |
 | Class | ELF64 x86-64 DYN, **NOT stripped** — the 5-generation symbol "twin" |
 
-Re-hashed this session: **MATCHES** every image/runtime anchor. This is the only
+The container hash **MATCHES** every image/runtime anchor. This is the only
 shipped binary that carries all five generations of getters; the front lib
 `libnrtucode.so` (`06d3f0b1…`, stripped) ships only four (no MAVERICK), and the
 EXTISA container `libnrtucode_extisa.so` (`dc00763d…`, cited) holds the standalone
-SUNDA EXTISA device ELF. `[HIGH/OBSERVED — re-hashed]`
+SUNDA EXTISA device ELF. `[HIGH/OBSERVED]`
 
 ### Section / offset model (so every address below is reproducible)
 
 `readelf -SW` confirms three layout deltas. Getters resolve **VA-aware**; confirm
-per-section before carving. `[HIGH/OBSERVED — re-verified]`
+per-section before carving. `[HIGH/OBSERVED]`
 
 | Section | VA | File off | Delta (VA − fileoff) | Holds |
 |---|---|---|---|---|
@@ -75,13 +77,13 @@ per-section before carving. `[HIGH/OBSERVED — re-verified]`
 
 | Quantity | Value | Grounding |
 |---|---|---|
-| Local (`t`) image getters | **386** | `nm \| rg ' t ' \| rg '_get$'` = 386 `[re-verified]` |
-| Weak-undef (`w`) getters | **2** | the SUNDA EXTISA `SO`/`JSON` placeholders `[re-verified]` |
+| Local (`t`) image getters | **386** | `nm \| rg ' t ' \| rg '_get$'` = 386 `[binary-derived]` |
+| Weak-undef (`w`) getters | **2** | the SUNDA EXTISA `SO`/`JSON` placeholders `[binary-derived]` |
 | Total accessor symbols | **388** (386 in-lib bodies + 2 container-resolved) | §6 |
-| Real getters (`size > 0`) | **225** | binary stub-parse `[re-verified]` |
-| Zero-cursor getters (`size == 0`) | **161** | binary stub-parse `[re-verified]` |
-| Distinct img-ptr addresses | **225** (== the real count) | every cursor reuses a real boundary address `[re-verified]` |
-| Resolvers | **3** (`get_memory_image`, `get_ext_isa`, `get_hwdecode_table`) | all symbols present at documented VAs `[re-verified]` |
+| Real getters (`size > 0`) | **225** | binary stub-parse `[binary-derived]` |
+| Zero-cursor getters (`size == 0`) | **161** | binary stub-parse `[binary-derived]` |
+| Distinct img-ptr addresses | **225** (== the real count) | every cursor reuses a real boundary address `[binary-derived]` |
+| Resolvers | **3** (`get_memory_image`, `get_ext_isa`, `get_hwdecode_table`) | all symbols present at documented VAs `[binary-derived]` |
 
 > **The grand total is 386**, and it closes three independent ways (§3, §8). The
 > task brief's loose "~266/386" reflects two valid counts of the *same* table —
@@ -89,7 +91,7 @@ per-section before carving. `[HIGH/OBSERVED — re-verified]`
 > 288 is the base-region subset; no single resolver produces 266. This page uses
 > **386** as the catalog grand total throughout.
 
-> **NOTE — no count correction.** [SX-IMG-28]'s 386 and the
+> **NOTE — no count correction.** The earlier survey's 386 and the
 > [accessor index](./image-catalog-index.md)'s 386 both match the binary
 > exactly; no in-place CORRECTION to the grand total is needed. The one
 > *refinement* this capstone adds is the `.a` member arithmetic (§4): the archive
@@ -127,7 +129,7 @@ Every getter symbol decodes as:
 
 i.e. `void <NAME>_get(void** out_ptr, size_t* out_size)`. Because `.rodata` is
 identity-mapped, each `<NAME>_get.data` address is **both** the VA and the file
-offset of the blob; carve `= file[ptr : ptr+size]`. `[HIGH/OBSERVED — re-verified]`
+offset of the blob; carve `= file[ptr : ptr+size]`. `[HIGH/OBSERVED]`
 
 > **QUIRK — the cursor stub.** A `(cursor, size 0)` getter is still a real,
 > non-NULL function: it returns a valid pointer at the *next blob's* start (the
@@ -140,13 +142,13 @@ offset of the blob; carve `= file[ptr : ptr+size]`. `[HIGH/OBSERVED — re-verif
 
 ## 3. The getter index — per `(gen × engine × flavor)` cell
 
-Computed this session by parsing all 386 getter stubs out of the binary
+Computed by parsing all 386 getter stubs out of the binary
 (`nm` + `objdump -d` of the getter `.text` span). Each cell shows the getter
 count and the `flavor:region-count` breakdown. The exhaustive per-getter
 `VA/img-ptr/size` is the [accessor index](./image-catalog-index.md);
 the per-block `.text` VA spans are in §3.6.
 
-### 3.1 SUNDA — total **24**  `[re-verified]`
+### 3.1 SUNDA — total **24**  `[binary-derived]`
 
 | Cell | Getters | Flavor:region |
 |---|---|---|
@@ -160,7 +162,7 @@ the per-block `.text` VA spans are in §3.6.
 Single-flavor (RELEASE) floor: no DEBUG/PERF/TEST, no PROF, no DKL, no *in-lib*
 EXTISA. The SUNDA EXTISA Q7 kernel is **weak-undef** → standalone container (§4).
 
-### 3.2 CAYMAN — total **100** (the reference shape) `[re-verified]`
+### 3.2 CAYMAN — total **100** (the reference shape) `[binary-derived]`
 
 | Cell | Getters | Flavor:region |
 |---|---|---|
@@ -173,7 +175,7 @@ EXTISA. The SUNDA EXTISA Q7 kernel is **weak-undef** → standalone container (�
 
 `PERF:12` on `Q7_POOL` = 4 base regions + 8 EXTISA (`4 SO + 4 JSON`, tagged PERF).
 
-### 3.3 MARIANA / MARIANA_PLUS — total **100** each `[re-verified]`
+### 3.3 MARIANA / MARIANA_PLUS — total **100** each `[binary-derived]`
 
 **Identical shape to CAYMAN** (`NX_{ACT,DVE,PE,POOL}=14`, `NX_SP=12`, `Q7_POOL=32`).
 
@@ -183,7 +185,7 @@ EXTISA. The SUNDA EXTISA Q7 kernel is **weak-undef** → standalone container (�
 > recompile-relocation of MARIANA. The 386-count counts MARIANA disjoint from
 > MARIANA_PLUS (`rg '^MARIANA_NX|^MARIANA_Q7'` excludes MPLUS).
 
-### 3.4 MAVERICK — total **62** (the leaner v5 set) `[re-verified]`
+### 3.4 MAVERICK — total **62** (the leaner v5 set) `[binary-derived]`
 
 | Cell | Getters | Flavor:region |
 |---|---|---|
@@ -197,7 +199,7 @@ EXTISA. The SUNDA EXTISA Q7 kernel is **weak-undef** → standalone container (�
 The v5 shrink: ACT-fold (−14), DEBUG-drop on PE/POOL/SP, DKL-drop. `NX_DVE` and
 `Q7_POOL` keep the full DEBUG+PERF+TEST. `[SPOT-VERIFIED §6]`
 
-### 3.5 Flavor-presence-per-gen `[re-verified]`
+### 3.5 Flavor-presence-per-gen `[binary-derived]`
 
 | Flavor | SUNDA | CAYMAN | MARIANA | MPLUS | MAVERICK |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -225,7 +227,7 @@ Getters are laid out by flavor then engine within each gen. `[HIGH/OBSERVED]`
 
 ## 4. The image-inventory summary
 
-### 4a. Per-generation `[re-verified — nm]`
+### 4a. Per-generation `[binary-derived — nm]`
 
 | GEN | GETTERS | shape note |
 |---|---:|---|
@@ -236,7 +238,7 @@ Getters are laid out by flavor then engine within each gen. `[HIGH/OBSERVED]`
 | MAVERICK | 62 | no ACT, no DEBUG on PE/POOL/SP, no DKL |
 | **TOTAL** | **386** | — |
 
-### 4b. Per-engine (across all gens) `[re-verified — nm]`
+### 4b. Per-engine (across all gens) `[binary-derived — nm]`
 
 | ENGINE | GETTERS | composition |
 |---|---:|---|
@@ -248,7 +250,7 @@ Getters are laid out by flavor then engine within each gen. `[HIGH/OBSERVED]`
 | `Q7_POOL` | 120 | SUNDA 4 + 32×3 + MAVERICK 20 |
 | **TOTAL** | **386** | — |
 
-### 4c. Per-category (the resolver partition) `[re-verified — nm]`
+### 4c. Per-category (the resolver partition) `[binary-derived — nm]`
 
 | Category | GETTERS | Resolver |
 |---|---:|---|
@@ -260,9 +262,9 @@ Getters are laid out by flavor then engine within each gen. `[HIGH/OBSERVED]`
 
 EXTISA verified per gen: CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK = 8 each (4 SO + 4
 JSON) = 32; SUNDA = **0** `t` (the 2 weak-undef). PROF verified: CAYMAN/MARIANA/
-MARIANA_PLUS = 8 each + MAVERICK 6 = 30. `[re-verified]`
+MARIANA_PLUS = 8 each + MAVERICK 6 = 30. `[binary-derived]`
 
-### 4d. Region population `[re-verified — binary stub-parse]`
+### 4d. Region population `[binary-derived]`
 
 Region getters = base (288) + DKL (36) = 324; EXTISA (32) and PROF (30) are not
 `IRAM/DRAM/SRAM/EXTRAM` region getters.
@@ -275,7 +277,7 @@ Region getters = base (288) + DKL (36) = 324; EXTISA (32) and PROF (30) are not
 | EXTRAM | 81 | 1 | 80 | almost always empty; the 1 = SUNDA Q7_POOL |
 | **TOTAL** | **324** | **163** | **161** | base 288 + DKL 36 |
 
-> **QUIRK — the two region anomalies (both re-verified §6).**
+> **QUIRK — the two region anomalies (both in §6).**
 > 1. **5 zero-IRAM getters** = `MAVERICK_NX_SP_{PERF,TEST}_IRAM` +
 >    `MAVERICK_Q7_POOL_{DEBUG,PERF,TEST}_IRAM`. MAVERICK runs SP & Q7 *out of
 >    SRAM*: e.g. `MAVERICK_NX_SP_PERF_IRAM` size `0x0`, but
@@ -288,9 +290,9 @@ Region getters = base (288) + DKL (36) = 324; EXTISA (32) and PROF (30) are not
 The split underneath: base region nonzero = 145 (IRAM 67, DRAM 72, SRAM 5,
 EXTRAM 1); DKL region nonzero = 18 (IRAM 9, DRAM 9, SRAM 0, EXTRAM 0). Combined
 nonzero region getters = **163**; + 62 nonzero EXTISA/PROF = **225 real** total.
-`[re-verified]`
+`[binary-derived]`
 
-### 4e. The real-vs-cursor closure `[re-verified — binary stub-parse]`
+### 4e. The real-vs-cursor closure `[binary-derived]`
 
 Parsing all 386 stubs directly out of the binary (`lea`-target + `movq` size):
 
@@ -328,7 +330,7 @@ blob == the `.a` member `.rodata` == the EXTISA container device ELF. Verified:
 carve internal.so `[0x2ef7e0 : +0xa260]` → sha256 `910d41c3ededce67…` (ELF magic
 `7f454c46`), == the container's `CAYMAN_EXTISA_0`.
 
-**(b) SUNDA = standalone-only** `[re-verified]`.
+**(b) SUNDA = standalone-only** `[binary-derived]`.
 `SUNDA_Q7_POOL_RELEASE_EXTISA_0_{SO,JSON}_get` are `w` (weak-undef) in internal.so
 — **no body present**. The SUNDA EXTISA Q7 device ELF (the largest single image,
 the only real JSON manifest) lives **only** in `libnrtucode_extisa.so`, which
@@ -342,7 +344,7 @@ members in the `.a`; absent from the container. The shipped front lib reserves
 the MAVERICK image_list slots but leaves the getters NULL → a MAVERICK request
 returns `3`.
 
-**(d) The `.a` is a superset, with framework objects** `[re-verified — refinement]`.
+**(d) The `.a` is a superset, with framework objects** `[binary-derived — refinement]`.
 `ar t libnrtucode.a` = **435 members**, decomposing as:
 
 | Component | members |
@@ -357,7 +359,7 @@ returns `3`.
 | **TOTAL** | **435** |
 
 > **CORRECTION (refinement, not a contradiction).** The "435 = 124 each + 48 + 0"
-> shorthand in [SX-IMG-28] / #750 actually describes the **420 image members**;
+> shorthand in the accessor index (#750) actually describes the **420 image members**;
 > the remaining **15** are the framework C objects (`nrtucode.c.o`,
 > `nrtucode_context.c.o`, `nrtucode_core.c.o`, `nrtucode_images.c.o`,
 > `nrtucode_loadable_library.c.o`, `nrtucode_opset.c.o`,
@@ -376,7 +378,7 @@ The shipped runtime path is 4-gen; the 5th gen is internal-twin-exclusive.
 ## 6. The three resolvers (annotated C)
 
 Three resolvers over three tables partition the 386 getters with no residue.
-All resolver/table symbols re-verified present this session:
+All resolver/table symbols present:
 
 | Symbol | VA | type | role |
 |---|---|---|---|
@@ -389,11 +391,11 @@ All resolver/table symbols re-verified present this session:
 | `sunda_libs` / `cayman_libs` / `mariana_libs` / `mariana_plus_libs` / `maverick_libs` | `0x9b8f80 … 0x9b9050` | `d` | per-gen `{SO_get, JSON_get}` tables |
 | `hwdecode_table_list` | `0x9b9090` | `d` | 38 × 16B `{CAM_get; TABLE_get}` |
 
-`[HIGH/OBSERVED — re-verified nm]`
+`[HIGH/OBSERVED — nm]`
 
 ### 6a. `nrtucode_get_memory_image` @ `0x9b2960` — base + DKL (324 getters)
 
-Disassembled this session. The `idx<=37` guard, the `NRTUCODE_MPLUS_ON_MARIANA`
+Disassembled. The `idx<=37` guard, the `NRTUCODE_MPLUS_ON_MARIANA`
 tripwire, the `NEURON_UCODE_FLAVOR` env auto-path, the 0x28-stride descriptor
 linear scan, and the 4-way region jump table at VA `0x555c` all confirmed.
 
@@ -456,7 +458,7 @@ int nrtucode_get_memory_image(uint idx, int region, int flavor,
 | `3` | region getter NULL (variant not linked) |
 | `8` | removed-env-flag tripwire |
 
-> **The `image_list` 38-slot map** `[re-verified]`. Reading `.count` statically
+> **The `image_list` 38-slot map** `[binary-derived]`. Reading `.count` statically
 > (the `.tbl` pointer is a load-time reloc): SUNDA `il[0..6]` count=1 (RELEASE
 > single-flavor), CAYMAN `il[7..14]`, MARIANA `il[15..22]`, MPLUS `il[23..30]`,
 > MAVERICK `il[31..35,37]`; `il[36]` is **EMPTY** (the reserved gap). Most slots
@@ -515,7 +517,7 @@ int nrtucode_get_ext_isa_internal(uint coretype, int flavor,
 ```
 
 `nrtucode_get_num_ext_isa_libs` @ `0x9b2c90` returns the per-coretype count via a
-bitmask, re-verified instruction-exact:
+bitmask, instruction-exact:
 
 ```c
 int nrtucode_get_num_ext_isa_libs(uint coretype, uint64_t* out) {
@@ -582,7 +584,7 @@ int nrtucode_get_hwdecode_table(uint idx, int kind,
  = 386                       three resolvers, three tables, no overlap, no residue.
 ```
 
-### 6e. Version getters (the catalog's identity stamps) `[re-verified]`
+### 6e. Version getters (the catalog's identity stamps) `[binary-derived]`
 
 | Getter | VA | Value |
 |---|---|---|
@@ -652,7 +654,7 @@ SUNDA 24  ->  CAYMAN 100  ==  MARIANA 100  ==  MPLUS 100  ->  MAVERICK 62
 **(1) Count closure.** `nm` `t` getters = **386**. Three independent partitions
 all close to 386: per-gen `24+100+100+100+62`; per-engine
 `46+60+56+56+48+120`; per-category `288+32+30+36`. No getter unaccounted.
-`[re-verified]`
+`[binary-derived]`
 
 **(2) Resolver closure.** Every getter maps to exactly one resolver category:
 `base 288 + DKL 36 = 324` (`get_memory_image`) + `PROF 30`
@@ -661,14 +663,14 @@ reachable by zero resolvers, none by two. `[HIGH/OBSERVED]`
 
 **(3) Real-vs-cursor closure.** `225 real + 161 zero-cursor = 386`, backed by
 exactly **225 distinct img-ptr addresses** (== the real count); every
-zero-cursor reuses a real boundary address, 0 spurious aliases. `[re-verified]`
+zero-cursor reuses a real boundary address, 0 spurious aliases. `[binary-derived]`
 
 **(4) Weak-undef accounting.** The 2 SUNDA EXTISA getters are `w` (weak-undef),
 resolved from the standalone container at load (§5b). They are **not** among the
 386 `t` getters — they are link-time placeholders. Full accessor surface =
 **386 `t` (in-lib) + 2 `w` (container-resolved) = 388** symbols, of which 386
 carry in-lib bodies. No unresolved/dangling getter beyond these 2 documented
-placeholders. `[re-verified]`
+placeholders. `[binary-derived]`
 
 **(5) Unmapped-getter sweep.** Zero getters fall outside the
 `(gen × engine × flavor × region)` grammar (all 386 parse with 0 residue); zero
@@ -690,9 +692,9 @@ lack a resolver; zero lack an `nm .data` blob symbol (386/386 `lea` targets ==
 
 ---
 
-## 9. Spot-verification ledger (re-run this session)
+## 9. Spot-verification ledger
 
-All against `libnrtucode_internal.so` (sha256 `b7c67e8…`; re-hashed, MATCH).
+All against `libnrtucode_internal.so` (sha256 `b7c67e8…`, MATCH).
 Stock `nm`/`objdump`/`readelf` + `python hashlib`.
 
 | # | Check | Result |
@@ -717,7 +719,7 @@ Stock `nm`/`objdump`/`readelf` + `python hashlib`.
 | `SUNDA_Q7_POOL_RELEASE_EXTRAM_get` | `0x9b3000` | `0x57400` | `0x1b40` *(sole EXTRAM)* |
 | `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get` | `0x9b3aa0` | `0x2ef7e0` | `0xa260` *(ELF)* |
 
-### Spot-shas (one real blob per generation, carved this session)
+### Spot-shas (one real blob per generation)
 
 | Sample | img-ptr / size | sha256 (16) | magic |
 |---|---|---|---|
@@ -739,7 +741,7 @@ Stock `nm`/`objdump`/`readelf` + `python hashlib`.
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED (binary-grounded this session):** the 386-getter index +
+**HIGH / OBSERVED (binary-grounded):** the 386-getter index +
 per-gen counts 24/100/100/100/62; the category partition 288+32+30+36=386;
 per-engine 46/60/56/56/48/120; the real-vs-cursor tally 225/161 with 225 distinct
 img-ptr; 7 getters' `(img-ptr,size)` + 6 carve shas; the three-resolver mechanism
@@ -748,7 +750,7 @@ model (SUNDA standalone-only / MAVERICK twin-only) with the weak-undef SUNDA
 EXTISA; the MAVERICK structural drops (ACT-fold, DEBUG-drop, DKL-drop,
 SRAM-resident SP/Q7); the flavor/region matrices; the version stamps.
 
-**MED / INFERRED (carried forward, not re-derived to HIGH):** engine_idx POOL=1 /
+**MED / INFERRED (carried forward):** engine_idx POOL=1 /
 ACT=2 (PE=0, DVE=3 OBSERVED); the reason `NX_SP` occupies two `image_list` slots
 per gen; MAVERICK arch_id 36 (`coretype = arch_id+1`); "build_version tracks the
 ulib contract, not gen-count."

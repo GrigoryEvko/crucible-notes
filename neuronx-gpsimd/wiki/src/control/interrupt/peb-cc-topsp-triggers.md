@@ -29,7 +29,7 @@ Related:
 
 ---
 
-## 0. The three sets at a glance `[HIGH · OBSERVED]`
+## 0. The three sets at a glance
 
 | Set | Artifact | `yq 'length'` | Role |
 |---|---|---|---|
@@ -39,7 +39,7 @@ Related:
 
 All three Cayman artifacts live under
 `extracted/nested/cayman-arch-regs_tgz/intc/`. The 128/98/82 counts are the exact
-`yq 'length'` of each file — re-verified here, not "~" estimates.
+`yq 'length'` of each file — not "~" estimates.
 
 > **GOTCHA — `extracted/` and `ida/` are gitignored.** `fd`/`rg` skip them by
 > default. Use `--no-ignore` or absolute paths when re-grounding any count on this
@@ -53,13 +53,13 @@ All three Cayman artifacts live under
 
 ---
 
-## 1. The apex aggregation model — 128 inputs → downstream domains `[HIGH · OBSERVED]`
+## 1. The apex aggregation model — 128 inputs → downstream domains
 
 The `peb_intc` apex is the master interrupt-routing rollup for the whole SoC fault
 surface. It is the **4-group × 32 = 128-input** INTC: `[CARRIED · #923]`
 `NUM_OF_TRIGS=128` (`NonOverridable`), MSI-X vector table = 128 entries. The 128 YAML
 entries fill the 128-bit trigger bus **1:1, file order = bit order**. `yq 'length' = 128`
-confirms the file saturates the bus exactly — no gaps, no reserved bits. `[HIGH · OBSERVED]`
+confirms the file saturates the bus exactly — no gaps, no reserved bits.
 
 The apex's job: every *other* domain's leaf INTC produces one per-domain
 `*_summary` / `*_nmi` wire (its `u_amzn_errtrig` `nmi_out`). Those summary wires —
@@ -67,7 +67,7 @@ The apex's job: every *other* domain's leaf INTC produces one per-domain
 The apex re-latches all 128 into a 4×32-bit pending image and presents **one** rolled-up
 output upward. `[HIGH structure]`
 
-### 1a. Per-source downstream-domain classification (the master rollup) `[HIGH · OBSERVED]`
+### 1a. Per-source downstream-domain classification (the master rollup)
 
 All 128 apex sources classified by the downstream domain they summarize or represent.
 Counts re-derived by `rg -c 'trigger: <base>'` over the YAML; the sum is 128.
@@ -104,13 +104,13 @@ Counts re-derived by `rg -c 'trigger: <base>'` over the YAML; the sum is 128.
 Keystone observations:
 
 - **SDMA dominates** — 64/128 = half the apex. SDMA is the widest fan-in: 32 queues ×
-  2 SEngines, each queue's leaf `nmi_out` gets a dedicated apex bit. `[HIGH · OBSERVED]`
+  2 SEngines, each queue's leaf `nmi_out` gets a dedicated apex bit.
 - **The 2-SEngine partition is visible throughout**: TPB (2+2), HBM (1+1), SDMA (32+32),
   PCIe_B (1+1), APBBLK (2+2) — the Cayman 2-die / 2-PEB split. `[HIGH]`
 - **High-fan-out fabric domains are pre-combined at the leaf** so they fit the 128-bus
   budget: `d2d_combined_nmi` = `D2D[0-7]` (8 links), `top_sp_combined_nmi` = `TopSP[0-9]`
   (10), `pcie_se{0,1}_b_combined_nmi` = `PCIe_B[0-4]` (5 each). The apex does **not** give
-  every leaf its own bit. `[HIGH · OBSERVED]`
+  every leaf its own bit.
 - `intc_nmi` (idx 79) is the apex aggregating *other* intc instances' internal errors —
   the INTC hierarchy is self-monitoring (an intc that watches intcs). `[HIGH name · MED role]`
 
@@ -127,7 +127,7 @@ Keystone observations:
 > `*_nmi`/`*_summary` wires, file-order = bit-order, → Q7/GIC `[INFERRED]`" is otherwise
 > consistent and retained here. `[HIGH · OBSERVED — bytes contradict the "all 128" claim]`
 
-### 1b. Apex per-entry schema — four key-shapes `[HIGH · OBSERVED]`
+### 1b. Apex per-entry schema — four key-shapes
 
 The key union across all 128 entries is 10 keys: `trigger`, `name`, `description`,
 `edge_triggered`, `nmi_mask`, `nmi_msix_mask`, `source_block`, `source_path`,
@@ -141,10 +141,10 @@ key exists in the apex file. Four distinct keyset shapes:
 | **C** | A + `{source_block, source_path}` | 2 | `pcie_m0/a0` summaries (the only named leaf wires) |
 | **D** | `{description, edge_triggered, name, needs_cdc, trigger}` | 14 | FIS sprot/cntrl + SE apbblk (no nmi/crit) |
 
-80 + 32 + 2 + 14 = 128. `[HIGH · OBSERVED]` Edge/level split: `edge_triggered=false`
+80 + 32 + 2 + 14 = 128. Edge/level split: `edge_triggered=false`
 (level) on **104**, `=true` (edge) on **24** — the 24 edge entries are the pulse-type
 criticals (`spis_*`, `misc_ram`, `erg`, `io_fabric_*`, `axi2apb pos_wr_nacc`) plus the
-10 FIS (`fis_sprot[0..4]` + `fis_cntrl[0..4]`). `[HIGH · OBSERVED]`
+10 FIS (`fis_sprot[0..4]` + `fis_cntrl[0..4]`).
 
 > **QUIRK — `nmi_mask = 0` on all 114 apex copies, vs `1` on the leaf copies.** The
 > apex's rolled-up summaries carry `nmi_mask=0` / `nmi_msix_mask=0`; the corresponding
@@ -159,11 +159,11 @@ criticals (`spis_*`, `misc_ram`, `erg`, `io_fabric_*`, `axi2apb pos_wr_nacc`) pl
 > `se0_sdma_nmi[31]` → `se0_sdma_0_summary` (`SDMA[0]`). Same reversal on SE1. So apex
 > trigger bit `i` maps to physical SDMA queue `31-i`. Verified by
 > `yq '.[7].name'` = `se0_sdma_31_summary` and `yq '.[38].name'` = `se0_sdma_0_summary`.
-> Tools correlating apex bit ↔ physical queue must invert. `[HIGH · OBSERVED]`
+> Tools correlating apex bit ↔ physical queue must invert.
 
 ---
 
-## 2. Critical fast-path vs generic summary — the split `[HIGH · OBSERVED]`
+## 2. Critical fast-path vs generic summary — the split
 
 Exactly **32 of 128** carry `critical:1`
 (`yq '[.[] | select(.critical == 1)] | length'` = 32). These are the fast-path
@@ -185,25 +185,24 @@ The 32 `critical:1` sources, grouped (sum verified = 32):
 | 2 | APB flush handshake | `apb_outstding_flushed_{clr,set}_triggers_out` (reset/isolation drain) |
 | 3 | GPIO / I2C / misc_ram | `ring_io_top_gpio_intr_local`, `i2c_intr`, `misc_ram_intr_local` |
 
-4 + 7 + 8 + 4 + 1 + 2 + 1 + 2 + 3 = **32**. `[HIGH · OBSERVED]`
+4 + 7 + 8 + 4 + 1 + 2 + 1 + 2 + 3 = **32**.
 
 The 4 HBM-thermal criticals carry dedicated apex bits **per stack** and bypass the
 generic `hbm_{0,1}_nmi` summary — the silicon's "react to a CATTRIP before the device
 cooks" fast-path. The other 28 criticals are **direct PEB-local leaf signals**
 (PVT/SPI/I2C/GPIO/axi2apb/erg/nsm/apb-flush/misc_ram) that originate inside the PEB
 and wire straight to the apex — they are not rollups of a downstream domain INTC.
-`[HIGH · OBSERVED]`
 
 **Who has no fast-path (explicit non-claim):** TPB (4) — no critical (matches
 [errtrig/FIS routing](./errtrig-fis-routing.md)); D2D (1) — no critical; and the
 generic-summary-only domains: SDMA per-engine (64), HBM summary (2), PCIe (4), CC (2),
 TOP_SP (1), RDM (1), SDMA host (2), INTC-self (1). These rely on the management core
 decoding their leaf summary register; only thermal / RAS / management-bus events earn
-a dedicated critical bit. `[HIGH · OBSERVED]`
+a dedicated critical bit.
 
 ---
 
-## 3. The 14 shape-D FIS + APBBLK apex entries `[HIGH · OBSERVED]`
+## 3. The 14 shape-D FIS + APBBLK apex entries
 
 14 entries carry **neither** `nmi_mask`/`nmi_msix_mask` **nor** `critical` — just
 `{trigger, name, description, needs_cdc:false, edge_triggered}`
@@ -224,7 +223,7 @@ telemetry. `[HIGH text · MED role naming]` See
 
 ---
 
-## 4. The PCIe isolation-SM sources — where they actually live `[HIGH · OBSERVED]`
+## 4. The PCIe isolation-SM sources — where they actually live
 
 The PCIe isolation state-machine sources (linkdown / FLR / SBR / NTS / PIR / NSM-AXI-
 timeout / isolation enter / exit) are **NOT** in the `peb_intc` apex file:
@@ -250,7 +249,6 @@ They live **one level down**, in the PCIe leaf (`intc/pcie_triggers.yaml`) as th
 These roll up at the PCIe leaf INTC and arrive at the apex via the **PCIe summary** bits
 `pcie_m0_nmi` (idx 0) / `pcie_a0_nmi` (idx 1) / `pcie_se{0,1}_b_combined_nmi` (idx 5/6).
 The isolation SM is **summarized** — it has no dedicated apex bit of its own.
-`[HIGH · OBSERVED]`
 
 **The one direct tie — NSM by two paths.** The NSM AXI-timeout event *also* gets a
 direct `critical:1` apex bit `intr_peb_nsm_axi_timeout` (idx 111, verified `critical=1`).
@@ -260,7 +258,6 @@ So NSM's AXI watchdog reaches the management core **simultaneously**:
    → PCIe leaf summary → `pcie_*_nmi` apex bit. `[MED — the leaf summary bit is not
    individually named at the apex]`
 2. *direct fast-path* — NSM event → `intr_peb_nsm_axi_timeout` apex bit (`critical=1`).
-   `[HIGH · OBSERVED]`
 
 This dual `(a)+(b)` tie is the [NSM isolation flow](./nsm-flow-unified.md) anchor.
 
@@ -269,11 +266,11 @@ This dual `(a)+(b)` tie is the [NSM isolation flow](./nsm-flow-unified.md) ancho
 > folds into the PCIe summary: `misc_pacific_hs_pcie_peb_flr_sbr_req_local`,
 > `..._axi_timeout_local`, `..._reset_done_ack_local`, `..._reset_ready_local`. So the
 > isolation/reset surface is exposed *differently per generation* — Cayman summarizes +
-> only NSM-timeout direct; Sunda promotes the whole handshake. `[HIGH · OBSERVED]`
+> only NSM-timeout direct; Sunda promotes the whole handshake.
 
 ---
 
-## 5. CC (PREPROC Compute-Cluster) — 98 sources `[HIGH · OBSERVED]`
+## 5. CC (PREPROC Compute-Cluster) — 98 sources
 
 **`cc_triggers.yaml`** is the interrupt leaf of the **Compute-Cluster (CC)** =
 `PREPROC`, a four-core Cadence Tensilica **Vision-Q7** ("GPSIMD") DSP cluster (the same
@@ -282,15 +279,15 @@ Q7-cluster IP as the 8-core TPB POOL, instanced with 4 cores; see
 the "CC" ambiguity decisively toward *compute-cluster*, not collective-comm: the
 descriptions read "FP status of INVALID from various **CC computes**" and "Correctable/
 Uncorrectable error from **Q7 memories**"; a grep for `collective|ring|allreduce|rank|
-nccl` = **0 hits**. `[HIGH · OBSERVED]`
+nccl` = **0 hits**.
 
 > **QUIRK — the CC file's banner is `# Cayman TPB Triggers` (a copy-paste artifact).**
 > The CC reuses the TPB POOL Q7-cluster IP and its `tpb_xt_local_reg.json` control
 > block, so the generator stamped the TPB banner onto the CC file. The *content* is
 > CC-specific (`fp_stat_*_peng`, `cc_seq_mem_*`, `cc_notific_intr`). Treat the banner
-> as lineage evidence, not domain truth. `[HIGH · OBSERVED]`
+> as lineage evidence, not domain truth.
 
-### 5a. Schema — a fourth distinct shape `[HIGH · OBSERVED]`
+### 5a. Schema — a fourth distinct shape
 
 8-key union: `{trigger, name, description, edge_triggered, needs_cdc}` +
 `{source_clock, source_reset_n, msix_mask}`. Two keyset shapes, perfectly correlated
@@ -309,7 +306,7 @@ with `needs_cdc`:
 compute/Q7 clock domain into the INTC; the 67 FIS-shim sources are already in fabric
 clock. `[HIGH values · MED `clk_1p2` voltage reading]`
 
-### 5b. Sub-block grouping (file order = bit order) `[HIGH · OBSERVED]`
+### 5b. Sub-block grouping (file order = bit order)
 
 | Family (trigger base) | Cnt | idx range | E/L | CDC | Sub-block |
 |---|---:|---|---|---|---|
@@ -321,7 +318,7 @@ clock. `[HIGH values · MED `clk_1p2` voltage reading]`
 | `fis_sprot_intr[0..1][0..5]` | 12 | 36–47 | E | no | FIS sprot — **2** instances × 6 causes |
 | `fis_errtrig_intr[0..49]` | 50 | 48–97 | E | no | FIS errtrig: 25 user + 25 amzn |
 
-4 + 2 + 9 + 16 (= 31 CDC) + 5 + 12 + 50 (= 67 FIS) = **98**. `[HIGH · OBSERVED]`
+4 + 2 + 9 + 16 (= 31 CDC) + 5 + 12 + 50 (= 67 FIS) = **98**.
 
 ### 5c. Classification — instruction-event vs error vs ECC `[HIGH counts · MED labels]`
 
@@ -338,7 +335,6 @@ clock. `[HIGH values · MED `clk_1p2` voltage reading]`
 notification queues, and the only interrupts are notification **fault** conditions
 (full/dropped/threshold/overlap) plus AXI-writer faults. The 6 LEVEL-triggered entries
 are exactly the 2 ECC + 4 FP-status (sticky **state**); the other 92 are edge **events**.
-`[HIGH · OBSERVED]`
 
 ### 5d. Routing — CC → INTC → apex `[HIGH count · MED binding]`
 
@@ -353,7 +349,7 @@ summary rolls up to **exactly 2** apex entries:
 Verified `yq '.[112].critical // "none"'` = `none`. So the CC's apex contribution is a
 generic per-cluster **summary**, not a critical fast-path — even uncorrectable Q7-mem
 ECC (`cc_seq_mem_uncerr`) rides the generic `cc_top_*_summary`, not a dedicated
-critical wire. `[HIGH · OBSERVED]`
+critical wire.
 
 > **CORRECTION — `cc_top_{0,1}` is *Compute-Cluster*, not "collective/comm".** The apex
 > §1a table here labels these two sources `CC = Compute-Cluster`. An earlier apex
@@ -361,7 +357,6 @@ critical wire. `[HIGH · OBSERVED]`
 > the `cc_triggers.yaml` content (`CC computes` / `Q7 memories`, zero collective
 > vocabulary) and the [PREPROC/CC address subtree](../address/preproc-cc.md)
 > (`PREPROC` = the 4-core Vision-Q7 compute cluster) establish CC = Compute-Cluster.
-> `[HIGH · OBSERVED]`
 
 > **NOTE — 4 PREPROC clusters, but only 2 `cc_top_*` apex summaries.** The address map
 > finds four `PREPROC` instances, yet the apex carries only two `cc_top` summaries. The
@@ -370,7 +365,7 @@ critical wire. `[HIGH · OBSERVED]`
 
 ---
 
-## 6. TOP_SP (Top-level Sequencer-Processor) — 82 sources `[HIGH · OBSERVED]`
+## 6. TOP_SP (Top-level Sequencer-Processor) — 82 sources
 
 **`top_sp_triggers.yaml`** is the interrupt leaf of **TOP_SP** = "TopSP", an
 Xtensa-NX **sequencer-processor** core wrapped by the TPB-side service fabric, with its
@@ -379,7 +374,7 @@ own semaphore / event-notification `tsync` substrate (it doubles as collective-s
 `top_sp_ram.json` CSR confirms the identity: `top_sp_whoami` = "BlockID … top_sp0-9 =>
 0x98-0xa1" (10 blocks), `top_sp_nx_spc_lo/hi` = "Program counter for the **NX core** in
 top_sp", and an `sw_queue` carrying implicit/explicit/event-semaphore/error notification
-routing. `[HIGH · OBSERVED]`
+routing.
 
 > **NOTE — naming harmonized with #928.** [`rdm-top-sp.md`](../csr/rdm-top-sp.md) calls
 > TOP_SP the "top-level service/sync processor … Xtensa-NX scalar core with an
@@ -392,7 +387,7 @@ routing. `[HIGH · OBSERVED]`
 > unlike `cc_triggers.yaml` (`# Cayman TPB Triggers`). Do not key any parser on a
 > leading comment for this file.
 
-### 6a. Schema — minimal-5 + a 2-entry ECC nmi variant `[HIGH · OBSERVED]`
+### 6a. Schema — minimal-5 + a 2-entry ECC nmi variant
 
 80 entries: `{trigger, name, description, needs_cdc, edge_triggered}` (the minimal-5
 SDMA/IO/D2D baseline; `needs_cdc` present, **all false**). 2 entries (the ERG-ECC rows)
@@ -401,9 +396,9 @@ SDMA/IO/D2D baseline; `needs_cdc` present, **all false**). 2 entries (the ERG-EC
 `yq '[.[] | select(has("source_clock"))] | length'` = 0,
 `yq '[.[] | select(has("critical"))] | length'` = 0. **Not** a sixth schema, and **not**
 the TPB `msix_mask`/`tog2pul_only` variant. `edge_triggered`: 74 edge, **8 level** (the
-8 level sources = `err_sem_overflow` + 2 ERG-ECC + 5 NX-core). `[HIGH · OBSERVED]`
+8 level sources = `err_sem_overflow` + 2 ERG-ECC + 5 NX-core).
 
-### 6b. Sub-block grouping `[HIGH · OBSERVED]`
+### 6b. Sub-block grouping
 
 | Sub-block | Cnt | idx | E/L | Notes |
 |---|---:|---|---|---|
@@ -415,7 +410,7 @@ the TPB `msix_mask`/`tog2pul_only` variant. `edge_triggered`: 74 edge, **8 level
 | Instruction notif | 13 | 64–76 | E | `top_sp_notific_intr[0..8]` (9) + `..._wr_buffer_{full,drop}[0..1]` (4) |
 | **NX sequencer core** | 5 | 77–81 | L | `nx_interrupt[0..4]` (`nx_non_fatal`, `nx_fatal`, +3) |
 
-1 + 2 + 5 + 6 + 50 + 13 + 5 = **82**. `[HIGH · OBSERVED]` The FIS shim (cntrl + sprot +
+1 + 2 + 5 + 6 + 50 + 13 + 5 = **82**. The FIS shim (cntrl + sprot +
 errtrig = 61) shares the same user/amzn errtrig 25-cause family as the D2D/SDMA leaves —
 see [errtrig/FIS routing](./errtrig-fis-routing.md).
 
@@ -423,7 +418,7 @@ see [errtrig/FIS routing](./errtrig-fis-routing.md).
 > board-level, the file has **zero** watchdog/timer/GPIO/SPI/I2C/boot/reset/power/PVT/
 > doorbell vocabulary. Those SoC-top peripherals are **direct apex bits** in `peb_intc`
 > (`ring_io_top_gpio_intr_local`, `i2c_intr`, `spis_*`, `misc_axi2apb_*` — §1a/§2), not
-> TopSP-leaf sources. TopSP is the **sequencer-service block**. `[HIGH · OBSERVED]`
+> TopSP-leaf sources. TopSP is the **sequencer-service block**.
 
 ### 6c. Global-sync / semaphore tie `[HIGH location · MED binding]`
 
@@ -438,7 +433,7 @@ threshold/overflow interrupt of this bundle. `[HIGH loc · MED bind]` The NCFW
 device-`tsync` software binding is deferred to the interrupt-map synthesis (not
 assertable from this leaf alone) — flagged `[LOW]`, not fabricated.
 
-### 6d. Routing — TOP_SP → INTC → apex `[HIGH · OBSERVED]`
+### 6d. Routing — TOP_SP → INTC → apex
 
 82 ≤ 128, so the TopSP leaf fits **one** 4-group × 32 INTC (no errtrig pair). The leaf
 `nmi_out` feeds **exactly one** apex bit:
@@ -507,7 +502,7 @@ Routing certainty — what *is* and is *not* in the schema:
 
 ---
 
-## 8. Cross-gen diff (Cayman / Sunda / Maverick) `[HIGH · OBSERVED]`
+## 8. Cross-gen diff (Cayman / Sunda / Maverick)
 
 | Set | Cayman | Sunda | Maverick (v5) |
 |---|---:|---:|---:|
@@ -532,7 +527,7 @@ Routing certainty — what *is* and is *not* in the schema:
   all three; only the FIS-shim packaging differs. Maverick (80) collapses `fis_cntrl` to
   1 + adds 2 parity + repurposes `fis_sprot[5]` spare → `axi_checks`. Sunda (76) folds
   the entire FIS shim into one `top_sp_sprot_intr[0..54]` bus and exposes TopSP
-  per-instance at the apex. `[HIGH · OBSERVED]`
+  per-instance at the apex.
 
 ---
 

@@ -43,11 +43,11 @@ codegenTensorRef(ref)                         §1.1   shared_ptr<klr::TensorRef>
 
 Every leaf produces one `InstArg` (§5); the call site then hands it to `addArgument`/`addOutput<PhysicalAccessPattern>` to mint the real BIR operand. This is the **single funnel**: there is no per-op AP code, so a reimplementation that gets this descent right gets every op's operand binding right for free.
 
-### 1.1 `codegenTensorRef` `0xf18b30` — the entry [CONFIRMED]
+### 1.1 `codegenTensorRef` `0xf18b30` — the entry
 
 Shallow-copies the 16-byte `shared_ptr<klr::TensorRef>` into a stack temp, bumps the strong-count, and tail-calls `codegenTensorRefImpl(this, BB, &temp, /*allow_dynamic=*/0)`. The hard-coded `allow_dynamic = false` is the default contract: **most ops forbid dynamic access.** The dynamic-capable ops (e.g. `nisa.dma_copy` with a runtime offset) bypass this wrapper and call `codegenTensorRefImpl` directly with `allow_dynamic = true`.
 
-### 1.2 `codegenTensorRefImpl` `0xf18960` — the gate + kind switch [CONFIRMED]
+### 1.2 `codegenTensorRefImpl` `0xf18960` — the gate + kind switch
 
 ```c
 // Address 0xf18960 (real body; thunk 0x61bb20)
@@ -69,7 +69,7 @@ InstArg codegenTensorRefImpl(shared_ptr<klr::TensorRef> ref, bool allow_dynamic)
 
 The gate is `isAccessDynamic(ref) & (allow_dynamic ^ 1)` — i.e. *dynamic AND not-allowed* throws. The assert string and the `klir_to_bir_codegen.cpp:0x135` source location are present verbatim in the binary; the kind-1 branch loads the inner `klr::Access` shared_ptr at `TensorRef+0x08` and forwards it to `codegenAccess`. [evidence: decompiled body 0xf18960 — `v10 = isAccessDynamic(...) & (a4 ^ 1)`; `v12 == 1` → `codegenAccess`, `v12 != 4` → `__assert_fail`.]
 
-### 1.3 `codegenAccess` `0xf18820` — the `klr::Access` kind switch [CONFIRMED]
+### 1.3 `codegenAccess` `0xf18820` — the `klr::Access` kind switch
 
 ```c
 // Address 0xf18820 (real body; thunk 0x60bb60)
@@ -122,7 +122,7 @@ This is the access an op produces when the front-end handed it a name with no sl
 
 Used when `klr::Access.kind == 4`: an explicit `klr::BirAccessPattern` carrying a list of `{step, num}` pairs. This is where **slices, transposes, and broadcasts** live.
 
-### 3.1 `klr::BirAccessPattern` field map [STRONG]
+### 3.1 `klr::BirAccessPattern` field map
 
 | off | type | meaning |
 |---|---|---|
@@ -135,11 +135,11 @@ Used when `klr::Access.kind == 4`: an explicit `klr::BirAccessPattern` carrying 
 | `+0x64` | `i32` | dtype-override index (`klr::Dtype`, fed to `codegenDtype`) |
 | `+0x68` | `u8` | dtype-override-PRESENT flag |
 
-The offsets are confirmed from the disasm of the four encoders and the validator; the `klr` struct header itself was not separately mapped, so the *field roles* are STRONG (inferred from use) while the *byte offsets* are CONFIRMED.
+The byte offsets are read directly from the disasm of the four encoders and the validator. The `klr` struct header itself was never separately mapped, so the *field roles* in the right-hand column are inferred from how each offset is used, not from a declaration.
 
 `klr::APPair` (the 8-byte list payload): `+0x00 i32 step` (signed), `+0x04 u32 num`. The list node is 24 B — `_List_node_base{next,prev}` at `+0x00`/`+0x08`, then `shared_ptr<APPair>{ptr @+0x10, ctrl @+0x18}`; `codegenAP` reads `node+0x10` (the `.get()` pointer).
 
-### 3.2 The body [CONFIRMED]
+### 3.2 The body
 
 ```c
 // Address 0xf18430 (real body; thunk 0x60be00)
@@ -174,7 +174,7 @@ InstArg codegenBirAccessPattern(shared_ptr<klr::BirAccessPattern> klr) {
 
 ### 3.3 What the general path does *not* do
 
-- **No start address.** `codegenBirAccessPattern` carries no byte offset of its own. The base is the `MemoryLocation` (resolved by *name*); the per-dim start is the partition field (`klr+0x10`) plus the AP geometry. The eventual byte offset (the wire `ADDR4` start) is computed downstream by `InstBuilder`/`lower_ap`, not here. [CONFIRMED — no offset store in the body.]
+- **No start address.** `codegenBirAccessPattern` carries no byte offset of its own. The base is the `MemoryLocation` (resolved by *name*); the per-dim start is the partition field (`klr+0x10`) plus the AP geometry. The eventual byte offset (the wire `ADDR4` start) is computed downstream by `InstBuilder`/`lower_ap`, not here — the body contains no offset store at all.
 - **No stride scaling.** Each `{step, num}` passes through `codegenAP` verbatim; the dtype→bytes scaling (`qword_1DE98C0[dtype]` = `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]`) happens at the wire encoder, not in codegen.
 - **No partition-axis search.** The canonical `[W,Z,Y,X]` axis order means `Pattern[0]` *is* the partition/W axis by construction. The codegen relays the front-end list order plus the scalar partition/base index; there is no "which dim is the 128-partition axis" search. The KLR front-end already ordered the list so `Pattern[0] = partition`.
 - **No max-of-inputs dtype promotion.** Dtype is per-operand: either the explicit per-access cast (`klr+0x68` set) or the native `MemoryLocation` dtype. Promotion, if any, is an upstream KLR cast.
@@ -236,7 +236,7 @@ All four encoders write the **same ~0x68-byte stack struct** — the "PhysicalAc
 
 The four encoders in §2–§4 **always** build a physical (kind-1) operand. A symbolic (kind-2) AP is produced *only* on the dynamic path, and the decision is **not inside any encoder** — it is the `isAccessDynamic` predicate evaluated at the call site (§1.2), where the op decides `allow_dynamic`.
 
-### 6.1 `isAccessDynamic` — the predicate [CONFIRMED]
+### 6.1 `isAccessDynamic` — the predicate
 
 ```c
 // Address 0xf14030 — isAccessDynamic(shared_ptr<klr::BirAccessPattern>), 11 bytes
@@ -250,7 +250,7 @@ u8 isAccessDynamic(shared_ptr<klr::BirAccessPattern> ap) {
 
 > **QUIRK — the static/symbolic decision lives at the call site, not in the encoder.** A reimplementer reading `codegenBirAccessPattern` will find no kind-2 branch in it at all. The four encoders are *unconditionally* physical. The static-vs-symbolic fork is the `isAccessDynamic(...) & (allow_dynamic ^ 1)` gate in `codegenTensorRefImpl` (which only ever *throws* on the forbidden case) plus the separate `assembleDynamicInfo` call the dynamic-capable op makes *around* `addArgument`. This mirrors the symbolic-AP→register-ALU split elsewhere in the backend: the symbolic form is built on a side-channel, never folded into the physical builder.
 
-### 6.2 The scalar-XOR-vector invariant [CONFIRMED]
+### 6.2 The scalar-XOR-vector invariant
 
 ```c
 // Address 0xf140a0 — _validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided
@@ -262,7 +262,7 @@ void _validate...(shared_ptr<klr::BirAccessPattern> ap) {
 
 On the dynamic path, **exactly one** of scalar-offset (`+0x40`) / vector-offset (`+0x58`) is present — never both, never neither. [evidence: decompiled 0xf140a0 — `if (*(u8*)(*a1 + 88) == *(u8*)(*a1 + 64)) sub_6D6825()`.]
 
-### 6.3 `assembleDynamicInfo` `0xf20230` — the symbolic-AP builder [CONFIRMED]
+### 6.3 `assembleDynamicInfo` `0xf20230` — the symbolic-AP builder
 
 Builds a `bir::DynamicAPINFO` carrying the `pelican::Expr` symbolic address algebra. Two branches, selected by which offset flag is set:
 
@@ -336,25 +336,23 @@ codegen<Op>(klr::Op op):
 
 ---
 
-## 9. Cross-checks and confidence
+## 9. How this layer lines up with its neighbours
 
-All cross-strand checks are consistent:
+- **Value model** ([BIR Value Model](value-model.md)): kind-1 `PhysicalAccessPattern` / kind-2 `SymbolicAccessPattern` / kind-3 `RegisterAccessPattern`; `APPair` 16 B `{step,num}`; the AP value-object's own data at `+0x50` after the MI base. Codegen produces exactly the kind-1 strides + kind-2 `pelican` exprs that struct map describes. The `InstArg+0x18` layout and the AP-object `+0x50` layout are *distinct* (§5 GOTCHA).
+- **MemoryLocation**: `+0x100` dims/elem-count ptr (used by Simple); `+0x108` byte size (used by Hbm ÷ dtype).
+- **pelican Expr**: ExprKind 3 = `IndirectArgExpr`, ExprKind 7 = `BirIntRuntimeValue` — `assembleDynamicInfo` mints exactly those (`mov esi,3` / `mov esi,7` before each ctor).
+- **`lower_ap`**: codegen mints kind-1/kind-2; `lower_ap` converts kind-2→kind-3 before reg-alloc.
+- **beta3 twin** ([BirCodeGenLoop AP Builders](../nki/bircodegen-ap.md)): same abstract `(step, num)` AP model, broadcast = stride-0; but beta3 runs the set-algebra *inside* its builders whereas this beta2 `codegenAP` is a pure relay. The two are deliberately parallel, not contradictory.
 
-- **Value model** ([BIR Value Model](value-model.md)): kind-1 `PhysicalAccessPattern` / kind-2 `SymbolicAccessPattern` / kind-3 `RegisterAccessPattern`; `APPair` 16 B `{step,num}`; the AP value-object's own data at `+0x50` after the MI base. Codegen produces exactly the kind-1 strides + kind-2 `pelican` exprs this struct map describes. The `InstArg+0x18` layout and the AP-object `+0x50` layout are *distinct* (§5 GOTCHA). **[OK]**
-- **MemoryLocation**: `+0x100` dims/elem-count ptr (used by Simple); `+0x108` byte size (used by Hbm ÷ dtype). **[OK]**
-- **pelican Expr**: ExprKind 3 = `IndirectArgExpr`, ExprKind 7 = `BirIntRuntimeValue` — `assembleDynamicInfo` mints exactly those (`mov esi,3`/`mov esi,7` before each ctor). **[OK]**
-- **`lower_ap`**: codegen mints kind-1/kind-2; `lower_ap` converts kind-2→kind-3 before reg-alloc. **[OK]**
-- **beta3 twin** ([BirCodeGenLoop AP Builders](../nki/bircodegen-ap.md)): same abstract `(step, num)` AP model, broadcast = stride-0; but beta3 runs the set-algebra *inside* its builders whereas this beta2 `codegenAP` is a pure relay. The two are deliberately parallel, not contradictory. **[OK]**
+### Evidence anchors and limits
 
-### Gaps / confidence ledger
-
-| id | conf | claim |
+| id | Confidence | claim |
 |---|---|---|
-| G1 | STRONG | `klr::BirAccessPattern` field *roles* (+0x10 partition, +0x18 list, +0x40 scalar-offset, +0x58 vector-offset, +0x64/+0x68 dtype) from encoder + validator disasm; the byte *offsets* are CONFIRMED, the `klr`-struct header was not separately mapped. |
-| G2 | STRONG / INFERRED | `codegenAccessSimple` `num = ML[+0x100][0]` value source is CONFIRMED; whether the degenerate 1-dim extent is the partition vs free extent is INFERRED from the `{1,1,1}` shape default. |
-| G3 | CONFIRMED | `codegenAP` `step` is sign-extended (`movsxd`), `num` zero-extended — negative (reverse) strides survive. |
-| G4 | CONFIRMED | the kind-1-vs-kind-2 decision is *not* inside `codegenBirAccessPattern`; it is the `isAccessDynamic` gate at the call site + `assembleDynamicInfo`. The four encoders always emit physical. |
-| G5 | CONFIRMED | no byte offset is set in codegen; the `ADDR4` byte offset is computed downstream. |
+| G1 | HIGH | `klr::BirAccessPattern` field *roles* (+0x10 partition, +0x18 list, +0x40 scalar-offset, +0x58 vector-offset, +0x64/+0x68 dtype) are inferred from the encoder + validator disasm; the byte *offsets* are read directly, but the `klr`-struct header was never separately mapped. |
+| G2 | HIGH | `codegenAccessSimple`'s `num = ML[+0x100][0]` value source is read from the body; whether the degenerate 1-dim extent is the partition or the free extent is inferred from the `{1,1,1}` shape default. |
+| G3 | CERTAIN | `codegenAP` sign-extends `step` (`movsxd`) and zero-extends `num` — negative (reverse) strides survive. |
+| G4 | CERTAIN | The kind-1-vs-kind-2 decision is *not* inside `codegenBirAccessPattern`; it is the `isAccessDynamic` gate at the call site plus `assembleDynamicInfo`. The four encoders always emit physical. |
+| G5 | CERTAIN | No byte offset is set in codegen; the `ADDR4` byte offset is computed downstream. |
 
 ---
 

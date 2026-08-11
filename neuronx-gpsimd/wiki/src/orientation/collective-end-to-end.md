@@ -99,7 +99,7 @@ nrt_dtype`, no re-encoding. `[HIGH/OBSERVED]` See
 The sibling pseudo-ops that bracket a lowered sequence are the same family:
 `0xdb` `PSEUDO_CUR_PROCESSING_RANK_ID` (per-rank index), `0xcb` `SEND_RECV`,
 `0xd8` `PSEUDO_CORE_BARRIER`, `0xd5` `PSEUDO_SYNC_BARRIER`, `0xc3`
-`PSEUDO_DMABARRIER`. `[HIGH/OBSERVED — spot-verified in the Cayman `common.h`.]`
+`PSEUDO_DMABARRIER`. `[HIGH/OBSERVED — in the Cayman `common.h`.]`
 
 ---
 

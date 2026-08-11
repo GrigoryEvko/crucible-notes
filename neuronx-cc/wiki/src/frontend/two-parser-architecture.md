@@ -64,9 +64,9 @@ All symbols are local (`l F .text`) in `Arguments…so` — present, not strippe
 | `_AddArgumentCallInterceptor.add_mutually_exclusive_group` | `0x13a10` | nested mutex-group proxy | CERTAIN |
 | `_AddArgumentCallInterceptor.set_context` | `0xe760` | context-thread for group-added flags | CERTAIN |
 
-`ArgKind` is an `enum.Enum` whose three fully-wired members `PUBLIC`, `HIDDEN`, `INTERNAL` appear as interned *name* constants (`__pyx_n_s_*`, plus `__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`). [CONFIRMED]
+`ArgKind` is an `enum.Enum` with **five** members: `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`. The three fully-wired ones — `PUBLIC`, `HIDDEN`, `INTERNAL` — appear as interned *name* constants (`__pyx_n_s_*`, plus `__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`), and they are the only three this lane references as live enum identifiers. The remaining two sit in the `.rodata` pool in weaker forms: `EARG`, the experimental tier (help-suppressed, listed by `--help-hidden`), interned as the unicode *value* `__pyx_n_u_EARG`; and `Harg`, also help-suppressed, present only as a bare string. [3.9 Flag Visibility Taxonomy](flag-visibility-argkind.md) is authoritative on the full five-member enum.
 
-> **CORRECTION —** the `.rodata` string pool carries **two more** member tokens beyond these three: `EARG` (interned as the unicode *value* `__pyx_n_u_EARG`, HIGH) and `Harg` (a bare string, LOW). The full member set is `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`; this lane only references the first three as live enum identifiers, but the experimental `EARG` (help-suppressed, listed by `--help-hidden`) and the help-suppressed `Harg` are also members. See [3.9 Flag Visibility Taxonomy](flag-visibility-argkind.md), which is authoritative on the five-member enum.
+> **GOTCHA —** enumerating `ArgKind` from this lane's live references yields three members and looks complete. It is not — two more tiers exist and are only visible in the string pool.
 
 ### Algorithm
 
@@ -74,10 +74,10 @@ The intercepting `add_argument` peels the two custom kwargs (`kind`, `job`), del
 
 ```c
 function InterceptingArgumentParser.add_argument(self, *args, **kwargs):   // 0x11320
-    kind = kwargs.pop("kind", ArgKind.PUBLIC)   // interned 'kind' / 'argkind'; default kind PUBLIC  [STRONG]
-    job  = kwargs.pop("job",  None)             // interned 'job' — owning pipeline Job  [STRONG]
-    action = super().add_argument(*args, **kwargs)   // real argparse registration  [CONFIRMED delegate]
-    default = action.default                    // read back; 'get_default' present in pool  [CONFIRMED]
+    kind = kwargs.pop("kind", ArgKind.PUBLIC)   // interned 'kind' / 'argkind'; default kind PUBLIC
+    job  = kwargs.pop("job",  None)             // interned 'job' — owning pipeline Job
+    action = super().add_argument(*args, **kwargs)   // delegates to real argparse registration
+    default = action.default                    // read back; 'get_default' present in pool
     self._registry.storeArgument(               // mirror into the side registry
         self._context, action, kind, job, default)
     return action
@@ -85,9 +85,9 @@ function InterceptingArgumentParser.add_argument(self, *args, **kwargs):   // 0x
 
 ```c
 function _ArgumentRegistry.storeArgument(self, context, argument, kind, job, default):  // 0x103d0
-    // record fields are exactly the .rodata literal "argument,kind,job,default,"  [CONFIRMED]
+    // record fields are exactly the .rodata literal "argument,kind,job,default,"
     record = (argument, kind, job, default)
-    self.arguments_by_context.setdefault(context, []).append(record)  // 'setdefault' interned  [CONFIRMED]
+    self.arguments_by_context.setdefault(context, []).append(record)  // 'setdefault' interned
 ```
 
 ```c
@@ -128,7 +128,7 @@ The driver overrides three argparse internals and adds two help emitters:
 Hidden and internal flags are registered with `help=argparse.SUPPRESS` (the interned `SUPPRESS` is in the pool) so they never show in ordinary `--help`, yet remain recoverable via `print_help_hidden` (`0x1cc90`) and `print_help_hidden_list` (`0x17150`). Both walk the registry and emit rows in the format string:
 
 ```text
-%-15s %-8s --%s: %s          // group/dest | kind | flag | help   [CONFIRMED literal]
+%-15s %-8s --%s: %s          // group/dest | kind | flag | help
 ```
 
 This is how `ArgKind` pays off: a `HIDDEN`/`INTERNAL`-tagged flag is suppressed from public help but listed by the hidden emitters, which read `kind` straight out of the 4-field record.
@@ -168,17 +168,17 @@ The instance is held in the name-mangled private attribute `_CommandLineParser__
 
 ```c
 function CommandLineParser.getOrCreateInstance(cls):   // 0x114a0
-    if cls._CommandLineParser__instance is None:       // mangled __instance  [CONFIRMED]
+    if cls._CommandLineParser__instance is None:       // mangled __instance
         cls._CommandLineParser__instance = CommandLineParser()
         return cls._CommandLineParser__instance
-    // re-entry guard string present in .rodata:
-    raise / return  "CommandLineParser is already created!"   // [CONFIRMED literal; STRONG branch]
+    // re-entry guard string present in .rodata; whether it raises or returns is not pinned:
+    raise / return  "CommandLineParser is already created!"
 ```
 
 ```c
 function CommandLineParser.__init__(self):   // 0x11ab0
-    self.cl_parser = argparse.ArgumentParser(conflict_handler='resolve')  // 'resolve' interned  [CONFIRMED]
-    self.compatible_mode = ...   // bool; help literal "Compatible mode for the old scheduler"  [CONFIRMED]
+    self.cl_parser = argparse.ArgumentParser(conflict_handler='resolve')  // 'resolve' interned
+    self.compatible_mode = ...   // bool; help literal "Compatible mode for the old scheduler"
 ```
 
 > **NOTE — `conflict_handler='resolve'` lets the backend re-register flags.** Penguin passes register their own flags into the one shared parser. With `resolve`, a later duplicate `--flag` silently overrides the earlier one instead of raising `ArgumentError`. This is a deliberate consequence of the singleton design: many passes touch the same parser, and `resolve` keeps that from being a hard error.
@@ -201,16 +201,18 @@ e.g. if name is 'disable-vectorize-dge-dma', then the trimmed name is
 ```c
 function CommandLineParser.addBoolOption(self, name, default, trim_prefix=False):  // 0x14a30
     if trim_prefix:
-        trimmed_name = name.split("-", 1)[1]   // 'disable-X' -> 'X'  [STRONG: local trimmed_name + split]
+        trimmed_name = name.split("-", 1)[1]   // 'disable-X' -> 'X'
         opt = self.cl_parser.add_argument("--" + trimmed_name,
                                           action="store_true", default=default)
     else:
         // register --name (store_true) AND --no-<name> (store_false) as a pair
         opt = self.cl_parser.add_argument("--" + name, action="store_true",  default=default)
         neg = self.cl_parser.add_argument("--no-" + name, action="store_false", dest=opt.dest)
-        // '--no-' literal present; add_mutually_exclusive_group in the pool pairs positive/negative  [STRONG]
+        // '--no-' literal present; add_mutually_exclusive_group in the pool pairs positive/negative
     return CLOption(opt, default=default)
 ```
+
+The body of this function is reconstructed rather than read directly: the `trim_prefix` branch is inferred from the local `trimmed_name` and its `split`, and the positive/negative pairing from the `--no-` literal plus `add_mutually_exclusive_group` in the string pool. The signature and the `CLOption` return are read from the binary.
 
 The `clOpt*` factories are thin module-level wrappers that build a `CLOption` with the right coercion type and register it through the singleton parser. Type coercion (`int`/`float`/`str`) is applied in `CLOption.value` (`0x13ef0`), which returns the parsed value or falls back to `default` when the flag was never seen — `store_true`/`store_false` both appear in `value`'s string window, so bool options resolve there too.
 
@@ -220,12 +222,12 @@ The backend never sees `sys.argv` directly. It receives a flat string and splits
 
 ```c
 function CommandLineParser.parseOptions(self, options_str):   // 0xbf40
-    tokens = options_str.split()                  // plain str.split — NOT shlex  [CONFIRMED]
+    tokens = options_str.split()                  // plain str.split — NOT shlex
     return self.cl_parser.parse_args(tokens)
 
 function CommandLineParser.parseKnownOptions(self, options_str):   // 0xadd0
     tokens = options_str.split()
-    namespace, unknown = self.cl_parser.parse_known_args(tokens)   // tolerates unknown flags  [CONFIRMED]
+    namespace, unknown = self.cl_parser.parse_known_args(tokens)   // tolerates unknown flags
     return namespace, unknown
 ```
 

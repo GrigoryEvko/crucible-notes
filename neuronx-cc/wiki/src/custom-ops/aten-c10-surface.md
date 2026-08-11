@@ -1,6 +1,6 @@
 # The Bundled ATen/c10 Dispatch Surface
 
-> *All symbols, RTTI names, source-path strings, and offsets on this page are recovered from the eight `libbuiltincustomop_cpuN.stripped.so` images shipped in `neuronxcc/data/custom_op/` of neuronx_cc **2.24.5133.0** (`+58f8de22`, cp310/311/312 wheels). These are statically-linked **Tensilica Xtensa** ELF32 executables — GPSIMD-core firmware, not host x86. Evidence tag: **D-AC05**.*
+> *All symbols, RTTI names, source-path strings, and offsets on this page are recovered from the eight `libbuiltincustomop_cpuN.stripped.so` images shipped in `neuronxcc/data/custom_op/` of neuronx_cc **2.24.5133.0** (`+58f8de22`, cp310/311/312 wheels). These are statically-linked **Tensilica Xtensa** ELF32 executables — GPSIMD-core firmware, not host x86.*
 
 ## Abstract
 
@@ -41,17 +41,17 @@ Every class below is attested by its Itanium-ABI typeinfo name (`_ZTI…` / `_ZT
 
 | c10 class | Mangled RTTI | Role | Confidence |
 |---|---|---|---|
-| `c10::TensorImpl` | `N3c1010TensorImplE` | Base tensor representation | CONFIRMED |
-| `c10::StorageImpl` | `N3c1011StorageImplE` | Refcounted byte buffer + allocator | CONFIRMED |
-| `c10::NeuronTensorImpl` | `N3c1016NeuronTensorImplE` | **Neuron** `TensorImpl` subclass | CONFIRMED |
-| `c10::NeuronStorageImpl` | `N3c1017NeuronStorageImplE` | **Neuron** `StorageImpl` subclass | CONFIRMED |
-| `c10::UndefinedTensorImpl` | `N3c1019UndefinedTensorImplE` | The singleton "undefined tensor" | CONFIRMED |
-| `c10::intrusive_ptr_target` | `N3c1020intrusive_ptr_targetE` | Refcount base for the above | CONFIRMED |
-| `c10::AutogradMetaInterface` | `N3c1021AutogradMetaInterfaceE` | Autograd-meta vtable (present but inert, see below) | CONFIRMED |
-| `c10::VariableVersion::VersionCounter` | `N3c1015VariableVersion14VersionCounterE` | Version-counter target | CONFIRMED |
-| `c10::Error` | `N3c105ErrorE` | Exception type for `TORCH_CHECK`/asserts | CONFIRMED |
-| `c10::EnforceFiniteError` | `N3c1018EnforceFiniteErrorE` | `CAFFE_ENFORCE_FINITE` error | CONFIRMED |
-| `c10::MemoryReportingInfoBase`, `c10::DebugInfoBase`, `c10::WarningHandler` | resp. mangled | Debug/diagnostic plumbing | CONFIRMED |
+| `c10::TensorImpl` | `N3c1010TensorImplE` | Base tensor representation | CERTAIN |
+| `c10::StorageImpl` | `N3c1011StorageImplE` | Refcounted byte buffer + allocator | CERTAIN |
+| `c10::NeuronTensorImpl` | `N3c1016NeuronTensorImplE` | **Neuron** `TensorImpl` subclass | CERTAIN |
+| `c10::NeuronStorageImpl` | `N3c1017NeuronStorageImplE` | **Neuron** `StorageImpl` subclass | CERTAIN |
+| `c10::UndefinedTensorImpl` | `N3c1019UndefinedTensorImplE` | The singleton "undefined tensor" | CERTAIN |
+| `c10::intrusive_ptr_target` | `N3c1020intrusive_ptr_targetE` | Refcount base for the above | CERTAIN |
+| `c10::AutogradMetaInterface` | `N3c1021AutogradMetaInterfaceE` | Autograd-meta vtable (present but inert, see below) | CERTAIN |
+| `c10::VariableVersion::VersionCounter` | `N3c1015VariableVersion14VersionCounterE` | Version-counter target | CERTAIN |
+| `c10::Error` | `N3c105ErrorE` | Exception type for `TORCH_CHECK`/asserts | CERTAIN |
+| `c10::EnforceFiniteError` | `N3c1018EnforceFiniteErrorE` | `CAFFE_ENFORCE_FINITE` error | CERTAIN |
+| `c10::MemoryReportingInfoBase`, `c10::DebugInfoBase`, `c10::WarningHandler` | resp. mangled | Debug/diagnostic plumbing | CERTAIN |
 
 Beyond the polymorphic classes, the **header-only** c10 utilities are linked as inline code, proven by their assert source-path strings:
 
@@ -121,15 +121,15 @@ c10::NeuronStorageImpl                  c10::NeuronTensorImpl
 
 ### What the Subclasses Override
 
-The override set is inferred from which assert paths and override-only behaviors appear; the binary is stripped, so vtable slots cannot be read by symbol. Confidence is marked accordingly.
+The override set is derived from which assert paths and override-only behaviors appear; the binary is stripped, so vtable slots cannot be read by symbol. Confidence is marked accordingly.
 
 | Behavior | Mechanism | Confidence |
 |---|---|---|
-| Storage bytes live in on-device DRAM, not host heap | `NeuronStorageImpl` constructed with a `NeuronAllocator` data-ptr | CONFIRMED (allocator path attested) |
-| `device_type()` is always `CPU` | `device_opt_` set to `CPU`; enforced by the `Expected device_type() == DeviceType::CPU` check | CONFIRMED |
-| Autograd disabled | tensors created as inference tensors; `Cannot set version_counter for inference tensor`, `is_inference() && version_counter.enabled()` guard | CONFIRMED |
-| `sym_sizes`/`sym_strides` are trivial | `noop_sym_sizes_fn`; `set_sizes_and_strides() called on tensor with symbolic shape` is an error path, i.e. symbolic shapes are rejected | CONFIRMED |
-| Custom `release_resources` / dtor returning storage to the allocator | `NeuronStorageImpl` dtor → allocator free | INFERRED (no symbol; standard subclass pattern) |
+| Storage bytes live in on-device DRAM, not host heap | `NeuronStorageImpl` constructed with a `NeuronAllocator` data-ptr | CERTAIN (allocator path attested) |
+| `device_type()` is always `CPU` | `device_opt_` set to `CPU`; enforced by the `Expected device_type() == DeviceType::CPU` check | CERTAIN |
+| Autograd disabled | tensors created as inference tensors; `Cannot set version_counter for inference tensor`, `is_inference() && version_counter.enabled()` guard | CERTAIN |
+| `sym_sizes`/`sym_strides` are trivial | `noop_sym_sizes_fn`; `set_sizes_and_strides() called on tensor with symbolic shape` is an error path, i.e. symbolic shapes are rejected | CERTAIN |
+| Custom `release_resources` / dtor returning storage to the allocator | `NeuronStorageImpl` dtor → allocator free; no symbol, inferred from the standard subclass pattern | MEDIUM |
 
 > **QUIRK —** `c10::AutogradMetaInterface` RTTI is present, yet autograd is dead on-device. The interface vtable is linked because `TensorImpl` references it structurally (the `autograd_meta_` slot type), but the tensors are constructed as **inference tensors** (`InferenceMode`-equivalent), so the version counter is disabled and no `AutogradMeta` is ever attached. Reimplementers should not try to call `.backward()` or `.grad()` — the plumbing is type-present but value-absent.
 
@@ -217,32 +217,34 @@ A scalar argument (rank-collapsed) is turned into an `at::Scalar` on the same wa
 
 The boundary between PyTorch's `c10::ScalarType` and the Neuron ISA/BIR dtype enum is a single function pair the SDK asserts on every tensor: `isa_to_torch_dtype(t_.dtype)` must equal `aten_t.dtype().toScalarType()` (`utypes.hpp:65`). The c10 side is the standard `ScalarType` enum (`ScalarType.h` linked; `c10::Half`, `c10::BFloat16`, `c10::complex<…>` typeinfo present); the ISA side is the BIR dtype enum documented in [BIR Dtype Tables](../bir/dtype-tables.md).
 
-| c10 `ScalarType` | RTTI / string evidence | BIR/ISA side | Confidence |
-|---|---|---|---|
-| `Float` (`float`) | `fully_qualified_type_name… [T = float]` | BIR `float32` | CONFIRMED (c10 type) / INFERRED (mapping) |
-| `Double` (`double`) | `[T = double]` | BIR `float64` | CONFIRMED / INFERRED |
-| `Half` (`c10::Half`) | `at::Half`, `N…HalfE` type-name | BIR `float16` | CONFIRMED / INFERRED |
-| `BFloat16` (`c10::BFloat16`) | `at::BFloat16` | BIR `bfloat16` | CONFIRMED / INFERRED |
-| `Int` / `Long` / `Short` / `Char` / `Byte` / `Bool` | `[T = int/long/short/char/...]`, `[T = bool]` | BIR `int32/int64/int16/int8/uint8/uint8` | CONFIRMED / INFERRED |
-| `ComplexFloat` / `ComplexDouble` / `ComplexHalf` | `complex<float/double/c10::Half>` | (no BIR analogue) | CONFIRMED type / N/A |
+The c10 type on each row is attested by RTTI; the BIR row it maps to is reconstructed, since the dtype LUT was not disassembled.
+
+| c10 `ScalarType` | RTTI / string evidence | BIR/ISA side | c10 type | Mapping |
+|---|---|---|---|---|
+| `Float` (`float`) | `fully_qualified_type_name… [T = float]` | BIR `float32` | CERTAIN | MEDIUM |
+| `Double` (`double`) | `[T = double]` | BIR `float64` | CERTAIN | MEDIUM |
+| `Half` (`c10::Half`) | `at::Half`, `N…HalfE` type-name | BIR `float16` | CERTAIN | MEDIUM |
+| `BFloat16` (`c10::BFloat16`) | `at::BFloat16` | BIR `bfloat16` | CERTAIN | MEDIUM |
+| `Int` / `Long` / `Short` / `Char` / `Byte` / `Bool` | `[T = int/long/short/char/...]`, `[T = bool]` | BIR `int32/int64/int16/int8/uint8/uint8` | CERTAIN | MEDIUM |
+| `ComplexFloat` / `ComplexDouble` / `ComplexHalf` | `complex<float/double/c10::Half>` | (no BIR analogue) | CERTAIN | n/a |
 
 > **QUIRK —** the c10 build is from a **PyTorch 2.0-era** tree, so the `ScalarType` enum here has **no `Float8` variants** (E4M3/E5M2 were added in 2.1). A reimplementer targeting this ABI must not assume the 2.1+ scalar-type set: a sweep for `Float8`/`e4m3`/`e5m2` over all eight images returns empty, while `SymInt` and the caffe2-era `DeviceTypeName()` plumbing are present — together these bracket the pin at 2.0.x.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Summary
 
-The five strongest claims, re-challenged against the binary:
-
-| Claim | Tag | Re-challenge result |
+| Claim | Evidence | Confidence |
 |---|---|---|
-| No `c10::Dispatcher` — direct function/arg table instead | **CONFIRMED** | Zero `Dispatcher`/`OperatorEntry`/`FunctionSchema`/`callBoxed`/`aten::` strings in any image; only `DispatchKey.cpp`+`DispatchKeySet.h` (the *type*) survive. The hand-marshalling path is positively attested by `arg_parser.hpp`/`utypes.hpp` asserts. |
-| `DeviceType::CPU` only | **CONFIRMED** | `Expected device_type() == DeviceType::CPU to be true, but got false` is a live runtime check; `DeviceType.cpp`'s `DeviceTypeName()` table is linked only for diagnostics (it still lists CUDA/XLA names, but no CUDA/XLA tensor is ever made). |
-| Two custom classes `NeuronTensorImpl` / `NeuronStorageImpl` | **CONFIRMED** | `N3c1016NeuronTensorImplE` and `N3c1017NeuronStorageImplE` typeinfo present in all eight images; base-class RTTI (`TensorImpl`/`StorageImpl`) co-present, confirming the inheritance edge. |
-| `NeuronAllocator`-backed storage | **CONFIRMED** | `NeuronAllocator.h`, `c10::GetAllocator`, `StorageImpl.h:51 allocator_` assert, and `allocator.cpp:45 mgr != nullptr` together trace the chain; DRAM windows in `data_transfer.cpp`. |
-| PyTorch ≈ 2.0 pin | **STRONG** | c10 `SymInt`/`SizesAndStrides`/`DispatchKeySet` layout = 2.0-era; **no** `Float8` (would imply ≥2.1); caffe2 `DeviceTypeName` strings present. Exact patch level not recoverable (no `TORCH_VERSION` string), hence STRONG not CONFIRMED. |
+| No `c10::Dispatcher` — a direct function/arg table instead | zero `Dispatcher`/`OperatorEntry`/`FunctionSchema`/`callBoxed`/`aten::` strings in any image; only `DispatchKey.cpp` + `DispatchKeySet.h` (the *type*) survive. The hand-marshalling path is positively attested by the `arg_parser.hpp`/`utypes.hpp` asserts. | CERTAIN |
+| `DeviceType::CPU` only | `Expected device_type() == DeviceType::CPU to be true, but got false` is a live runtime check; `DeviceType.cpp`'s `DeviceTypeName()` table is linked only for diagnostics — it still lists CUDA/XLA names, but no CUDA/XLA tensor is ever made. | CERTAIN |
+| Two custom classes `NeuronTensorImpl` / `NeuronStorageImpl` | `N3c1016NeuronTensorImplE` and `N3c1017NeuronStorageImplE` typeinfo present in all eight images; base-class RTTI (`TensorImpl`/`StorageImpl`) co-present, which fixes the inheritance edge. | CERTAIN |
+| `NeuronAllocator`-backed storage | `NeuronAllocator.h`, `c10::GetAllocator`, the `StorageImpl.h:51 allocator_` assert, and `allocator.cpp:45 mgr != nullptr` together trace the chain; DRAM windows in `data_transfer.cpp`. | CERTAIN |
+| PyTorch ≈ 2.0 pin | c10 `SymInt`/`SizesAndStrides`/`DispatchKeySet` layout is 2.0-era; **no** `Float8` (which would imply ≥2.1); caffe2 `DeviceTypeName` strings present. | HIGH |
 
-No claim failed re-challenge. Items marked INFERRED in the tables above (specific vtable-slot overrides, the exact `ScalarType`→BIR row mapping) remain inferred because the images are stripped of symbols and the dtype LUT was not disassembled byte-for-byte — the *equivalence* is attested (`utypes.hpp:65`), the *enumerated rows* are reconstructed from the c10 side plus the BIR dtype catalog.
+### Limits of this reading
+
+The exact PyTorch patch level is not recoverable — there is no `TORCH_VERSION` string in any image, so the pin is bracketed by feature presence rather than read. Two other items stay inferred because the images are stripped: the specific vtable-slot overrides on the two Neuron subclasses, and the row-by-row `ScalarType` → BIR dtype mapping. For the latter, the *equivalence* is attested at `utypes.hpp:65`; the enumerated rows are reconstructed from the c10 side plus the BIR dtype catalog, since the dtype LUT was not disassembled byte-for-byte.
 
 ---
 

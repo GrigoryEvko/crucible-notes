@@ -81,14 +81,18 @@ The alias tokens are `__pyx_kp_u_*` literals byte-present in `Target.so` `.rodat
 
 | Accepted alias tokens (case-insensitive via `.lower()`) | → Class | Platform | Confidence |
 |---|---|---|---|
-| `tonga`, (`inf1`) | `Tonga` | `inf1` | `tonga` CONFIRMED standalone; `inf1` docstring-only |
-| `sunda`, (`trn1`) | `Sunda` | `trn1` | `sunda` CONFIRMED standalone; `trn1` docstring-only |
-| `cayman`, `trn3pre`, (`trn2`) | `Cayman` | `trn2` | `cayman`/`trn3pre` CONFIRMED standalone; `trn2` docstring-only |
-| `corev4`, `mariana`, (`trn3`) | `CoreV4` | `trn3` | `corev4`/`mariana` CONFIRMED standalone; `trn3` docstring-only |
+| `tonga`, (`inf1`) | `Tonga` | `inf1` | `tonga` interned standalone; `inf1` docstring-only |
+| `sunda`, (`trn1`) | `Sunda` | `trn1` | `sunda` interned standalone; `trn1` docstring-only |
+| `cayman`, `trn3pre`, (`trn2`) | `Cayman` | `trn2` | `cayman`/`trn3pre` interned standalone; `trn2` docstring-only |
+| `corev4`, `mariana`, (`trn3`) | `CoreV4` | `trn3` | `corev4`/`mariana` interned standalone; `trn3` docstring-only |
 
-> **GOTCHA — `trn3pre` resolves to Cayman (gen3), not CoreV4.** The marketed Trainium index trails the silicon generation by one: `Trn2` = gen3 = Cayman, `Trn3` = gen4 = CoreV4 ([1.02 §off-by-one](../arch/codename-taxonomy.md)). `trn3pre` is a pre-silicon / early-Trn3 tag (CONFIRMED standalone string) that maps to the **gen3 Cayman** class; only bare `trn3` (or `mariana`/`corev4`) reaches CoreV4. A reimplementer who routes `trn3pre` to CoreV4 will select the wrong matmul-dtype policy and the wrong encoder.
+> **GOTCHA — `trn3pre` resolves to Cayman (gen3), not CoreV4.** The marketed Trainium index trails the silicon generation by one: `Trn2` = gen3 = Cayman, `Trn3` = gen4 = CoreV4 ([1.02 §off-by-one](../arch/codename-taxonomy.md)). `trn3pre` is a pre-silicon / early-Trn3 tag — an interned standalone string — that maps to the **gen3 Cayman** class; only bare `trn3` (or `mariana`/`corev4`) reaches CoreV4. A reimplementer who routes `trn3pre` to CoreV4 will select the wrong matmul-dtype policy and the wrong encoder.
 
-> **CORRECTION (TGT-1) — `v1`/`v2` are not accepted aliases here.** An earlier reading listed `v1 → Tonga` / `v2 → Sunda` CoreVN shorthands. A standalone-string sweep of `Target.so` finds **no `v1` or `v2` token anywhere** in the module — they are absent, not merely undocumented. A reimplementer must not accept bare `v1`/`v2` on the `parse_target` path; the CoreVN-version shorthand is the `_hierarchy_version` integer on the class, not a parse alias.
+> **GOTCHA — `v1`/`v2` are not aliases on this path.** The CoreVN numbering invites a
+> `v1 → Tonga` / `v2 → Sunda` shorthand, but a standalone-string sweep of `Target.so`
+> finds no `v1` or `v2` token anywhere in the module — they are absent, not merely
+> undocumented. Do not accept bare `v1`/`v2` in `parse_target`: the CoreVN version lives
+> as the `_hierarchy_version` integer on the class, not as a parse alias.
 
 ### `get_platform_target` — the inverse
 
@@ -131,11 +135,11 @@ Read from the bare-class-name base references and import literals in each module
 
 | Link | Evidence | Confidence |
 |---|---|---|
-| `Sunda(Tonga)` | `Sunda.so` references bare `Tonga` and imports `…tonga.Tonga` | CONFIRMED |
-| `Cayman(Sunda)` | `Cayman.so` bare `Sunda` count 1, `Tonga` count 0 | CONFIRMED |
-| `CoreV4(Cayman)` | `CoreV4.so` bare `Cayman` count 1, `Sunda` count 0 | CONFIRMED |
+| `Sunda(Tonga)` | `Sunda.so` references bare `Tonga` and imports `…tonga.Tonga` | CERTAIN |
+| `Cayman(Sunda)` | `Cayman.so` bare `Sunda` count 1, `Tonga` count 0 | CERTAIN |
+| `CoreV4(Cayman)` | `CoreV4.so` bare `Cayman` count 1, `Sunda` count 0 | CERTAIN |
 
-CoreV4 inherits `Sunda` *transitively* via `Cayman` — a strict linear chain, not a diamond. (This refines an earlier reading that had `Cayman` and `CoreV4` both inheriting `Sunda` directly.)
+CoreV4 inherits `Sunda` *transitively* via `Cayman` — a strict linear chain, not a diamond. The zero counts in the table are what rule the diamond out: `CoreV4.so` never names `Sunda`, and `Cayman.so` never names `Tonga`.
 
 ### `register_target` — the version-keyed registration decorator
 
@@ -163,11 +167,11 @@ Each concrete target is decorated with its generation number, byte-confirmed by 
 
 | Class | Decorator | `_hierarchy_version` | Evidence | Confidence |
 |---|---|---|---|---|
-| `Tonga` | (base) | 1 (implicit) | abstract base, no `register_target` of its own | INFERRED |
-| `Sunda` | `@register_target(version=2)` | 2 | `mov $0x2,%edi` → `PyLong_FromLong` | CONFIRMED |
-| `Cayman` | `@register_target(version=3)` | 3 | `mov $0x3,%edi @0x76bc` | CONFIRMED |
-| `CoreV4` | `@register_target(version=4)` | 4 | `mov $0x4,%edi @0x5147` (version/freq kwargs block) | CONFIRMED |
-| `CoreV5` | `@register_target(version=5)` | 5 | docstring forward stub only — no `core_v5` `.so` in this wheel | SPECULATIVE / forward-stub |
+| `Tonga` | (base) | 1 (implicit) | abstract base, no `register_target` of its own | MEDIUM |
+| `Sunda` | `@register_target(version=2)` | 2 | `mov $0x2,%edi` → `PyLong_FromLong` | CERTAIN |
+| `Cayman` | `@register_target(version=3)` | 3 | `mov $0x3,%edi @0x76bc` | CERTAIN |
+| `CoreV4` | `@register_target(version=4)` | 4 | `mov $0x4,%edi @0x5147` (version/freq kwargs block) | CERTAIN |
+| `CoreV5` | `@register_target(version=5)` | 5 | docstring forward stub only — no `core_v5` `.so` in this wheel | LOW / forward-stub |
 
 `_hierarchy_version` = the CoreVN generation = libBIR `ArchLevel / 10`. This single ordinal is the backbone the whole abstraction orders itself by.
 
@@ -179,10 +183,10 @@ Each concrete target is decorated with its generation number, byte-confirmed by 
 
 | Module | ~src lines | What it overrides | Confidence |
 |---|---|---|---|
-| `Tonga.py` | ~1036 | The complete API: cost-model getters (raise `NotImplementedError`), PE geometry `getPECols`/`getPERows`/`getPEModel`, `partition_size*`, `getMatmultOperand*Type`, `get_native_alu_dtype`, the feature-flag properties, `register_target`, HW-spec attrs proxied from `self.tpb` (the `neuronxcc.hwm` model), `_use_inferentia_hwm` | CONFIRMED (DWARF) |
-| `Sunda.py` | (first concrete) | Fills in **every** cost-model getter with literal `LatencyModel`/`DMALatencyModel`/`ProfileBasedDMALatencyModel` instances, the four `*_ENGINE_FREQ` globals (PE=280, ACT=140, DVE=112, POOL=140 — `Sunda` is the **only** class that defines `POOL_ENGINE_FREQ`), the DGE gating flags, `max_*` limits, `getMatmultOperandType`/`getMatmultOperandsType`, the tile-size choosers, `PoolOnlyInt32Ops`/`PoolOnlyInt64Ops`, `required_pe_rhs_align_in_bytes` | CONFIRMED (DWARF) |
-| `Cayman.py` | (small) | DELTAS only: `register_target(3)`, engine-freq overrides (PE=240, ACT=120, DVE=96 — `PE_/ACT_/DVE_ENGINE_FREQ`; **no `POOL_ENGINE_FREQ` override**, inherits Sunda's 140), `DMALatencyModel.bandwidth_per_engine=23`, `disable_auto_cast` override, `double_row_stride_alignment`, `max_topk_elements` / `max_sequence_bounds_elements` deltas | CONFIRMED (DWARF) |
-| `CoreV4.py` | ~423 | `register_target(4)`, overrides `__init__` and `getMatmultOperandType` (gen4 FP8/MX operand path), engine-freq (PE=240, ACT=120, DVE=120 — `PE_/ACT_/DVE_ENGINE_FREQ`; **no `POOL_ENGINE_FREQ`**), `DMALatencyModel.bandwidth_per_engine=57.5`; module-exec int block @`0x5147` confirms version=4 + freq deltas {0x78=120, 0xf0=240} + DMA `start_latency` 0x514=1300 | CONFIRMED (DWARF + immediates) |
+| `Tonga.py` | ~1036 | The complete API: cost-model getters (raise `NotImplementedError`), PE geometry `getPECols`/`getPERows`/`getPEModel`, `partition_size*`, `getMatmultOperand*Type`, `get_native_alu_dtype`, the feature-flag properties, `register_target`, HW-spec attrs proxied from `self.tpb` (the `neuronxcc.hwm` model), `_use_inferentia_hwm` | CERTAIN (DWARF) |
+| `Sunda.py` | (first concrete) | Fills in **every** cost-model getter with literal `LatencyModel`/`DMALatencyModel`/`ProfileBasedDMALatencyModel` instances, the four `*_ENGINE_FREQ` globals (PE=280, ACT=140, DVE=112, POOL=140 — `Sunda` is the **only** class that defines `POOL_ENGINE_FREQ`), the DGE gating flags, `max_*` limits, `getMatmultOperandType`/`getMatmultOperandsType`, the tile-size choosers, `PoolOnlyInt32Ops`/`PoolOnlyInt64Ops`, `required_pe_rhs_align_in_bytes` | CERTAIN (DWARF) |
+| `Cayman.py` | (small) | DELTAS only: `register_target(3)`, engine-freq overrides (PE=240, ACT=120, DVE=96 — `PE_/ACT_/DVE_ENGINE_FREQ`; **no `POOL_ENGINE_FREQ` override**, inherits Sunda's 140), `DMALatencyModel.bandwidth_per_engine=23`, `disable_auto_cast` override, `double_row_stride_alignment`, `max_topk_elements` / `max_sequence_bounds_elements` deltas | CERTAIN (DWARF) |
+| `CoreV4.py` | ~423 | `register_target(4)`, overrides `__init__` and `getMatmultOperandType` (gen4 FP8/MX operand path), engine-freq (PE=240, ACT=120, DVE=120 — `PE_/ACT_/DVE_ENGINE_FREQ`; **no `POOL_ENGINE_FREQ`**), `DMALatencyModel.bandwidth_per_engine=57.5`; module-exec int block @`0x5147` confirms version=4 + freq deltas {0x78=120, 0xf0=240} + DMA `start_latency` 0x514=1300 | CERTAIN (DWARF + immediates) |
 
 ---
 
@@ -265,10 +269,10 @@ The target object gates capability along four axes. ISA-class presence (above) i
 
 | Gen | Class | Legal matmul operand dtypes (delta over parent) | Confidence |
 |---|---|---|---|
-| gen1 | `Tonga` | `bf16`, `fp16`, `fp32`, `fp32r`, `float8_e4m3`, `float8_e5m2`, `int8`/`uint8` — **no** `float8_e3m4` | CONFIRMED (tokens) |
-| gen2 | `Sunda` | **+ `float8_e3m4`** (the E3M4 FP8 variant) | CONFIRMED (token) |
-| gen3 | `Cayman` | overrides `legal_matmult_operand_type` + `matmult_result_dtype`; adds `double_row_stride_alignment` — the gen3 "double_row" packed-matmul mode | CONFIRMED (override + token) |
-| gen4 | `CoreV4` | overrides `getMatmultOperandType`; adds **packed ×4 FP8**: `float8_e4m3fn_x4`, `float8_e5m2_x4` (4-elt-packed PE operands) | CONFIRMED (override + tokens) |
+| gen1 | `Tonga` | `bf16`, `fp16`, `fp32`, `fp32r`, `float8_e4m3`, `float8_e5m2`, `int8`/`uint8` — **no** `float8_e3m4` | CERTAIN (tokens) |
+| gen2 | `Sunda` | **+ `float8_e3m4`** (the E3M4 FP8 variant) | CERTAIN (token) |
+| gen3 | `Cayman` | overrides `legal_matmult_operand_type` + `matmult_result_dtype`; adds `double_row_stride_alignment` — the gen3 "double_row" packed-matmul mode | CERTAIN (override + token) |
+| gen4 | `CoreV4` | overrides `getMatmultOperandType`; adds **packed ×4 FP8**: `float8_e4m3fn_x4`, `float8_e5m2_x4` (4-elt-packed PE operands) | CERTAIN (override + tokens) |
 
 The CLI matmul-precision flags (`matmult-bf16`, `matmult-fp16`, `matmult-fp32r`, `matmult-fp8e4`, `all-fp32r`, `experimental-all-fp16`, `mm-transpose-type`) are shared option *names*; the per-arch legality is enforced by the methods above, not by the flags ([3.x precision marshalling](../frontend/precision-flag-marshalling.md)).
 
@@ -278,14 +282,14 @@ The CLI matmul-precision flags (`matmult-bf16`, `matmult-fp16`, `matmult-fp32r`,
 
 | Flag | Docstring fragment | Confidence |
 |---|---|---|
-| `enable_dge_on_io_dma` | "whether to enble dge on IO dma" | CONFIRMED |
-| `enable_dge_on_indirect_dma` | "whether to enble dge on indirect…" | CONFIRMED |
-| `enable_dge_on_dma_transpose` | — | CONFIRMED |
-| `enable_dge_on_dst_reduce` | — | CONFIRMED |
-| `enable_dge_on_spill_reload_dma` | "whether to enable dge on spill r…" | CONFIRMED |
-| `enable_dge_on_vector_indirect_dma` | "whether to enable dge on vector…" | CONFIRMED |
-| `enable_scalar_dge_vectorization` | — | CONFIRMED |
-| `dge_par_min_size` | "if true use dge for eligible xba…" | CONFIRMED |
+| `enable_dge_on_io_dma` | "whether to enble dge on IO dma" | CERTAIN |
+| `enable_dge_on_indirect_dma` | "whether to enble dge on indirect…" | CERTAIN |
+| `enable_dge_on_dma_transpose` | — | CERTAIN |
+| `enable_dge_on_dst_reduce` | — | CERTAIN |
+| `enable_dge_on_spill_reload_dma` | "whether to enable dge on spill r…" | CERTAIN |
+| `enable_dge_on_vector_indirect_dma` | "whether to enable dge on vector…" | CERTAIN |
+| `enable_scalar_dge_vectorization` | — | CERTAIN |
+| `dge_par_min_size` | "if true use dge for eligible xba…" | CERTAIN |
 
 Adjacent Sunda additions: `enable_8bit_tensorcopy_cast`, `enable_dmacopy_transpose`, `has_cstart`/`has_cstop` (collective start/stop markers). The DGE cluster is **absent from the Tonga base** — a clean example of the feature surface growing down the hierarchy. `BirCodeGenLoop` reads `enable_dge_on_dst_reduce` / `enable_dge_on_vector_indirect_dma` to choose the DGE descriptor-gen DMA encoding versus the legacy path.
 

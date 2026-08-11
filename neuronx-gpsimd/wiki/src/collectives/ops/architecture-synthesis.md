@@ -8,19 +8,19 @@
 > does **not** re-derive any sibling page; its value is the **spine diagram**, the
 > **per-boundary handoff table**, the cross-links into every Part-10 page, and the
 > **open-items ledger**. Each consolidated fact cites its **source page**; the
-> spine HIGH facts additionally carry an **addr/offset/symbol** re-confirmed
-> against the shipped binaries this session (§0.2).
+> spine HIGH facts additionally carry an **addr/offset/symbol** confirmed
+> against the shipped binaries (§0.2).
 
 > **Provenance.** Every structural fact below is established on a committed sibling
-> page (cited inline). The spine addresses/opcodes/enums were re-confirmed
+> page (cited inline). The spine addresses/opcodes/enums are confirmed
 > directly against the shipped artifacts — the cayman ISA headers
 > (`aws-neuronx-gpsimd-customop-lib 0.21.2.0`), the host runtime
 > `libnrt.so.2.31.24.0` (BuildID `8bb57aba…102e`, x86-64, DWARF, **not stripped**;
 > `.text`/`.rodata`/`.data` all `VMA == file-offset`, **no delta**), the NCFW JSON
 > pretty-printer `libncfw.so`, and the device ucode `libnrtucode_extisa.so`.
 > All output reads as derived from binary/static analysis only. Confidence is
-> tagged `HIGH/MED/LOW` × `OBSERVED` (read from bytes/disasm/header/DWARF this
-> session) / `INFERRED` (architectural reading over OBSERVED facts) / `CARRIED`
+> tagged `HIGH/MED/LOW` × `OBSERVED` (read from bytes/disasm/header/DWARF) /
+> `INFERRED` (architectural reading over OBSERVED facts) / `CARRIED`
 > (consolidated from a sibling page at *its* stated confidence — never inflated).
 
 ---
@@ -67,9 +67,9 @@ boundary: the host→device-core handoff crosses the **un-disassemblable Xtensa-
 NCFW core**, so the on-core schedule itself is the MED/LOW frontier (§9).
 `[synthesis HIGH/CITED across all anchors; the on-NCFW-core schedule is MED — §9, O-1.]`
 
-### 0.2 · The spine spot-checks (re-confirmed against the binaries this session)
+### 0.2 · The spine spot-checks (confirmed against the binaries)
 
-These are the facts the whole synthesis hangs on — re-read directly, not paraphrased:
+These are the facts the whole synthesis hangs on — read directly, not paraphrased:
 
 | # | Spine fact | Where verified | Tag |
 |---|---|---|---|
@@ -83,7 +83,7 @@ These are the facts the whole synthesis hangs on — re-read directly, not parap
 | 8 | **`EVT_SEM` INC window** `cayman_get_sp_sema_i_ofst @0x25c2e0`: `shl $0x1e,%rdx` (instance) ; `shl $0x2f,%rax` (die bit 47) ; `lea 0x1800(%rax,%rbx,4),%rax` | `libnrt.so` disasm | HIGH / OBSERVED |
 | 9 | **device + firmware rooting** `decode_sb2sb_collective` + `SB2SB_Collective : total_src_nelem…` in `libnrtucode_extisa.so`; `ncfw_ctx_top_sp` + `"run_state"` in `libncfw.so` | `extisa`/`libncfw` strings | HIGH / OBSERVED |
 
-⇒ Every opcode / address / enum the synthesis depends on is re-grounded; the layers
+⇒ Every opcode / address / enum the synthesis depends on is grounded; the layers
 *below* the binary surface (the on-NCFW-core schedule) are the consolidated MED/LOW
 findings of the source pages, carried forward at their stated confidence.
 
@@ -162,7 +162,7 @@ consumer a **named artifact**. This is the integrating spine — read top-to-bot
 
 ## 2 · The pseudo-op catalog — the full opcode roster
 
-All opcodes spot-verified in cayman `common.h` this session (§0.2 #1). Each is a
+All opcodes spot-verified in cayman `common.h` (§0.2 #1). Each is a
 64-byte TPB instruction word; the **pseudo class** = opcode upper-three-bits `0b110`
 (`0xC0..0xDF`). `0xBF` (below `0xC0`) and `0xF1` (EXTISA) are **real HW**, not pseudo.
 "Triggers algo" = which L4 path the lowering drives.
@@ -272,7 +272,7 @@ threshold→numeric is MED — §9 O-3.]`
 > **GOTCHA — `pring` is not a value.** There is **no `PRING` `enc_alg_type`** (the
 > 11-enum has none). The `enc_metaring` "metaring" family + `__compose_pipeline_allreduce`
 > are the nearest landed artifacts; a dedicated pring decode is OPEN (§9 O-2). The
-> stub [pring-descriptors](../ncfw/pring-descriptors.md) holds what is known.
+> [pring-descriptors](../ncfw/pring-descriptors.md) page holds what is known.
 
 ### 3.4 · The reduce-op + dtype carriers
 
@@ -423,7 +423,7 @@ There are **three distinct reduce-op enums** (plus the public `nrt_op_type` API 
 and the DGE enum), at **distinct fold scopes** that compose innermost → outermost. They
 agree only on the abstract **names** (ADD/MAX/MIN) — they are separate packed types with
 **different encodings** (the single most common reimplementation error). All spot-verified
-in the cayman header this session (§0.2 #4).
+in the cayman header (§0.2 #4).
 
 | scope | enum (verified) | `all_reduce` role | page |
 |---|---|---|---|
@@ -501,7 +501,7 @@ These were divergences among the source findings; resolved (binary wins):
 | C-1 | codename↔v# swap (crossed cayman/mariana labels) | `0x0c=CAYMAN`, `0x14=MARIANA`; structural offsets/counts unaffected | HIGH/OBSERVED |
 | C-2 | ring per-channel config stride 0x95=149 vs 0x94=148 | **148** (byte-exact `shl3/+/shl2/+/shl2`; highest field +0x90 → 145 used + 3 pad) | HIGH/OBSERVED |
 | C-3 | host_barrier vs device_barrier base | ONE shared cfg base; host_barrier OVERLAYS `device_barrier_step_config[0]` (UNION, `execute_device_barrier@0x124` selects) | HIGH |
-| **C-4** | **`kaena_khal` trigger vtable slot** | **`+0x708` is the `set_host_trigger` WRITE; `+0x710` is only the offset GETTER** — re-verified byte-exact this session (§0.2 #3). The all-reduce summary-table cell using `+0x710` shorthand is superseded by [top-sp-lowering](top-sp-lowering.md), which carries the authoritative split | HIGH/OBSERVED |
+| **C-4** | **`kaena_khal` trigger vtable slot** | **`+0x708` is the `set_host_trigger` WRITE; `+0x710` is only the offset GETTER** (§0.2 #3). The all-reduce summary-table cell using `+0x710` shorthand is superseded by [top-sp-lowering](top-sp-lowering.md), which carries the authoritative split | HIGH/OBSERVED |
 | C-5 | TOP_SP count 16 (runtime) vs 10/20 (CSR blocks/SoC windows) | both correct, different views (runtime-usable vs architectural); exact mapping MED | MED |
 | C-6 | RDMA gen/start framing | both true — `rdma_desc_gen`/`start` are inner phases of the SB2SB decode AND first-class ExtendedInst ops 8/9 | HIGH |
 | C-7 | `algo_type ≡ enc_alg_type` identity | **MED** (the 4-bit nibble + shared vocabulary + `cc_op_info{alg}` carrier converge, but no byte-level host→device write was traced — it crosses the un-disassemblable LX core) | MED/INFERRED |
@@ -510,7 +510,7 @@ These were divergences among the source findings; resolved (binary wins):
 > [all-reduce](all-reduce.md)'s **summary table row B** describes the host-trigger as
 > going *"via `kaena_khal` vtable `+0x710`"*. That shorthand is **imprecise**: the
 > trigger **write** (`set_host_trigger`) is slot **`+0x708`**; `+0x710` is only the
-> offset getter (re-verified §0.2 #3). All-reduce's *prose* is already correct (it
+> offset getter (§0.2 #3). All-reduce's *prose* is already correct (it
 > calls `+0x710` "the *offset getter*; the adjacent `set_host_trigger` performs the
 > write"); only the table cell uses the loose form.
 > [top-sp-lowering](top-sp-lowering.md) is the authoritative split and already flags
@@ -535,7 +535,7 @@ These were divergences among the source findings; resolved (binary wins):
 
 ## 10 · Confidence summary
 
-- **HIGH / OBSERVED or SPOT (re-verified §0.2):** all collective opcodes +
+- **HIGH / OBSERVED or SPOT (§0.2):** all collective opcodes +
   `COLLECTIVE_TYPE`/`CCE_OP`/`DGE_COMPUTE_OP`/`LNC_SIZE_FMT` enums; `enc_alg_type 0..10` +
   `SDMA_CCETYPE`; `host_trigger 0x615a0`/`0x60848` + the vtable `+0x708`/`+0x710` split;
   EVT_SEM windows `+0x1000/1400/1800/1C00`; the NRT lowering symbol addresses

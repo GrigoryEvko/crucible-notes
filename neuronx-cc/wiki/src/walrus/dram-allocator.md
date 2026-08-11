@@ -121,7 +121,7 @@ function DRAM_Allocator_allocate(func):                  // sub_0xa6cb20
     return linearized
 ```
 
-The three size primitives recur in every phase and are CONFIRMED by repeated offset use:
+The three size primitives recur in every phase, pinned by repeated offset use:
 
 ```c
 elemCount = *(uint64*)(*(loc + 264))      // deref ptr-to-field
@@ -131,17 +131,17 @@ byteSize  = elemCount * elemSize
 alignedSize = roundUp(byteSize, A) = (byteSize + 4095) & ~4095
 ```
 
-> **NOTE —** the early-exit "No candidate, DRAM allocation successful" path is not failure: it covers the degenerate case where nothing needs DRAM placement (all spills already addressed). It writes the same success `FunctionAttribute` (key 11) the full path does, so the pass reports OK with zero work. **[CONFIRMED — string + `FunctionAttribute` write in `allocate` decompile.]**
+> **NOTE —** the early-exit "No candidate, DRAM allocation successful" path is not failure: it covers the degenerate case where nothing needs DRAM placement (all spills already addressed). It writes the same success `FunctionAttribute` (key 11) the full path does, so the pass reports OK with zero work.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `DRAM_Allocator::allocate(Function*)` | `0xa6cb20` | driver; scans, marks shared, builds tree, assigns | CONFIRMED |
-| `DRAM_Allocator::candidate(MemoryLocation&)` | `0xa6f0c0` | DRAM eligibility predicate (vfn slot `*this+32`) | CONFIRMED |
-| `DRAM_Allocator::renumber_locations(ArrayRef<MemoryLocation*>)` | `0xa74360` | allocate `Info[]`, dense ids, `alignedSize` | CONFIRMED |
-| `DRAM_Allocator::mark_remote(...)` | `0xa76080` | mark core-1 shared as `remoteLocalTarget` | CONFIRMED |
-| `DRAM_Allocator::find_start_addr()` | `0xa77710` | HWM floor (`this+123`, byte `0x3d8`) | CONFIRMED |
+| `DRAM_Allocator::allocate(Function*)` | `0xa6cb20` | driver; scans, marks shared, builds tree, assigns | CERTAIN |
+| `DRAM_Allocator::candidate(MemoryLocation&)` | `0xa6f0c0` | DRAM eligibility predicate (vfn slot `*this+32`) | CERTAIN |
+| `DRAM_Allocator::renumber_locations(ArrayRef<MemoryLocation*>)` | `0xa74360` | allocate `Info[]`, dense ids, `alignedSize` | CERTAIN |
+| `DRAM_Allocator::mark_remote(...)` | `0xa76080` | mark core-1 shared as `remoteLocalTarget` | CERTAIN |
+| `DRAM_Allocator::find_start_addr()` | `0xa77710` | HWM floor (`this+123`, byte `0x3d8`) | CERTAIN |
 
 ---
 
@@ -215,7 +215,14 @@ function build_interval_tree(func, info):                // sub_0xa71a80
 | `left` | `+16` | i32 | left child array index (`-1` = none) |
 | `right` | `+20` | i32 | right child array index (`-1` = none) |
 
-> **CORRECTION (#827 audit).** The `lo`/`hi` rows were inverted in an earlier draft (it listed `lo@+0, hi@+4`). The construction at `build_interval_tree` `@0xa71a80` (decompiled `:1178`) is `_mm_unpacklo_epi64(_mm_insert_epi32(_mm_cvtsi32_si128(use_flat), def_flat, 1), _mm_insert_epi32(_mm_cvtsi32_si128(def_flat), payload, 1))`, which lays the **use** flat index at `+0` and the **def** flat index at `+4` — i.e. `hi@+0, lo@+4`, exactly the `{ hi, lo, lo, useIdx, -1, -1 }` field order the build pseudocode below already shows. The binary's readers (`makeMax`, `getAllOverlaps`) are internally consistent with this layout: `makeMax` seeds its subtree-max from `+8` (pre-initialized to the def index), and the overlap test reads `+0`/`+4` as its hi/lo operands. Results are correct; only the documented offset→field mapping was wrong. **[CONFIRMED — `:1178` SIMD pack reads `use_flat` into lane 0, `def_flat` into lane 1.]**
+The interval end lands *before* the start in memory, which is easy to get backwards. The node is built in one SIMD pack at `build_interval_tree` `@0xa71a80` (decompiled `:1178`):
+
+```c
+_mm_unpacklo_epi64(_mm_insert_epi32(_mm_cvtsi32_si128(use_flat), def_flat,  1),
+                   _mm_insert_epi32(_mm_cvtsi32_si128(def_flat), payload,   1))
+```
+
+`use_flat` goes into lane 0 and `def_flat` into lane 1, laying the **use** index at `+0` and the **def** index at `+4` — `hi@+0, lo@+4`, matching the `{ hi, lo, lo, useIdx, -1, -1 }` field order in the build pseudocode above. Both readers agree with that layout: `makeMax` seeds its subtree-max from `+8` (pre-initialized to the def index), and the overlap test reads `+0`/`+4` as its hi/lo operands.
 
 `makeTree(lo, hi)` `@0x9a7a00` is a classic recursive perfect-balance builder: `mid = (lo+hi)/2`, `node[mid].left = makeTree(lo, mid)`, `node[mid].right = makeTree(mid+1, hi)`, returns `mid`; asserts `lo <= hi` (`interval_tree.cpp:5`). The tree is keyed by **array index**, not by `lo` — the in-order index sequence *is* the tree, so rebalancing is free. `makeMax(idx)` `@0x9a8000` is the CLRS post-order subtree-max augmentation: `node.max = max(node.hi, makeMax(left), makeMax(right))`.
 
@@ -258,7 +265,7 @@ function getAlignmentSize(loc, opts, b):              // sub_0x1091890
 
 The DRAM path at `0x1091fe5` is an unconditional `mov $0x1000, %r12d ; ret` — confirmed directly by disassembly (`cmp $0x8` at `0x10918b3`, `cmp $0x10` at `0x10918bc`, the constant at `0x1091fe5`). The SBUF/PSUM (`0x10`) path walks the location's reader/writer `AccessPattern` arguments and reduces an alignment value across partition strides, thresholded by a `PassOptions` field (`[opts+0xAC] > 29`); it is not on the DRAM path.
 
-> **QUIRK —** `--dram-page-size` (cl::opt<int>, default **512**; flag name at `.rodata` `0x1dc19a3`, description "DRAM page size for GCA allocation aligment" at `0x1dc1678`) does **not** size the DRAM page. It feeds the *SBUF* GCA path (`memType==0x10`); a true DRAM tensor (`memType==8`) always aligns to a hard 4096 regardless of `--dram-page-size`. The knob's name is misleading: it is the SBUF allocator's GCA granule. **[CONFIRMED — the DRAM path ignores `opts`; the constant `0x1000` is unconditional.]**
+> **QUIRK —** `--dram-page-size` (cl::opt<int>, default **512**; flag name at `.rodata` `0x1dc19a3`, description "DRAM page size for GCA allocation aligment" at `0x1dc1678`) does **not** size the DRAM page. It feeds the *SBUF* GCA path (`memType==0x10`); a true DRAM tensor (`memType==8`) always aligns to a hard 4096 regardless of `--dram-page-size`. The knob's name is misleading: it is the SBUF allocator's GCA granule. The DRAM path ignores `opts` entirely, and its `0x1000` constant is unconditional.
 
 `roundUp` everywhere is therefore `alignedSize = (byteSize + 4095) & ~4095`, computed at `renumber_locations` time into `Info[+0]` and consumed unchanged by `search`.
 
@@ -305,7 +312,7 @@ function search(info, occupied, node, start, align):     // sub_0xa78740  (align
     assert info[node].allocated                           // dram_select.cpp:70
 ```
 
-> **QUIRK —** the alignment is **page-straddle avoidance, not unconditional round-up**. A sub-page (< 4 KiB) allocation is placed at the *raw gap start* as long as it stays inside one 4 KiB page; only if it would cross a page boundary is it bumped up. Any allocation with `size > align` — i.e. every real DRAM tensor, since `alignedSize` is itself a multiple of 4096 — always takes the raw gap start. Because the gaps lie between page-aligned occupants, those starts are page-aligned anyway. A reimplementer who unconditionally rounds the chosen address up to a page boundary will waste up to 4095 bytes per sub-page object and diverge from the binary's tighter packing. **[CONFIRMED — the two-arm placement branch in `dram_select.cpp`; `Interval` `{u64,u64}` from the signature.]**
+> **QUIRK —** the alignment is **page-straddle avoidance, not unconditional round-up**. A sub-page (< 4 KiB) allocation is placed at the *raw gap start* as long as it stays inside one 4 KiB page; only if it would cross a page boundary is it bumped up. Any allocation with `size > align` — i.e. every real DRAM tensor, since `alignedSize` is itself a multiple of 4096 — always takes the raw gap start. Because the gaps lie between page-aligned occupants, those starts are page-aligned anyway. A reimplementer who unconditionally rounds the chosen address up to a page boundary will waste up to 4095 bytes per sub-page object and diverge from the binary's tighter packing. *Anchors: the two-arm placement branch in `dram_select.cpp`; `Interval` is `{u64,u64}` per the signature.*
 
 ### The simplify elimination order
 
@@ -385,7 +392,7 @@ The gate is in the **pipeline builder**, not inside `allocate`. `allocate` (`@0x
 80b4e9:  lea  rsi, "coloring_allocator_dram"            ; else emit the DRAM pass
 ```
 
-> **GOTCHA —** a reimplementer who puts the `--disable-dram-allocation` check inside the allocator (an early `if (disabled) return`) will diverge: the binary skips the entire pass *registration* in the builder, so none of `coloring_allocator_dram`'s paired re-tuning passes (`dynamic_dma_cleanup`, `build_fdeps`, the post-DRAM anti-dependency analyzer) run either. The gate is structural, at pipeline-construction time, not a runtime early-out. **[CONFIRMED — builder gate; `allocate` carries no reference to the flag global.]**
+> **GOTCHA —** a reimplementer who puts the `--disable-dram-allocation` check inside the allocator (an early `if (disabled) return`) will diverge: the binary skips the entire pass *registration* in the builder, so none of `coloring_allocator_dram`'s paired re-tuning passes (`dynamic_dma_cleanup`, `build_fdeps`, the post-DRAM anti-dependency analyzer) run either. The gate is structural, at pipeline-construction time, not a runtime early-out — `allocate` carries no reference to the flag global at all.
 
 ---
 
@@ -411,7 +418,7 @@ A model is cloned across `N` LNC cores by `lnc_splitter`. Most DRAM tensors are 
 | `LncVerifier::checkSubgraphsWithConcretizedShardIds` | `0x16772a0` | verify final shared placement matches |
 | `SyncSharedAllocations::run(vector<Module>&)` | `0x16b2da0` | drive cross-core address equalization |
 
-> **QUIRK —** "shared" DRAM is counted **once** across all N cores, not N times, for memory-pressure purposes. `getMemPressure` / `LiveMemSize::operator-` / `MemoryAnalysis::filter_mem` all exclude `isSharedPostDRAMAlloc` bytes from per-core accounting. A reimplementer that sums every core's DRAM footprint including its copy of the shared buffers will over-report HBM usage by `(N-1) ×` the shared region and may spuriously fail the HBM budget check. **[CONFIRMED — the three accounting readers above.]**
+> **QUIRK —** "shared" DRAM is counted **once** across all N cores, not N times, for memory-pressure purposes. `getMemPressure` / `LiveMemSize::operator-` / `MemoryAnalysis::filter_mem` all exclude `isSharedPostDRAMAlloc` bytes from per-core accounting. A reimplementer that sums every core's DRAM footprint including its copy of the shared buffers will over-report HBM usage by `(N-1) ×` the shared region and may spuriously fail the HBM budget check.
 
 ### sync_shared_allocations — address equalization
 
@@ -439,7 +446,7 @@ function SyncSharedAllocations_run(modules):             // sub_0x16b2da0
 
 The cross-core link is the bir `RemoteLocalTarget` (`getRemoteLocalTarget()` → `{ string remote_name, coreIdx }`, imported). The pass resolves the sibling core's matching `MemoryLocation` **by name** and writes the identical `(address, partition, bank)` triple into it. The result: every core's copy of a cross-core-shared DRAM tensor resolves to one physical address, so all cores read/write the same bytes. Mismatches raise `logging::NeuronAssertion<ErrorCode>` with `RESOLUTION_CONTACT_SUPPORT` / aws-neuron-sdk issue links.
 
-> **NOTE —** this is compile-time address agreement, not synchronization in the runtime sense. The actual happens-before — a write on one core observed by another — is provided at runtime by `birsim::NeuronCoresManager` (`getSharedDRAMforRank(rank)` hands each rank the shared region; `doSyncPhysicalCores` is the cross-core barrier) and by the ordering instructions emitted downstream. `sync_shared_allocations` only guarantees those ordering primitives all target the same address. **[CONFIRMED — the `allocate`-equalization call; `NeuronCoresManager` symbols imported.]**
+> **NOTE —** this is compile-time address agreement, not synchronization in the runtime sense. The actual happens-before — a write on one core observed by another — is provided at runtime by `birsim::NeuronCoresManager` (`getSharedDRAMforRank(rank)` hands each rank the shared region; `doSyncPhysicalCores` is the cross-core barrier) and by the ordering instructions emitted downstream. `sync_shared_allocations` only guarantees those ordering primitives all target the same address. The `NeuronCoresManager` symbols appear here as imports.
 
 ### Why anti-deps re-run after shared placement
 
@@ -461,28 +468,28 @@ Once shared-DRAM tensors have real addresses, the *same physical bytes* may be t
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `DRAM_Allocator::allocate(Function*)` | `0xa6cb20` | driver; scan / mark-shared / build-tree / assign | CONFIRMED |
-| `DRAM_Allocator::candidate(MemoryLocation&)` | `0xa6f0c0` | DRAM eligibility predicate | CONFIRMED |
-| `DRAM_Allocator::build_interval_tree(Function*, vector<Info>&)` | `0xa71a80` | flat numbering + interval emission + tree build | CONFIRMED |
-| `DRAM_Allocator::renumber_locations(ArrayRef<MemoryLocation*>)` | `0xa74360` | dense `Info[]` ids, `alignedSize` round-up | CONFIRMED |
-| `DRAM_Allocator::find_start_addr()` | `0xa77710` | HWM floor (`this+123` / byte `0x3d8`) | CONFIRMED |
-| `DRAM_Allocator::search(vector<Info>&, vector<Interval>&, int, ulong, ulong)` | `0xa78740` | first-fit, page-straddle protection | CONFIRMED |
-| `DRAM_Allocator::cc_buffer_size(vector<Info>&)` | `0xa796c0` | auto-size CC buffer region | CONFIRMED |
-| `DRAM_Allocator::select_impl(Function*, vector<Info>&, vector<int>, ulong)` | `0xa7a730` | per-node assignment loop | CONFIRMED |
-| `DRAM_Allocator::select(Function*, vector<Info>&, vector<int>, bool)` | `0xa7ef30` | path select (in-place vs shared slab) | CONFIRMED |
-| `DRAM_Allocator::simplify(Function*, vector<Info>&)` | `0xa814a0` | Briggs elimination order | CONFIRMED |
-| `DRAM_Allocator::simplify_step1(...)` | `0xa80e40` | `SparseSet` worklist helper | CONFIRMED |
-| `IntervalTree::makeTree(int, int)` | `0x9a7a00` | balanced BST by array index | CONFIRMED |
-| `IntervalTree::makeMax(int)` | `0x9a8000` | post-order subtree-max augmentation | CONFIRMED |
-| `IntervalTree::getAllOverlaps(int) const` | `0x9a8a10` | interference oracle (query by node) | CONFIRMED |
-| `IntervalTree::getAllOverlapsWithInterval(int, int) const` | `0x9a8740` | interference oracle (query by `[lo,hi]`) | CONFIRMED |
-| `getAlignmentSize(MemoryLocation*, PassOptions&, bool)` | `0x1091890` | alignment; DRAM → `0x1000` (4 KiB) | CONFIRMED |
-| `SyncSharedAllocations::run(vector<Module>&)` | `0x16b2da0` | cross-core shared-DRAM address equalization | CONFIRMED |
-| `SyncSharedAllocations::run(Module&)` | `0x16b19b0` | single-module stub (near no-op) | CONFIRMED |
-| `bir::MemoryLocation::setIsSharedPostDRAMAlloc(bool)` | imported | mark a loc cross-core (sole caller `allocate`) | CONFIRMED |
-| `bir::MemoryLocation::isSharedPostDRAMAlloc() const` | imported | the cross-core flag (8 readers) | CONFIRMED |
+| `DRAM_Allocator::allocate(Function*)` | `0xa6cb20` | driver; scan / mark-shared / build-tree / assign | CERTAIN |
+| `DRAM_Allocator::candidate(MemoryLocation&)` | `0xa6f0c0` | DRAM eligibility predicate | CERTAIN |
+| `DRAM_Allocator::build_interval_tree(Function*, vector<Info>&)` | `0xa71a80` | flat numbering + interval emission + tree build | CERTAIN |
+| `DRAM_Allocator::renumber_locations(ArrayRef<MemoryLocation*>)` | `0xa74360` | dense `Info[]` ids, `alignedSize` round-up | CERTAIN |
+| `DRAM_Allocator::find_start_addr()` | `0xa77710` | HWM floor (`this+123` / byte `0x3d8`) | CERTAIN |
+| `DRAM_Allocator::search(vector<Info>&, vector<Interval>&, int, ulong, ulong)` | `0xa78740` | first-fit, page-straddle protection | CERTAIN |
+| `DRAM_Allocator::cc_buffer_size(vector<Info>&)` | `0xa796c0` | auto-size CC buffer region | CERTAIN |
+| `DRAM_Allocator::select_impl(Function*, vector<Info>&, vector<int>, ulong)` | `0xa7a730` | per-node assignment loop | CERTAIN |
+| `DRAM_Allocator::select(Function*, vector<Info>&, vector<int>, bool)` | `0xa7ef30` | path select (in-place vs shared slab) | CERTAIN |
+| `DRAM_Allocator::simplify(Function*, vector<Info>&)` | `0xa814a0` | Briggs elimination order | CERTAIN |
+| `DRAM_Allocator::simplify_step1(...)` | `0xa80e40` | `SparseSet` worklist helper | CERTAIN |
+| `IntervalTree::makeTree(int, int)` | `0x9a7a00` | balanced BST by array index | CERTAIN |
+| `IntervalTree::makeMax(int)` | `0x9a8000` | post-order subtree-max augmentation | CERTAIN |
+| `IntervalTree::getAllOverlaps(int) const` | `0x9a8a10` | interference oracle (query by node) | CERTAIN |
+| `IntervalTree::getAllOverlapsWithInterval(int, int) const` | `0x9a8740` | interference oracle (query by `[lo,hi]`) | CERTAIN |
+| `getAlignmentSize(MemoryLocation*, PassOptions&, bool)` | `0x1091890` | alignment; DRAM → `0x1000` (4 KiB) | CERTAIN |
+| `SyncSharedAllocations::run(vector<Module>&)` | `0x16b2da0` | cross-core shared-DRAM address equalization | CERTAIN |
+| `SyncSharedAllocations::run(Module&)` | `0x16b19b0` | single-module stub (near no-op) | CERTAIN |
+| `bir::MemoryLocation::setIsSharedPostDRAMAlloc(bool)` | imported | mark a loc cross-core (sole caller `allocate`) | CERTAIN |
+| `bir::MemoryLocation::isSharedPostDRAMAlloc() const` | imported | the cross-core flag (8 readers) | CERTAIN |
 
-> **Gaps.** The `Info` struct (280-byte stride: `alignedSize@+0`, `allocated@+45`, `pinned@+46`, `def_use_vec@+56`, `memloc@+176`, `address@+256`) is derived from offset use across `renumber_locations`/`search`/`select_impl`, not from RTTI (STRONG, not CONFIRMED). The exact integer values of the `usageClass ∈ {7,9}` candidate filter and the `shared_predicate` vfn body are read from call shape, not fully decompiled (STRONG). The runtime-side `NeuronCoresManager` barrier sequence (`doSyncPhysicalCores` / `unsafeNotifyNext`) is named from imports, not traced here.
+> **Limits.** The `Info` struct (280-byte stride: `alignedSize@+0`, `allocated@+45`, `pinned@+46`, `def_use_vec@+56`, `memloc@+176`, `address@+256`) is derived from offset use across `renumber_locations` / `search` / `select_impl` rather than from RTTI. The exact integer values of the `usageClass ∈ {7,9}` candidate filter and the `shared_predicate` vfn body are read from call shape, not fully decompiled. The runtime-side `NeuronCoresManager` barrier sequence (`doSyncPhysicalCores` / `unsafeNotifyNext`) is named from imports, not traced here.
 
 ---
 

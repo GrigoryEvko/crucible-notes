@@ -8,7 +8,7 @@ The walrus backend places every tensor with **graph coloring**, not linear scan,
 
 There are two driver families. The first is `neuronxcc::backend::ColoringAllocator` (ctor `@0x9870c0`), **one class registered under eight pass names**. The registry collapse was established in [`backendpass-registry`](backendpass-registry.md): the eight names are the surplus of a single class whose constructor takes a `(Type, is_post_link, MemoryAddressSpace, MemoryAddressSpace)` discriminator tuple. This page enumerates *what each of the eight does* — which space it colors, whether it runs pre- or post-link, and the four constructor invariants the binary asserts. The default pre-codegen pipeline `sub_80A6E0` wires four of them into a strict cascade `PSUM → SB → DRAM → DRAM-shared`, each followed by its own DMA-optimization and address-rotation re-tuning; the low-level builder `sub_805870` wires the two `post_lnk` variants plus the REG allocator after `bir_linker`.
 
-The second family is `ColoringAllocatorWithLoop` (ctor `@0xa84fc0`), a **distinct** class selected only at optlevel 6. Its `Rep::allocate` driver runs `PSUM → SB` itself over a `LinearizedFunction` produced by a loop-flattening linearize (`flattern_loop @0xa89a60`) that inlines loop bodies into one instruction-point stream. The page closes with the single most important correction for a reimplementer: the per-space "best-of-n" phrasing in the binary's own log strings is **not** a fixed-count best-of-N search — it is a **spill-iteration fixpoint** that re-colors until no tensor needs spilling. Proven below from the SB colorer's restart loop.
+The second family is `ColoringAllocatorWithLoop` (ctor `@0xa84fc0`), a **distinct** class selected only at optlevel 6. Its `Rep::allocate` driver runs `PSUM → SB` itself over a `LinearizedFunction` produced by a loop-flattening linearize (`flattern_loop @0xa89a60`) that inlines loop bodies into one instruction-point stream. The page closes with the fact most likely to be misread from the binary's own output: the per-space `"best-of-n"` phrasing in the log strings is **not** a fixed-count best-of-N search — it is a **spill-iteration fixpoint** that re-colors until no tensor needs spilling. The SB colorer's restart loop shows the mechanism.
 
 For reimplementation, the contract is:
 
@@ -53,7 +53,9 @@ sub_80A6E0 / sub_807EF0 (pipeline builder)
                            └─ ColoringAllocator::ctor    0x9870c0   (Type, post_lnk, space, space2)
 ```
 
-An unregistered name aborts with `"Backend pass: <n> is not registered!"`. **[CONFIRMED — resolution chain matches `backendpass-registry`; ctor call site read from each factory disasm.]**
+An unregistered name aborts with `"Backend pass: <n> is not registered!"`.
+
+*Anchors: the resolution chain matches [`backendpass-registry`](backendpass-registry.md); the ctor call site is read from each factory's disassembly.*
 
 ### The constructor matrix
 
@@ -68,7 +70,7 @@ ColoringAllocator::ColoringAllocator(
     MemoryAddressSpace to_space);  // r9d: 0=Local in ALL eight registrations
 ```
 
-Each factory `_M_invoke` `tc_new`s the `BackendPass`, then calls the ctor with constant immediates. The immediates below were read **directly from each factory's disasm** at the ctor call site (`call ColoringAllocatorC1…` preceded by the register loads). This independently reproduces the matrix:
+Each factory `_M_invoke` `tc_new`s the `BackendPass`, then calls the ctor with constant immediates. The immediates below are the register loads preceding each factory's `call ColoringAllocatorC1…`:
 
 | Pass name (registry) | Factory `_M_invoke` | `edx` Type | `ecx` post_lnk | `r8d` from_space | Colors |
 |---|---|---|---|---|---|
@@ -81,9 +83,9 @@ Each factory `_M_invoke` `tc_new`s the `BackendPass`, then calls the ctor with c
 | `coloring_allocator_dram_post_lnk` | `0x989fc0` | `mov 2` DRAM | `mov 1` TRUE | `xor`→0 Local | DRAM re-laid across the LINKED image |
 | `coloring_allocator_dram_shared_post_lnk` | `0x98a220` | `mov 2` DRAM | `mov 1` TRUE | `mov 1` Shared | shared-DRAM re-laid across the LINKED image |
 
-**[ALL CONFIRMED — `edx`/`ecx`/`r8d` immediates read from each factory's disasm; e.g. psum `@0x98a4ae`: `xor r8d,r8d; xor ecx,ecx; mov edx,1` then the ctor call `@0x98a4c1`.]**
+*Anchors: the `edx`/`ecx`/`r8d` immediates come from each factory's disassembly — e.g. psum @ `0x98a4ae` is `xor r8d,r8d; xor ecx,ecx; mov edx,1`, followed by the ctor call @ `0x98a4c1`.*
 
-> **QUIRK —** the fourth constructor argument `to_space` (`r9d`) is `xor r9d,r9d` = 0/Local in **all eight** factories. It is a second `MemoryAddressSpace` the ctor accepts but the registered factories never exercise; its role (a secondary space, plausibly a spill source) is **INFERRED**, not observable from these call sites.
+> **QUIRK —** the fourth constructor argument `to_space` (`r9d`) is `xor r9d,r9d` = 0/Local in **all eight** factories. It is a second `MemoryAddressSpace` the ctor accepts but the registered factories never exercise; its role (a secondary space, plausibly a spill source) is [INFERRED], not observable from these call sites.
 
 ### The four ctor-enforced invariants
 
@@ -96,7 +98,9 @@ The constructor dispatches on `Type` to install one of four `RepT<*_Allocator>` 
 | `coloring_allocator.cpp:30` | `is_post_link == false` (SB path) | SB is never a post-link allocator |
 | `coloring_allocator.cpp:31` | `from_addr_space == Local` (SB path) | SB is always core-local (SBUF) |
 
-These match the matrix exactly: only DRAM-family rows carry `post_lnk=true` or a non-Local `from_space`. **[CONFIRMED — four `logging::NeuronAssertion<ErrorCode>` sites at error codes 508–511 in the ctor decompile, each preceded by the `.cpp:NN` path string.]**
+These match the matrix exactly: only DRAM-family rows carry `post_lnk=true` or a non-Local `from_space`.
+
+*Anchors: four `logging::NeuronAssertion<ErrorCode>` sites at error codes 508–511 in the ctor decompile, each preceded by its `.cpp:NN` path string.*
 
 > **NOTE —** the `Rep` object is `tc_new(696)` = `0x2B8` bytes; the `RepT<SB_Allocator>` / `RepT<PSUM_Allocator>` / `RepT<DRAM_Allocator>` / `RepT<REG_Allocator>` vtable is installed at `Rep+0`. The vptr stored is the `_ZTV` symbol **+ 0x10** (past the offset-to-top / typeinfo header), not the symbol itself.
 
@@ -135,7 +139,9 @@ sub_80A6E0  (optlevel 1/2/3, --allocator != "lsa")
      coloring_allocator_dram_debug    Type=2, Debug        (device-print buffers)
 ```
 
-**[CONFIRMED — cascade order and inter-allocator passes from the `sub_80A6E0` builder; gate predicates from the surrounding `if()` bodies.]** The relative ordering PSUM → SB → DRAM → DRAM-shared is exact; the realized step numbers drift because a `birverifier`/`lnc_verifier` is interposed after most passes when `enableVerifier` is set.
+The relative ordering PSUM → SB → DRAM → DRAM-shared is exact; the realized step numbers drift because a `birverifier`/`lnc_verifier` is interposed after most passes when `enableVerifier` is set.
+
+*Anchors: cascade order and inter-allocator passes read from the `sub_80A6E0` builder; gate predicates from the surrounding `if()` bodies.*
 
 ### Algorithm — the per-space re-tuning cycle
 
@@ -186,7 +192,7 @@ sub_805870  (low-level, always run, after bir_linker)
   vnc_remote_addr_map …
 ```
 
-**[CONFIRMED — `sub_805870` emission order.]** This is exactly why the constructor permits `post_lnk=true` *only* for the DRAM family (PSUM/SB asserted pre-link, §invariants): PSUM and SB are core-local and fixed pre-link, while DRAM — including cross-core Shared — must be re-laid across the linked image.
+That emission order is read directly from `sub_805870`. It is exactly why the constructor permits `post_lnk=true` *only* for the DRAM family (PSUM/SB asserted pre-link, §invariants): PSUM and SB are core-local and fixed pre-link, while DRAM — including cross-core Shared — must be re-laid across the linked image.
 
 ---
 
@@ -224,9 +230,11 @@ function Rep_allocate(module, function):              // sub_0xa87030
     // DRAM, REG, shared-DRAM are downstream SEPARATE passes, NOT this driver
 ```
 
-**[CONFIRMED — `Rep::allocate(Module*,Function*)` decompile: `linearize` (line 703) → `PSUM_Allocator::allocate` (705) → `SB_Allocator::allocate` (747) → `indice_legalization` (882) → `free_linearized_function` (883).]**
+*Anchors: `Rep::allocate(Module*,Function*)` decompile — `linearize` (line 703) → `PSUM_Allocator::allocate` (705) → `SB_Allocator::allocate` (747) → `indice_legalization` (882) → `free_linearized_function` (883).*
 
-> **CORRECTION (D-K01) —** a "SB→PSUM→DRAM→REG per-space sequence inside the with-loop Rep" reading is wrong on two counts. (1) The with-loop driver runs **PSUM then SB**, in that order, sharing one `LinearizedFunction`. (2) The driver runs **only** PSUM and SB — DRAM is colored by the downstream `coloring_allocator_{dram,…,dram_debug}` passes (plain-family style) and REG by `coloring_allocator_reg` in the low-level builder. The with-loop translation unit *contains* sibling `DRAM_Allocator` colorers (`@0xafa350`), but `Rep::allocate` never invokes them; they are the loop-aware DRAM colorer used when the TU is driven by the standalone `bin/coloring_allocator_with_loop` harness.
+The driver's scope is narrower than the plain cascade's: it colors **only PSUM and SB**, in that order, sharing one `LinearizedFunction`. DRAM is left to the downstream `coloring_allocator_{dram,…,dram_debug}` passes in plain-family style, and REG to `coloring_allocator_reg` in the low-level builder.
+
+> **GOTCHA —** the with-loop translation unit *contains* sibling `DRAM_Allocator` colorers (`@0xafa350`), so a symbol listing suggests the driver handles DRAM too. `Rep::allocate` never invokes them — they are the loop-aware DRAM colorer reached only when the TU is driven by the standalone `bin/coloring_allocator_with_loop` harness.
 
 ### Considerations
 
@@ -260,27 +268,31 @@ function flattern_loop(bb, lin_block, &tail):        // sub_0xa89a60
         node = tc_new(40)                             // LinearizedInstruction: +0 = bir::Instruction*
         append node to *tail                          // chain position IS the instruction-point;
                                                       //   dense id assigned later by renumber_locations
-        if *(int*)(inst + 0x50) == 105:               // bir::InstLoop opcode (D-D05 Loop=105)
+        if *(int*)(inst + 0x50) == 105:               // bir::InstLoop opcode (Loop=105)
             body = bir::BasicBlockHolder::blocks(inst - 96)
             for child_bb in body:                     // recurse INTO the loop body
                 flattern_loop(child_bb, lin_block, &tail)   // splice body points INLINE, nested loops recurse
 ```
 
-**[CONFIRMED — `flattern_loop` body `@0xa89a60`: `tc_new(40)` (line 22/32), the opcode test `*(_DWORD *)(v3 + 80) == 105` (line 38), `bir::BasicBlockHolder::blocks((…)(v3 - 96))` (line 40), and the recursive `flattern_loop(...)` calls (lines 48/55). The `llvm::isa<bir::InstLoop>` cast confirms the opcode-105 node is the loop instruction.]**
+*Anchors: `flattern_loop` body @ `0xa89a60` — `tc_new(40)` (lines 22/32), the opcode test `*(_DWORD *)(v3 + 80) == 105` (line 38), `bir::BasicBlockHolder::blocks((…)(v3 - 96))` (line 40), and the recursive `flattern_loop(...)` calls (lines 48/55). The `llvm::isa<bir::InstLoop>` cast identifies the opcode-105 node as the loop instruction.*
 
-> **QUIRK —** there is **no** explicit integer instruction-point index stored by `flattern_loop`. The `LinearizedInstruction` is 40 bytes: `+0` is the `bir::Instruction*`, `+8` is the doubly-linked chain pointer (with the `LinearizedBlock` back-pointer packed in the high lane). The dense integer instruction-point id is assigned **later**, by each `*_Allocator::renumber_locations`, by walking the chain in order. A reimplementer who expects `linearize` to hand back numbered points will not find them; the number is the chain position. **(struct layout STRONG — derived from `flattern_loop`, not recovered by IDA.)**
+> **QUIRK —** there is **no** explicit integer instruction-point index stored by `flattern_loop`. The `LinearizedInstruction` is 40 bytes: `+0` is the `bir::Instruction*`, `+8` is the doubly-linked chain pointer (with the `LinearizedBlock` back-pointer packed in the high lane). The dense integer instruction-point id is assigned **later**, by each `*_Allocator::renumber_locations`, by walking the chain in order. A reimplementer who expects `linearize` to hand back numbered points will not find them; the number is the chain position. The struct layout is derived from `flattern_loop`'s own accesses rather than recovered as a type.
 
 ### The static def/use check
 
-In the same pass, `linearize` walks every instruction's input and output `AccessPattern` lists, resolves each to a `MemoryLocationSet`, and maintains a defined-set and a used-set (`llvm::DenseSet<MemoryLocationSet*>`). On a mismatch it emits `"Bad input file - failed static checks."`, `"<N> names were undefined at use point"`, `"<N> names were unused at definition point"`. Output tensors are skipped via `bir::isTensorKindOutput()`. This is the SSA-style use-before-def / dead-def validation the liveness analysis assumes. **[CONFIRMED — strings + DenseSet logic in `Rep::linearize`.]**
+In the same pass, `linearize` walks every instruction's input and output `AccessPattern` lists, resolves each to a `MemoryLocationSet`, and maintains a defined-set and a used-set (`llvm::DenseSet<MemoryLocationSet*>`). On a mismatch it emits `"Bad input file - failed static checks."`, `"<N> names were undefined at use point"`, `"<N> names were unused at definition point"`. Output tensors are skipped via `bir::isTensorKindOutput()`. This is the SSA-style use-before-def / dead-def validation the liveness analysis assumes.
+
+*Anchors: the diagnostic strings and the `DenseSet` logic in `Rep::linearize`.*
 
 ---
 
-## The Spill Fixpoint — "Best-of-N" Is a Correction
+## The Spill Fixpoint
 
 ### Purpose
 
-This is the headline correction of the page. Each per-space colorer's log strings say `"      best-of-n loop, heuristic = "`, and that phrase reads as a bounded best-of-N search: run N coloring attempts, keep the best. **It is not.** The loop is a **spill-iteration fixpoint**: color, and if `select` reports any node that could not be placed, insert spill code and **re-color the spilled-and-reloaded function**, repeating until the spill set is empty. There is no fixed iteration count N — termination is "no more spills."
+Each per-space colorer runs a **spill-iteration fixpoint**: color the function, and if `select` reports any node that could not be placed, insert spill code and **re-color the spilled-and-reloaded function**, repeating until the spill set is empty. There is no fixed iteration count — termination is "no more spills."
+
+> **GOTCHA —** the colorer logs `"      best-of-n loop, heuristic = "` on every attempt, which reads as a bounded best-of-N search (run N attempts, keep the best). It is a per-attempt heuristic label, not a count; see [§Why the loop is a fixpoint](#why-the-loop-is-a-fixpoint) below.
 
 ### Algorithm
 
@@ -314,18 +326,20 @@ function SB_Allocator_allocate(lf):                  // sub_0xa95310
     goto restart                                       // re-color the spilled function (FIXPOINT)
 ```
 
-**[CONFIRMED — `SB_Allocator::allocate` decompile: `simplify` (line 1032) → `select` (1033) → the branch `if (!*((_DWORD *)v213 + 2))` on the `select` result `v213` (line 1066, commit path `v101=1`, `LABEL_123`) versus the spill path `create_eintervals` (line 1083) → `insert_spill_code` returning a new `inserted` linearized function (line 1115). The fixpoint head `LABEL_79` is at line 798; the only edge that re-enters it threads through the spill path. No bounded counter gates the loop.]**
+*Anchors: `SB_Allocator::allocate` decompile — `simplify` (line 1032) → `select` (1033) → the branch `if (!*((_DWORD *)v213 + 2))` on the `select` result `v213` (line 1066, commit path `v101=1`, `LABEL_123`) versus the spill path `create_eintervals` (line 1083) → `insert_spill_code` returning a new `inserted` linearized function (line 1115). The fixpoint head `LABEL_79` sits at line 798; the only edge that re-enters it threads through the spill path, and no bounded counter gates it.*
 
-### Why "best-of-n" is the wrong reading
+### Why the loop is a fixpoint
 
-The string is a label for the per-attempt heuristic log, not a count. Two facts from the binary prove the loop is a fixpoint, not a fixed-N search:
+Two structural facts distinguish it from a fixed-N search:
 
 1. **The termination condition is data, not a counter.** The branch out of the loop is `if (select.need_spill == 0)` — i.e. the colorer leaves the loop the moment an attempt places every tensor. There is no `for (i = 0; i < N; i++)` and no "best score so far" register compared across a fixed number of trials.
 2. **Each iteration operates on a strictly larger function.** `insert_spill_code` returns a **new** `LinearizedFunction` with reload/store memlocs minted in; the next iteration colors *that*, not a re-perturbed copy of the original. A best-of-N search re-runs the *same* problem with a different seed; this re-runs a *different, spill-augmented* problem each time. That is the definition of a spill fixpoint.
 
 Two further strings settle it. The colorer logs `"Number of iterations in SB spills do loop: "` at the loop exit — it **counts** the iterations it took rather than bounding them, which is exactly what a fixpoint does and a best-of-N does not. And the only ceiling on the loop is a **wall-clock safety valve**, not an iteration count: if the colorer runs longer than ~2700 seconds it aborts with `"GCA is taking too long"` and `exit(2)`. A timeout is a watchdog, not a search budget.
 
-The colorer reports the work it did: `"spilling from SB cost about <N> cycles"`, `"number of tensors spilled from SB = "`, `"total size of spilled tensors = <N> bytes/partition"`. Failure (a tensor that cannot be placed even after spilling) is `"couldn't allocate every tensor in SB and spilling can't help"`. **[CONFIRMED — strings in the colorer body; the iteration-count log and the `exit(2)` timeout were read at the loop tail.]**
+The colorer reports the work it did: `"spilling from SB cost about <N> cycles"`, `"number of tensors spilled from SB = "`, `"total size of spilled tensors = <N> bytes/partition"`. Failure (a tensor that cannot be placed even after spilling) is `"couldn't allocate every tensor in SB and spilling can't help"`.
+
+*Anchors: strings in the colorer body; the iteration-count log and the `exit(2)` timeout sit at the loop tail.*
 
 > **NOTE —** the PSUM colorer `PSUM_Allocator::allocate` `@0xad7140` has the identical phase order, recovered from its disasm call targets: `"  allocating PSUM"` → `renumber_locations` → `live_range` → `build` → `find_costs` → `"      best-of-n loop, heuristic = "` → `simplify` (`@0xad7ce6`) → `select` (`@0xad7d09`) → `insert_spill_code` (`@0xad8a25`) → `"spilling from PSUM cost about "`. The two colorers differ only in geometry (PSUM = banks; SB = partition × byte rectangles) and a few special cases (PSUM accumulation banks; SB pinning).
 
@@ -340,7 +354,7 @@ Two independent selectors decide which allocator family is wired:
 | **optlevel → builder** | `run_backend_driver` reads optlevel, picks the builder | `sub_806F80` (opt0) → LSA only; `sub_80A6E0` (opt1/2/3) → plain coloring cascade; `sub_807EF0` (opt6) → `coloring_allocator_with_loop`; `sub_80D9D0` (opt7) → SMT allocation; `sub_809580` (opt8) → pure LSA |
 | **`--allocator` string** | `std::string::compare("lsa")` `@0x80b089` inside the builder | `== 0` → wire `linear_scan_allocator`, skip the coloring sub-pipeline; `!= 0` (default / "coloring") → wire the four-space cascade |
 
-The DRAM step has a further gate: even on the coloring path, `coloring_allocator_dram` is skipped under `--disable-dram-allocation`, and `address_rotation_dram` under `--disable-dram-rotation`. **[CONFIRMED — builder/optlevel mapping and the `compare` site; gate predicates from the surrounding `if()` bodies.]** `--smt-allocation` forces optlevel 7. The detailed optlevel-plane mapping is in [`pass-pipeline-optlevels`](pass-pipeline-optlevels.md).
+The DRAM step has a further gate: even on the coloring path, `coloring_allocator_dram` is skipped under `--disable-dram-allocation`, and `address_rotation_dram` under `--disable-dram-rotation`. `--smt-allocation` forces optlevel 7. *Anchors: builder/optlevel mapping and the `compare` site; gate predicates from the surrounding `if()` bodies.* The detailed optlevel-plane mapping is in [`pass-pipeline-optlevels`](pass-pipeline-optlevels.md).
 
 ---
 
@@ -348,23 +362,23 @@ The DRAM step has a further gate: even on the coloring path, `coloring_allocator
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `ColoringAllocator::ColoringAllocator(PassOptions&,Type,bool,AddrSpace,AddrSpace)` | `0x9870c0` | the 8-way parameterized ctor; 4 invariant asserts | CONFIRMED |
-| `ColoringAllocator::run(bir::Module&)` | `0x985100` | plain-family pass entry | CONFIRMED |
-| `ColoringAllocatorWithLoop` ctor / `run` | `0xa84fc0` / `0xa84bb0` | loop-aware class (distinct) | CONFIRMED |
-| `Rep::allocate(Module*,Function*)` | `0xa87030` | the loop-aware driver (PSUM→SB) | CONFIRMED |
-| `Rep::linearize(Function*)` | `0xa89e70` | builds `LinearizedFunction` + def/use check | CONFIRMED |
-| `flattern_loop(BasicBlock&,LinearizedBlock*,&tail)` | `0xa89a60` | opcode-105 loop-body inlining | CONFIRMED |
-| `Rep::indice_legalization(LinearizedFunction*,Function*)` | `0xa8eb00` | AP index fixup post-placement | CONFIRMED |
-| `SB_Allocator::allocate(LinearizedFunction*)` | `0xa95310` | with-loop SB colorer + spill fixpoint | CONFIRMED |
-| `PSUM_Allocator::allocate(LinearizedFunction*)` | `0xad7140` | with-loop PSUM colorer + spill fixpoint | CONFIRMED |
-| `SB_Allocator::insert_spill_code` | `0xac87d0` | mints reload/store memlocs → new `lf` | CONFIRMED |
-| pre-codegen builder `sub_80A6E0` | `0x80a6e0` | optlevel 1/2/3 cascade | CONFIRMED |
-| loop-aware builder `sub_807EF0` | `0x807ef0` | optlevel 6 | CONFIRMED |
-| post-link builder `sub_805870` | `0x805870` | `dram_post_lnk` / `dram_shared_post_lnk` / `reg` | CONFIRMED |
-| `BackendPassManager::lookupGenerator(string&)` | `0x1744cb0` | name → factory resolution | CONFIRMED |
-| factory `_M_invoke` (sb/psum/dram/reg/…) | see matrix | construct parameterized `ColoringAllocator` | CONFIRMED |
+| `ColoringAllocator::ColoringAllocator(PassOptions&,Type,bool,AddrSpace,AddrSpace)` | `0x9870c0` | the 8-way parameterized ctor; 4 invariant asserts | CERTAIN |
+| `ColoringAllocator::run(bir::Module&)` | `0x985100` | plain-family pass entry | CERTAIN |
+| `ColoringAllocatorWithLoop` ctor / `run` | `0xa84fc0` / `0xa84bb0` | loop-aware class (distinct) | CERTAIN |
+| `Rep::allocate(Module*,Function*)` | `0xa87030` | the loop-aware driver (PSUM→SB) | CERTAIN |
+| `Rep::linearize(Function*)` | `0xa89e70` | builds `LinearizedFunction` + def/use check | CERTAIN |
+| `flattern_loop(BasicBlock&,LinearizedBlock*,&tail)` | `0xa89a60` | opcode-105 loop-body inlining | CERTAIN |
+| `Rep::indice_legalization(LinearizedFunction*,Function*)` | `0xa8eb00` | AP index fixup post-placement | CERTAIN |
+| `SB_Allocator::allocate(LinearizedFunction*)` | `0xa95310` | with-loop SB colorer + spill fixpoint | CERTAIN |
+| `PSUM_Allocator::allocate(LinearizedFunction*)` | `0xad7140` | with-loop PSUM colorer + spill fixpoint | CERTAIN |
+| `SB_Allocator::insert_spill_code` | `0xac87d0` | mints reload/store memlocs → new `lf` | CERTAIN |
+| pre-codegen builder `sub_80A6E0` | `0x80a6e0` | optlevel 1/2/3 cascade | CERTAIN |
+| loop-aware builder `sub_807EF0` | `0x807ef0` | optlevel 6 | CERTAIN |
+| post-link builder `sub_805870` | `0x805870` | `dram_post_lnk` / `dram_shared_post_lnk` / `reg` | CERTAIN |
+| `BackendPassManager::lookupGenerator(string&)` | `0x1744cb0` | name → factory resolution | CERTAIN |
+| factory `_M_invoke` (sb/psum/dram/reg/…) | see matrix | construct parameterized `ColoringAllocator` | CERTAIN |
 
-> **Gaps.** The per-space colorer *bodies* (`live_range` / `build` / `find_costs` / `simplify` / `select` / `insert_spill_code` internals) are out of scope here — named and addressed, not transcribed. The geometric `select` search and the heuristic score formula are the colorer's internals. The `LinearizedFunction` / `LinearizedBlock` struct layouts are derived from `flattern_loop`, not recovered by IDA (STRONG, not CONFIRMED). The opt7 SMT-allocation interleaving (`sub_80D9D0`) confirms the allocator *set* but not the full step order. The fourth ctor argument `to_space`'s role is INFERRED.
+> **Gaps.** The per-space colorer *bodies* (`live_range` / `build` / `find_costs` / `simplify` / `select` / `insert_spill_code` internals) are out of scope here — named and addressed, not transcribed. The geometric `select` search and the heuristic score formula are the colorer's internals. The `LinearizedFunction` / `LinearizedBlock` struct layouts are derived from `flattern_loop`'s field accesses rather than recovered as types. The opt7 SMT-allocation interleaving (`sub_80D9D0`) pins the allocator *set* but not the full step order. The fourth ctor argument `to_space`'s role is [INFERRED].
 
 ---
 

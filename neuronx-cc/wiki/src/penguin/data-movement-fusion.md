@@ -40,22 +40,22 @@ Penguin represents every data-movement operation as an *offloaded* intrinsic bef
 
 | `__builtin` name | IR class | Category | Key `verify()` invariant |
 |---|---|---|---|
-| `__builtin_offloaded_memcpy` | `OffloadedMemCpy` | pure copy / relabel | rhs_str `dst[0] = memcpy(srcs[0])` (CONFIRMED); same dtype + same `#elements` (INFERRED — semantics, not a literal) |
-| `__builtin_offloaded_memcast` | `OffloadedMemCast` | dtype convert | rhs_str `dst[0] = cast(srcs[0])` (CONFIRMED); different dtype + same `#elements` (INFERRED) |
+| `__builtin_offloaded_memcpy` | `OffloadedMemCpy` | pure copy / relabel | rhs_str `dst[0] = memcpy(srcs[0])`; same dtype + same `#elements` **[INFERRED]** — op semantics, not a binary literal |
+| `__builtin_offloaded_memcast` | `OffloadedMemCast` | dtype convert | rhs_str `dst[0] = cast(srcs[0])`; different dtype + same `#elements` **[INFERRED]** |
 | `__builtin_offloaded_bitcast` | `OffloadedBitcast` | reinterpret, no data move | — |
-| `__builtin_offloaded_concat` | `OffloadedConcat` | N-source join along one dim | `every src tensor for concat must be FullTensorAccess`; `dst tensor for concat must be FullTensorAccess`; `Invalid src shape for concat: must only differ along concat dimension` (CONFIRMED) |
-| `__builtin_offloaded_slice` | `OffloadedSlice` | sub-tensor extract | `dst for OffloadedSlice must be of type FullTensorAccess`; `src … must be of type SubTensorAccess` (CONFIRMED) |
-| `__builtin_offloaded_transpose` | `OffloadedTranspose` | permutation (reshape+transpose+reshape) | rhs_str `dst = memcpy(src, src_shape, permutation)`; `input_dimensions[permutation[i]] = output_dimensions[i]` (CONFIRMED) |
+| `__builtin_offloaded_concat` | `OffloadedConcat` | N-source join along one dim | `every src tensor for concat must be FullTensorAccess`; `dst tensor for concat must be FullTensorAccess`; `Invalid src shape for concat: must only differ along concat dimension` |
+| `__builtin_offloaded_slice` | `OffloadedSlice` | sub-tensor extract | `dst for OffloadedSlice must be of type FullTensorAccess`; `src … must be of type SubTensorAccess` |
+| `__builtin_offloaded_transpose` | `OffloadedTranspose` | permutation (reshape+transpose+reshape) | rhs_str `dst = memcpy(src, src_shape, permutation)`; `input_dimensions[permutation[i]] = output_dimensions[i]` |
 | `__builtin_offloaded_broadcast` | `OffloadedBroadcast` | replicate along `broadcast_dims` | `squeeze()` drops size-1 dims |
 | `__builtin_offloaded_memset` | `OffloadedMemSet` | fill | — |
 | `__builtin_offloaded_fma` | `OffloadedFMA` | fused multiply-add (tiled-capable) | `scales`, `is_tiled`, `num_tiles` |
 | `__builtin_offloaded_rng` | `OffloadedRNG` | random | — |
 
-`OffloadedMemIntr` is the shared base for the memory-movement ops (it carries `.is`/`.verify`), with `OffloadedMemCpy` and `OffloadedMemCast` deriving from it (CONFIRMED — `Intrinsics` class symbols). The tiled variants of memcpy and FMA carry `is_tiled`/`num_tiles` and route to generated per-target instruction wrappers `TiledOffloadedMemCpyGen` / `TiledOffloadedFMAGen` (each exposing `canVectorize`/`canWriteToPsum`/`isBarrier`/`loadTensor`/`serialize`/`verify`) — so a large, non-foldable offloaded memcpy becomes a **tiled offloaded-memcpy instruction** rather than a loop-nest.
+`OffloadedMemIntr` is the shared base for the memory-movement ops (it carries `.is`/`.verify`), with `OffloadedMemCpy` and `OffloadedMemCast` deriving from it, per the `Intrinsics` class symbols. The tiled variants of memcpy and FMA carry `is_tiled`/`num_tiles` and route to generated per-target instruction wrappers `TiledOffloadedMemCpyGen` / `TiledOffloadedFMAGen` (each exposing `canVectorize`/`canWriteToPsum`/`isBarrier`/`loadTensor`/`serialize`/`verify`) — so a large, non-foldable offloaded memcpy becomes a **tiled offloaded-memcpy instruction** rather than a loop-nest.
 
 > **GOTCHA —** the memcpy-vs-memcast distinction is the *only* thing that separates a fold from a miscompile. `OffloadedMemCpy`'s rhs is `dst[0] = memcpy(srcs[0])` — same dtype, same element count, a **pure relabel**, always foldable if aliasing is legal. `OffloadedMemCast`'s rhs is `dst[0] = cast(srcs[0])` — a dtype conversion, **real compute**. "Eliminating" a memcast therefore never deletes it; it fuses the conversion into a neighbor's loop-nest (`_find_candidate_tensor_memcast_fusion`). A reimplementation that drops a memcast the way it drops a memcpy silently loses the dtype conversion.
 
-> **CORRECTION (DMF-1) —** an earlier draft cited `OffloadedMemCpy`/`MemCast` `verify()` strings "dtype of src and dst … must be the same / must be DIFFERENT" and "#elements between the src and dst … must be the same" as CONFIRMED literals in `Intrinsics.so`. A re-sweep of `ir/Intrinsics.cpython-310-….so` finds **no such strings** — what the binary actually carries is the rhs-emission forms (`dst[0] = memcpy(srcs[0])`, `dst[0] = cast(srcs[0])`, `dst = memcpy(src, src_shape, permutation)`) plus the concat/slice `FullTensorAccess` and `must only differ along concat dimension` asserts. The same-dtype / same-element-count rules are real *semantics* of the ops but are tagged INFERRED here, not CONFIRMED literals.
+> **NOTE — the memcpy/memcast dtype and element-count rules are semantics, not `verify()` strings.** `Intrinsics.so` carries no "dtype of src and dst … must be the same / must be DIFFERENT" or "#elements between the src and dst … must be the same" literal. What it does carry is the rhs-emission forms (`dst[0] = memcpy(srcs[0])`, `dst[0] = cast(srcs[0])`, `dst = memcpy(src, src_shape, permutation)`) plus the concat/slice `FullTensorAccess` and `must only differ along concat dimension` asserts. The dtype and element-count rules hold, but they are the ops' meaning rather than a checked message.
 
 ---
 
@@ -133,7 +133,7 @@ function eliminate_memcpy(memcpy /* src -> dst */):
 
 ### The `can_fold_memcpy` Legality Predicate
 
-Reconstructed from the identifier literals that drive the fold decision inside `MemcpyElimination` (all CONFIRMED present in `.rodata`; the boolean *body* is compiled-opaque, so the conjunction below is STRONG-by-naming, not read line-for-line):
+Reconstructed from the identifier literals that drive the fold decision inside `MemcpyElimination`. Every identifier below is present in `.rodata`; the boolean *body* is compiled-opaque, so the shape of the conjunction is **[INFERRED]** from the naming rather than read line-for-line:
 
 ```c
 // can_fold_memcpy(memcpy, amap) — all conditions must hold
@@ -194,11 +194,11 @@ Five passes remove the offloaded *shape* ops — cast, concat, slice, transpose,
 
 | Pass (.so size) | Driver method | Engine class | Docstring (verbatim) | Confidence |
 |---|---|---|---|---|
-| `CastOpElimination` (318,320) | `transformOffloadedMemCast` | `CastOpOptimizer` | "Transform pass to eliminate unnecessary offloaded memory casts" | CONFIRMED |
-| `ConcatOpElimination` (318,424) | `transformOffloadedMemConcat` | `ConcatOpOptimizer` | "…unnecessary offloaded memory Concats" | CONFIRMED |
-| `SliceOpElimination` (318,368) | `transformOffloadedMemSlice` | `SliceOpOptimizer` | "…unnecessary offloaded memory Slices" | CONFIRMED |
-| `TransposeOpElimination` (318,608) | `transformOffloadedTranspose` | `TransposeOpOptimizer` | "…unnecessary offloaded memory Transposes" | CONFIRMED |
-| `ReshapeOpElimination` (307,680) | `transformOffloadedMemCpy` | (reshape == memcpy fold) | — | CONFIRMED |
+| `CastOpElimination` (318,320) | `transformOffloadedMemCast` | `CastOpOptimizer` | "Transform pass to eliminate unnecessary offloaded memory casts" | CERTAIN |
+| `ConcatOpElimination` (318,424) | `transformOffloadedMemConcat` | `ConcatOpOptimizer` | "…unnecessary offloaded memory Concats" | CERTAIN |
+| `SliceOpElimination` (318,368) | `transformOffloadedMemSlice` | `SliceOpOptimizer` | "…unnecessary offloaded memory Slices" | CERTAIN |
+| `TransposeOpElimination` (318,608) | `transformOffloadedTranspose` | `TransposeOpOptimizer` | "…unnecessary offloaded memory Transposes" | CERTAIN |
+| `ReshapeOpElimination` (307,680) | `transformOffloadedMemCpy` | (reshape == memcpy fold) | — | CERTAIN |
 
 > **QUIRK —** `ReshapeOpElimination`'s transform method is literally named `transformOffloadedMemCpy`, not `transformOffloadedReshape`. At the Penguin level a reshape is represented as an `OffloadedMemCpy` whose src and dst differ *only in shape* (same `#elements`, same dtype — the memcpy verify invariant). So "reshape elimination" is exactly "memcpy fold": there is no distinct reshape primitive to eliminate.
 
@@ -225,7 +225,7 @@ else if fuse_src:             // eliminate the op by eliminating the SRC tensor
     replace_op_src_tensor_and_erase(op)
 ```
 
-The apply-side primitives (`replace_op_src_tensor_and_erase`, `replace_op_dst_tensor_and_erase`, `replace_load_src`, `replace_store_dst`) are CONFIRMED `TensorOpUtils` symbols. So copy-elimination here *is* producer/consumer fusion: the op is removed by rewriting every producer store of one tensor or every consumer load of the other to target the opposite tensor.
+The apply-side primitives — `replace_op_src_tensor_and_erase`, `replace_op_dst_tensor_and_erase`, `replace_load_src`, `replace_store_dst` — are all `TensorOpUtils` symbols. So copy-elimination here *is* producer/consumer fusion: the op is removed by rewriting every producer store of one tensor or every consumer load of the other to target the opposite tensor.
 
 ### Kernel-Boundary Legality
 
@@ -322,7 +322,7 @@ FusionOp - dsts = fuse[fusion_local_tensors, embbedded_tensor_ops](srcs)
    }
 ```
 
-A `FusionOp` wraps a cluster of `TensorOp` instructions into one op with `formal_inputs`/`formal_outputs`, `local_tensors` (intermediates that never escape) and the body insts. Subclasses (CONFIRMED): `ElementWiseFusionOp` ("FusionOp with only elementwise tensorop insts"), `ReduceFusionOp` (terminal is a `reduce_inst`), `TensorContractFusionOp` (built around a matmul `tc_inst`). Well-formedness invariants (CONFIRMED verify strings):
+A `FusionOp` wraps a cluster of `TensorOp` instructions into one op with `formal_inputs`/`formal_outputs`, `local_tensors` (intermediates that never escape) and the body insts. Three subclasses exist: `ElementWiseFusionOp` ("FusionOp with only elementwise tensorop insts"), `ReduceFusionOp` (terminal is a `reduce_inst`), and `TensorContractFusionOp` (built around a matmul `tc_inst`). Well-formedness invariants, from the verify strings:
 
 ```text
 internal inst(s) must be TensorOp        cannot load from a dst tensor inside the fusion op
@@ -345,7 +345,7 @@ where load and store have the exact same access pattern          (fuseTrivialCop
 
 Two fuse directions (`fuseLoadToStore` / `fuseStoreToLoad`, with `fuseImpl`, `tryFuseLoadStore`, `propagateCopy`, `simplify_fused_axis`). Candidate detection: `findFusionCandidateForLoad`, `isLoadFusionCandidate` / `isStoreFusionCandidate` / `isLoadStoreCompatibleFusionCandidate`, `has_unique_load_parent`. An instruction-count cap prevents mega-loops (verbatim): *"We do not want loop fusion to produce loops with thousands of instructions because then … subsequent passes have compile time problems due to long def-use chains within a loop."* The cap's numeric default is compiled-opaque.
 
-**Named op-pair pattern fusions** (CONFIRMED method names — the specific fusions applied):
+**Named op-pair pattern fusions** (method names — the specific fusions applied):
 
 | Pattern | Method | What fuses |
 |---|---|---|
@@ -422,7 +422,7 @@ Tranpose src and dst reshape must have common reshape basis at this point
 
 ### Related Knobs
 
-| Knob (CONFIRMED option string) | Gates | Attr |
+| Knob (option string) | Gates | Attr |
 |---|---|---|
 | `--big-tensor-threshold-one-d=<number>` | "suppress fusion optimizations for large 1d tensors originating in offloaded transpose lowering" | `_big_tensor_threshold_one_d` |
 | `--big-tensor-threshold-one-d-memcpy=<number>` | same idea, memcpy-specific | `_big_tensor_threshold_one_d_memcpy` |
@@ -460,7 +460,7 @@ When an input is aliased to an output (e.g. a weight updated in place), the whol
 
 ### TensorOpSimplifier
 
-`TensorOpSimplifier.cpython-310-….so` (1,705,768 B), sibling to `TensorOpTransform` in the `codegen_prepare` Simplifier cluster. Performs algebraic identities on tensor ops (e.g. canceling inverse shape ops) before fusion. Distinct from the `OpOptimizer`s in `TensorOpUtils`. (STRONG — name + cluster placement.)
+`TensorOpSimplifier.cpython-310-….so` (1,705,768 B), sibling to `TensorOpTransform` in the `codegen_prepare` Simplifier cluster. Performs algebraic identities on tensor ops (e.g. canceling inverse shape ops) before fusion. Distinct from the `OpOptimizer`s in `TensorOpUtils`. Its role is read from the name and its cluster placement, not from the body.
 
 ---
 
@@ -486,7 +486,7 @@ codegen_optimization:
                                         that survived copy-elimination)
 ```
 
-Net dataflow: hlo2penguin emits `Offloaded*` primitives (gated by `disable-emit-offloaded-*`) → `TensorOpTransform` canonicalizes → `MemcpyElimination` + the geometric folds try to fold each away into a producer/consumer → `LoopFusion`/`OperatorFusion`/`CCOpFusion` fuse surviving compute loop-nests → `LateLowerTensorOp` lowers any leftover offloaded mem op to a real loop-nest (or a tiled offloaded instruction). The pass ordering is STRONG-by-cross-ref (recovered from the sibling pass-roster trace, not re-derived here).
+Net dataflow: hlo2penguin emits `Offloaded*` primitives (gated by `disable-emit-offloaded-*`) → `TensorOpTransform` canonicalizes → `MemcpyElimination` + the geometric folds try to fold each away into a producer/consumer → `LoopFusion`/`OperatorFusion`/`CCOpFusion` fuse surviving compute loop-nests → `LateLowerTensorOp` lowers any leftover offloaded mem op to a real loop-nest (or a tiled offloaded instruction). The pass ordering comes from the sibling pass-roster trace rather than being re-derived here.
 
 ---
 
@@ -511,17 +511,17 @@ The single most important orientation fact: **four non-overlapping layers can ki
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against the binaries:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| `MemcpyElimination` is a polyhedral/ISL pass, not a peephole | the module docstring reads *"A more advanced loop fusion to eliminate memcpy. This pass applies ISL (i.e. polyhedral model)"*, and `islpy` / `IslSimplifier` / `isl_Map` identifiers appear in the same `.so` | CERTAIN |
+| Each `*OpElimination` thin pass delegates to a `*OpOptimizer` in `TensorOpUtils` | every `transformOffloaded*` method name and its matching `*OpOptimizer` class string is present in both the driver `.so` and `TensorOpUtils.so` (5,455,456 B) | CERTAIN |
+| Reshape elimination is the memcpy fold | `ReshapeOpElimination`'s transform is literally the symbol `transformOffloadedMemCpy`, consistent with `OffloadedMemCpy`'s same-dtype / same-`#elements` invariant | CERTAIN |
+| The `.so` sizes quoted throughout | re-listed from disk: MemcpyElimination 1,630,208; LoopFusion 4,622,360; LowerTensorOp 10,250,552; FusionOp 2,043,232; TensorOpUtils 5,455,456; etc. | CERTAIN |
+| The `LoopFusion` rejection-reason set is the legality complement | every reject string (`: Accesses do not match`, `: broadcast becomes free dim in matmul`, `: Definition not a perfect nested loop`, …) is present in `LoopFusion.so`; the *predicate body* is compiled-opaque | CERTAIN (strings), MEDIUM (bodies) |
 
-1. **"`MemcpyElimination` is a polyhedral/ISL pass, not a peephole."** Verified: the module docstring (`"A more advanced loop fusion to eliminate memcpy. This pass applies ISL (i.e. polyhedral model)"`), plus `islpy` / `IslSimplifier` / `isl_Map` identifiers in the same `.so`. CONFIRMED.
-2. **"Each `*OpElimination` thin pass delegates to a `*OpOptimizer` in `TensorOpUtils`."** Verified: every `transformOffloaded*` method name and the matching `*OpOptimizer` class string is present in both the driver `.so` and `TensorOpUtils.so` (5,455,456 B confirmed). CONFIRMED.
-3. **"Reshape elimination == memcpy fold."** Verified: `ReshapeOpElimination`'s transform is literally `transformOffloadedMemCpy` (CONFIRMED symbol), consistent with `OffloadedMemCpy`'s same-dtype/same-`#elements` verify invariant. CONFIRMED.
-4. **".so sizes."** Re-listed from disk: every size quoted (MemcpyElimination 1,630,208; LoopFusion 4,622,360; LowerTensorOp 10,250,552; FusionOp 2,043,232; TensorOpUtils 5,455,456; etc.) matches `ls -la`. CONFIRMED.
-5. **"`LoopFusion` rejection-reason set is the legality complement."** Verified: every reject string (`: Accesses do not match`, `: broadcast becomes free dim in matmul`, `: Definition not a perfect nested loop`, …) is present in `LoopFusion.so`. The *predicate body* is compiled-opaque — tagged accordingly in the text. CONFIRMED strings / INFERRED bodies.
-
-What is **not** recoverable (compiled-opaque, marked in place): the exact boolean bodies of `can_fold_memcpy` / `is_degraded_fusion` / `isLoadStoreAccessMatchForFusion`; the numeric defaults of the `--big-tensor-threshold-one-d*` knobs and the `LoopFusion` max-inst cap; and the literal source-order of passes (taken from the sibling pass-roster trace, STRONG-by-cross-ref).
+Three things stay out of reach because they are compiled-opaque, and are marked as such where they appear: the exact boolean bodies of `can_fold_memcpy` / `is_degraded_fusion` / `isLoadStoreAccessMatchForFusion`; the numeric defaults of the `--big-tensor-threshold-one-d*` knobs and the `LoopFusion` max-inst cap; and the literal source-order of passes, which is taken from the sibling pass-roster trace.
 
 ---
 

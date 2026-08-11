@@ -13,7 +13,7 @@
 > These are **three different programs** in the same NX space at different times
 > and must never be conflated.
 >
-> **Evidence base.** Every address on this page is read this task from a shipped
+> **Evidence base.** Every address on this page is read from a shipped
 > artifact: the nine per-core LSP linker scripts
 > `custom_op/lsp_fll_load_cpus/lsp_fll_load_cpu{0..7,_single}/ldscripts/elf32xtensa.x`
 > (read as text); the EXTISA Q7 POOL firmware ELFs carved from
@@ -23,7 +23,7 @@
 > and the static archive `neuron/libneuroncustomop.a` via the shipped
 > `xtensa-elf-nm`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
 > `XTENSA_SYSTEM=.../XtensaTools/config`). Confidence/provenance follows each
-> claim: HIGH/MED/LOW × OBSERVED (read this task) / INFERRED (derived) /
+> claim: HIGH/MED/LOW × OBSERVED (read from the artifact) / INFERRED (derived) /
 > CARRIED (from a cited Part-7 page or the shared pack).
 
 ---
@@ -69,7 +69,7 @@ NX address that shifts per core is the custom-op library's `sram0_0_seg` base
 This is the consolidated NX-local map a single Q7 core dereferences. Part (A) is
 the directly-dereferenceable fixed regions; part (B) is the windowed regions (an
 NX slice that is a movable view of a 57-bit SoC address). Sizes/bases are
-re-verified this task from the named artifact or CARRIED from the cited sibling.
+read from the named artifact or CARRIED from the cited sibling.
 
 | NX base / range | size | what it is / which section maps there | conf / src |
 |---|---|---|---|
@@ -90,7 +90,7 @@ the masked-tag compare that selects a window, are decoded in
 `0x07/0x09/0x0a000000` region tags above are the literal `slli a?, a?, 24/25`
 constants emitted by `_init_translate_ctx` (`movi a5,7; slli a5,a5,24` →
 `0x07000000`; `movi a9,9; slli …` → `0x09000000`; `slli a5,a10,25` with a10=5 →
-`0x0a000000`), read this task by `xtensa-elf-objdump` of `translation.o`
+`0x0a000000`), read by `xtensa-elf-objdump` of `translation.o`
 (HIGH/OBSERVED).
 
 > **NOTE (the allocator-proxy `0x80000000`).** The HBM xmem allocator uses
@@ -147,7 +147,7 @@ constants emitted by `_init_translate_ctx` (`movi a5,7; slli a5,a5,24` →
 The custom-op toolchain ships **nine** LSPs (`lsp_fll_load_cpu{0..7,_single}`),
 each a directory containing five Xtensa ldscripts
 `elf32xtensa.{x,xn,xbn,xr,xu}` and a `specs` file. The default full link uses
-`elf32xtensa.x`. Read byte-exact this task (`lsp_fll_load_cpu0`):
+`elf32xtensa.x`. Read byte-exact (`lsp_fll_load_cpu0`):
 
 ### The MEMORY block — exactly two regions
 
@@ -168,7 +168,7 @@ _memmap_seg_sram0_0_start = 0x84000000; _memmap_seg_sram0_0_max = 0x84200000
 ```
 
 (HIGH/OBSERVED — the MEMORY block, `region_map`, the reset-vector/vecbase
-provides, and all four boundary-symbol pairs read this task.)
+provides, and all four boundary-symbol pairs read verbatim.)
 
 > **GOTCHA (what "9 SRAM origins" means).** The MEMORY block of *one* LSP has
 > only **two** regions. The "9 SRAM origins" are the **nine LSP variants'**
@@ -191,7 +191,7 @@ NONE of these four sections** (zero hits for
 supplied by the loader/CRT, not the custom-op archive. The archive **does**
 define `_start` (`00000af8 T _start`, in `start_exit.o`), so `ENTRY(_start)`
 resolves into the custom-op CRT object while the IRAM vector stubs are
-toolchain-supplied. (HIGH/OBSERVED this task; refines the earlier MED guess on
+toolchain-supplied. (HIGH/OBSERVED; refines the earlier MED guess on
 the vector providers.)
 
 ### The SRAM segment (`sram0_0_seg` @ NX `0x84000000 + cpu·2 MiB`) — everything else
@@ -248,13 +248,13 @@ loaded. `.note.GNU-stack` is the executable-stack *marker*, not a runtime stack.
 `.xr`/`.xu` are **relocatable**: no MEMORY block, no origins, address-independent.
 The per-core identity lives only in `.x`/`.xn`/`.xbn`. The `specs` file (pins
 `crti/crtbegin..crtend/crtn`, blanks `*lib`) carries **no** addresses.
-(CARRIED/OBSERVED; `specs` read this task.)
+(CARRIED/OBSERVED; `specs` read verbatim.)
 
 ---
 
 ## 3. The per-core model — identical-via-PRID, one link-time per-core VADDR
 
-### 3a. The nine SRAM origins (re-grepped all 9 LSPs this task)
+### 3a. The nine SRAM origins (all 9 LSPs)
 
 | LSP | `sram0_0_seg` org | len | `_memmap` range |
 |---|---|---|---|
@@ -288,16 +288,16 @@ boundary symbols on cpu0/cpu5/cpu7/single.)
   window NX bases) is the **same** 32-bit map on every core. A core identifies
   itself by `rsr.prid` (`get_cpu_id` = raw PRID, no mask) and computes its
   private SoC apertures from the PRID (e.g. the dataram SDMA aperture index =
-  `2·prid + 9`). The assert `data_transfer.cpp:171 cpu_id < 8` (read this task)
-  guards the dense `[0..7]` index. (HIGH/OBSERVED + CARRIED cross-report.)
+  `2·prid + 9`). The assert `data_transfer.cpp:171 cpu_id < 8` guards the dense
+  `[0..7]` index. (HIGH/OBSERVED + CARRIED cross-report.)
 
 ### 3c. Shared vs per-core-local regions
 
 **Per-core LOCAL** (own region; same NX view, distinct SoC backing):
 
-- **on-core DATARAM** `POOL_Q7_CORE{i}_DRAM` 256 KiB (`size: 262144` this task)
+- **on-core DATARAM** `POOL_Q7_CORE{i}_DRAM` 256 KiB (`size: 262144`)
   → NX view `[0x80000, 0x90000)`, per-core PRIVATE.
-- **on-core IRAM** `POOL_Q7_CORE{i}_IRAM` 128 KiB (`size: 131072` this task),
+- **on-core IRAM** `POOL_Q7_CORE{i}_IRAM` 128 KiB (`size: 131072`),
   1 MiB SoC slot pitch.
 - **custom-op hbm_scratch sub-window** 2 MiB per core (3a), link-assigned, PRIVATE.
 - **SDMA SoC aperture** 64 KiB per core, `idx·0x10000` apart.
@@ -328,18 +328,19 @@ adds front-matter PREPROC lacks (`POOL_IRAM` 32 KiB, `POOL_NX_IRAM` 128 KiB,
 8-core POOL cluster only** (`get_cpu_count()` hardcoded 8). Each core's NX-LOCAL
 map is identical across both PREPROC and POOL — the difference is the
 SoC-physical base of the cluster (`LOCAL[46:0]` + `DIE[47]`), **not** the NX
-view. (HIGH/OBSERVED — POOL CORE0 IRAM/DRAM sizes re-grepped this task.)
+view. (HIGH/OBSERVED — POOL CORE0 IRAM/DRAM sizes from the per-gen
+`address_map.yaml`.)
 
 ---
 
 ## 4. The firmware-image VADDRs — reconciled against the custom-op map
 
 The per-engine POOL firmware is a **separate** artifact from the loaded
-custom-op `.so`. This task carved the EXTISA Q7 POOL ELFs from
+custom-op `.so`. The EXTISA Q7 POOL ELFs are carved from
 `libnrtucode_internal.so` (a host x86-64 `.so` with **16 embedded ELF32-Xtensa**
-images, `e_machine = 94`) and read their headers with host `readelf`.
+images, `e_machine = 94`) and their headers read with host `readelf`.
 
-### 4a. The EXTISA ELF (CAYMAN_0) — `readelf -lSW` this task
+### 4a. The EXTISA ELF (CAYMAN_0) — `readelf -lSW`
 
 Type `EXEC`, machine "Tensilica Xtensa Processor", `ELFCLASS32`, entry
 `0x01005610`. **Three LOAD program headers**:
@@ -367,16 +368,16 @@ Section VADDRs (`readelf -SW`):
 | `.dynamic` | `0x03000000` | `0xa4` | WA |
 | `.rela.got` | `0x030000c8` | `0xb40` | RELA (`ES=0xc`) |
 
-`kernel_info_table` entry 0 (raw `@file 0x7400`, read this task with xxd):
+`kernel_info_table` entry 0 (raw `@file 0x7400`, read with xxd):
 `00 00 00 7e 80 00 00 01` = `{spec=0, opcode=0x7e}` funcVA **`0x01000080`**. The
 `opcode=0xf0` row `@0x7430` = `00 00 00 f0 70 33 00 01` → funcVA **`0x01003370`**.
 The `.globstruct` magic `@file 0x7488` = `34 cb 99 60` (LE = `0x6099cb34`),
-confirmed this task. So the funcVAs sit in the `.text` `0x01000000` band and the
+confirmed. So the funcVAs sit in the `.text` `0x01000000` band and the
 table itself sits at `0x02000380` in the data band. (HIGH/OBSERVED — `readelf
--lSW` + xxd this task.)
+-lSW` + xxd.)
 
 > **CORRECTION (the `.rela.got` reloc count).** The backing report described
-> `.rela.got` as "17 `R_XTENSA_RELATIVE` funcVA relocs". `readelf -rW` this task
+> `.rela.got` as "17 `R_XTENSA_RELATIVE` funcVA relocs". `readelf -rW`
 > shows the table holds **240 entries** (`0xb40 / 0xc`), of which **30** are
 > `R_XTENSA_RELATIVE` (plus 101 `SLOT0_ALT`, 101 `SLOT0_OP`, 8 `NONE`). The
 > "17" is the **`kernel_info_table` record count** (`0x88 / 8 = 17`), which is
@@ -385,7 +386,7 @@ table itself sits at `0x02000380` in the data band. (HIGH/OBSERVED — `readelf
 
 ### 4b. Per-image / per-gen stability of the firmware VADDRs
 
-`readelf` on CAYMAN_0..3 + MARIANA_PLUS_0 (carved + inspected this task):
+`readelf` on CAYMAN_0..3 + MARIANA_PLUS_0 (carved + inspected):
 
 | image | entry | `.text` band | data band | `.dynamic` band |
 |---|---|---|---|---|
@@ -431,7 +432,7 @@ firmware-kernel container; the custom-op `.so`'s own code is at
 
 ## 5. Stack + heap — runtime, not linker-placed
 
-The LSP reserves **neither** stack nor heap (§2; re-verified: no
+The LSP reserves **neither** stack nor heap (§2: no
 `__stack`/`_heap_sentry`/`dram0` in the ldscript, no undefined ref in the
 archive). Where they live:
 
@@ -444,7 +445,7 @@ archive). Where they live:
   is reached through **one** dynamic 16 MB window. So the stack NX address is a
   **runtime** translated HBM-scratch SoC address, never a link-time reservation.
   The HBM-stack **arena** capacity varies per gen — **cayman 24 GiB, mariana
-  36 GiB, sunda 16 GiB** (`HBM_STACK_CAPACITY_GIB`, read this task across the
+  36 GiB, sunda 16 GiB** (`HBM_STACK_CAPACITY_GIB`, read across the
   per-gen `common.h`). That is the arena, not the per-stack `MAX_STACK_SIZE`
   (4 MB). (HIGH/OBSERVED the LSP absence + the capacities; CARRIED the mechanism.)
 - **HEAPS.** The three xmem heaps are runtime-carved. The dataram + libc heaps
@@ -453,7 +454,7 @@ archive). Where they live:
   window. The LSP places only the heap **managers'** `.bss` bookkeeping
   (`>sram0_0_seg`), not the pools — corroborated by the archive's
   `_hbm_heap_mgr` / `_dataram_heap_mgr` / `_dataram_libc_heap_mgr` BSS symbols
-  (`xtensa-elf-nm` this task). (HIGH/OBSERVED the LSP absence; CARRIED the
+  (`xtensa-elf-nm`). (HIGH/OBSERVED the LSP absence; CARRIED the
   allocator detail.)
 
 ---
@@ -499,15 +500,15 @@ resolver's region enum with the LSP's segment names. (CARRIED.)
   generation-invariant. (HIGH.)
 - **Firmware-image VADDR bands** (`.text 0x01000000` / data `0x02000000` /
   `.dynamic 0x03000000`) are **stable** across POOL EXTISA engines and across
-  CAYMAN/MARIANA/MARIANA_PLUS/SUNDA (verified this task on five gpsimd-tree
+  CAYMAN/MARIANA/MARIANA_PLUS/SUNDA (verified on five gpsimd-tree
   images). `kernel_info_table @0x02000380` is gen-stable. Only entry point +
   segment sizes vary. (HIGH/OBSERVED.)
 - **SoC-physical geometry** (cluster bases, 1 MiB IRAM/DRAM slot pitch, SBUF
   32 MiB / PSUM 4 MiB / DGE 1 GiB / SBUF-scratch 32 MiB) is byte-identical
   across cayman/mariana/mariana_plus. The only cross-gen delta in the POOL
   neighbourhood is **`POOL_NX_DRAM` 64 KiB (cayman) → 128 KiB
-  (mariana/mariana_plus)** — verified this task (`size: 65536` cayman vs
-  `_size: 0x20000` mariana_plus). The HBM-stack arena capacity varies per gen
+  (mariana/mariana_plus)** — `size: 65536` cayman vs
+  `_size: 0x20000` mariana_plus. The HBM-stack arena capacity varies per gen
   (24/36/16 GiB). (HIGH/OBSERVED.)
 - **The Q7 NX-LOCAL map** (fixed regions + window NX bases) is per-core-invariant
   and per-cluster-invariant: PREPROC and POOL cores see the same 32-bit NX view;
@@ -523,7 +524,7 @@ resolver's region enum with the LSP's segment names. (CARRIED.)
 
 ## 9. Confidence / observed-vs-inferred ledger
 
-| Claim | Anchor (read this task) | Conf / Prov |
+| Claim | Anchor | Conf / Prov |
 |---|---|---|
 | Custom-op MEMORY block: `iram0_0` `0x0`/`0x1000` (all 9) + `sram0_0` `0x84000000+i·0x200000`/`0x200000`; `region_map 0x11`; reset/vecbase `0x0` | `rg` of all 9 `elf32xtensa.x` | HIGH / OBSERVED |
 | 9 SRAM origins + 2 MiB stride + 16 MiB tiling; single = `0x84000000`/32 MiB | `rg` of all 9 `sram0_0_seg` org + `_memmap_mem_sram0` symbols | HIGH / OBSERVED |
@@ -551,5 +552,5 @@ resolver's region enum with the LSP's segment names. (CARRIED.)
 - [neuron_translate + the Window Table](neuron-translate-windows.md) — the
   consumer of the `0x07/09/0a000000` dynamic windows and the `0x80000000`/
   `0x84000000` pinned windows; the masked-tag compare and the MMIO refill.
-- `control/address/lsp-sram-window-map.md` — the build-time SRAM-window view
-  (Part 13, *not yet authored* — forward reference, no link until it exists).
+- [The LSP SRAM Window Map](../control/address/lsp-sram-window-map.md) — the
+  build-time SRAM-window view.

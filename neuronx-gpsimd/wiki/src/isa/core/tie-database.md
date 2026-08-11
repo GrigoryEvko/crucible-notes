@@ -26,7 +26,7 @@ four sources.
 > **GOTCHA — counts come from `nm`/byte-parse, never a decompile grep.** Every count on this page
 > reproduces with `nm libisa-core.so | rg -c …` or a byte-exact parse of the decoded TIE-XML. A
 > grep over a function decompile inflates symbol-hit counts 2–12×; that path is never used. The
-> cipher-decoded `OPCODEDEF` count was re-derived from the binary in-checkout (`12642`,
+> cipher-decoded `OPCODEDEF` count comes from the binary (`12642`,
 > [§3.4](#34-self-verification--the-counts-from-the-binary)).
 
 ---
@@ -41,7 +41,7 @@ four sources.
 | Exported symbols | exactly **5** getters | `nm -D --defined-only` |
 | Standalone DB (XML) | `Xtensa.xml`, **45,533,206 B** (ciphered) | `control/TIE/` |
 | Standalone DB (tielib) | `Xtensa.tl`, **112,537,066 B** (cleartext binary) | `control/TIE/` |
-| Cipher | ASCII checksum + `'|'` + body where `byte = plaintext + 13 (mod 256)` | decoded in-checkout |
+| Cipher | ASCII checksum + `'|'` + body where `byte = plaintext + 13 (mod 256)` | decoded from the blob bytes (§3.1) |
 | TIE-DB roster (pre-fold) | **1607** mnemonics / **12642** `OPCODEDEF` | decoded `post_rewrite` blob |
 | Runtime roster (post-fold) | **1534** opcodes / **12569** placements | `libisa-core.so` `nm` |
 | Structural totals | **14** FORMAT, **46** SLOTDEF, **8** REGFILE | decoded XML == `libisa` tables |
@@ -99,7 +99,7 @@ the *identical* 5-getter container schema (§6).
 > **NOTE — `libtie-core` is a shipped config DLL, present here.** Unlike host-only runtime
 > libraries (`libnrt` etc.) that are absent from the gpsimd checkout, the TIE-DB container, the
 > standalone `Xtensa.xml`/`.tl`, the `libtie.so` parser, and `libisa-core.so` all ship in
-> `gpsimd_tools_tgz/tools/`. Every fact on this page is therefore re-OBSERVable in-checkout, not
+> `gpsimd_tools_tgz/tools/`. Every fact on this page is therefore OBSERVable directly, not
 > carried across a corpus boundary.
 
 ### 2.2 The four blobs — TIE-compiler phase serializations
@@ -127,7 +127,7 @@ here a 50-byte stub), `compiler_xml` (a `PROPERTY` list of compiler directives l
 > (`rstage`/`estage`/`mstage`/`wstage` = `0/3/4/6`) are all axes of the **one** Cairo config. They
 > are **not** the five GPSIMD silicon generations (Sunda/Cayman/Mariana/Mariana+/Maverick — a
 > *firmware-image* axis, invisible in any TIE descriptor). Do not read a "version" token out of
-> the TIE-XML as a generation. `[HIGH/OBSERVED]`
+> the TIE-XML as a generation.
 
 ### 2.3 The standalone pair — `Xtensa.xml` and `Xtensa.tl`
 
@@ -155,7 +155,7 @@ start `… | 49 4c 05 7a 79 2d 03 72 7f ff 76 7c 7b 4a …` after the `'|'`).
 ### 3.1 The recovered transform (the post-rewrite TIE-XML cipher)
 
 `Xtensa.xml` and the container blobs are obfuscated, not encrypted. The transform recovered from
-the bytes (the formal-semantics decode lane, "GX-SEM") is trivial: each blob is an **ASCII-hex
+the bytes is trivial: each blob is an **ASCII-hex
 checksum prefix** terminated by `'|'`, followed by a body where every byte is
 `plaintext + 13 (mod 256)`. Decoding is the inverse:
 
@@ -251,8 +251,8 @@ needed) and use the XML for structure + semantics.
 
 ### 3.4 Self-verification — the counts from the binary
 
-The four-source claim is only as strong as its byte-grounding, so the central counts were
-re-derived in-checkout this pass. Decoding `libtie-core.so`'s `post_rewrite` blob with the
+The four-source claim is only as strong as its byte-grounding, so the central counts are
+derived from the binary. Decoding `libtie-core.so`'s `post_rewrite` blob with the
 [§3.1](#31-the-recovered-transform-the-post-rewrite-tie-xml-cipher) transform and counting tags
 yields, with zero adjustment:
 
@@ -265,7 +265,7 @@ BEQZ.W18 present : True          xdocversion 202000 : True
 
 These match the [§4](#4-the-four-independent-isa-sources) cross-source numbers exactly, and the
 `FORMAT 14 / SLOTDEF 46 / REGFILE 8` triple is **byte-identical** to the `libisa-core.so` runtime
-tables ([§5](#5-the-synthesis--the-certified-isa-model)). `[HIGH/OBSERVED]`
+tables ([§5](#5-the-synthesis--the-certified-isa-model)).
 
 ---
 
@@ -561,7 +561,7 @@ The TIE DB is the hinge between the two.
 
 *Provenance: `libtie-core.so` (51,098,208 B, SHA `06fc43eaf3622ae1…`), its 5 getter exports, the
 four `.data` XML blobs, the `+13/mod-256` decode, and the resulting `12642`/`1607` counts are
-`[HIGH/OBSERVED]` — re-disassembled, byte-read, and cipher-decoded in-checkout this pass.
+`[HIGH/OBSERVED]` — disassembled, byte-read, and cipher-decoded from the shipped artifacts.
 `libisa-core.so`'s `12569` encode symbols and `libtie-Xtensa-msem.so`'s `645`-INTERFACE msem
 package are `[HIGH/OBSERVED]` from `nm` + decode. The native-disassembler desync ceiling is
 `[HIGH/OBSERVED]` for its existence, `[MED]` for desynced interiors. The arch-isa-headers =

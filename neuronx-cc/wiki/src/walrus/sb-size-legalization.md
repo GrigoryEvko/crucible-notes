@@ -93,7 +93,7 @@ function SBSizeLegalization_run(Module M):              // 0xbc9fc0
 
 The `cmp $0xa` / `cmp $0x13` gate is verbatim at `bca01f`/`bca02e`; the `ArchLevel` is read from `Module+0xac` at `bc9fd1`. The shape is therefore *flatten → shrink → (split-mark) | (force-unroll\* → split-mark) → profile*.
 
-> **NOTE —** for `ArchLevel ≤ 19` (older parts) the pass is a deliberate no-op: it sets a flag at `Module+0x28`, emits a single log record, and returns without touching any tensor. The split/shrink/force-unroll machinery only runs for `arch > 19` (plus the `arch == 10` special-case that falls through to the full path). The exact `ArchLevel → codename` binding is not asserted in this body; only the gate constants 10 and 19 are observed (SPECULATIVE binding).
+> **NOTE —** for `ArchLevel ≤ 19` (older parts) the pass is a deliberate no-op: it sets a flag at `Module+0x28`, emits a single log record, and returns without touching any tensor. The split/shrink/force-unroll machinery only runs for `arch > 19` (plus the `arch == 10` special-case that falls through to the full path). The exact `ArchLevel → codename` binding is not asserted in this body; only the gate constants 10 and 19 are observed; the binding itself is **[SPECULATIVE]**.
 
 ### Considerations
 
@@ -141,7 +141,7 @@ Every offset is confirmed in the disassembly: the discriminator load `mov 0xd8(%
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `is_legal_tensor` | `0xbc1200` | SBUF-fit predicate; dispatch on `sb+0xd8` | CERTAIN |
-| `is_legal_tensor` (MLSet entry) | `0xbc12e0` | `+0xe0` secondary entry; `shrink_tensor` calls this directly | CONFIRMED |
+| `is_legal_tensor` (MLSet entry) | `0xbc12e0` | `+0xe0` secondary entry; `shrink_tensor` calls this directly | CERTAIN |
 | `getArchModel` | — | resolves codename → `SBModel*` (geometry singleton, [1.05](../arch/sbuf-psum-geometry.md)) | CERTAIN |
 
 ---
@@ -192,7 +192,7 @@ function shrink_tensor(Module& M):                      // 0xbc36d0
 
 `setLiveN(unsigned int)` and `setShrinkDim(int)` are confirmed undefined-symbol imports the body calls; `getShrinkDim` is read back downstream (by the force-unroll path) so the shrink decision is a cross-phase record, not a local. The per-tensor side table is `DenseMap<StorageBase*, SBSizeLegalization::mem_loc_info>`, whose `mem_loc_info` carries the shrunk `liveN` at `+0x10` (the `operator[]`, `grow`, and `LookupBucketFor` instantiations are all emitted in the binary at `0xbca480`–`0xbca740`).
 
-> **CORRECTION (D-K15) —** `update_liveN` @ `0xbc6510` *looks* like the shrink's liveN writer but is **not** part of this pass's driver. Its sole caller is `LoopOptimization::run`; it is a shared helper reused by loop-opt. The SBSize liveN write is `setLiveN` *inside* `shrink_tensor`. Do not attribute `update_liveN` to `SBSizeLegalization::run`.
+> **GOTCHA — `update_liveN` is not this pass's liveN writer.** The symbol at `0xbc6510` looks like the shrink's liveN writer, but its sole caller is `LoopOptimization::run` — it is a shared helper owned by loop-opt. `SBSizeLegalization` writes liveN through `setLiveN` *inside* `shrink_tensor` instead.
 
 > **NOTE —** the diagnostic string `"tenosrizer split "` (sic — the misspelling is in the binary) is a `shrink_tensor` *log message*, not a method name. The other `.rodata` diagnostics on this path — `"tensor shape: "`, `"partition_dim "`, `"dimension_idx "`, `" alive ones "`, `" shrink factor "` — are all log strings, not symbols.
 
@@ -246,7 +246,7 @@ The mask is consumed by the unroller, not by this pass. `FullUnroll::tensorSplit
 
 The split granularity FullUnroll applies to a marked dim is bounded by `getLargestFactorWithThreshold` (`MaxFactor = 16`, [8.3](translate-nki-unroll.md)) — so even a heavily-marked tensor is cut into at most that many pieces per pass.
 
-> **GOTCHA —** a reimplementation that has `SBSizeLegalization` clone tensors in place will double-split: the mask plus the unroller's read of `getSplitShape` would each cut the dim. The split must live in exactly one place. In this build it is the unroller's `tensorSplit`; this pass only marks. (CONFIRMED: both symbols, the `0xb70000` address, and the `getSplitShape` read at `0xb70421`/`0xb705c5` inside `tensorSplit`.)
+> **GOTCHA —** a reimplementation that has `SBSizeLegalization` clone tensors in place will double-split: the mask plus the unroller's read of `getSplitShape` would each cut the dim. The split must live in exactly one place. In this build it is the unroller's `tensorSplit`; this pass only marks. (Both symbols, the `0xb70000` address, and the `getSplitShape` reads at `0xb70421`/`0xb705c5` inside `tensorSplit` are read directly.)
 
 ---
 
@@ -285,15 +285,15 @@ function force_unroll_update(Module& M) -> int:         // 0xbc7e40
     return needs_another_round ? nonzero : 0
 ```
 
-The return value drives the `run` fixpoint: nonzero means "another forced round is needed" (loop back to `bca180`); zero means "stop forcing, re-run `set_splitShape`" (`bca0f0`). The actual loop cloning is again delegated to the `FullUnroll` machinery ([8.3](translate-nki-unroll.md)) — `force_unroll_update` only bumps the unroll factor and fixes the per-`MemoryLocationSet` shrink/block bookkeeping so the *next* `set_splitShape` sees the new, more-unrolled geometry. (STRONG: fixpoint semantics; CONFIRMED: the diagnostic strings `"force loop round "` and `"forced to unroll more from"` both present in the binary.)
+The return value drives the `run` fixpoint: nonzero means "another forced round is needed" (loop back to `bca180`); zero means "stop forcing, re-run `set_splitShape`" (`bca0f0`). The actual loop cloning is again delegated to the `FullUnroll` machinery ([8.3](translate-nki-unroll.md)) — `force_unroll_update` only bumps the unroll factor and fixes the per-`MemoryLocationSet` shrink/block bookkeeping so the *next* `set_splitShape` sees the new, more-unrolled geometry. The diagnostic strings `"force loop round "` and `"forced to unroll more from"` are both present in the binary; the fixpoint semantics above are reconstructed from the return-value flow rather than read from a message.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `pick_unroll_loop` | `0xbc2360` | Decide if a still-illegal tensor needs forced unroll | CONFIRMED |
-| `force_unroll_update` | `0xbc7e40` | Bump unroll factor; refresh MLSet bookkeeping; drive fixpoint | CONFIRMED |
-| `flatten` | `0xbc1ce0` | Flat indexed inst view; re-run inside `pick_unroll_loop` | CONFIRMED |
+| `pick_unroll_loop` | `0xbc2360` | Decide if a still-illegal tensor needs forced unroll | CERTAIN |
+| `force_unroll_update` | `0xbc7e40` | Bump unroll factor; refresh MLSet bookkeeping; drive fixpoint | CERTAIN |
+| `flatten` | `0xbc1ce0` | Flat indexed inst view; re-run inside `pick_unroll_loop` | CERTAIN |
 
 ---
 
@@ -338,17 +338,17 @@ err: "Cannot get legal tile position for non-Matmult instruction"
 
 `getLegalTileSize(Instruction&)` @ `0x1094e70` calls `isValidTileSize` on the input row-tile and output col-tile. The error string is confirmed in the binary. `isValidTileSize` is invoked by a broad set of call sites — `checkMatmultInputs`, `getLegalTilePosition`, `getLegalTileSize`, `getMMPhyPartition`, the core-V3 transpose/matmul helpers — including paths in the coloring allocator, which is why the two passes share one definition of placeable tiles.
 
-> **NOTE —** `SBSizeLegalization` reaches this predicate *indirectly*, through the matmul-axis flag at `set_splitShape` (`bc71b8`, the `*(u8*)(axis+0x158)` test) — not by a direct call in its own body. (STRONG: the matmul-axis flag path; CONFIRMED: the predicate is the shared util and the table contents.)
+> **NOTE —** `SBSizeLegalization` reaches this predicate *indirectly*, through the matmul-axis flag at `set_splitShape` (`bc71b8`, the `*(u8*)(axis+0x158)` test) — not by a direct call in its own body. The predicate itself and the table contents are read directly; that the matmul-axis flag is what routes to it is **[INFERRED]** from the flag test.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `isValidTileSize` | `0x108e0c0` | `validTileSizes` map membership test | CONFIRMED |
-| `getLegalTilePosition` | `0x1094330` | matmul base-partition vs `tile_pos` assertion | CONFIRMED |
-| `getLegalTileSize` | `0x1094e70` | `isValidTileSize` on row/col tiles | CONFIRMED |
-| `getMMPhyPartition` | `0x10921d0` | matmul physical base partition (opcode `0x5f`) | CONFIRMED |
-| `validTileSizes` | `0x3e01ac0` | static `map<int,set<int>>` (.bss) | CONFIRMED |
+| `isValidTileSize` | `0x108e0c0` | `validTileSizes` map membership test | CERTAIN |
+| `getLegalTilePosition` | `0x1094330` | matmul base-partition vs `tile_pos` assertion | CERTAIN |
+| `getLegalTileSize` | `0x1094e70` | `isValidTileSize` on row/col tiles | CERTAIN |
+| `getMMPhyPartition` | `0x10921d0` | matmul physical base partition (opcode `0x5f`) | CERTAIN |
+| `validTileSizes` | `0x3e01ac0` | static `map<int,set<int>>` (.bss) | CERTAIN |
 
 ---
 
@@ -378,7 +378,7 @@ The emitted report (all literals confirmed in `.rodata`): `"SB Legalization Stat
 
 The pass also registers three `MetricStore` `BackendMetric` counters by name — `backend::CanSplitSbNodesCount` (SB nodes that *could* be split), `backend::ShrunkNodesCount` (nodes shrunk), `backend::TotalSplitSbNodesCount` (SB nodes actually split). All three name strings are present in the binary.
 
-> **NOTE —** no counter-increment site was found inside the `0xbc1200..0xbca2c0` bodies. The names are registry entries consumed by the generic stats reporter; the increments live in the shared `FullUnroll`/`MetricStore` reporting path (STRONG, not pinned at the increment site). The report *strings* are CONFIRMED; the increment *site* is not in this pass's bodies.
+> **NOTE —** no counter-increment site was found inside the `0xbc1200..0xbca2c0` bodies. The names are registry entries consumed by the generic stats reporter; the increments live in the shared `FullUnroll`/`MetricStore` reporting path. The report *strings* are read directly; the increment *site* is **[UNRESOLVED]** — it is not in this pass's bodies.
 
 ---
 
@@ -386,16 +386,16 @@ The pass also registers three `MetricStore` `BackendMetric` counters by name —
 
 | Function | Address | Size | Role | Confidence |
 |---|---|---|---|---|
-| `run` | `0xbc9fc0` | `0x300` | driver; arch gate; fixpoint | CONFIRMED |
-| `is_legal_tensor` | `0xbc1200` | `0x240` | SBUF-fit predicate | CONFIRMED |
-| `flatten` | `0xbc1ce0` | `0x680` | flat indexed inst view | CONFIRMED |
-| `pick_unroll_loop` | `0xbc2360` | `0x1370` | still-illegal → force-unroll? | CONFIRMED |
-| `shrink_tensor` | `0xbc36d0` | `0x2e40` | footprint shrink (`setLiveN`/`setShrinkDim`) | CONFIRMED |
-| `set_splitShape` | `0xbc6760` | `0x16e0` | per-dim split mask | CONFIRMED |
-| `force_unroll_update` | `0xbc7e40` | `0x2180` | escalate unroll factor; fixpoint | CONFIRMED |
-| `profile_sb_legalization` | `0xbc1440` | `0x8a0` | statistics report | CONFIRMED |
-| `ctor` / `dtor` | `0xbca840` / `0xbca2e0` | — | `SBSizeLegalization(PassOptions const&)` | CONFIRMED |
-| `update_liveN` | `0xbc6510` | `0x250` | **not** this pass — `LoopOptimization` helper | CORRECTION |
+| `run` | `0xbc9fc0` | `0x300` | driver; arch gate; fixpoint | CERTAIN |
+| `is_legal_tensor` | `0xbc1200` | `0x240` | SBUF-fit predicate | CERTAIN |
+| `flatten` | `0xbc1ce0` | `0x680` | flat indexed inst view | CERTAIN |
+| `pick_unroll_loop` | `0xbc2360` | `0x1370` | still-illegal → force-unroll? | CERTAIN |
+| `shrink_tensor` | `0xbc36d0` | `0x2e40` | footprint shrink (`setLiveN`/`setShrinkDim`) | CERTAIN |
+| `set_splitShape` | `0xbc6760` | `0x16e0` | per-dim split mask | CERTAIN |
+| `force_unroll_update` | `0xbc7e40` | `0x2180` | escalate unroll factor; fixpoint | CERTAIN |
+| `profile_sb_legalization` | `0xbc1440` | `0x8a0` | statistics report | CERTAIN |
+| `ctor` / `dtor` | `0xbca840` / `0xbca2e0` | — | `SBSizeLegalization(PassOptions const&)` | CERTAIN |
+| `update_liveN` | `0xbc6510` | `0x250` | **not** this pass — a `LoopOptimization` helper | CERTAIN |
 
 Addresses and sizes are from `nm -DC libwalrus.so` (body frame); sizes by bisection. The `mem_loc_info` DenseMap helpers (`operator[]` `0xbca740`, `grow` `0xbca560`, `LookupBucketFor` `0xbca480`) are emitted inline.
 

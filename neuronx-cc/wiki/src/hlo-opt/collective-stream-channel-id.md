@@ -2,15 +2,13 @@
 
 > *All addresses on this page are virtual addresses (VMA) for neuronx_cc 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt`; resolve via `objdump --start-address` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). Other builds will differ.*
 
-> **CORRECTION (audit #820) —** an earlier reconstruction labelled `neuron::IsCollective @0x1f7e010` with masks `0x650` + `0x810000000000001`. Those masks belong to `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58, **not** to `IsCollective`. Byte-disassembly (below) proves `IsCollective` uses masks **`0x20000410`** (low band, indexed by `op` directly) + **`0x80011`** (high band, indexed by **`op − 0x53`**) plus `op == 7`, selecting opcodes **{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}**. The §"The collective predicates" section now gives each of the three predicates (`IsCollective`, `NextChannelId`, checker #58) separately with its own disassembly; self-verification item #5 is re-derived accordingly.*
-
 ## Abstract
 
 Three HLO passes in `hlo-opt` assign the two identity fields that the Neuron runtime communicator keys on when it schedules collectives: the **`stream_id`** frontend attribute (which hardware collective stream a collective is issued on) and the **`channel_id`** (the globally-unique handle that pairs collective participants across replicas). They are small, adjacent, and Neuron-authored — none of the three exists in stock XLA. `CollectiveStreamIdChecker` (registration order #58) runs early and is a read-only presence detector; `NeuronCollectiveStreamIdInjector` (#81) and `NeuronUniqueChannelIdEnforcer` (#82) run late and adjacent, the injector stamping a `stream_id` digit on every collective and the enforcer immediately repairing any `channel_id` collisions it leaves behind.
 
 The two transforms are not the monotonic-counter allocators their names suggest. The injector partitions collectives into exactly **two** streams — `"0"` and `"1"` — by **replica-group equivalence** against two exemplar groups it discovers from `collective_type` frontend attributes (tensor-parallel collectives → group 0, FSDP/data-parallel collectives → group 1). The enforcer assigns fresh `channel_id`s only on collision, drawing them from `xla::hlo_query::NextChannelId(module)` (one past the current global maximum) and inserting each new id back into a SwissTable so two collisions never alias. The checker mutates nothing; its sole output is a single boolean reported through the second `Run` argument: "does some collective already carry a `stream_id`?"
 
-This page reconstructs all three `Run` bodies, the shared collective predicates (a typed `DynCast` route in the injector, an inline `HloOpcode` bitmask route in the enforcer and checker), the `stream_id` 2-way partition, and the channel-id renumbering loop. The HLO opcode and replica-group concepts are owned by [Part 13](../part13/channel-id-replica-group.md); the collective lowering that consumes `stream_id` downstream is [§4.3](collectives-to-customcall.md).
+This page reconstructs all three `Run` bodies, the shared collective predicates (a typed `DynCast` route in the injector, an inline `HloOpcode` bitmask route in the enforcer and checker), the `stream_id` 2-way partition, and the channel-id renumbering loop. The HLO opcode and replica-group concepts are owned by [Part 13](../distribution/mesh-replica-group-math.md); the collective lowering that consumes `stream_id` downstream is [Collectives to CustomCall](collectives-to-customcall.md).
 
 For reimplementation, the contract is:
 
@@ -35,7 +33,7 @@ For reimplementation, the contract is:
 
 All three passes derive `xla::HloPassInterface`; `name()` is vtable slot `vptr+0x10`, `Run` is `vptr+0x18`. Each `name()` is the canonical 11-byte stub `mov eax,len; mov edx,offset str; ret`, and all three name literals were read verbatim from rodata.
 
-### The pass identities (CERTAIN)
+### The pass identities
 
 | Pass | Class symbol | `name()` key (len) | Run |
 |---|---|---|---|
@@ -47,7 +45,7 @@ All three passes derive `xla::HloPassInterface`; `name()` is vtable slot `vptr+0
 
 ### The collective predicates — three byte-proven variants
 
-A "collective" must be recognised before any field is touched. The family contains **one typed predicate** and **two distinct bitmask predicates** with *different* masks and *different* high-band indexing. The earlier version of this page collapsed all three into a single `op==7 / 0x650 / 0x810…1` routine and attributed those masks to `neuron::IsCollective`; that conflation is wrong (see CORRECTION below). Each predicate is byte-disassembled separately here.
+A "collective" must be recognised before any field is touched. The family contains **one typed predicate** and **two distinct bitmask predicates**, with different masks *and* different high-band indexing. They look alike enough to be mistaken for one routine, so each is disassembled separately below.
 
 **Typed route — injector only.** `xla::DynCast<HloCollectiveInstruction>(inst)`; non-null ⇒ collective. This is class-based (RTTI-style cross-cast inside the HLO hierarchy) and therefore the stronger test — it admits exactly the instructions that subclass `HloCollectiveInstruction`.
 
@@ -108,13 +106,11 @@ Disassembly evidence: `movzbl 0x14(%rbx),%eax; cmp $0x7,%al; je` · `cmp $0x3,%a
 
 > **GOTCHA — the high-band rebase constant is predicate-specific.** `neuron::IsCollective` rebases by **`−0x53`** (mask `0x80011`); the two stock-style predicates (`NextChannelId`, checker #58) rebase by **`−0x1C`** (mask `0x810000000000001`). A reimplementation that copies one predicate's mask with the other's rebase — or that drops the rebase entirely and tests `bt mask, op` — misclassifies every high-band opcode. The masks are also *not* interchangeable: `0x20000410`/`0x80011` belong only to `IsCollective`; `0x650`/`0x810000000000001` belong only to the NextChannelId-family scan.
 
-> **CORRECTION (audit #820, supersedes #815) —** the earlier single-routine reconstruction labelled `neuron::IsCollective @0x1f7e010` with masks `0x650` + `0x810000000000001` and a high-band `op − 0x1C` rebase (bits `{0,52,59}` → opcodes `{0x1c,0x50,0x57}`). Those masks and that rebase actually belong to `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58 — **not** to `IsCollective`. Byte-disassembly proves `IsCollective` uses entirely different masks `0x20000410` (low, `op` direct) + `0x80011` (high, **`op − 0x53`**) plus `op == 7`, selecting `{0x4,0x7,0xa,0x1d,0x53,0x57,0x66}`. The three predicates are now broken out separately above with their own disassembly evidence.
-
 ### The `stream_id` frontend attribute
 
 `"stream_id"` is the verbatim key both transforms key on. The injector emplaces it; the checker looks it up. It lives in each collective's `FrontendAttributes` proto map, reached at `inst+0x30` (the metadata/frontend-attributes block). The literal is read from rodata `0x2768c6` in the checker (referenced 5 times) and built from rodata `0x411858` in the injector (referenced once, at `0x1f9592a`).
 
-### Shared HloInstruction layout (CERTAIN, cross-checked across all three passes)
+### Shared HloInstruction layout (cross-checked across all three passes)
 
 | Field | Offset | Type | Used by |
 |---|---|---|---|
@@ -180,7 +176,7 @@ function Injector_Run(module):                          // 0x1f951a0
     return StatusOr<bool>{ OK, changed };                // result[+8]=changed, result[+0]=0
 ```
 
-### The stream-id space — binary {"0","1"} (CERTAIN)
+### The stream-id space — binary {"0","1"}
 
 The injected value is a **single ASCII digit**, built by `std::string::_M_construct(1, c)` then `*p = (uint8)r15d + 0x30` (the `+0x30` ASCII offset at `0x1f95900`/`0x1f9590c`). `r15d ∈ {0,1}` is the boolean result of the `ReplicaGroupsEqual` comparisons. Therefore:
 
@@ -189,7 +185,7 @@ The injected value is a **single ASCII digit**, built by `std::string::_M_constr
 
 > **QUIRK —** despite the "id injector" name this is **not** a monotonic counter. The stream space is fixed at size 2, and the partition is an equivalence relation over replica-groups, not an enumeration. The collective's *own* `collective_type` is irrelevant during scan 3 — only its replica-group shape decides the digit. A reimplementation that allocates incrementing ids, or that keys off each collective's own `collective_type`, is wrong. The `collective_type` annotations are consulted **only** in scans 1/2 to pick the two exemplars.
 
-### The `collective_type` vocabulary (CERTAIN — stack-built literals)
+### The `collective_type` vocabulary (stack-built literals)
 
 The four recognised `collective_type` values are built on the stack from immediate fragments, decoded directly from the injector's `constants_used`:
 
@@ -236,7 +232,7 @@ function HasFAKV(inst, key, value):                     // 0x1f94d00
 
 ### Considerations
 
-- **Scan-1/2 "last-match-wins."** Each discovery scan breaks on the first matching collective *per computation* and overwrites `group0`/`group1`, so the captured exemplar is the *last* matching computation's *first* matching collective. With homogeneous TP/FSDP groups (the expected case) the result is well-defined; with heterogeneous groups the captured exemplar is the final one. (CERTAIN from the `break`/overwrite structure.)
+- **Scan-1/2 "last-match-wins."** Each discovery scan breaks on the first matching collective *per computation* and overwrites `group0`/`group1`, so the captured exemplar is the *last* matching computation's *first* matching collective. With homogeneous TP/FSDP groups (the expected case) the result is well-defined; with heterogeneous groups the captured exemplar is the final one. This is read off the `break`/overwrite structure.
 - **Scan-3 traverses the raw instruction list, not post-order** — a deliberate asymmetry with scans 1/2. The stamping order is irrelevant since each collective's digit depends only on its own replica-groups, but a reimplementer must not assume post-order here.
 - **Integer-typed collectives are skipped in discovery** (`AreAllLeavesIntegers`) but **not in stamping** — scan 3 stamps every collective regardless of element type.
 
@@ -271,11 +267,11 @@ function Enforcer_Run(module):                          // 0x1fecb40
     return StatusOr<bool>{ OK, changed };                // result[+8]=changed, result[+0]=0
 ```
 
-### The next-id source: `hlo_query::NextChannelId` (`0x8ab1ac0`, CERTAIN)
+### The next-id source: `hlo_query::NextChannelId` (`0x8ab1ac0`)
 
 `NextChannelId` walks every instruction of every computation; for each collective-class opcode whose `channel_id` is engaged (`*(u8*)(inst+0x210) != 0`, value at `inst[+0x208]`) it tracks `r8 = max(r8, channel_id + 1)`, starting from `r8 = 1`. It returns `max(existing channel_id) + 1` with floor 1. Its inlined collective predicate is **Predicate B** above (masks `0x650` / `0x810000000000001`, high band rebased by `op − 0x1C`) — *not* the `neuron::IsCollective` mask family the enforcer's own loop uses. The masks are materialised up-front in the prologue (`movabs $0x810000000000001,%r10; mov $0x650,%r9d`), and its `constants_used` table contains `1616` (`0x650`) and `580964351930793985` (`0x810000000000001`). So the new-id space is `[NextChannelId, ∞)`: strictly above every pre-existing id.
 
-### Why it is correct (CERTAIN)
+### Why it is correct
 
 - **The uniqueness key is the full `optional<long>`** — both the engaged bit and the value. The set policy is `FlatHashSetPolicy<optional<long>>` (confirmed in the enforcer's callee list), hashed by `HashStateBase<MixingHashState>::combine<optional<long>>` (`0x1fec7c0`) with `prepare_insert` (`0x1fec970`). A *disengaged* channel_id is itself a distinct set element, so two no-channel collectives still count as a collision after the first.
 - **First-seen wins, every later collision renumbers.** The first collective carrying a given id keeps it; subsequent carriers of the same id get `nextId`, `nextId+1`, … Because each assigned id is inserted back into `seen`, two collisions can never receive the same new id, and because they all start above the global maximum they can never alias a pre-existing id.
@@ -326,15 +322,15 @@ function Checker_Run(module, arg2):                     // 0x1e8c800
     return StatusOr<bool>{ OK, false };                  // @0x1e8c9e3 — ALWAYS {0, false}
 ```
 
-### Read-only contract (CERTAIN on mechanism)
+### Read-only contract
 
 The checker's callee list is the proof of its read-only nature: `SyncMapWithRepeatedField`, `_Hash_bytes` (`0x9a1eb00`), and `memcmp` (×4) — **no** `set_channel_id`, **no** map emplace, **no** allocation. It never mutates the module and its `StatusOr<bool>` is **always `{OK, false}`** (`result[+8]=0`, `result[+0]=0` at `0x1e8c9e3`). The only literal it embeds is `"stream_id"` (rodata `0x2768c6`, referenced 5 times); it carries no `Check failed:` strings of its own — the lone abort site in this whole family is the injector's `HasFAKV` corrupted-map guard.
 
-### The second `Run` argument (MED — caller contract not directly observable)
+### The second `Run` argument — caller contract not directly observable
 
-The stock `HloPassInterface::Run` second parameter is `flat_hash_set<string_view> const& execution_threads`. This `Run` instead treats it as a pointer-to-struct and writes a byte through `*(*(arg2)+8)` on the first positive hit. (The injector uses the same arg purely as a harmless scratch out-param for protobuf `FindHelper`.) Because every `Run` invocation reaches the pass indirectly through the vtable (`vptr+0x18`), the exact caller-side struct could not be confirmed from this binary. The most consistent reading: the checker is invoked with a small `{…, bool* found}` context and reports "stream_id present" into `found`.
+The stock `HloPassInterface::Run` second parameter is `flat_hash_set<string_view> const& execution_threads`. This `Run` instead treats it as a pointer-to-struct and writes a byte through `*(*(arg2)+8)` on the first positive hit. (The injector uses the same arg purely as a harmless scratch out-param for protobuf `FindHelper`.) Because every `Run` invocation reaches the pass indirectly through the vtable (`vptr+0x18`), the exact caller-side struct could not be confirmed from this binary. The most consistent reading is **[INFERRED]**: the checker is invoked with a small `{…, bool* found}` context and reports "stream_id present" into `found`.
 
-> **CORRECTION (D-B15) —** an earlier pass survey listed #58 only by name with no role, implying a stream-id *consistency* validator. The binary shows it is a presence detector that always returns "unchanged" and never compares stream-ids across collectives. The mechanism is CERTAIN; the semantic of the `bool* found` out-param is MED because the caller is reached indirectly.
+> **GOTCHA — #58 is a presence detector, not a consistency validator.** Its name invites the reading that it checks stream-ids *agree* across collectives. It never compares two stream-ids. It scans for the presence of the key, always reports the module unchanged, and mutates nothing.
 
 ### Function Map
 
@@ -347,17 +343,38 @@ The stock `HloPassInterface::Run` second parameter is `flat_hash_set<string_view
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary and limits of this reading
 
-The five strongest claims, re-checked against the binary:
+The stream space really is just two values. The injector stamps a one-character string via
+`_M_construct(1,c)` with `*p = r15d + 0x30` and `r15d ∈ {0,1}`, decided by two
+`ReplicaGroupsEqual` calls; the injector's only `"stream_id"` reference is the single emplace
+at `0x1f9592a`. The channel-id renumbering is equally direct: the enforcer's first call is
+`hlo_query::NextChannelId` (`0x8ab1ac0`), followed by
+`FlatHashSetPolicy<optional<long>>::prepare_insert` and `set_channel_id`, and NextChannelId's
+constant pool carries both the floor value `1` and the opcode masks. The checker's read-only
+character shows in its callee set — sync, hash, memcmp, stack-check, nothing that sets or
+allocates — and in its return site `0x1e8c9e3` writing `{0,0}`. The `collective_type`
+vocabulary decodes from stack-built immediates to `collective_type`, `tp_all_gather`,
+`fsdp_all_gather` and the paired `*_reduce_scatter` names, matching the `coalesce_fsdp_*`
+producer symbols.
 
-1. **Stream space is exactly {"0","1"}** — VERIFIED. Injector stamps a 1-char string via `_M_construct(1,c)` with `*p = r15d + 0x30`, `r15d` ∈ {0,1} from two `ReplicaGroupsEqual` calls. The only `"stream_id"` reference in the injector is the single emplace at `0x1f9592a`. CERTAIN.
-2. **Channel-ids are renumbered from `NextChannelId(module)`** — VERIFIED. Enforcer's callee list contains `hlo_query::NextChannelId` (`0x8ab1ac0`) as its first call, plus `FlatHashSetPolicy<optional<long>>::prepare_insert` and `set_channel_id`. NextChannelId's `constants_used` includes `1` (the floor) and the opcode masks. CERTAIN.
-3. **The checker is read-only and always returns {OK,false}** — VERIFIED. Checker callees are only sync/hash/memcmp/stack-check; no setter or allocator; return site `0x1e8c9e3` writes 0/0. CERTAIN.
-4. **The `collective_type` vocabulary is exactly the four TP/FSDP literals** — VERIFIED. Stack-built immediates decode to `collective_type`, `tp_all_gather`, `fsdp_all_gather` (and the paired `*_reduce_scatter` family); the `coalesce_fsdp_*` producer symbols confirm the same vocabulary. CERTAIN on the four values.
-5. **The three bitmask predicates use predicate-specific masks and high-band rebases** — VERIFIED by separate disassembly. `neuron::IsCollective @0x1f7e010` uses `mov $0x20000410` (low, `op` direct) + `sub $0x53,%ecx; mov $0x80011` (high, `op − 0x53`, guard `cmp $0x14,%cl; cmovae`) + `cmp $0x7`, selecting `{0x4,0x7,0xa,0x1d,0x53,0x57,0x66}`. `hlo_query::NextChannelId @0x8ab1ac0` and the inlined checker #58 @0x1e8c800 instead use `0x650` (low, `op` direct) + `0x810000000000001` (high, `lea -0x1c`/`sub $0x1c` → `op − 0x1C`, guard `cmp $0x3b`); NextChannelId adds the trailing `(op & ~2)==0x1d`, `op==0x53`, `(op−0x66)≤1` comparisons (full set `{0x4,0x6,0x7,0x9,0xa,0x1c,0x1d,0x1f,0x50,0x53,0x57,0x66,0x67}`), while checker #58 stops at the two-band `bt` core (set `{0x4,0x6,0x7,0x9,0xa,0x1c,0x50,0x57}`). CERTAIN on all masks, rebases, and selected opcode *values*; the opcode→collective-*name* mapping is **INFERRED** (MED) — the `HloOpcode` enum table was not transcribed on this page; see [Part 13](../part13/channel-id-replica-group.md).
+The three-predicate split is the claim most worth double-checking, and each half is
+separately disassembled. `neuron::IsCollective` @`0x1f7e010` uses `mov $0x20000410` (low band,
+`op` direct) plus `sub $0x53,%ecx; mov $0x80011` (high band, `op − 0x53`, guarded by
+`cmp $0x14,%cl; cmovae`) and `cmp $0x7`, selecting `{0x4,0x7,0xa,0x1d,0x53,0x57,0x66}`.
+`hlo_query::NextChannelId` @`0x8ab1ac0` and the inlined checker #58 @`0x1e8c800` use entirely
+different values — `0x650` (low, `op` direct) and `0x810000000000001` (high, via
+`lea -0x1c` / `sub $0x1c`, guarded by `cmp $0x3b`). NextChannelId then adds trailing
+`(op & ~2)==0x1d`, `op==0x53` and `(op−0x66)≤1` comparisons, giving
+`{0x4,0x6,0x7,0x9,0xa,0x1c,0x1d,0x1f,0x50,0x53,0x57,0x66,0x67}`, while checker #58 stops at
+the two-band `bt` core, giving `{0x4,0x6,0x7,0x9,0xa,0x1c,0x50,0x57}`.
 
-**INFERRED / not traced:** the `collective_type` *producer* pass (upstream of hlo-opt); the checker's exact `arg2` struct type (indirect caller); the precise opcode names behind mask bits other than `op==7` = `kAllReduce`.
+Every mask, rebase, and selected opcode *value* above is read from the disassembly. What is
+*not* pinned here is the opcode→collective-*name* mapping: the `HloOpcode` enum table is not
+transcribed on this page beyond `op == 7` = `kAllReduce`, so the names behind the other bits
+are [INFERRED] — see [Part 13](../distribution/mesh-replica-group-math.md). Also untraced: the
+pass upstream of `hlo-opt` that *produces* `collective_type`, and the exact struct type of the
+checker's second `Run` argument, whose caller is reached only indirectly.
 
 ---
 
@@ -369,9 +386,9 @@ The five strongest claims, re-checked against the binary:
 | #81 | `NeuronCollectiveStreamIdInjector` | stamps the 2-way `stream_id` partition |
 | #82 | `NeuronUniqueChannelIdEnforcer` | runs immediately after #81; repairs `channel_id` collisions |
 
-> **NOTE —** the registration order (#58 ≪ #81 → #82) is CERTAIN, but the actual driver run-list is assembled in the HLO-to-Tensorizer Python/driver layer, not in `hlo-opt`. The "checker gates injector, enforcer cleans up after injector" reading is the most consistent with the ordering but is not directly observable in this binary.
+> **NOTE —** the registration order (#58 ≪ #81 → #82) is read off the registry, but the actual driver run-list is assembled in the HLO-to-Tensorizer Python/driver layer, not in `hlo-opt`. The "checker gates injector, enforcer cleans up after injector" reading is the most consistent with the ordering but is not directly observable in this binary.
 
 ## Cross-References
 
-- [Channel-ID & Replica-Group](../part13/channel-id-replica-group.md) — Part 13: the `channel_id`/`replica_group` HLO concepts and the `HloOpcode` enum these masks index
+- [Channel-ID & Replica-Group](../distribution/mesh-replica-group-math.md) — Part 13: the `channel_id`/`replica_group` HLO concepts and the `HloOpcode` enum these masks index
 - [Collectives to CustomCall](collectives-to-customcall.md) — §4.3: the downstream lowering that consumes `stream_id` to place collectives on backend streams

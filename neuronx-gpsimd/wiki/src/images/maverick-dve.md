@@ -26,13 +26,13 @@ and unlike the v4→v4+ step, the delta is **real and structural**.
 > `0x9b`-class); **(3)** the maverick address-map folds `ACT_CONTROL_TABLE` **under the DVE MMIO
 > block** with no standalone ACT engine instance. So the fold is real at the **profiling/scheduling**
 > level and the **datapath-rename** level — **not** as a merged ACT handler image. `[HIGH/OBSERVED —
-> the absence, the PROF arming, the rename, and the map fold are all byte/string verified this
-> session; the "fold" *causal* reading INFERRED-HIGH]`
+> the absence, the PROF arming, the rename, and the map fold are all byte/string verified;
+> the "fold" *causal* reading INFERRED-HIGH]`
 
 > **WALL — MAVERICK (v5) is HEADER-OBSERVED only.** The carved `S:` rosters, the PROF CAM/TABLE
 > bytes, the reset/boot trampoline (decoded with `ncore2gp`), the getter immediates, the carve
 > sha256s, the shipped ISA-enum + opcode-deprecation comments, and the address-map fold are all
-> **OBSERVED** this session. But **every claim about the v5 image *interior*** — the per-opcode→
+> **OBSERVED**. But **every claim about the v5 image *interior*** — the per-opcode→
 > handler-body binding, the precise semantics of the migrated handlers, the runtime selection of
 > v5 — is **INFERRED** and flagged inline. `v5 Q7_CC_TOP` is **FILE-ABSENT**; `arch_id 36` is
 > **INFERRED** (never binary-observed). Treat the rosters/PROF/reset as ground truth and the
@@ -78,8 +78,8 @@ The full v4+→v5 step, leading with the fold thesis. Δ marks: **`F`** the fold
 | `.a` byte-reconcile | 8/8 `.so`==`.a` | **0 MAVERICK members in `.a`** — single-source | **R** |
 | DRAM magic / SEQ model / `engine_idx=3` | `0x6099cb34`, runtime-computed | identical | **=** |
 
-`[HIGH/OBSERVED — every Δ row re-verified this session; MAVERICK column carved fresh from
-`libnrtucode_internal.so` (8/8 shas), MARIANA_PLUS column re-carved (8/8 anchors MATCH); per-row
+`[HIGH/OBSERVED — MAVERICK column carved from
+`libnrtucode_internal.so` (8/8 shas), MARIANA_PLUS column carved (8/8 anchors MATCH); per-row
 anchors in §2–§7]`
 
 > **NOTE — what a MARIANA_PLUS→MAVERICK DVE swap actually is.** This is the **opposite** of the
@@ -90,14 +90,14 @@ anchors in §2–§7]`
 > *dequant* machinery lives in the Q7 POOL via `0x7b`, but `0xe3` itself stays DVE-bound), the DVE
 > errata *dropped*, **smaller** in every variant, internal-twin-only, an independent build (6.1%
 > 16-byte block similarity). The dispatch *mechanism* (187-entry `addi −48` table) survives; almost
-> everything else moved. `[HIGH/OBSERVED]`
+> everything else moved.
 
 ---
 
 ## 2. Carve provenance — single-source, 8/8 sha MATCH
 
 MAVERICK is carried **only** by `libnrtucode_internal.so`
-(`sha256 b7c67e89…632fc329b`, re-hashed this session = MATCH; ELF64 x86-64 DYN, not stripped,
+(`sha256 b7c67e89…632fc329b` = MATCH; ELF64 x86-64 DYN, not stripped,
 identity-mapped — `.rodata` VA `0x46b0` == file offset `0x46b0`, so a blob's `.data` VA == its file
 offset). `nm` lists exactly **14** `MAVERICK_NX_DVE_*_get` accessors (8 real + 6 zero-size SRAM/
 EXTRAM boundary cursors); each is the canonical 4-instruction stub
@@ -115,8 +115,8 @@ EXTRAM boundary cursors); each is the canonical 4-instruction stub
 `[HIGH/OBSERVED — 14/14 getters `nm`-resolved at `.text 0x9b55a0..0x9b5cc0`; img-ptr/size immediates
 decoded; identity-map `.rodata` VA==fileoff confirmed via `readelf -SW`]`
 
-The **8 real carves**, sliced at the getter `(img-ptr,size)` and sha256'd this session — **all 8
-MATCH** the SX-IMG-18 anchors byte-for-byte:
+The **8 real carves**, sliced at the getter `(img-ptr,size)` and sha256'd — **all 8
+MATCH** the published anchors byte-for-byte:
 
 | IMAGE | off | size | sha256[:16] |
 |---|---|---:|---|
@@ -129,14 +129,15 @@ MATCH** the SX-IMG-18 anchors byte-for-byte:
 | PROF\_CAM | `0x9a42a0` | `0x400` | `dbff2b840c3f5082` |
 | PROF\_TABLE | `0x9a46a0` | `0x2000` | `f349e417293e7b47` |
 
-`[HIGH/OBSERVED — carved + sha256'd this session]`
+`[HIGH/OBSERVED — carved + sha256'd]`
 
 > **GOTCHA — no `.a` byte-reconcile exists for MAVERICK.** `libnrtucode.a` (`sha 158dadc5`) carries
 > **0 MAVERICK members** (**435** total = **420 image members** [CAYMAN 124 / MARIANA 124 /
 > MARIANA_PLUS 124 / SUNDA 48 / MAVERICK 0] **+ 15 framework `.c.o`** objects, verified by `ar t`).
 > Unlike the MARIANA_PLUS DVE carve (which reconciles 8/8 `.so`==`.a`), MAVERICK
 > is **internal.so-EXCLUSIVE** — cross-validation is by the getter `(img-ptr,size)` parse + the sha256
-> match to SX-IMG-18, **not** by an `.a` member. The shipped `.a` topping out at MARIANA_PLUS is
+> match to the published anchors, **not** by an `.a` member. The shipped `.a` topping out at
+> MARIANA_PLUS is
 > itself a gen-step signature. `[HIGH/OBSERVED — `nm -D` MAVERICK = 0, `ar t` MAVERICK = 0]`
 
 ### 2a. DVE is the HEAD of the MAVERICK NX block (ACT amputated)
@@ -159,7 +160,7 @@ arithmetic; DVE→PE adjacency from the cursor resolution]`
 ## 3. The fold footprint #1 — the DVE PROF CAM arms the ACT opcodes
 
 The DVE PROF CAM is a `0x400` table of 16-byte records `{opcode(u32 LE), mask(u32), enable(u32),
-rsvd}`. Decoded byte-for-byte this session (records with `enable≠0`):
+rsvd}`. Decoded byte-for-byte (records with `enable≠0`):
 
 | PROF\_CAM | sha[:8] | armed records | the ACT opcodes 0x23/0x25 |
 |---|---|---:|:---:|
@@ -213,8 +214,8 @@ deprecation comments read from the shipped enum]`
 > `0x1e3` disappearance is the 9-bit→8-bit normalization of `0xe3`'s arming. `[HIGH/OBSERVED — both
 > CAMs' raw masks decoded]`
 
-> **CORRECTION — the PROF "+10" is NOT new opcode-space; it is a precision refinement to SX-IMG-18's
-> framing.** All 10 added opcodes (`0x23/0x25/0x58/0x61/0x62/0x6c/0x6d/0x6e/0x6f/0x99`) **already
+> **CORRECTION — the PROF "+10" is NOT new opcode-space; it is a precision refinement to the
+> earlier framing.** All 10 added opcodes (`0x23/0x25/0x58/0x61/0x62/0x6c/0x6d/0x6e/0x6f/0x99`) **already
 > exist** in the MARIANA ISA enum with identical values + names (verified against
 > `neuron_mariana_arch_isa` `common.h`). So the PROF delta is **newly arming pre-existing opcodes on
 > the DVE engine** — *not* opcode-space growth. The genuine OPCODE-enum growth (159→165) is a
@@ -306,7 +307,7 @@ firmware-image absence with map-level evidence. `[HIGH/OBSERVED — engine-insta
 ## 5. The v5 reset / boot geometry — a new `−0x20` shift (NOT the MARIANA `+0x1c`)
 
 The MAVERICK DVE PERF IRAM head bytes are `06 75 00 00 00 00 86 76 00`, decoded with the native
-`ncore2gp` `xtensa-elf-objdump` (exit 0):
+`ncore2gp` `xtensa-elf-objdump`:
 
 ```asm
    0x000:  06 75 00   j 0x1d8   ; primary reset -> boot trampoline
@@ -330,7 +331,7 @@ vs **MARIANA_PLUS DVE** (`06 7d 00` = `j 0x1f8` / `86 7e 00` = `j 0x204` → `en
 | dispatch base | `0x1250` | `0x1490` | (relocated) |
 
 This is a **new boot-stub geometry**, **not** the MARIANA `+0x1c` carried forward (which MARIANA_PLUS
-inherited unchanged). `[HIGH/OBSERVED — all bytes decoded with `ncore2gp`, exit 0; `j 0x1d8` / `j
+inherited unchanged). `[HIGH/OBSERVED — all bytes decoded with `ncore2gp`; `j 0x1d8` / `j
 0x1e4` / `const16 a0,148` / `const16 a4,0x1490` / the `extui;addx4;l32i;jx` dispatch read
 instruction-exact]`
 
@@ -360,8 +361,8 @@ read from the DRAM bytes]`
 > normalization, the table base/default/real-count, the reset/boot trampoline, the PROF arming, and
 > the `S:` rosters are all HIGH/OBSERVED. But the **per-opcode → handler-*body* binding** (which
 > opcode runs which handler body inside the v5 DVE image) is **not byte-resolved** — the PERF/TEST
-> IRAM vector datapath desyncs under FLIX-VLIW bundling in the linear sweep (the documented SX-FW-00
-> ceiling). Every interior-body claim is **INFERRED**, flagged inline. `[HIGH for the spine + the
+> IRAM vector datapath desyncs under FLIX-VLIW bundling in the linear sweep (the documented
+> FLIX-desync ceiling). Every interior-body claim is **INFERRED**, flagged inline. `[HIGH for the spine + the
 > rosters/PROF; MED/INFERRED per-handler body]`
 
 > **NOTE — the `movi a3,192` inner-bound sites are NOT the dispatch.** The DVE DEBUG IRAM has many
@@ -432,15 +433,15 @@ the MARIANA→MARIANA_PLUS IRAM *growth*. **Build independence:** MAVERICK DVE P
 MARIANA_PLUS DVE PERF IRAM at **byte 1** (the reset immediate `75` vs `7d`) with only **6.1% positional
 16-byte block similarity** (231/3776) — a fully independent v5 build, **not** a relocated recompile
 (contrast the v4→v4+ step, which shared a `0x212`-byte prefix). The PERF IRAM is a genuine sequencer:
-107 `entry` / 134 `retw` / 340 `call8` (decoded `ncore2gp`, exit 0). `[HIGH/OBSERVED — sizes from
-getter `movq`; the byte-1 divergence + block-similarity computed this session]`
+107 `entry` / 134 `retw` / 340 `call8` (decoded `ncore2gp`). `[HIGH/OBSERVED — sizes from
+getter `movq`; the byte-1 divergence + block-similarity computed]`
 
 ---
 
 ## 7. Engine-model confirmation — `engine_idx=3` (DVE), NC-v5, ACT=1 logical-only
 
-The shipped ISA enum (re-read this session,
-`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h:142-149`):
+The shipped ISA enum
+(`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h:142-149`):
 
 ```c
 NEURON_ISA_TPB_NEURON_ENGINE { PE=0, ACT=1, POOL=2, DVE=3, TPB_SP=4, TOP_SP=5 }
@@ -468,38 +469,38 @@ INFERRED-HIGH from the string + the shared boot path]`
 
 ---
 
-## 8. Adversarial self-verify — the five strongest claims, re-challenged
+## 8. Adversarial self-verify — the five strongest claims
 
-1. **The 5 ACT handlers are absent firmware-wide.** Re-challenged: grepped `Activate$`/
+1. **The 5 ACT handlers are absent firmware-wide.** Grepped `Activate$`/
    `ActivateQuantize`/`ActivationTableLoad`/`ActivationReadAccumulator`/`Activate2` over the
    `0x871300..EOF` MAVERICK region (`0x15bac0` bytes) **and** the DVE DEBUG DRAM carve — **0 each in
    both scopes**. `DveReadAccumulator` (1) is *not* a false hit on `ActivationReadAccumulator` (0).
    The baseline agent confirmed the same 5 are also 0 on MPLUS DVE (ACT was a *separate* image there).
    **HOLDS. `[HIGH/OBSERVED]`**
 
-2. **The DVE roster is DVE-native 59 (vs 60), only `QuantizeMx` differs.** Re-challenged: strict
-   `S: \K[A-Za-z][\w/-]*$` count on the MAVERICK DVE DEBUG DRAM = **59**; the baseline agent's same
+2. **The DVE roster is DVE-native 59 (vs 60), only `QuantizeMx` differs.** Strict
+   `S: \K[A-Za-z][\w/-]*$` count on the MAVERICK DVE DEBUG DRAM = **59**; the same
    method on MPLUS DVE = **60** with `QuantizeMx` present; `QuantizeMx` count on MAVERICK = **0**. No
    ACT handler appears in the MAVERICK roster. **HOLDS. `[HIGH/OBSERVED]`**
 
-3. **The DVE PROF CAM newly arms `0x23`/`0x25`.** Re-challenged: decoded both CAMs as 16-byte records.
+3. **The DVE PROF CAM newly arms `0x23`/`0x25`.** Both CAMs decoded as 16-byte records.
    MAVERICK `dbff2b84` arms `{op=0x23,mask=0xff,en=1}` + `{op=0x25,mask=0xff,en=1}`; MARIANA_PLUS
    `ca588683` arms **neither** (positive control: `0x64/0x70/0x71` *are* on MPLUS, *removed* on
    MAVERICK, matching the `// n` deprecation comments; `0xe3` is a 9-bit→8-bit mask respec, not a 4th
    deprecation). The `+10` are all pre-existing in the mariana enum (re-armed, not new opcode-space).
    **HOLDS — with the two refinements. `[HIGH/OBSERVED]`**
 
-4. **`DveReadAccumulator` is the renamed ACT read-accumulator.** Re-challenged: `DveReadAccumulator`
+4. **`DveReadAccumulator` is the renamed ACT read-accumulator.** `DveReadAccumulator`
    present (1) on MAVERICK DVE; `ActivationReadAccumulator` (the ACT op `0x24`, confirmed `// Y` in the
    maverick enum) absent (0). The *rename* (string-level) is OBSERVED; the *functional equivalence* to
    the ACT op is **INFERRED-HIGH** (not byte-traced through the datapath). **HOLDS, with the
    equivalence flagged INFERRED. `[HIGH/OBSERVED rename; INFERRED-HIGH equivalence]`**
 
-5. **The v5 reset geometry is `j 0x1d8` (`−0x20`), not the MARIANA `+0x1c`.** Re-challenged: `xxd` of
+5. **The v5 reset geometry is `j 0x1d8` (`−0x20`), not the MARIANA `+0x1c`.** `xxd` of
    the carve = `06 75 00 00 00 00 86 76`; `ncore2gp` decodes `j 0x1d8` / `j 0x1e4`, boot `const16
    a0,148(0x94); jx a0`, sub-table `const16 a4,0x1490`, dispatch `extui;addx4;l32i;jx`. MPLUS DVE =
    `06 7d` → `j 0x1f8` → `@0x90` / base `0x1250`. The `−0x20`/`+4` shift is exact. **HOLDS.
-   `[HIGH/OBSERVED — decoded `ncore2gp`, exit 0]`**
+   `[HIGH/OBSERVED — decoded `ncore2gp`]`**
 
 All five hold against the binary; the only INFERRED residue is the *causal* fold reading, the
 read-accumulator *functional* equivalence, and `arch_id 36` — each flagged.
@@ -530,13 +531,13 @@ PROF-arming (`0x23`/`0x25` on DVE) + `DveReadAccumulator` on DVE, **not** a DVE-
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm / byte read / shipped-header read this session):
+**HIGH / OBSERVED** (direct disasm / byte read / shipped-header read):
 
-- `internal.so b7c67e89` + `.a 158dadc5` re-hashed (MATCH). 14 `MAVERICK_NX_DVE` getters parsed
+- `internal.so b7c67e89` + `.a 158dadc5` hashed (MATCH). 14 `MAVERICK_NX_DVE` getters parsed
   instruction-exact (8 real + 6 zero cursors → TEST/DEBUG_IRAM + PE_PERF_IRAM, proving DVE→PE).
   **0 MAVERICK members** in `libnrtucode.a` (435 total = 420 image + 15 framework) — single-source carve. 8/8 carves sha256'd
-  (MATCH SX-IMG-18). DVE-is-head; gen boundary byte-exact (`0x86f300+0x2000 == 0x871300`).
-- Reset/boot decoded `ncore2gp` (exit 0): `j 0x1d8` / `j 0x1e4` → `enter_run @0x94`, base `0x1490`;
+  (MATCH the published anchors). DVE-is-head; gen boundary byte-exact (`0x86f300+0x2000 == 0x871300`).
+- Reset/boot decoded `ncore2gp`: `j 0x1d8` / `j 0x1e4` → `enter_run @0x94`, base `0x1490`;
   the `−0x20`/`+4` v5 shift. DRAM magic `0x6099cb34`. Dispatch `extui;addx4;l32i;jx` @`0x1f7`.
 - The 5 ACT handlers = **0** region-wide AND 0 in the DVE image. The DVE PROF arms ACT opcodes
   `0x23`/`0x25` (absent on MPLUS/MARIANA DVE PROF). `DveReadAccumulator` (1) renames the
@@ -564,7 +565,7 @@ PROF-arming (`0x23`/`0x25` on DVE) + `DveReadAccumulator` on DVE, **not** a DVE-
   equivalence INFERRED-HIGH).
 - The exact per-opcode→handler-*body* binding on the v5 DVE dispatch (FLIX-desync frontier; PROF
   arming + handler list + table base/structure are OBSERVED, the per-row body is not byte-resolved —
-  the SX-FW-00 ceiling).
+  the FLIX-desync ceiling).
 - "DGE re-architected to HW DMA" (SEQ fast-path absent OBSERVED; the reading from ADDR-11/GEN-04).
 - `engine_idx` computed at boot (=3 for DVE) — INFERRED from the string + the shared boot path.
 

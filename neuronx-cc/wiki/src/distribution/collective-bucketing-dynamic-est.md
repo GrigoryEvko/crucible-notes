@@ -6,7 +6,7 @@
 
 This page documents two unrelated backend mechanisms that share a tenuous surface similarity — both produce an *estimate* of how much work a region will do — but answer different questions and feed different consumers.
 
-The first is **`BucketizeCCOp`**, a Neuron-authored `sunda` backend pass (base class `TargetLowering`) that **coalesces** runs of consecutive same-kind collectives. Its docstring is verbatim: *"Group small CCOp into bigger CCOp, the input and output of the 'bucketized' CCOp will be represented by tuple."* It walks a function's collective operations, accumulating consecutive `AllGatherOp` / `AllReduceOp` / `ReduceScatterOp` that share a `(group_id, factor)` key, and merges each maximal run into a single tuple-IO collective — concatenating all the operands into one operand tuple and all the results into one result tuple, then erasing the originals. The payoff is amortising the fixed per-collective launch/handshake cost over many small tensors. It is gated by the `ccop-bucketing` compiler flag (help text *"Bucketing ccop in compiler"*); the Python driver exposes this as the `--internal-ccop-*-bucketing` flag family, including per-kind byte-size caps that bound how large a bucket may grow. This is the real collective combiner the bucketing flags drive — confirmed, not a false hit.
+The first is **`BucketizeCCOp`**, a Neuron-authored `sunda` backend pass (base class `TargetLowering`) that **coalesces** runs of consecutive same-kind collectives. Its docstring is verbatim: *"Group small CCOp into bigger CCOp, the input and output of the 'bucketized' CCOp will be represented by tuple."* It walks a function's collective operations, accumulating consecutive `AllGatherOp` / `AllReduceOp` / `ReduceScatterOp` that share a `(group_id, factor)` key, and merges each maximal run into a single tuple-IO collective — concatenating all the operands into one operand tuple and all the results into one result tuple, then erasing the originals. The payoff is amortising the fixed per-collective launch/handshake cost over many small tensors. It is gated by the `ccop-bucketing` compiler flag (help text *"Bucketing ccop in compiler"*); the Python driver exposes this as the `--internal-ccop-*-bucketing` flag family, including per-kind byte-size caps that bound how large a bucket may grow. This is the collective combiner those bucketing flags drive.
 
 The second is the **`DynamicInstEstimator`** / **`DetailDynInst`** pair, both `DotTransform` visitors. `DynamicInstEstimator` is the *coarse* estimator: per instruction it floor-divides the op's `num_dynamic_instances` (its dynamic element/iteration count) by a fixed power-of-two reciprocal — `2^16` for loads/stores, `2^23` for `TensorContractOp` — and accumulates the sum into a class-level `est_inst_count`, plus two shape flags `has_copy` / `has_reduce`. `DetailDynInst` is the *precise* counterpart: it computes the exact per-instruction dynamic element count honouring the full loop-nest domain and predicate masks, then multiplies by `compute_flops` (→ `Total_flops`) and `dtype_size_in_bytes` (→ `Total_bytes_moved`). Both are cost-model inputs for data-dependent (dynamic-trip-count) regions where an exact count is impossible.
 
@@ -129,7 +129,7 @@ function bucketizeCCOp(self, ccops):             // 0x10bd0
     elif isinstance(first, AllReduceOp):     num_all_reduces_coalesced     += n
 ```
 
-The cloned-then-extended operand/result lists are the heart of the rewrite: the docstring's *"input and output ... represented by tuple"* is exactly `combined_operands` / `combined_results` becoming the new op's I/O. The grounding for every step is in `*_full.c`: `clone` (str tab[36]), `operands` (tab[72]), `results` (tab[84]), `_PyList_Extend`, `eraseFromParent` (tab[41]), and the three `isinstance` + `PyNumber_InPlaceAdd` arms onto the coalesced counters. (CONFIRMED — bodies and arithmetic seen in the decompile.)
+The cloned-then-extended operand/result lists are the heart of the rewrite: the docstring's *"input and output ... represented by tuple"* is exactly `combined_operands` / `combined_results` becoming the new op's I/O. The grounding for every step is in `*_full.c`: `clone` (str tab[36]), `operands` (tab[72]), `results` (tab[84]), `_PyList_Extend`, `eraseFromParent` (tab[41]), and the three `isinstance` + `PyNumber_InPlaceAdd` arms onto the coalesced counters — bodies and arithmetic all read from the decompile.
 
 > **NOTE —** there is **no byte-size threshold inside this `.so`**. The pass enforces only the `(group_id, factor, kind)` compatibility key and the `len > 1` guard; the size/count cap that decides *how big a bucket may grow* is applied by the upstream driver that segments the collectives before they reach `transformCCOp`. The grouping here is pure adjacency + key match.
 
@@ -147,7 +147,7 @@ The `ccop-bucketing` flag gates the whole pass (its help string *"Bucketing ccop
 | `--internal-ccop-bucketing-allreduce-size-in-bytes` | Per-bucket byte cap for AllReduces |
 | `--internal-ccop-bucketing-reducescatter-size-in-bytes` | Per-bucket byte cap for ReduceScatters |
 
-> **CORRECTION (Z01) —** an earlier hypothesis treated `BucketizeCCOp` as a possible false hit / unrelated "bucket" (histogram or domain-tiling). The decompiled body and docstring **refute** that: it is the real collective combiner, and the `--internal-ccop-*-bucketing` family drives *this* pass. The divisor-like thresholds seen earlier are the `*-size-in-bytes` byte caps that bound a bucket, applied upstream — not part of the merge.
+> **NOTE —** "bucketing" here means collective batching, not histogramming or domain tiling, and the `*-size-in-bytes` values are byte caps applied by the driver when it segments the collective list — they never appear as divisors inside the merge.
 
 ### Function Map
 
@@ -196,7 +196,7 @@ function transformStmts(self, f):                          // 0x92e0
     return False                                           // Py_False — no IR mutation
 ```
 
-Both `FloorDivide` calls and both constants are CONFIRMED in `*_full.c`: line 5859 divides by `__pyx_int_65536` (auxiliary literal `&off_10000` = `0x10000`), line 6182 divides by `__pyx_int_8388608` (`0x800000`). Both results are `PyNumber_InPlaceAdd`-ed into the class attribute `est_inst_count` via `tp_setattro` on the *class* object, so the estimate accumulates **globally across every function visited**, not per-function.
+Both `FloorDivide` calls and both constants are visible in `*_full.c`: line 5859 divides by `__pyx_int_65536` (auxiliary literal `&off_10000` = `0x10000`), line 6182 divides by `__pyx_int_8388608` (`0x800000`). Both results are `PyNumber_InPlaceAdd`-ed into the class attribute `est_inst_count` via `tp_setattro` on the *class* object, so the estimate accumulates **globally across every function visited**, not per-function.
 
 > **QUIRK —** the accumulator is a *class* attribute, not an instance field. The estimate is one running total over the whole compilation, reset between compilations rather than between functions. A reimplementation that puts `est_inst_count` on `self` produces per-function totals and breaks the cost model's whole-program comparison.
 
@@ -247,7 +247,7 @@ function print_profile(self):                    // 0x14ef0
     print("Total bytes moved:", Total_bytes_moved)
 ```
 
-The iteration domain is supplied by three generators — `domain` (yields the loop-nest indices), `domain_size` (product over `domain_shape`), and `predicated_domain` (intersects the domain with the active masks, using `generateDomains` / `evalMasks`). The two metrics are `compute_flops × n` and `dtype_size × n`. All names — `masked_dynamic_instances`, `predicated_domain`, `domain_size`, `domain_shape`, `is_predicated`, `compute_flops`, `datamove_bytes`, `evalMasks`, `generateDomains` — are CONFIRMED in the string pool; the four method addresses resolve to the named `__pyx_pw_*DetailDynInst*` symbols. The PLT-call shapes (GetAttr + Multiply + InPlaceAdd) are confirmed in disasm; the exact per-line algebra is STRONG (reconstructed from call profiles + line anchors, no full decompile of this `.so`).
+The iteration domain is supplied by three generators — `domain` (yields the loop-nest indices), `domain_size` (product over `domain_shape`), and `predicated_domain` (intersects the domain with the active masks, using `generateDomains` / `evalMasks`). The two metrics are `compute_flops × n` and `dtype_size × n`. All names — `masked_dynamic_instances`, `predicated_domain`, `domain_size`, `domain_shape`, `is_predicated`, `compute_flops`, `datamove_bytes`, `evalMasks`, `generateDomains` — appear in the string pool, and the four method addresses resolve to the named `__pyx_pw_*DetailDynInst*` symbols. The PLT-call shapes (GetAttr + Multiply + InPlaceAdd) are read from disassembly; this `.so` was not fully decompiled, so the exact per-line algebra is reconstructed from call profiles and line anchors.
 
 > **NOTE —** the loop trip count that sizes the domain comes from data-dependent control flow. For a dynamic `for` region (see [InstDynamicForLoop](../penguin/dynamic-for-loop.md)), the trip count is itself an estimate, so the FLOP/byte total `DetailDynInst` derives from it is necessarily an estimate — the same "estimate, not exact" property the coarse path has, but with predication and full-domain precision rather than a power-of-two reciprocal.
 
@@ -288,7 +288,7 @@ BucketizeCCOp.num_*_coalesced ─────────→ Statistics (diagnos
                                           SPMD collective emitter must lower (fewer, larger CCs)
 ```
 
-`est_inst_count` (coarse) and `Total_flops` / `Total_bytes_moved` (precise) are cost-model inputs: a per-function instruction / FLOP / byte estimate used by scheduling and tiling heuristics where an exact count is impossible. The values are emitted as stats (CONFIRMED); the specific downstream module that reads them is not in these `.so` files, so "cost model / scheduler" is the grounded scope and the exact autotuner hook is INFERRED.
+`est_inst_count` (coarse) and `Total_flops` / `Total_bytes_moved` (precise) are cost-model inputs: a per-function instruction / FLOP / byte estimate used by scheduling and tiling heuristics where an exact count is impossible. The values are emitted as stats; the specific downstream module that reads them is not in these `.so` files, so "cost model / scheduler" is as far as the evidence reaches and the exact autotuner hook is [INFERRED].
 
 `BucketizeCCOp`'s coalescing directly reduces the *number* of collective instructions the [SPMD collective emitter](spmd-collective-emission.md) must schedule — fewer, larger collectives mean lower aggregate launch/handshake overhead and a smaller schedule. The `num_*_coalesced` counters are diagnostics measuring that reduction.
 
@@ -304,7 +304,7 @@ These are distinct collective optimisations. `BucketizeCCOp` does **not** call a
 | `CCOpFusion` / `FineGrainedCCOpFusion` | A rewrite that **fuses one collective into surrounding compute/loop** to overlap it with adjacent work — one CC at a time, vs bucketing's many-CC batch. Caveat string: *"BirKernel has static IO which cannot have CCop Fusion."* |
 | `CoalesceCCOp` | A related but distinct coalescer that merges by **factorising rank/shape into a shared buffer** (`FactorizeRankDim`), where `BucketizeCCOp` tuple-batches whole CCs by `(group_id, factor)`. |
 
-**Pipeline order** (STRONG, from `sunda CodeGenFlow` co-resident strings): `HoistFSDPCollectives → BucketizeCCOp (ccop-bucketing) → CoalesceCCOp → CCOpFusion / FineGrainedCCOpFusion → LegalizeCCOpLayout`. The exact `BucketizeCCOp`-vs-`CoalesceCCOp` ordering is INFERRED (both present; bucketing is the coarse tuple-batch ahead of the rank-factorising coalesce).
+**Pipeline order**, from the `sunda CodeGenFlow` co-resident strings: `HoistFSDPCollectives → BucketizeCCOp (ccop-bucketing) → CoalesceCCOp → CCOpFusion / FineGrainedCCOpFusion → LegalizeCCOpLayout`. The relative position of `BucketizeCCOp` and `CoalesceCCOp` is [INFERRED] — both are present, and placing the coarse tuple-batch ahead of the rank-factorising coalesce is the reading that fits, but the strings do not order them.
 
 ---
 

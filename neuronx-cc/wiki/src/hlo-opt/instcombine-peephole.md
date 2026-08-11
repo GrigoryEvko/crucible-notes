@@ -24,7 +24,7 @@ Both matchers return `bool` (changed?); `Run` increments a per-pattern counter o
 | **Opcode encoding** | opcode byte @ `HloInstruction+0x14`; operand count encoded `2*N` @ `+0x18` |
 | **Tally strings** | `"Optimized "` @ `0x23847f` · `" of sliceAddPattern"` @ `0x243df3` · `" of sliceConcatPattern"` @ `0x25b007` |
 
-> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on `mhlo` ops rather than HLO) is documented in **[4.36 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.18 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
+> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on `mhlo` ops rather than HLO) is documented in **[4.36 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.18 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#6-the-run-driver-and-the-third-inline-rewrite)).
 
 ---
 
@@ -32,8 +32,8 @@ Both matchers return `bool` (changed?); `Run` increments a per-pattern counter o
 
 A faithful reimplementation must, in one HLO pass, for each instruction `I` in document order within each computation:
 
-1. **Try the slice-add fusion first** (`I` is the root). If it fires, count it and advance to the next instruction (the instruction vector may have been mutated, so re-anchor before continuing — see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
-2. **Otherwise**, if `I` is *not* a `concatenate`, try the 3-D slice-concat rewrite. (The gate is inverted: P2's own root guard *requires* `concatenate`, yet `Run` only calls it on non-`concatenate` roots — see the [GOTCHA](#gotcha-the-inverted-concat-gate) below. The reimplementer must reproduce this exactly to match firing behaviour.)
+1. **Try the slice-add fusion first** (`I` is the root). If it fires, count it and advance to the next instruction (the instruction vector may have been mutated, so re-anchor before continuing — see [§5](#6-the-run-driver-and-the-third-inline-rewrite)).
+2. **Otherwise**, if `I` is *not* a `concatenate`, try the 3-D slice-concat rewrite. (The gate is inverted: P2's own root guard *requires* `concatenate`, yet `Run` only calls it on non-`concatenate` roots — see [§6](#6-the-run-driver-and-the-third-inline-rewrite). The reimplementer must reproduce this exactly to match firing behaviour.)
 
 The two rewrites are otherwise independent. The pass owns no cost model beyond the structural legality guards: once a slice-add chain fully tiles axis 0 with no gaps, or once a slice-concat matches and conserves element count, the rewrite fires unconditionally. The opcode dictionary, operand-list layout, and the XLA `match::` DSL evaluators below are the only shared infrastructure.
 
@@ -50,7 +50,11 @@ The two rewrites are otherwise independent. The pass owns no cost model beyond t
 | `91 / 0x5B` | `reshape` | `SkipNoOp` peels unconditionally; CreateReshape rebuild target |
 | `110 / 0x6E` | `slice` | **root of P1** and every chain/inner leaf in both patterns |
 
-> **CORRECTION —** `0x15` is `broadcast` and `0x5B` is `reshape`, not the reverse. A naive read of `SkipNoOpReshapesAndBroadcasts` (which touches both) can transpose them; the authoritative mapping is the `HloOpcodeString` switch slots above. This matters because `SkipNoOp` peels `reshape` (0x5B) *always* but `broadcast` (0x15) *only* when the element count is unchanged.
+> **GOTCHA — do not transpose `0x15` and `0x5B`.** `0x15` is `broadcast`, `0x5B` is
+> `reshape`; the `HloOpcodeString` switch slots above are the authoritative mapping. The
+> name `SkipNoOpReshapesAndBroadcasts` lists them in the opposite order to their numeric
+> order, which is where the swap creeps in. It matters because `SkipNoOp` peels `reshape`
+> (0x5B) *always*, but `broadcast` (0x15) *only* when the element count is unchanged.
 
 ---
 
@@ -284,7 +288,7 @@ bool matchAndReplaceSliceConcatPattern3D(HloModule* /*m*/, HloInstruction* conca
 }
 ```
 
-> **GOTCHA — the inverted concat gate.** P2's own root guard *requires* `concatenate` (`cmp byte[rdi+14h],22h` @ `0x1f52833`), yet `Run` only calls P2 when the instruction is **not** a `concatenate` (`cmp byte[r12+14h],22h` @ `0x1f551d0`, with the call to P2 @ `0x1f551db` reached on the non-equal path). Read literally this would make P2 unreachable. The resolution is that `Run`'s gate tests the *current loop instruction*, while P2 re-validates the same pointer — i.e. P2 is *also* invoked from the inline same-source path on roots that are not themselves concats but whose operand chains contain one. Treat the two `0x22` tests as belonging to two different dispatch sites; a reimplementation must reproduce both rather than "optimise away" the apparent contradiction. *(Confidence: the two compares and the call edge are CONFIRMED in disasm; the precise reconciliation of which pointer each guards is INFERRED — MED.)*
+> **GOTCHA — the inverted concat gate.** P2's own root guard *requires* `concatenate` (`cmp byte[rdi+14h],22h` @ `0x1f52833`), yet `Run` only calls P2 when the instruction is **not** a `concatenate` (`cmp byte[r12+14h],22h` @ `0x1f551d0`, with the call to P2 @ `0x1f551db` reached on the non-equal path). Read literally this would make P2 unreachable. The resolution is that `Run`'s gate tests the *current loop instruction*, while P2 re-validates the same pointer — i.e. P2 is *also* invoked from the inline same-source path on roots that are not themselves concats but whose operand chains contain one. Treat the two `0x22` tests as belonging to two different dispatch sites; a reimplementation must reproduce both rather than "optimise away" the apparent contradiction. The two compares and the call edge are read from the disasm; which pointer each one guards is a reconstruction.
 
 ### Net effect
 
@@ -339,33 +343,38 @@ Both matchers express their structural predicates as stack-built `xla::match::de
 |---|---|---|---|---|
 | `0x1f50ae0` | `Match<HloInstructionPattern<AllOf<Base,Opcode,Operand<AllOf<Base,Opcode,Operand<Base>>>>>>` | P2 (D) | `Slice( Slice(_) )` — 2-level opcode+operand chain | HIGH |
 | `0x1f50200` | `HloInstructionPattern<AllOf<Base,Opcode,Operand<Base>>>::Match` | P2 (F) | `broadcast(*)` member matcher (op 0x15) | HIGH |
-| `0x1f4fdc0` | `Match<HloInstructionPattern<AllOf<Base,Opcode>>>` | P2 (F) | opcode-only → `constant` (0x24) | CONFIRMED |
-| `0x1f4f130` | `SkipNoOpReshapesAndBroadcasts(HloInstruction*)` | P2, `Run` | peel `reshape` (always) + no-op `broadcast` (iff count-preserving) | CONFIRMED |
-| `0x1f4fd40` | `ShapeUtil::ExtentProduct<false>(Shape&) → pair<long,bool>` | P2 (E) | Π(dims) element count (+overflow flag, ignored) | CONFIRMED |
-| `0x1f07a60` | `ShapeUtil::MakeShape(PrimitiveType, Span<long>)` | P2 (R2) | rebuild intermediate shape | CONFIRMED |
-| `0x1f4fb00` | `match::Add<…>` builder (kAdd=1) | P1 (B) | pins the inner add operand opcode | CONFIRMED |
-| `0x1f4ee80` | `__unguarded_linear_insert<…lambda#1>` | P1 (D) | comparator witness: ascending `slice_starts(0)` | CONFIRMED |
+| `0x1f4fdc0` | `Match<HloInstructionPattern<AllOf<Base,Opcode>>>` | P2 (F) | opcode-only → `constant` (0x24) | CERTAIN |
+| `0x1f4f130` | `SkipNoOpReshapesAndBroadcasts(HloInstruction*)` | P2, `Run` | peel `reshape` (always) + no-op `broadcast` (iff count-preserving) | CERTAIN |
+| `0x1f4fd40` | `ShapeUtil::ExtentProduct<false>(Shape&) → pair<long,bool>` | P2 (E) | Π(dims) element count (+overflow flag, ignored) | CERTAIN |
+| `0x1f07a60` | `ShapeUtil::MakeShape(PrimitiveType, Span<long>)` | P2 (R2) | rebuild intermediate shape | CERTAIN |
+| `0x1f4fb00` | `match::Add<…>` builder (kAdd=1) | P1 (B) | pins the inner add operand opcode | CERTAIN |
+| `0x1f4ee80` | `__unguarded_linear_insert<…lambda#1>` | P1 (D) | comparator witness: ascending `slice_starts(0)` | CERTAIN |
 
-> **CORRECTION —** Earlier survey notes named P2's matchers as `0x1f50800` / `0x1f50f40` / `0x1f4fca0`. The `0x1f52810` body references **none** of those three (grep count 0); the matchers it actually calls are the five rows above plus `SkipNoOp`. The `0x1f508xx`/`0x1f50f40` addresses are deeper-nested `Match<…>` template siblings, and `xla::match::Broadcast<…>` @ `0x1f4fca0` is a pattern-builder helper belonging to the slice-add path's `match::Add` and the inline same-source rewrite.
+> **NOTE — nearby `Match<…>` addresses are not P2's matchers.** `0x1f50800`, `0x1f50f40`
+> and `0x1f4fca0` sit close enough to look like the pattern's entry points, but the
+> `0x1f52810` body references none of them. P2 calls exactly the five rows above plus
+> `SkipNoOp`. The `0x1f508xx`/`0x1f50f40` pair are deeper-nested `Match<…>` template
+> siblings, and `xla::match::Broadcast<…>` @ `0x1f4fca0` is a pattern-builder helper
+> belonging to the slice-add path's `match::Add` and the inline same-source rewrite.
 
 ---
 
-## 8. Confidence, gaps, and verbatim evidence
+## 8. Evidence anchors, limits, and verbatim strings
 
-**Adversarial re-verification of the five strongest claims** (each re-challenged against the `0x1f55000` cluster disasm):
+Read directly from the `0x1f55000` cluster disasm:
 
-1. **`Run` hosts both matchers** — CONFIRMED. `call …matchAndReplaceCascadedSliceAddPattern` @ `0x1f55172`; `call …matchAndReplaceSliceConcatPattern3D[.constprop.0]` @ `0x1f551db`.
-2. **P1 root = `slice` (0x6E)** — CONFIRMED. `cmp byte[rsi+14h],6Eh` @ `0x1f531c2` (5-insn fast reject).
-3. **P2 root = `concatenate` (0x22), wide gate** — CONFIRMED. `cmp byte[rdi+14h],22h` @ `0x1f52833`; `cmp qword[rdi+18h],3` @ `0x1f52839`.
-4. **P1 rebuild = `strided_slice_reduce` synth** — CONFIRMED. `strided_slice_reduce` @ `0x26a75a` loaded @ `0x1f53d74`; `CreateReshape`@`0x1f53eec` → `CreateBinary(kAdd)`@`0x1f54124` → `AddEmbeddedComputation`@`0x1f5418c` → `DeleteDimension`@`0x1f54298` → `CreateReduce`@`0x1f542d0` → `ReplaceAllUsesWith`@`0x1f54319`.
-5. **P2 rebuild = 2×`CreateBroadcast` + `MakeShape` + `CreateReshape` + `ReplaceInstruction`** — CONFIRMED. `CreateBroadcast`@`0x1f52ca1`,`0x1f52e60`; `MakeShape`@`0x1f52e31`; `CreateReshape`@`0x1f52ea3`; `ReplaceInstruction`@`0x1f52edd`.
+- **`Run` hosts both matchers**: `call …matchAndReplaceCascadedSliceAddPattern` @ `0x1f55172`; `call …matchAndReplaceSliceConcatPattern3D[.constprop.0]` @ `0x1f551db`.
+- **P1's root is `slice` (0x6E)**: `cmp byte[rsi+14h],6Eh` @ `0x1f531c2`, a 5-instruction fast reject.
+- **P2's root is `concatenate` (0x22) behind a width gate**: `cmp byte[rdi+14h],22h` @ `0x1f52833`; `cmp qword[rdi+18h],3` @ `0x1f52839`.
+- **P1 rebuilds through a `strided_slice_reduce` synth**: the name @ `0x26a75a` is loaded @ `0x1f53d74`, then `CreateReshape`@`0x1f53eec` → `CreateBinary(kAdd)`@`0x1f54124` → `AddEmbeddedComputation`@`0x1f5418c` → `DeleteDimension`@`0x1f54298` → `CreateReduce`@`0x1f542d0` → `ReplaceAllUsesWith`@`0x1f54319`.
+- **P2 rebuilds with 2×`CreateBroadcast` + `MakeShape` + `CreateReshape` + `ReplaceInstruction`**: `CreateBroadcast`@`0x1f52ca1` and `0x1f52e60`; `MakeShape`@`0x1f52e31`; `CreateReshape`@`0x1f52ea3`; `ReplaceInstruction`@`0x1f52edd`.
 
-**Gaps / lower confidence:**
+Four things stop short of that:
 
-- **P2 operand-count gate (raw form).** The instruction at `0x1f52839` compares the *encoded* `2*N` field (`[rdi+18h]`) against `3`, so the literal test is `2*N <= 3`, i.e. it rejects `N == 1`. The matcher then iterates `b ∈ [1, N/2)` (post-`shr` count). The clean reading "needs a wide concat" holds, but the exact threshold semantics of the raw `<= 3` on the doubled field vs. the post-shift `N/2` loop bound are reconstructed, not byte-proven beyond the two compares. **INFERRED — MED.**
-- **`P_slice` nesting.** The three opcode immediates emitted into P2's on-stack slice pattern (`0x6E`, `0x6E`, `0x5B` at `0x1f528c7`/`0x1f528e8`/`0x1f528ee`) map to `Slice→Slice→…` with `0x5B` (reshape) as a secondary leaf, but the precise AllOf/Operand field binding is not byte-proven against the opaque struct layout. Outer opcode = `slice` is CONFIRMED; nesting is **INFERRED — MED.**
-- **`CreateReshape` 3rd arg.** Passed as `-1` (`or rcx,-1` @ P1 `0x1f53ed7`, `rcx=-1` @ P2 `0x1f52ea3`); read as "no inferred-dimension index" per XLA convention. **CONFIRMED (value) / INFERRED (semantics).**
-- **Bodies are disasm-only.** Every Hex-Rays body in this cluster is an `NVOPEN_IDA_SKIP_DECOMPILE` stub; all pseudocode is disassembly-derived. Control-flow confidence MED-HIGH (single-caller, linear match→rewrite).
+- **P2's operand-count gate in raw form.** The instruction at `0x1f52839` compares the *encoded* `2*N` field (`[rdi+18h]`) against `3`, so the literal test is `2*N <= 3` — it rejects `N == 1`. The matcher then iterates `b ∈ [1, N/2)` on the post-`shr` count. The clean reading "needs a wide concat" holds, but how the raw `<= 3` on the doubled field lines up with the post-shift `N/2` loop bound is reconstructed beyond those two compares.
+- **`P_slice` nesting.** The three opcode immediates emitted into P2's on-stack slice pattern (`0x6E`, `0x6E`, `0x5B` at `0x1f528c7`/`0x1f528e8`/`0x1f528ee`) read as `Slice→Slice→…` with `0x5B` (reshape) as a secondary leaf. The outer opcode `slice` is certain; the AllOf/Operand field binding is not, since the struct layout is opaque.
+- **`CreateReshape`'s 3rd argument.** The value `-1` is read directly (`or rcx,-1` @ P1 `0x1f53ed7`, `rcx=-1` @ P2 `0x1f52ea3`); reading it as "no inferred-dimension index" follows XLA convention rather than this binary.
+- **Every body here is disasm-only.** No Hex-Rays output exists for this cluster, so all pseudocode on this page is disassembly-derived. The control flow is simple enough — single-caller, linear match→rewrite — that this is a mild limitation, but it is a limitation.
 
 **Verbatim string evidence (addresses confirmed in `_strings.json`):**
 
@@ -386,5 +395,5 @@ Both matchers express their structural predicates as stack-built `xla::match::de
 ## See also
 
 - **[4.18 — Concatenation Optimizations](concat-optimizations.md)** — the `GetOriginalSource`-based same-source slice→concat collapse that shares `Run`'s `" of sliceConcatPattern"` label.
-- **[4.37 — NeuronInstCombine (MLIR)](../mlir/inst-combine.md)** — the independently-registered Penguin/Tensorizer-dialect peephole combiner; the MLIR-level twin of this HLO pass.
+- **[4.37 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)** — the independently-registered Penguin/Tensorizer-dialect peephole combiner; the MLIR-level twin of this HLO pass.
 - **[The hlo-opt Pass Registry](pass-registry.md)** — pass `#62` `neuron-hlo-inst-comb` in the `--passes` table.

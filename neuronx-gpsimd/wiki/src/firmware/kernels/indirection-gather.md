@@ -46,9 +46,9 @@ Compiler-emitted pseudo forms (NRT-translated at runtime to `WRITE32` + DMA desc
 | `PSEUDO_EMBEDDING_UPDATE` | `0xca` (202) | `PSEUDO_EMBEDDING_UPDATE_STRUCT` |
 | `PSEUDO_DMAMEMCPY_FULL_IND` | `0xc4` (196) | `PSEUDO_DMA_MEMCPY_FULL_IND_STRUCT` |
 
-The byte-exact `struct2opcode` rows, read with `jq` from
+The byte-exact `struct2opcode` rows from
 `neuron_sunda_arch_isa/tpb/instruction_mapping.json` (the cayman/mariana/maverick copies give the
-same struct→opcode-name rows): [HIGH/OBSERVED]
+same struct→opcode-name rows):
 
 ```text
 NEURON_ISA_TPB_S4D4_GT_STRUCT                 -> NEURON_ISA_TPB_OPCODE_GATHER                  (0x68)
@@ -63,15 +63,15 @@ NEURON_ISA_TPB_DMA_DIRECT2D_STRUCT            -> NEURON_ISA_TPB_OPCODE_DMA_MEMCP
 > The `0x79` form is the *SEQ-side* handler (`'y'` in the NX_POOL 178-entry sequence table) and
 > has **no `struct2opcode` key**; the `0xca` pseudo is what the ISA emitter writes and NRT expands
 > at runtime into a `LoadPoolArgument`/`EmbeddingUpdate`/`TensorStore` sequence. Both bytes
-> describe the same embedding scatter-reduce; they live at different lowering stages. SX-FW-74 §0
-> tagged the struct with `0x79`; this page corrects the struct→pseudo binding to `0xca` from
-> `struct2opcode`, with `0x79` retained as the raw SEQ opcode. [HIGH/OBSERVED]
+> describe the same embedding scatter-reduce; they live at different lowering stages. A prior
+> report tagged the struct with `0x79`; this page corrects the struct→pseudo binding to `0xca` from
+> `struct2opcode`, with `0x79` retained as the raw SEQ opcode.
 
 ### The SUNDA POOL kernel map (byte-exact `kernel_info_table`)
 
 On SUNDA (`Xm_ncore2gp`, NC-v2), the full POOL-kernel bodies ship in the `EXTISA_0`
 `kernel_info_table` at VMA `0x02000760` (18 entries × 8 bytes, format
-`{u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA}`). The indirection rows: [HIGH/OBSERVED]
+`{u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA}`). The indirection rows:
 
 | Opcode | Kernel name | funcVA | Mechanism / struct |
 | ------ | ----------- | ------ | ------------------ |
@@ -84,7 +84,7 @@ On SUNDA (`Xm_ncore2gp`, NC-v2), the full POOL-kernel bodies ship in the `EXTISA
 | `0x7e` | `pool_iota` | `0x01005e80` | the index/iota *producer* |
 
 The inner workers, named from the SUNDA `.xt.prop.<mangled>` func-start records (first 4 bytes
-= LE VMA; demangled via `c++filt`): [HIGH/OBSERVED]
+= LE VMA; demangled via `c++filt`):
 
 - `ic_util::send_gather_request(NEURON_ISA_TPB_ADDR4, unsigned short*, unsigned int, NEURON_ISA_TPB_DTYPE, unsigned int, bool)` @ `0x01000788`
 - `embedding_update(embedding_update_lib::embed_update_info*, unsigned short)` @ `0x01008540`
@@ -97,7 +97,7 @@ The inner workers, named from the SUNDA `.xt.prop.<mangled>` func-start records 
 > served by the **DGE descriptor-generation layer** (`do_indirection`/`gather_indices`, present in
 > the Q7 POOL DEBUG + DKL builds) rather than a dedicated POOL kernel. **SUNDA is the only
 > generation that ships the dedicated POOL gather/indirect kernel implementations** in its
-> `kernel_info_table`. [HIGH/OBSERVED — SUNDA 18-entry table has them, CAYMAN 17-entry does not]
+> `kernel_info_table`. [HIGH/OBSERVED]
 >
 > **Per-gen header presence and divergence.** All four generations (sunda=NC-v2, cayman=NC-v3,
 > mariana=NC-v4, maverick=NC-v5) ship the `s4d4_gt.h` / `s4d4_ic.h` / `dma_indirect1d.h` /
@@ -110,8 +110,8 @@ The inner workers, named from the SUNDA `.xt.prop.<mangled>` func-start records 
 > AllowedInPSUM::False`, so on NC-v5 a `GATHER` can no longer source or sink PSUM (SBUF-only),
 > whereas v2 permits PSUM. The v2–v4 struct/enum/kernel facts are byte-grounded; the **MAVERICK
 > (v5) interior is header-OBSERVED only** — no v5 POOL kernel body was decoded, so v5 kernel-side
-> behaviour beyond the header contracts is **INFERRED** from the shared ISA. [HIGH/OBSERVED
-> headers (incl. the v5 divergence); v5 kernels INFERRED]
+> behaviour beyond the header contracts is **INFERRED** from the shared ISA.
+> [HIGH/OBSERVED headers; v5 kernels INFERRED]
 
 ---
 
@@ -139,7 +139,7 @@ def nc_n_gather(dst, data, indices, name):
         emit_gather(dst=dst, src=data, indices=indices, ...)            # -> GATHER 0x68
 ```
 
-So the two NKI names map onto the two gather opcodes thus: [HIGH/OBSERVED]
+So the two NKI names map onto the two gather opcodes thus:
 
 | NKI op | `emit_*` → irbuilder mnemonic | TPB opcode | NISA struct | SUNDA kernel | Index dtype |
 | ------ | ---------------------------- | ---------- | ----------- | ------------ | ----------- |
@@ -150,7 +150,7 @@ The verbatim docstring `"maps to IndirectCopy in NISA dialect"` on `local_gather
 decisive disambiguator — the op whose *name* says "gather" lowers to **IndirectCopy**, while the
 op named `nc_n_gather` lowers to the literal **Gather**. The index dtypes are read from
 `nki/isa/gather.py`: `local_gather` — *"The indices in `index` tile must be uint16 types"*
-(line 56); `nc_n_gather` — *"The `indices` tile must be uint32"* (line 136). [HIGH/OBSERVED]
+(line 56); `nc_n_gather` — *"The `indices` tile must be uint32"* (line 136).
 
 > **GOTCHA.** The
 > NKI gather name and the opcode it lowers to are *crossed*: `local_gather → 0xe7 IndirectCopy`
@@ -164,7 +164,6 @@ flat gather** from a `Pool_Buffer` that a prior `POOL_BUFFER_LOAD 0x67` filled (
 channel, `POOL_BUFFER_MAX_ELEMENTS = 512`; the ISA-group count `n = ceil(elems_per_partition/512)`);
 `local_gather`/`IndirectCopy 0xe7` is an **8-core / 16-partition** indexed row-copy where each of
 the eight GpSimd cores gathers independently from its 16 contiguous SBUF partitions.
-[HIGH/OBSERVED — `nki/isa/gather.py` and the headers]
 
 ---
 
@@ -192,13 +191,13 @@ drift (see the v5 PSUM divergence in §1). [HIGH/OBSERVED]
 `TENSOR4D = { ADDR4 start_addr; int16 step_elem[4]; uint16 num_elem[4] }` — base plus four
 `(stride, count)` pairs. The validity predicate `has_gather_index_dtype` allows
 `in_dtype ∈ {UINT8=0x3, UINT16=0x5, UINT32=0x9}`. On v2 src/dst may be SBUF or PSUM; on v5 both
-are SBUF-only (§1). [HIGH/OBSERVED]
+are SBUF-only (§1).
 
 > **NOTE on the index width.** The `S4D4_GT` *prose comment* says *"the `src_mem_pattern` must
 > have dtype uint16 or uint32"*, but the machine-checkable validity function `has_gather_index_dtype`
 > admits **UINT8 as well**. The NKI `nc_n_gather` surface narrows this further to **UINT32 only**.
 > So the hardware/ISA accepts `{u8,u16,u32}`, the firmware-validator accepts `{u8,u16,u32}`, and the
-> compiler emits `u32`. A reimplementation should accept all three at the ISA layer. [HIGH/OBSERVED]
+> compiler emits `u32`. A reimplementation should accept all three at the ISA layer.
 
 ### 3b. INDIRECT_COPY — `S4D4_IC_STRUCT` (opcode `0xe7`)
 
@@ -229,14 +228,14 @@ block): only the **Gather** sub-mode is implemented — `src` is an indirect pat
 tensor pattern; `dst_num_elem_per_idx == 0`, `dst_buffer_size == 0`; the per-index row width
 `src_num_elem_per_idx ∈ {1,2,4,8,16,32}`; the index count
 `src.i.p.num_elem / src_num_elem_per_idx ≤ 4096` (a documented temporary restriction).
-**Scatter and Gather+Scatter are explicitly "not implemented yet."** [HIGH/OBSERVED]
+**Scatter and Gather+Scatter are explicitly "not implemented yet."**
 
 ### 3c. DMA_INDIRECT — `DMA_INDIRECT1D_STRUCT` (opcode `0xbb`, `DGE_OPCODE DMA_INDIRECT1D = 0x1`)
 
 The canonical gather/scatter-by-index DMA. Header doc: *"DmaIndirect performs DMAs for a vector
 of dynamic indices (offsets) generated during execution … applied to the source to perform a
 gather, or applied to the destination to perform a scatter, or two sets of independent indices
-for both gather and scatter in one instruction."* [HIGH/OBSERVED]
+for both gather and scatter in one instruction."*
 
 | Off | Sz | Field | Notes |
 | --- | -- | ----- | ----- |
@@ -252,7 +251,7 @@ for both gather and scatter in one instruction."* [HIGH/OBSERVED]
 | 60 | 1 | `compute_op` | `DGE_COMPUTE_OP` — **reduce mode (scatter-add)** |
 | 61 | 1 | `dma_configs` (reserved=0) / 62–63 `reserved[2]` | |
 
-`DMA_INDIRECT_FLAGS` (1-byte bitfield, byte-exact from the header): [HIGH/OBSERVED]
+`DMA_INDIRECT_FLAGS` (1-byte bitfield, byte-exact from the header):
 
 ```c
 typedef struct NEURON_ISA_TPB_DMA_INDIRECT_FLAGS {
@@ -270,13 +269,12 @@ typedef struct NEURON_ISA_TPB_DMA_INDIRECT_FLAGS {
 `BOUND_CHECK_REG` (1 byte): `{ bc_reg:6 (register holding the index upper bound; bc_reg+1 = high
 32 bits for wide offsets), bc_disable_oob_error_notif:1, bc_enabled:1 }`.
 `DGE_COMPUTE_OP`: `NONE=0` (`B=A` copy), `ADD=1` (`B+=A`, **scatter-ADD**), `MULTIPLY=2`,
-`MAX=3`, `MIN=4`. [HIGH/OBSERVED]
+`MAX=3`, `MIN=4`.
 
 Two structural constraints, read from the validity block: the index count is `≤ 4096`
 (`has_dma_indirect_valid_index_count`), and the index tensor **must live in SBUF partition 0**
 (`has_dma_indirect_idx_addr_in_sbuf_partition0`) — the indices sit in the first SBUF partition
 row. When no shape register is used, the `indirect_dim` must be `X` (the only available dim).
-[HIGH/OBSERVED]
 
 ### 3d. EMBEDDING_UPDATE — `PSEUDO_EMBEDDING_UPDATE_STRUCT` (raw `0x79` / pseudo `0xca`)
 
@@ -297,7 +295,6 @@ Header doc: *"High level instruction that expands in runtime a sequence of
 embedding update operation"* — i.e. `embedding_update` is a **meta/pseudo op** driving the
 DGE+DMA. `CCE_OP` (same encoding as the SDMA CCE op): `ADD=0x00`, `MAX=0x02`, `MIN=0x03`
 (`Multiply=0x01` commented out) — the scatter-reduce for embedding-gradient accumulation.
-[HIGH/OBSERVED]
 
 ---
 
@@ -309,7 +306,7 @@ door to the external **SuperGather** memory engine (the full vector ISA batch is
 A-phase always issued in a FLIX bundle paired with a dual-select drain — e.g. at IRAM
 `0x1435e`: `{ ivp_gatheran_2x32t gr4, a1, v0, vb4 ; nop ; nop ; ivp_dseln_2x32t v17,… }`, at
 `0x14ebb`: `{ ivp_gatheranx16t gr7, a9, v24, vb3 ; … ; ivp_dselnx16t v1,… }`, at `0x1b1df`:
-`{ ivp_gatheranx8ut gr5, a4, v1, vb0 ; … ; ivp_dselnx16t v8,… }`. The two phases: [HIGH/OBSERVED]
+`{ ivp_gatheranx8ut gr5, a4, v1, vb0 ; … ; ivp_dselnx16t v8,… }`. The two phases:
 
 **Phase 1 (post addresses)** — SUNDA IRAM `0x010019f0`, bytes `0ff86008006f9f02`:
 
@@ -334,7 +331,7 @@ validity predicate into a `gvr` staging register `gr0..gr7`) and `gatherd*` (D-p
 collected elements back to a `vec`). The defining property is the per-lane indirect address
 **`addr[k] = base + offset[k]·elem_sz`** computed inside the core and handed, together with a
 per-lane validity predicate, to a memory port the rest of the pipeline cannot see compute values
-flow into. Out-of-bounds lanes (predicate bit 0) are simply **not gathered**. [HIGH/OBSERVED]
+flow into. Out-of-bounds lanes (predicate bit 0) are simply **not gathered**.
 
 ```c
 /* Mechanism A: the native two-phase IVP hardware vector-gather.
@@ -363,15 +360,14 @@ The companion IVP vocabulary in `dma_memcopy_indirect` builds the predicate from
 `ivp_leun_2x32` (9 sites, unsigned `≤` bounds), `ivp_andb` (14, mask AND), `ivp_eqn_2x32` (8),
 `ivp_mov2nx8t` (15, predicated select for the OOB fill); the drain is a `ivp_dselnx16t`
 dual-select (the dominant op in the gather-resident bodies). The ISS per-lane oracle for the same
-op is `ivp_gatheranx8ut` (the nx8 unsigned variant) in `libfiss-base.so`. [HIGH/OBSERVED]
+op is `ivp_gatheranx8ut` (the nx8 unsigned variant) in `libfiss-base.so`.
 
 > **NOTE.** The exact 1:1 per-op IVP binding inside the `dma_memcopy_indirect` body sits in
 > FLIX/VLIW bundles that partly desync under the linear sweep; the IVP **vocabulary** and the
 > two-phase gather/predicate/drain **structure** are recovered with confidence, but the precise
 > per-instruction selection arithmetic inside the desynced spans is reported structurally, not
 > fabricated. The gather A-phase + `dselnx16t` drain pairing is OBSERVED in the disassembly on v2
-> (SUNDA) and v4 (MARIANA) firmware alike. [MED/INFERRED for the per-instruction span; HIGH for
-> the named gather ops and the pairing]
+> (SUNDA) and v4 (MARIANA) firmware alike. [MED/INFERRED span; HIGH ops + pairing]
 
 ---
 
@@ -381,7 +377,7 @@ op is `ivp_gatheranx8ut` (the nx8 unsigned variant) in `libfiss-base.so`. [HIGH/
 dispatcher stub `pool_indirect_copy` @ `0x01000748` partitions work across the eight GpSimd cores
 by processor-ID and calls a worker; the worker loops over the index count computing
 `base + index·stride` per element and issuing `send_gather_request`, which performs a
-**vectorised bounds-checked address generation**. [HIGH/OBSERVED]
+**vectorised bounds-checked address generation**.
 
 The dispatcher stub, byte-exact (SUNDA binary-mode decode):
 
@@ -432,7 +428,7 @@ void pool_indirect_copy(const S4D4_IC *ic) {
 `ic_util::send_gather_request` @ `0x01000788` is the per-request **vector bounds-check core**.
 Its body maps the DTYPE enum to a 1/2/4/8-byte width, walks the multi-dim index descriptor
 (`l16si` lo/hi pairs, `mul16u` + `add` to accumulate `index_component·stride + base`), then runs
-the vector bounds-check at `0x0bee..0x0ca0`: [HIGH/OBSERVED]
+the vector bounds-check at `0x0bee..0x0ca0`:
 
 ```c
 /* ic_util::send_gather_request @0x788 — vectorised bounds-checked address-gen.
@@ -456,8 +452,7 @@ void send_gather_request(addr_t base, uint16_t *idx_desc, unsigned count,
 The recovered IVP vocabulary of `send_gather_request`: `ivp_ltun_2x32` (38, unsigned-LT bounds),
 `ivp_subn_2x32` (30, offset), `ivp_eqn_2x32` (12), `ivp_mov2nx8t` (34, predicated select),
 `ivp_movva32` (17, AR→vector broadcast of base), `ivp_dselnx16t` (4, lane select),
-`ivp_dseln_2x32t` (2), `ivp_lv2nx8_i` (7, strided load). [HIGH/OBSERVED for the set; per-op byte
-binding MED across the FLIX desync]
+`ivp_dseln_2x32t` (2), `ivp_lv2nx8_i` (7, strided load). [HIGH set; MED per-op binding]
 
 > **NKI cross-check (CONFIRM).** The `local_gather` numpy reference simulator
 > (`nki/backends/simulator/gather.py`) flattens each core's indices in **Fortran order
@@ -465,8 +460,7 @@ binding MED across the FLIX desync]
 > then `np.take(core_src, indices_1d, axis=1)` per core (8 cores × 16 partitions). The output is
 > pre-zeroed, and a contiguous run that overruns the buffer edge is clipped
 > (`end_idx = min(idx + num_elem_per_idx, core_src.shape[1])`) with the tail left zero. This is
-> exactly the SUNDA POOL `get_cpu_id()`-partitioned, partition-first model decoded here. [CONFIRM
-> — sim OBSERVED vs FW kernel OBSERVED]
+> exactly the SUNDA POOL `get_cpu_id()`-partitioned, partition-first model decoded here. [CONFIRM]
 
 ---
 
@@ -493,7 +487,7 @@ The DGE has a 3-kind dispatch (`DGE DIRECT2D` / `DGE INDIRECT` / `DGE GATHER TRA
 
 The index→address multiply is named unambiguously by a DEBUG string pair —
 `"Before IVP_MULUSAN_2X32: address=0x%x_%x, last_indices=0x%x, indirection_step=0x%x"` /
-`"After IVP_MULUSAN_2X32: address=0x%x_%x"`: [HIGH/OBSERVED string]
+`"After IVP_MULUSAN_2X32: address=0x%x_%x"`:
 
 ```c
 /* Mechanism C: the DGE index->address transform (do_indirection / gather_indices).
@@ -527,15 +521,14 @@ from the string. [HIGH/OBSERVED string; exact encoding MED]
 > `libnrtucode_internal.so` or `libnrtucode_extisa.so`. It is **not a kernel name and not a
 > separate engine**: it is the internal codename for the indirection descriptor-generation
 > **reshape transform** inside `do_indirection`, logged immediately before the 5-D descriptor loop
-> reshapes the tensor access pattern along the shared indirection dim. [HIGH/OBSERVED — the two
-> strings + their single occurrence; the "reshape step" reading is INFERRED-HIGH from the string
-> text and its IRAM position before the descriptor loop]
+> reshapes the tensor access pattern along the shared indirection dim.
+> [HIGH/OBSERVED strings; INFERRED reshape reading]
 
 The gather+transpose descriptor kind (`DGE GATHER TRANSPOSE`) is built by
 `tensor_reshape_indirect_transpose`, which tiles the source rows/cols and transposes during the
 indirect gather — the compute-side counterpart to the collective `GATHER_TRANSPOSE`. The full
 descriptor format and the `rdma_desc_gen` loop are documented in the
-[gather/scatter descriptors](../../dma/gather-scatter-descriptors.md) page. [HIGH/OBSERVED strings]
+[gather/scatter descriptors](../../dma/gather-scatter-descriptors.md) page.
 
 ---
 
@@ -590,14 +583,14 @@ indices, copy `src_num_elem_per_idx` contiguous elements (∈ {1,2,4,8,16,32}) f
 > bounds against `src_buffer_size` but the header does not specify the miss-value the way `GATHER`
 > does. A reimplementation should treat OOB as undefined-but-bounded (no wild read) for
 > `IndirectCopy`, matching the NKI contract, and not assume the simulator's zero-fill is
-> guaranteed. [HIGH/OBSERVED]
+> guaranteed.
 
 ### 7c. Scatter-by-index DMA — `DMA_INDIRECT 0xbb`
 
 `DMA_INDIRECT1D` is the one instruction that does true scatter. With
 `flags.indirect_mode == SRC_INDIRECTION` it gathers (indices applied to the source); with
 `DST_INDIRECTION` it scatters (indices applied to the destination); with `SRC_DST_INDIRECTION`
-both, using two independent index tensors. [HIGH/OBSERVED]
+both, using two independent index tensors.
 
 ```c
 /* DMA_INDIRECT 0xbb (DMA_INDIRECT1D) — gather/scatter-by-index DMA via the DGE.
@@ -628,7 +621,6 @@ void dma_indirect1d(const DMA_INDIRECT1D *d) {
 When `compute_op != NONE`, this is a **reduce-scatter** (`ADD` = scatter-add, `MAX`/`MIN`/`MUL`
 the others). Duplicate scatter targets are only legal with `flags.non_unique_dst_idx` set —
 which is **required for scatter-add** to accumulate multiple sources into one destination row.
-[HIGH/OBSERVED]
 
 ### 7d. Embedding-update — scatter-ADD accumulate (`EMBEDDING_UPDATE 0x79` / `0xca`)
 
@@ -638,7 +630,7 @@ into that row via `cce_op` (`ADD` for gradient accumulation). The SUNDA worker
 `embedding_update(embed_update_info*, uint16)` @ `0x01008540` (`entry a1,0x3c0`; reads
 `sequence_length` at struct offset 52; loops with `ivp_sv2nx8_i` scatter-store + float MAC ops)
 realizes this; the header confirms it expands at runtime into a DMA-driving sequence.
-[HIGH struct+strings; MED that the device loop is exactly this — FLIX]
+[HIGH struct+strings; MED device loop]
 
 ```c
 /* EMBEDDING_UPDATE (PSEUDO_EMBEDDING_UPDATE) — scatter-ADD into embedding rows.
@@ -665,13 +657,13 @@ void embedding_update(const PSEUDO_EMBEDDING_UPDATE *e) {
 The distinguishing feature versus the other three datapaths: embedding-update is a **scatter
 with reduction** (`+=`), where multiple indices may target the same row and their contributions
 **accumulate**. The `non_unique_dst_idx`/`CCE_OP_ADD` combination on the DMA side and the
-`cce_op = ADD` here are the two expressions of the same scatter-add. [HIGH/OBSERVED]
+`cce_op = ADD` here are the two expressions of the same scatter-add.
 
 ---
 
 ## 8. Index dtype and bounds-checking — consolidated
 
-**Index dtype.** [HIGH/OBSERVED]
+**Index dtype.**
 
 - `GATHER 0x68`: `in_dtype ∈ {UINT8=0x3, UINT16=0x5, UINT32=0x9}` (`has_gather_index_dtype`);
   NKI `nc_n_gather` narrows to `uint32`.
@@ -680,7 +672,7 @@ with reduction** (`+=`), where multiple indices may target the same row and thei
   address-gen IVP ops `*_2x32`). The address arithmetic is **64-bit** (`ADDR8` src/dst;
   DGE `"address=0x%x_%x"` high/low).
 
-**Bounds-checking — four enforcement points.** [HIGH/OBSERVED]
+**Bounds-checking — four enforcement points.**
 
 1. **Instruction-level:** `GATHER.index_miss_behavior` (`IMMEDIATE_WRITE` writes the fill /
    `SKIP_WRITE` leaves the element); `DMA_INDIRECT.src/dst_idx_bound_reg` (register-held upper
@@ -702,7 +694,6 @@ with reduction** (`+=`), where multiple indices may target the same row and thei
 > `src_buffer_size`; `EMBEDDING_UPDATE` skips indices `≥ num_entries`. The HW predicate guarantees
 > an OOB lane is *never loaded* — but what the destination lane then receives is the
 > instruction-level policy's choice. A reimplementation must implement all four, not one.
-> [HIGH/OBSERVED]
 
 ---
 
@@ -710,7 +701,7 @@ with reduction** (`+=`), where multiple indices may target the same row and thei
 
 From the `neuronx-cc` `.pyi` stubs (`nki/isa/__init__.pyi`). The GpSimd ops pay a **fixed
 `GPSIMD_START ≈ 150` engine-cycle startup** (the kernel_info dispatch + trampoline + windowed-ABI
-entry), versus the Vector/Scalar `MIN_II ≈ 64`. [HIGH/OBSERVED]
+entry), versus the Vector/Scalar `MIN_II ≈ 64`.
 
 | NKI op | Cost (GpSimd Engine cycles) |
 | ------ | --------------------------- |
@@ -720,8 +711,7 @@ entry), versus the Vector/Scalar `MIN_II ≈ 64`. [HIGH/OBSERVED]
 The `local_gather` divisor `C` encodes the per-core 16-partition parallelism — throughput rises
 with `num_elem_per_idx` because contiguous runs amortize the gather posting. The 150-cycle floor
 is why the compiler routes small tiles to Vector and reserves GpSimd for the ops Vector cannot do
-(cross-partition reduce, gather, iota, affine_select). [HIGH/OBSERVED cost; architectural reading
-INFERRED-HIGH]
+(cross-partition reduce, gather, iota, affine_select). [HIGH cost; INFERRED reading]
 
 ---
 
@@ -735,7 +725,7 @@ INFERRED-HIGH]
 - **vs the collective gather (CCL).** The DGE `GATHER TRANSPOSE` / `INDIRECT` kinds here are the
   **compute-side on-core** indirect-DMA descriptor generation. The cross-NeuronCore collective
   all-gather / reduce-scatter legs are a separate path; they share the SDMA descriptor format and
-  the `rdma_desc_gen` loop but operate across cores over the collective ring. [HIGH/OBSERVED]
+  the `rdma_desc_gen` loop but operate across cores over the collective ring.
 
 ---
 

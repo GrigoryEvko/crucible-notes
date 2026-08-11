@@ -24,7 +24,7 @@ package — the arch-isa header `tpb_activation_entries.h` and the
 `tpb_xt_local_reg.json` device CSR block. Confidence tags: **HIGH** = direct
 disasm / byte read / header read / CSR read; **MED** = strong inference;
 **LOW** = plausible. **OBSERVED** = read directly; **INFERRED** = derived;
-**CARRIED** = adopted from a committed sibling page and re-verified here.
+**CARRIED** = adopted from a committed sibling page.
 
 ---
 
@@ -79,7 +79,7 @@ Signature: `void get(void** out_ptr /*rdi*/, size_t* out_len /*rsi*/)`.
 (8 KiB)** — verified by the immediate in the `movq` (the TABLE stub at
 `0x9b3bc0` writes `48 c7 06 00 20 00 00` = `$0x2000`). [HIGH/OBSERVED]
 
-### 2b. The 30 getters → blob VA == file offset → sha256 (re-carved this page)
+### 2b. The 30 getters → blob VA == file offset → sha256
 
 `nm` symbol → `lea` target (`.rodata` VA == file off) → carve → `sha256sum`.
 All 15 CAM + 15 TABLE blobs carved and hashed; **every hash matches RT-18 and
@@ -207,7 +207,7 @@ Armed records (`enable == 1`) occupy **contiguous slots `0 .. N-1`**; the
 **wildcard catch-all** (`mask == 0` matches every opcode → the "all other
 opcodes" profile bucket). The remaining `64 - N` slots are zeroed.
 
-Armed counts per `(gen, engine)`, **OBSERVED** (carve-decoded this page):
+Armed counts per `(gen, engine)`, **OBSERVED** (carve-decoded):
 
 | | CAYMAN | MARIANA | MARIANA_PLUS | MAVERICK |
 |---|---|---|---|---|
@@ -312,7 +312,7 @@ struct hwdecode_table_record {
 [geometry + parallel binding + `+0x14` class byte: **HIGH/OBSERVED**; the exact
 packed bit layout of `cfg0`/`cfg1`/`descr`: **MED/INFERRED** — not fully decoded.]
 
-Observed samples (CAYMAN ACT, byte-read this page):
+Observed samples (CAYMAN ACT, byte-read):
 
 ```
 rec0: bytes[0:0x18] = 01020000 100000 26 6061636f66676c6d62 0000 00 00100000
@@ -363,7 +363,7 @@ disproof, and the device CSR semantics (§6). [HIGH/OBSERVED]
 
 The activation/transcendental PWL is the four-struct quad in the arch-isa
 header `tpb_activation_entries.h` (sha256 `8f6f5f49…`; **byte-identical across
-cayman / mariana / mariana_plus / maverick** — see CORRECTION below for sunda):
+cayman / mariana / mariana_plus / maverick** — see the CORRECTION below for sunda):
 
 ```c
 // tpb_activation_entries.h  (sizeof compile-verified: 32/128/32/32 B)
@@ -453,8 +453,8 @@ into the DVE bank parameter RAM, not into an activation bucket/control table.
 [HIGH that DVE has no bucket/control region OBSERVED; "`0x30` profiled-not-PWL-
 selected" is the direct consequence — HIGH.]
 
-> **CORRECTION (sunda outlier).** The backing survey stated the activation header
-> was byte-identical across **all five** gens. Re-hashing this page: cayman /
+> **CORRECTION (sunda outlier).** An earlier claim held the activation header
+> was byte-identical across **all five** gens. In fact cayman /
 > mariana / mariana_plus / maverick share `8f6f5f49…`, but **sunda differs**
 > (`dbdca26b…`). The divergence is a field-order swap of `opcode_mask` /
 > `func_id_mask` (and 3 reserved-bit reallocations in PROFILE) — the **same**
@@ -564,7 +564,7 @@ PWL turned off. [HIGH/OBSERVED]
 
 ## 8. Per-gen stability (the cross-gen sha matrix)
 
-`PROF_CAM` sha256 (first 8), this page's carve:
+`PROF_CAM` sha256 (first 8):
 
 | ENG | CAYMAN | MARIANA | MARIANA_PLUS | MAVERICK |
 |-----|--------|---------|--------------|----------|
@@ -578,7 +578,7 @@ PWL turned off. [HIGH/OBSERVED]
 CAM + TABLE); MAVERICK DVE `f349e417` / PE `e94d413a` / **POOL `534f2239`
 (== MARIANA POOL)**.
 
-Readings (all OBSERVED this page):
+Readings (all OBSERVED):
 
 * **CAYMAN** — one blob for all four engines (engine-generic profiler).
 * **MARIANA** — per-engine (4 distinct CAM + 4 distinct TABLE).
@@ -597,8 +597,8 @@ per-engine. [HIGH/OBSERVED]
 ## 9. Per-gen image diffs — how they read the PROF arming
 
 The per-gen image pages diff the PROF blobs to characterise an engine variant.
-The canonical worked example is the **MARIANA ACT re-arm** (already observed by
-[`mariana-act.md`](./mariana-act.md), re-verified byte-exact here):
+The canonical worked example is the **MARIANA ACT re-arm** (observed by
+[`mariana-act.md`](./mariana-act.md), byte-exact):
 
 | Property | CAYMAN ACT | MARIANA ACT | Delta |
 |----------|-----------|-------------|-------|
@@ -631,7 +631,7 @@ the authoritative PROF-format source other pages defer to.
 
 ## 10. Adversarial self-verification
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims, challenged against the binary:
 
 1. **The 16 B CAM layout `{opcode:32, mask, enable, rsvd}`.** *Challenge:* could
    `mask`/`enable` be a single 64-bit field, or `opcode` be 16-bit + a 16-bit
@@ -662,7 +662,7 @@ The five strongest claims, re-challenged against the binary:
    `{0x25, 0x77, 0x78, 0x9f}` with header zeroed (`150→68` nonzero words).
    **HOLDS.**
 
-One survey claim was **corrected**: the activation header is *not* byte-identical
+One earlier claim is **corrected**: the activation header is *not* byte-identical
 across all five gens — sunda diverges (§5d CORRECTION). The PROF-vs-PWL verdict
 is unaffected.
 
@@ -697,7 +697,7 @@ AR=…/custom_op/c10/lib/libnrtucode.a
   the **separate** activation PWL quad (CAM/PROFILE/CONTROL/BUCKET).
 * [`uarch/activation-transcendental-tables.md`](../uarch/activation-transcendental-tables.md)
   — the transcendental table machine.
-* `runtime/image-hwdecode-resolvers.md` (#831) — the host `get_hwdecode_table`
-  resolver (planned).
-* `control/security/profiling-trace-debug-gating.md` (#949) — the
-  profiling/trace/debug CSR gating (planned).
+* [`runtime/image-hwdecode-resolvers.md`](../runtime/image-hwdecode-resolvers.md) (#831) —
+  the host `get_hwdecode_table` resolver.
+* [`control/security/profiling-trace-debug-gating.md`](../control/security/profiling-trace-debug-gating.md)
+  (#949) — the profiling/trace/debug CSR gating.

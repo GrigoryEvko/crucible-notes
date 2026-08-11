@@ -98,7 +98,7 @@ exactly **4 distinct positive instruction byte-sizes `{2, 3, 8, 16}`**. State it
 **"7 length-class outcomes → 4 byte-sizes `{2,3,8,16}`"**, never either number alone as "the
 number of lengths." `[HIGH/OBSERVED]`
 
-**Evidence.** Verified this pass straight from the shipped Cadence config header `tie.h`:
+**Evidence.** Read straight from the shipped Cadence config header `tie.h`:
 `XCHAL_OP0_FORMAT_LENGTHS = 3,3,3,3,3,3,3,3,2,2,2,2,2,2,16,8` — sixteen entries whose *set* of
 values is `{2, 3, 8, 16}`, four distinct sizes. The 7-outcome figure comes from the runtime
 256-entry `length_table` (value census `{−1:2, 2:96, 3:128, 8:8, 16:22}`), validated 167/167
@@ -118,7 +118,7 @@ formats** (`num_formats` → `mov $0xe,%eax`) and **46 total slots** (`num_slots
 `mov $0x2e,%eax`), over **8 register files** (`num_regfiles` → `mov $0x8,%eax`).
 `[HIGH/OBSERVED]`
 
-**Evidence.** Disassembled this pass from `libisa-core.so`: `num_formats @ 0x3b65e0` = `0xe`,
+**Evidence.** Disassembled from `libisa-core.so`: `num_formats @ 0x3b65e0` = `0xe`,
 `num_slots @ 0x3b6510` = `0x2e`, `num_regfiles @ 0x3b5c20` = `0x8`.
 
 **Why it matters.** These three integers parameterize the entire decoder — the format table, the
@@ -161,7 +161,7 @@ immediates whose bit 37 is set. But there is **no shipped v5 NCFW image** (`libn
 tops out at MARIANA_PLUS), so the v5 **`arch_id = 36 (0x24)` is INFERRED** from the `coretype − 1`
 stride, not read. Every v5 *interior* claim is flagged INFERRED. `[ct37 HIGH/OBSERVED; arch_id 36 INFERRED]`
 
-**Evidence.** Verified this pass: `maverick_libs` and `MAVERICK_Q7_POOL_PERF_EXTISA_0_SO_get`
+**Evidence.** `maverick_libs` and `MAVERICK_Q7_POOL_PERF_EXTISA_0_SO_get`
 present in `libnrtucode_internal.so`; the `maverick` literal appears in the not-stripped
 *internal* twin but **0×** in the shipped front `libnrtucode.so`. No `cmp $0x24` exists in
 `libncfw`; zero maverick `ctx_log` symbols.
@@ -223,7 +223,7 @@ all — it is `NEURON_ISA_TPB_UPDATE_MODE_SEM_SUB_REG_COMPLETE` (an update-mode 
 `0x98 = TENSOR_SCALAR_SELECT` line. Plain `SORT` (`0x96`) is real and decoded; cross-partition
 merge is host-side / future work. `[HIGH/OBSERVED — negative]`
 
-**Evidence.** Verified this pass in `aws_neuron_isa_tpb_common.h` (cayman/mariana/maverick):
+**Evidence.** From `aws_neuron_isa_tpb_common.h` (cayman/mariana/maverick):
 `NEURON_ISA_TPB_OPCODE_SORT = 0x96` and
 `NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_SELECT = 0x98, // SortMerge wip 0x97`.
 
@@ -282,7 +282,7 @@ via ctypes with no license**. Running a leaf live on a sweep of inputs and diffi
 reference model is OBSERVED-by-execution: the binary itself is the arbiter, the strongest static
 fact short of silicon. `[HIGH/OBSERVED]`
 
-**Evidence.** Verified this pass: `nm libfiss-base.so | rg -c module__xdref_` = **864**. ~95% of
+**Evidence.** `nm libfiss-base.so | rg -c module__xdref_` = **864**. ~95% of
 value-bearing leaves carry a differential certificate across ~2.09M comparisons, zero firmware
 value bugs found.
 
@@ -301,7 +301,7 @@ section of every binary, so you can `xxd` a `.data` struct at its file offset di
 `.data`-resident struct. It is *not* a constant `0x400000` — that value appears in none of the
 corpus binaries. `[HIGH/OBSERVED]`
 
-**Evidence.** Verified this pass on `libisa-core.so`: `.text`/`.rodata` delta `0`, but `.data`
+**Evidence.** Measured on `libisa-core.so`: `.text`/`.rodata` delta `0`, but `.data`
 Addr `0x764040` / Off `0x564040` → delta **`0x200000`**. Other families differ
 (`libnrtucode_internal.so` `.data` delta `0x3000`).
 
@@ -337,7 +337,7 @@ count.
 and reference, not once). Ground every count claim in **`nm <binary> | rg -c <pattern>`** against
 the actual symbol table. `[HIGH/OBSERVED — methodology]`
 
-**Evidence.** This pass re-grounded two counts directly: the **864** xdref leaves (`nm
+**Evidence.** Two counts are grounded directly: the **864** xdref leaves (`nm
 libfiss-base.so | rg -c`), and the **`maverick`** literal census — at the **bare-lowercase**
 scope (`rg -c 'maverick'`) the binary shows **2** occurrences in `libnrtucode_internal.so` and
 **0** in the front `libnrtucode.so`. (This is the *lowercase-literal* count, not the

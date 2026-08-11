@@ -36,18 +36,20 @@ For reimplementation, the contract is:
 
 All three passes are registered in `RegisterHiloHloPasses` and run post-order over the **entry computation only**. The two attention passes are **inverses registered one slot apart**: `#37 LowerToCustomNativeKernel` *raises* math → native-attention `CustomCall`; `#38 DecomposeAttention` *lowers* native / fused attention → math. Because `#38` sits immediately after `#37`, it can re-expand a native attention back to primitives when the kernel is not ultimately selected (canonicalization fallback). `#56 LowerToNKIKernelCC` is independent and structural — no flag, no dtype gate.
 
-The custom-call target catalogue (all CONFIRMED as literal strings in the `hlo-opt` ELF except `AwsNeuronMLPNKI`, which is assembled byte-by-byte and so does not appear as a contiguous string):
+The custom-call target catalogue — every entry is a literal string in the `hlo-opt` ELF except `AwsNeuronMLPNKI`, which is assembled byte-by-byte and so never appears contiguously:
 
 | Target string | Emitter | Role | Evidence |
 |---|---|---|---|
-| `AttentionMMSoftmaxMM` | #37 | non-causal SD attention | string in ELF — CONFIRMED |
-| `AttentionMMSoftmaxMMWithoutSwap` | #37 | operands not swapped | string in ELF — CONFIRMED |
-| `CausalAttentionMMSoftmaxMMWithoutSwap` | #37 | causal / LLM attention | string in ELF — CONFIRMED |
-| `AwsNeuronMLPNKI` | #56 | MLP dot-chain kernel | byte-decode @`0x1f47f88` — CONFIRMED (built inline, 15 B) |
-| `AwsNeuronCustomNativeKernel` | (class string) | native-kernel CC class id | string in ELF — CONFIRMED |
-| `AwsNeuronCustomNativeKernel_Sim` | (golden compare) | sim variant | string in ELF — CONFIRMED |
+| `AttentionMMSoftmaxMM` | #37 | non-causal SD attention | string in ELF |
+| `AttentionMMSoftmaxMMWithoutSwap` | #37 | operands not swapped | string in ELF |
+| `CausalAttentionMMSoftmaxMMWithoutSwap` | #37 | causal / LLM attention | string in ELF |
+| `AwsNeuronMLPNKI` | #56 | MLP dot-chain kernel | byte-decode @`0x1f47f88` (built inline, 15 B) |
+| `AwsNeuronCustomNativeKernel` | (class string) | native-kernel CC class id | string in ELF |
+| `AwsNeuronCustomNativeKernel_Sim` | (golden compare) | sim variant | string in ELF |
 
-> **CORRECTION —** the `#37` `CustomCall` target is **variant-selected**, *not* a fixed `AwsNeuronCustomNativeKernel` literal. `AwsNeuronCustomNativeKernel` is the *class* string; the emitted target is `xla::target` resolved to one of the three `…MMSoftmaxMM…` variants. (CreateCustomCall target arg taken from `cs:_ZN3xlaL6targetE` @`0x1f3d17f`.) The `kernel_name` `backend_config` key carries the same variant string. Cross-ref the custom-call target catalogue in [§1 above](#1-pipeline-placement--the-inverse-pair) and the canonical [`AwsNeuron*` `custom_call_target` vocabulary](neuron-dialect-registry.md#the-awsneuron-custom_call_target-vocabulary-26).
+The `#37` `CustomCall` target is **variant-selected**: `CreateCustomCall` takes its target argument from `cs:_ZN3xlaL6targetE` @`0x1f3d17f`, which resolves to one of the three `…MMSoftmaxMM…` variants above, and the `kernel_name` `backend_config` key carries the same variant string.
+
+> **GOTCHA —** `AwsNeuronCustomNativeKernel` is the *class* id, not an emitted target — no `CustomCall` is ever created with that literal. See the canonical [`AwsNeuron*` `custom_call_target` vocabulary](neuron-dialect-registry.md#the-awsneuron-custom_call_target-vocabulary-26).
 
 ---
 
@@ -96,7 +98,7 @@ StatusOr<bool> Run(module, threads) {
                          || (et == F16    /*0x0A*/)                          // 0x1f3f1aa
                          || (et == F32    /*0x0B*/ && cast_ok);              // F32 only with an opt-in cast
 
-        // internal target-instance discriminator (HIGH): only fire for "sunda"
+        // internal target-instance discriminator: only fire for "sunda"
         if (enabled
             && module.opts.string[+8].compare("sunda") == 0                 // 0x1f3f1c1, "sunda" in ELF
             && castEligible) {                                              // 0x1f3f1da
@@ -109,9 +111,9 @@ StatusOr<bool> Run(module, threads) {
 
 Key facts:
 
-- The **only** kernel wired into `#37` is the matmul-softmax-matmul attention kernel — a single call edge to `lowerMMSoftmaxMMToAttentionKernel`. The *"none of the kernels is enabled"* warning is the no-op branch taken when the global gate `qword_9A39A58` is 0. **CONFIRMED** (warning string in ELF; single callee).
-- BF16 (`0x10`) and F16 (`0x0A`) inputs are eligible unconditionally; **F32 (`0x0B`) is eligible only under an opt-in numeric cast** (`whatToCast` ∈ {matmult, all} ∧ `castType` ∈ {bf16, fp16}). **CONFIRMED** (compare chain @`0x1f3f460`).
-- `"sunda"` gates the lowering as a target-instance discriminator compared against `module.opts[+8]`. **STRONG** (`compare("sunda")` precedes the call; `sunda` string in ELF).
+- The **only** kernel wired into `#37` is the matmul-softmax-matmul attention kernel — a single call edge to `lowerMMSoftmaxMMToAttentionKernel`. The *"none of the kernels is enabled"* warning is the no-op branch taken when the global gate `qword_9A39A58` is 0 (warning string in ELF; single callee).
+- BF16 (`0x10`) and F16 (`0x0A`) inputs are eligible unconditionally; **F32 (`0x0B`) is eligible only under an opt-in numeric cast** (`whatToCast` ∈ {matmult, all} ∧ `castType` ∈ {bf16, fp16}) — compare chain @`0x1f3f460`.
+- `"sunda"` gates the lowering as a target-instance discriminator compared against `module.opts[+8]`: `compare("sunda")` precedes the call and the `sunda` string is in the ELF.
 
 > **GOTCHA —** the pass name suggests a broad "native kernel router". It is not: it routes exactly one idiom (attention). MLP goes through `#56`; everything else falls out of `castEligible` / the `"sunda"` gate. Do not model a wide dispatch table here.
 
@@ -160,7 +162,7 @@ The serialized native-attention config carries exactly these keys (verbatim toke
 | `auto_cast_type` | `castType` | `bf16` / `fp16` |
 | `kernel_name` | `xla::target` | which attention variant to dispatch |
 
-**CONFIRMED** — these are the five tokens in `serializeConfig`; together they tie the `CustomCall` to a native kernel and its tile geometry. In `hlo2penguin` the same builder (`0x1fe9b20`) emits an `nlohmann::json` object (key `"kernel_name"`); the JSON wire syntax (delimiters / ordering) is **INFERRED** — only the key names are CONFIRMED.
+These are the five tokens in `serializeConfig`; together they tie the `CustomCall` to a native kernel and its tile geometry. In `hlo2penguin` the same builder (`0x1fe9b20`) emits an `nlohmann::json` object (key `"kernel_name"`). The key names are read directly; the JSON wire syntax — delimiters and ordering — is **[INFERRED]**.
 
 ### Dispatch table (HLO pattern → kernel → config)
 
@@ -170,9 +172,9 @@ The serialized native-attention config carries exactly these keys (verbatim toke
 | …operands swapped | same | `AttentionMMSoftmaxMMWithoutSwap` | HIGH |
 | …causal / LLM, custom softmax, no swap | same | `CausalAttentionMMSoftmaxMMWithoutSwap` | HIGH |
 
-Master gate: global `qword_9A39A58` (in `hlo2penguin`, `xla::enableNativeKernelAttention` @`0x9c6d680`, default FALSE) **AND** target == `"sunda"`. The bf16-only sub-variant adds the `enableNativeKernelAttentionBF16` @`0x9c6d5c0` gate (§4). **CONFIRMED** gate; **HIGH** variant map.
+Master gate: global `qword_9A39A58` (in `hlo2penguin`, `xla::enableNativeKernelAttention` @`0x9c6d680`, default FALSE) **AND** target == `"sunda"`. The bf16-only sub-variant adds the `enableNativeKernelAttentionBF16` @`0x9c6d5c0` gate (§4). The gate is read directly; the variant map is **[INFERRED]**.
 
-> **NOTE —** the SBUF shape formula in `computeMMSoftmaxMMToAttentionKernelSbShape` (signature `(m, m, bool, PrimitiveType, bool)` — note **two** `m` dims + a causal bool + dtype + a trailing bool, *not* five dims) is not transcribed here; the `whatToCast=="matmult"` compare inside it toggles a `+2 / +0` term in the partition-byte computation, i.e. casting matmul intermediates to bf16 changes the state-buffer footprint reserved. **STRONG** (compare site @`0x1fce4b8` in `hlo2penguin`). See [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md) for the SBUF/PSUM tiling model the `psum_shape`/`sb_shape` tuples feed.
+> **NOTE —** the SBUF shape formula in `computeMMSoftmaxMMToAttentionKernelSbShape` (signature `(m, m, bool, PrimitiveType, bool)` — note **two** `m` dims + a causal bool + dtype + a trailing bool, *not* five dims) is not transcribed here; the `whatToCast=="matmult"` compare inside it toggles a `+2 / +0` term in the partition-byte computation, i.e. casting matmul intermediates to bf16 changes the state-buffer footprint reserved (compare site @`0x1fce4b8` in `hlo2penguin`). See [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md) for the SBUF/PSUM tiling model the `psum_shape`/`sb_shape` tuples feed.
 
 ---
 
@@ -195,7 +197,7 @@ StatusOr<bool> Run(module, threads) {
 }
 ```
 
-**CONFIRMED** — four callees only: `entry_computation`, `MakeInstructionPostOrder`, `lowerMLPToNKIKernel`, `operator delete`.
+Four callees only: `entry_computation`, `MakeInstructionPostOrder`, `lowerMLPToNKIKernel`, `operator delete`.
 
 ### Algorithm — `lowerMLPToNKIKernel` (`0x1f47030`, 4790 B)
 
@@ -226,7 +228,7 @@ bool lowerMLPToNKIKernel(comp, root) {
 }
 ```
 
-> **NOTE —** unlike `#37`, `#56` carries **no cast config and no dispatch flag** — it is a pure structural MLP fusion. Routing criterion is the structural match alone; the dtype is whatever the dot-chain already had. The native-kernel cast-type policy of §4 does **not** touch the MLP path. **CONFIRMED** (byte-decode + CreateCustomCall args; empty config).
+> **NOTE —** unlike `#37`, `#56` carries **no cast config and no dispatch flag** — it is a pure structural MLP fusion. Routing criterion is the structural match alone; the dtype is whatever the dot-chain already had. The native-kernel cast-type policy of §4 does **not** touch the MLP path — the byte-decode and the `CreateCustomCall` args show an empty config.
 
 ---
 
@@ -253,7 +255,7 @@ void SetNativeKernelCastType(s) {
 }
 ```
 
-The cast-type is also a `cl::opt<string>` registered in `HloPassOptions::HloPassOptions()` — arg `native-kernel-cast-type`, help `"Cast which kernel intermediates and to what type"`, valdesc `"type"`, **default literal `"matmult-to-bf16"`** (assembled inline @`0x1f93d5e`, len 15). The `cl::opt`'s own change-callback is a no-op (`_M_invoke = ret`); the value just sits in the option and is split/consumed later. **CONFIRMED** (string + nm address; `matmult-to-bf16` in ELF).
+The cast-type is also a `cl::opt<string>` registered in `HloPassOptions::HloPassOptions()` — arg `native-kernel-cast-type`, help `"Cast which kernel intermediates and to what type"`, valdesc `"type"`, **default literal `"matmult-to-bf16"`** (assembled inline @`0x1f93d5e`, len 15). The `cl::opt`'s own change-callback is a no-op (`_M_invoke = ret`); the value just sits in the option and is split/consumed later.
 
 ### Grammar — `"<what>-to-<type>"`
 
@@ -264,7 +266,7 @@ The string splits on `-to-` into two pieces compared against enum literals in `L
 | `<what>` → `xla::whatToCast` @`0x9c6d540` | `matmult`, `all` | `0x1ffed00` / `0x1ffed13` |
 | `<type>` → `xla::castType` @`0x9c6d520` | `bf16`, `fp16` | `0x1ffed2a` / `0x1ffed49` |
 
-So the grammar is `{matmult, all}` × `{bf16, fp16}`, default `matmult-to-bf16` (⇒ `whatToCast="matmult"`, `castType="bf16"`). **CONFIRMED**. There is **no** `fp32`/`fp8` branch on this path — distinct from the general `--fp32-cast` autocast which carries `{bf16, fp16, fp32r, fp8e4}`. The two globals default to empty and are populated at compile-config build time (the hidden mirror `native-kernel-auto-cast` @`0x9c67fa0`, same `matmult-to-bf16` default, feeds them via `GetHiloCompileConfig`); the exact `substr("-to-")` split was not pinned to one block — **INFERRED** but the four tokens and the default literal are CONFIRMED.
+So the grammar is `{matmult, all}` × `{bf16, fp16}`, default `matmult-to-bf16` (⇒ `whatToCast="matmult"`, `castType="bf16"`). There is **no** `fp32`/`fp8` branch on this path — distinct from the general `--fp32-cast` autocast which carries `{bf16, fp16, fp32r, fp8e4}`. The two globals default to empty and are populated at compile-config build time (the hidden mirror `native-kernel-auto-cast` @`0x9c67fa0`, same `matmult-to-bf16` default, feeds them via `GetHiloCompileConfig`); the exact `substr("-to-")` split was not pinned to one block and stays **[INFERRED]**, though the four tokens and the default literal are read directly.
 
 ### `enable-native-kernel-attention-bf16` — the dtype-match flag
 
@@ -284,15 +286,15 @@ else
     goto bail;                                     //   -> skip
 ```
 
-Additional shape gates at the same site (**CONFIRMED**): sequence dim `> 0x3ef` (>1007, long-context only); head dim `<= 0x80` (≤128); computed SB bytes `<= 0x30000` (196608, must fit the state buffer). The companion F32 check `cmp r15d, 0xb` (=11=F32) in `…WithConfig` @`0x1ffc8cb` gates the F32 path. (XLA `PrimitiveType`: F16=10, F32=11, BF16=16 — consistent with both immediates.) **STRONG**.
+Additional shape gates at the same site: sequence dim `> 0x3ef` (>1007, long-context only); head dim `<= 0x80` (≤128); computed SB bytes `<= 0x30000` (196608, must fit the state buffer). The companion F32 check `cmp r15d, 0xb` (=11=F32) in `…WithConfig` @`0x1ffc8cb` gates the F32 path. (XLA `PrimitiveType`: F16=10, F32=11, BF16=16 — consistent with both immediates.)
 
 ### The storage-vs-accumulate split
 
-> **QUIRK — `matmult-to-bf16` sets storage dtype, not accumulation dtype.** The cast-type policy governs only the **I/O / intermediate storage** dtype (bf16/fp16) of the fused attention kernel: QKᵀ inputs, the softmax statistics, and PV inputs as held in SBUF. It does **not** and **cannot** change the matmul *accumulation* dtype — the Trainium/Inferentia PE-array matmul always accumulates into the **fp32 PSUM** bank (hardware-fixed). So `matmult-to-bf16` means "feed/store the matmul operands in bf16"; the dot product still accumulates in fp32 PSUM and the bf16/fp16 result is read back out of PSUM. The binary keeps these on **separate axes**: the kernel-config vocabulary carries an independent `dot_accumulate_type` / `accumulation_mode` / `allow_imprecise_accumulation` notion (all three strings present in `hlo2penguin`), distinct from the cast-type knob. Cross-ref [Part 9 — Mixed-Precision Accumulation (PSUM accumulator hardware-fixed fp32)](../numerics/mixed-precision-accumulation.md#the-matmul-psum-accumulator-is-hardware-fixed-fp32) and [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md). **STRONG** (cast path CONFIRMED; the fp32-PSUM hardware fact is established in Part 9; the separate accumulation strings are CONFIRMED in the ELF).
+> **QUIRK — `matmult-to-bf16` sets storage dtype, not accumulation dtype.** The cast-type policy governs only the **I/O / intermediate storage** dtype (bf16/fp16) of the fused attention kernel: QKᵀ inputs, the softmax statistics, and PV inputs as held in SBUF. It does **not** and **cannot** change the matmul *accumulation* dtype — the Trainium/Inferentia PE-array matmul always accumulates into the **fp32 PSUM** bank (hardware-fixed). So `matmult-to-bf16` means "feed/store the matmul operands in bf16"; the dot product still accumulates in fp32 PSUM and the bf16/fp16 result is read back out of PSUM. The binary keeps these on **separate axes**: the kernel-config vocabulary carries an independent `dot_accumulate_type` / `accumulation_mode` / `allow_imprecise_accumulation` notion (all three strings present in `hlo2penguin`), distinct from the cast-type knob. Cross-ref [Part 9 — Mixed-Precision Accumulation (PSUM accumulator hardware-fixed fp32)](../numerics/mixed-precision-accumulation.md#the-matmul-psum-accumulator-is-hardware-fixed-fp32) and [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md).
 
 ### Where the cast directive reaches the kernel
 
-The compiler does **not** run the generic autocast pass for native kernels. Instead `whatToCast`/`castType` are baked into the `CustomCall`'s serialized `backend_config` (`auto_cast` / `auto_cast_type` keys, §2), and `HloInstruction::CreateConvert` ops to the target dtype are inserted around the fused region; the kernel itself realises the intermediate dtype. The host-side log proves the intent: `" Casting " <whatToCast> " to " <castType> " for native kernel "`. **CONFIRMED** (string fragments in ELF, streamed @`0x1ffd3a7`..).
+The compiler does **not** run the generic autocast pass for native kernels. Instead `whatToCast`/`castType` are baked into the `CustomCall`'s serialized `backend_config` (`auto_cast` / `auto_cast_type` keys, §2), and `HloInstruction::CreateConvert` ops to the target dtype are inserted around the fused region; the kernel itself realises the intermediate dtype. The host-side log states the intent directly: `" Casting " <whatToCast> " to " <castType> " for native kernel "` (string fragments in ELF, streamed @`0x1ffd3a7`..).
 
 ---
 
@@ -346,13 +348,13 @@ out     = MakeBinaryHlo(…);                                       // 0x1e9dd03
 attention.root->parent()->ReplaceInstruction(attention.root, decomposedSMV.fusion);  // 0x1e9dd31
 ```
 
-Opcode anchors (`HloOpcodeString` @`0x96bb550`, switch, ncases=123 — case value == enum value): `0x01 add`, `0x2C divide`, `0x2E dot`, `0x33 exponential`, `0x43 maximum`, `0x72 subtract`, `0x76 multiply`. **CONFIRMED**.
+Opcode anchors (`HloOpcodeString` @`0x96bb550`, switch, ncases=123 — case value == enum value): `0x01 add`, `0x2C divide`, `0x2E dot`, `0x33 exponential`, `0x43 maximum`, `0x72 subtract`, `0x76 multiply`.
 
 | Input (matched) | Output subgraph | Builders | Conf |
 |---|---|---|---|
 | root = kDot over masked-softmax over kDot | `dot(Q,Kᵀ)` → `−max` → `exp` → `÷ Σ` → `dot(P,V)` | `MakeDotHlo`×N, `MakeReduceHlo`(max,max,add,add), `MakeBinaryHlo`(max,subtract,divide,…), `MakeUnaryHlo`(exp), `MakeBroadcastHlo`, `MakeConvertToHlo`, `MakeR0ConstantHlo<float>`, `Mask`×2 | CERTAIN |
 
-> **CORRECTION —** `DecomposeAttention` decomposes to the matmul-softmax-matmul **subgraph** (math ops), **not** to a fused custom-call. The output is a single fused result node `decomposedSMV.fusion` built from the `Make*` primitives; softmax is the stable `exp(x − rowmax) / Σ exp(x − rowmax)`. Cross-ref [Part 6 — Flash-Attention: Context (CTE)](../nki/attention-cte.md) for the kernel-side counterpart (the NKI attention kernel the forward raise dispatches to).
+> **GOTCHA —** despite the node name `decomposedSMV.fusion`, `DecomposeAttention` produces a matmul-softmax-matmul **subgraph** of math ops, not a fused custom-call: the result is one node built from the `Make*` primitives, with softmax in the stable `exp(x − rowmax) / Σ exp(x − rowmax)` form. See [Part 6 — Flash-Attention: Context (CTE)](../nki/attention-cte.md) for the kernel-side counterpart.
 
 ---
 
@@ -394,18 +396,18 @@ HloInstruction* HloInstruction::CreateCustomCall(Shape, Span<HloInstruction* con
 
 ---
 
-## 7. Adversarial Self-Verification
+## 7. Evidence anchors and limits
 
-The five strongest claims, re-challenged against the binary:
+The structural claims on this page and what pins each:
 
-1. **The three pass `Run` bodies and workers exist at the cited `hlo-opt` addresses.** Re-checked via `nm hlo-opt`: `DecomposeAttention::Run` @`0x1e9d160`, `LowerToCustomNativeKernel::Run` @`0x1f3eeb0`, `LowerToNKIKernelCC::Run` @`0x1f48300`, `lowerMLPToNKIKernel` @`0x1f47030`, `lowerMMSoftmaxMMToAttentionKernel` @`0x1f3e830`, `…WithConfig` @`0x1f35a80`, `computeMMSoftmaxMMToAttentionKernelSbShape` @`0x1f0cc00`, `serializeConfig` @`0x1f2a280`. **All eight CONFIRMED** byte-exact. (Correction applied: `SbShape` signature is `(m, m, bool, PrimitiveType, bool)` — two dims, not "five params"; the five-param form belongs to `…WithConfig`.)
+1. **The three pass `Run` bodies and their workers.** From `nm hlo-opt`: `DecomposeAttention::Run` @`0x1e9d160`, `LowerToCustomNativeKernel::Run` @`0x1f3eeb0`, `LowerToNKIKernelCC::Run` @`0x1f48300`, `lowerMLPToNKIKernel` @`0x1f47030`, `lowerMMSoftmaxMMToAttentionKernel` @`0x1f3e830`, `…WithConfig` @`0x1f35a80`, `computeMMSoftmaxMMToAttentionKernelSbShape` @`0x1f0cc00`, `serializeConfig` @`0x1f2a280` — all eight byte-exact. `SbShape`'s signature is `(m, m, bool, PrimitiveType, bool)`, two dims plus flags; the five-parameter form belongs to `…WithConfig`.
 
-2. **The `#37` target is a variant string, not `AwsNeuronCustomNativeKernel`.** `AttentionMMSoftmaxMM`, `AttentionMMSoftmaxMMWithoutSwap`, `CausalAttentionMMSoftmaxMMWithoutSwap`, `AwsNeuronCustomNativeKernel`, `AwsNeuronCustomNativeKernel_Sim` all appear as literal strings in the `hlo-opt` ELF (`rg -a` confirmed); the target is taken from `xla::target` @`0x1f3d17f`. **CONFIRMED.** `AwsNeuronCustomNativeKernel` is the class id, not the emitted target.
+2. **The `#37` target is a variant string.** `AttentionMMSoftmaxMM`, `AttentionMMSoftmaxMMWithoutSwap`, `CausalAttentionMMSoftmaxMMWithoutSwap`, `AwsNeuronCustomNativeKernel` and `AwsNeuronCustomNativeKernel_Sim` all appear as literal strings in the `hlo-opt` ELF, and the emitted target is taken from `xla::target` @`0x1f3d17f`.
 
-3. **`AwsNeuronMLPNKI` is the `#56` target.** It does **not** appear as a contiguous ELF string (re-checked: absent from `rg -a`), which corroborates the byte-build at `0x1f47f88` (`"AwsNeuro"+"NK"+"nMLP"+"I"`, len 15). **CONFIRMED** — and the absence is itself evidence of the inline assembly, not a failure.
+3. **`AwsNeuronMLPNKI` is the `#56` target.** It does *not* appear as a contiguous ELF string, which is itself the evidence for the byte-build at `0x1f47f88` (`"AwsNeuro"+"NK"+"nMLP"+"I"`, len 15).
 
-4. **`matmult-to-bf16` sets storage, not accumulation.** The default literal `matmult-to-bf16`, the grammar tokens (`matmult`/`all`/`bf16`/`fp16`), and the three independent accumulation strings (`dot_accumulate_type`, `accumulation_mode`, `allow_imprecise_accumulation`) all confirmed present in `hlo2penguin` via `rg -a`. The fp32-PSUM accumulation fact is hardware-fixed (Part 9). The cast knob has **no** fp32 branch, so it cannot express the accumulation dtype — these are structurally separate axes. **STRONG.**
+4. **`matmult-to-bf16` sets storage, not accumulation.** The default literal `matmult-to-bf16`, the grammar tokens (`matmult`/`all`/`bf16`/`fp16`), and the three independent accumulation strings (`dot_accumulate_type`, `accumulation_mode`, `allow_imprecise_accumulation`) are all present in `hlo2penguin`. The fp32-PSUM accumulation is hardware-fixed (Part 9), and the cast knob has no fp32 branch, so it cannot express the accumulation dtype — structurally separate axes.
 
-5. **The cast-policy symbols live only in `hlo2penguin`.** `SetNativeKernelCastType` @`0x1f93060`, `enableNativeKernelAttention` @`0x9c6d680`, `…BF16` @`0x9c6d5c0` all nm-confirmed in `hlo2penguin`; absent from `hlo-opt`'s symbol table. The pass bodies exist in both binaries (`LowerToCustomNativeKernel::Run` @`0x1ffe750` in `hlo2penguin`, @`0x1f3eeb0` in `hlo-opt`). **CONFIRMED.**
+5. **The cast-policy symbols live only in `hlo2penguin`.** `SetNativeKernelCastType` @`0x1f93060`, `enableNativeKernelAttention` @`0x9c6d680`, `…BF16` @`0x9c6d5c0` are all in `hlo2penguin`'s symbol table and absent from `hlo-opt`'s, while the pass bodies exist in both (`LowerToCustomNativeKernel::Run` @`0x1ffe750` in `hlo2penguin`, @`0x1f3eeb0` in `hlo-opt`).
 
-Tagged-INFERRED items (not fabricated): the exact `nlohmann::json` wire syntax of `backend_config`; the `substr("-to-")` split routine; the `xla::target` → variant decision tree inside the 36 KB rewriter; the exact `computeMMSoftmaxMMToAttentionKernelSbShape` tile formula. All are flagged in-place above.
+**Limits.** Still **[INFERRED]** and flagged in place above: the exact `nlohmann::json` wire syntax of `backend_config`; the `substr("-to-")` split routine; the `xla::target` → variant decision tree inside the 36 KB rewriter; and the exact `computeMMSoftmaxMMToAttentionKernelSbShape` tile formula.

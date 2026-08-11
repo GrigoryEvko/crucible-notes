@@ -3,8 +3,8 @@
 > **Binary:** `libnrtucode_internal.so` (host x86-64 ELF, **not** stripped,
 > BuildID `9cbf78c6…`, 10,276,288 B) from the `aws-neuronx-gpsimd-customop-lib`
 > `0.21.2.0` package — **not** `libnrt.so`. Every symbol, address, struct byte,
-> reloc type, instruction mask and reloc-store below was re-verified against that
-> binary this session (`nm`/`objdump`/`readelf`/`xxd`), cross-checked against the
+> reloc type, instruction mask and reloc-store below was verified against that
+> binary (`nm`/`objdump`/`readelf`/`xxd`), cross-checked against the
 > stripped shipped twin and the static archive `libnrtucode.a` where noted.
 >
 > **Section deltas** (`readelf -SW`, confirmed): `.rodata` VMA==fileoffset
@@ -18,6 +18,9 @@
 > `table_symbol + 8*N`**. The `_ZTV + 0x10` rule used elsewhere in this wiki
 > **does not apply here**. Every count on this page is grounded via
 > `nm <lib> | rg -c` or a direct disasm read, never grepped from a decompile.
+>
+> The page default is `[HIGH·OBSERVED]`; claims that depart from it carry an
+> explicit tag.
 
 This page is the definitive end-to-end reference for the GPSIMD **host
 prelinker** — the x86-64 routine in `libnrtucode` that turns a packaged 32-bit
@@ -55,7 +58,7 @@ prelink @0x9b5d60                                            [§1 entry, §3.6 U
 
 ---
 
-## Chain symbol map `[HIGH·OBSERVED — nm -n + objdump]`
+## Chain symbol map
 
 | symbol | addr | role | stage |
 |--------|------|------|-------|
@@ -77,11 +80,11 @@ prelink @0x9b5d60                                            [§1 entry, §3.6 U
 The `.a` archive member names (`ar t libnrtucode.a`) confirm the source modules:
 `prelink.c`, `prelink_load.c`, `prelink_relocate.c`, `prelink_memory_bounds.c`,
 `prelink_log.c`. `prelink` + the UCPL emit are **byte-identical** across the
-stripped `.so`, the internal twin, and `prelink.c.o`. `[HIGH·OBSERVED]`
+stripped `.so`, the internal twin, and `prelink.c.o`.
 
 ---
 
-## 1. `prelink @0x9b5d60` — the entry + the UCPL chain `[HIGH·OBSERVED]`
+## 1. `prelink @0x9b5d60` — the entry + the UCPL chain
 
 Signature (recovered from the prelink frame + the `load_lib`/`relocate_lib`
 call sites), with the stack arg the UCPL header is emitted into:
@@ -123,9 +126,9 @@ stages produce and consume (this is the key structural fact — there is *not* o
 > **The two segment lengths** `desc.code_seg_len` (init 0, written by `load_lib`
 > with the **code `p_memsz`**) and `desc.data_seg_len` are the only `load_lib`
 > outputs that flow into the UCPL header; everything else `load_lib` writes goes
-> into the `pil` for the relocator. `[HIGH·OBSERVED]`
+> into the `pil` for the relocator.
 
-### 1.1 The small `desc` control block `[HIGH·OBSERVED]`
+### 1.1 The small `desc` control block
 
 `prelink` builds this on its stack (`rsp+0x08`) and passes it as `load_lib` arg0.
 Offsets are cross-checked against the prelink stores and the `load_lib`
@@ -180,7 +183,7 @@ int prelink_load_lib(desc_t *desc, const Ehdr *e, xt_ptr code_base,
 }
 ```
 
-### 2.0 ELF parse + the offsets the loader reads `[HIGH·OBSERVED]`
+### 2.0 ELF parse + the offsets the loader reads
 
 The `pi_library` is a 32-bit Xtensa ELF `ET_DYN` **split-load** shared object.
 Every multi-byte field is read through `xtlib_host_word`/`xtlib_host_half`, which
@@ -198,11 +201,10 @@ Dyn  (stride 0x10): d_tag@0  d_un@4                              (get_dyn_info)
 > **NOTE — placement uses `p_paddr`.** The destination is
 > `align_ptr(region_base, align) + (p_paddr & (align-1))`. The loader reads
 > **`p_paddr`** (offset 0xc), not `p_vaddr`, as the segment placement offset.
-> `[HIGH·OBSERVED]`
 
-### 2.1 `xtlib_verify_magic @0x9b6d40` — ELF magic + class + endian `[HIGH·OBSERVED]`
+### 2.1 `xtlib_verify_magic @0x9b6d40` — ELF magic + class + endian
 
-Disassembled this session, byte-exact:
+Disassembled byte-exact:
 
 ```c
 // xtlib_verify_magic @0x9b6d40
@@ -226,7 +228,7 @@ int xtlib_verify_magic(const Ehdr *e) {
 "version-like" discriminator anywhere in the pipeline; the UCPL header has no
 version field (§3.6).
 
-### 2.2 `validate_dynamic_load @0x9b71f0` — split-load Phdr validation `[HIGH·OBSERVED]`
+### 2.2 `validate_dynamic_load @0x9b71f0` — split-load Phdr validation
 
 Produces a 0x30-byte `xtlib_validate_t` (zeroed via 3× `movups`):
 
@@ -252,14 +254,14 @@ The accepted layout (all flags via `xtlib_host_word`):
 > scratch -WX=3). On the documented split-load layout they are equivalent.
 > `[masks HIGH·OBSERVED; equivalence MED·INFERRED]`
 
-### 2.3 `find_align` / `align_ptr` `[HIGH·OBSERVED]`
+### 2.3 `find_align` / `align_ptr`
 
 `align_ptr(p,a)` = `lea (rdi,rsi),eax ; dec ; neg esi ; and` = `(p+a-1)&~(a-1)`
 (4 instructions, exact). `find_align(e)` walks the Shdr table (stride 0x28),
 skipping `SHT_NULL` and zero-size sections, and `cmovg`-maxes `sh_addralign`. The
 result is `pil.align @+0x38` and drives the destination base alignment.
 
-### 2.4 `get_dyn_info @0x9b6ed0` — the `pil` descriptor build `[HIGH·OBSERVED]`
+### 2.4 `get_dyn_info @0x9b6ed0` — the `pil` descriptor build
 
 `get_dyn_info` locates PT_DYNAMIC (inlined `p_type==2` scan; none → rc `4`
 NO_DYNAMIC_SEGMENT), then walks `Elf32_Dyn` entries (stride 0x10) through a
@@ -288,7 +290,7 @@ The host `pil` is `xtlib_pil_info` with `rel` widened to 8 B, `sizeof = 0x40` (t
 4-byte public twin is `0x3c`). `pil[0x10] start_sym` and `pil[0x18]/[0x1c]
 init/fini` are the three fields the UCPL header reads (§3.6).
 
-#### 2.4.1 The `DT_RELA` scratch-aware branch (`0x9b7133`) `[HIGH·OBSERVED]`
+#### 2.4.1 The `DT_RELA` scratch-aware branch (`0x9b7133`)
 
 ```c
 if (pil->scratch_section_found) {                       // cmpl $0,0x3c(%rbx)
@@ -304,7 +306,7 @@ table **inside the original `pi_library` image** (a host address), not at the
 loaded data buffer. The relocator (§3) advances `pil[0x20] + 8` to
 `&rela[0].r_addend` and iterates `rela_count` entries.
 
-### 2.5 `xtlib_load_seg` — the per-segment copy `[HIGH·OBSERVED]`
+### 2.5 `xtlib_load_seg` — the per-segment copy
 
 `xtlib_load_seg @0x9b6d90` is inlined twice. Per `PT_LOAD`:
 
@@ -319,13 +321,13 @@ memset(dst + p_filesz, 0, p_memsz - p_filesz);         // @9b5fec / @9b6087  .bs
 > `p_filesz`; `memset` zero-fills to `p_memsz`; the desc length the UCPL header
 > advertises is the **in-memory** size (so the device reserves the full bss).
 > `UCPL.code_seg_len = align4(code p_memsz)`, `UCPL.data_seg_len =
-> align4(data p_memsz)`. `[HIGH·OBSERVED]`
+> align4(data p_memsz)`.
 
 The `-WX` scratch segment (if present) is **not** body-loaded — only `phdr[0]`
 (code) and `phdr[1]` (data) are copied; the scratch seg carries the in-image rela
 table (§2.4.1).
 
-### 2.6 Region-bounds — the "Segment exceeds region" rc 13 `[HIGH·OBSERVED]`
+### 2.6 Region-bounds — the "Segment exceeds region" rc 13
 
 Before each `memcpy`, the loader checks `(dst_seg - region_base) + p_memsz` against
 the cayman region size:
@@ -337,7 +339,7 @@ the cayman region size:
 //                    return 13;  // XTLIB_INTERNAL_ERR
 ```
 
-`cayman_memory_bounds @0x9aaee0` (`xxd`'d this session, 8 qwords):
+`cayman_memory_bounds @0x9aaee0` (`xxd`'d, 8 qwords):
 
 | off | value | role |
 |-----|-------|------|
@@ -370,17 +372,17 @@ Xtensa instruction/data words **in place in the host scratch buffers**. The
 staged image therefore contains *fully relocated* code with **zero** residual
 relocations — the UCPL header carries no reloc/symbol table by design.
 
-> **RECONCILED with the committed consumer page (DX-RT-12,
-> [runtime/ucode-relocation-consumer.md](ucode-relocation-consumer.md)).** Same
+> **RECONCILED with the consumer page
+> ([runtime/ucode-relocation-consumer.md](ucode-relocation-consumer.md)).** Same
 > binary, same anchors: `prelink_relocate_lib @0x9b6160`, `relocate_op @0x9b6660`,
 > `reloc_addr @0x9b6130`. The handled R_XTENSA set is identical (§3.1). The
 > consumer page additionally provides the **ground-truth blob histogram** from a
 > real device PI image (240 `Elf32_Rela` entries:
 > `{35:101, 20:101, 0:8, 5:30}`) — confirming exactly the four kinds below.
 
-### 3.1 The handled R_XTENSA type set `[HIGH·OBSERVED]`
+### 3.1 The handled R_XTENSA type set
 
-The dispatch in `prelink_relocate_lib @0x9b61c5..` (disassembled this session):
+The dispatch in `prelink_relocate_lib @0x9b61c5..`:
 
 ```
 9b61c8  cmp $0xff,%edx ; ja 0x9b6625    ; r_info > 0xff  → rc 5 UNKNOWN_SYMBOL (STN_UNDEF gate)
@@ -404,8 +406,8 @@ Anything else (and any `r_info > 0xff`) → error. The constants `0x14=20`,
 patch; ALT patches the high 16 bits of a CONST16 / `L32R` / `MOVI` two-word
 constant materialization.
 
-> **CORRECTION — type 5 naming: `R_XTENSA_32`, not `R_XTENSA_RELATIVE`.** An
-> earlier survey pass named type 5 `R_XTENSA_RELATIVE`. The committed consumer
+> **CORRECTION — type 5 naming: `R_XTENSA_32`, not `R_XTENSA_RELATIVE`.** Type 5
+> is elsewhere labelled `R_XTENSA_RELATIVE`. The consumer
 > page names it **`R_XTENSA_32`** and grounds it in the device blob histogram
 > (`5:30` of 240 real entries). Both describe the **same** code path — an
 > in-place *additive* 32-bit word relocation rebased through `reloc_addr`
@@ -413,18 +415,18 @@ constant materialization.
 > label. In a position-independent split-load `pi_library` the linker emits
 > self-relative data-word relocs; whichever label the toolchain stamps, the
 > binary's path is identical. **This page standardizes on `R_XTENSA_32` (type 5)**
-> to match the committed consumer page and the device-blob ground truth.
+> to match the consumer page and the device-blob ground truth.
 > `[CORRECTION·HIGH — histogram OBSERVED on the device blob]`
 
 > **GOTCHA — symbol resolution is degenerate by contract.** `r_info > 0xff`
 > (`ELF32_R_SYM(r_info) != STN_UNDEF`) → return `5` `XTLIB_UNKNOWN_SYMBOL`. There
 > is **no** dynamic-symbol lookup; a packaged `pi_library` must be fully
 > self-relative (every reloc symbol-less). "Resolution" is purely the segment-base
-> arithmetic in `reloc_addr`. `[HIGH·OBSERVED]`
+> arithmetic in `reloc_addr`.
 
-### 3.2 `reloc_addr @0x9b6130` — the 2-way segment rebase `[HIGH·OBSERVED]`
+### 3.2 `reloc_addr @0x9b6130` — the 2-way segment rebase
 
-The only "address → device VA" mechanism. Disassembled this session, byte-exact:
+The only "address → device VA" mechanism. Disassembled byte-exact:
 
 ```c
 // reloc_addr @0x9b6130
@@ -444,7 +446,7 @@ section is present, pushes a scratch-region address onto the data side. The `pil
 fields consumed here: `dst_addr@0`, `src_offs@4`, `dst_data_addr@8`,
 `src_data_offs@0xc`, `scratch_section_found@0x3c`.
 
-### 3.3 The `Elf32_Rela` iteration + the type-5 data-word fixup `[HIGH·OBSERVED]`
+### 3.3 The `Elf32_Rela` iteration + the type-5 data-word fixup
 
 ```c
 int prelink_relocate_lib(desc_t *desc, pil_t *pil) {
@@ -489,9 +491,9 @@ The type-5 unaligned path reads two adjacent words, `shld`-extracts the straddli
 > little-endian `u32`s (how the code indexes them) they are
 > `{0x000000ff, 0x0000ffff, 0x00ffffff}` (low table @`0x9aaf70`) and
 > `{0xffffff00, 0xffff0000, 0xff000000}` (high table @`0x9aaf7c`). The table above
-> uses the LE dword values — the form the relocator actually `and`s. `[HIGH·OBSERVED]`
+> uses the LE dword values — the form the relocator actually `and`s.
 
-### 3.4 `relocate_op @0x9b6660` — the per-slot operand-field patcher `[HIGH·OBSERVED]`
+### 3.4 `relocate_op @0x9b6660` — the per-slot operand-field patcher
 
 ```c
 // relocate_op @0x9b6660
@@ -523,7 +525,7 @@ int relocate_op(desc_t *desc, u32 site /*device VA*/, int type, u32 value) {
 The narrow 16-bit set (mask `0xff0000f7`, value bits `[0..15] << 8`) is byte-exact.
 The wide path makes an aligned 16-byte local copy, then matches the FLIX format-id
 in `insn[0]`'s top bits and `pand`s one of **five 16-byte SSE field-clear masks**
-(at `cayman+0x40..+0x80`, `xxd`'d this session — qword0 LE):
+(at `cayman+0x40..+0x80`, `xxd`'d — qword0 LE):
 
 | `.a` label | VA | qword0 mask | format-id match |
 |------------|----|-------------|-----------------|
@@ -542,11 +544,11 @@ the CONST16 FLIX model]`
 
 > **NOTE — these masks are operand-field masks, not memory bounds.** They sit
 > immediately after `cayman_memory_bounds` in `.rodata` (which ends at
-> `0x9aaf20`), so an earlier pass mistook them for a `0x40`-byte extension of the
+> `0x9aaf20`), so they are easily mistaken for a `0x40`-byte extension of the
 > bounds table. They are the `.LCPI2_*` `.rodata.cst16` field-clear masks. The
 > `cayman_memory_bounds` table is exactly **8 qwords (0x40 B)**. `[CORRECTION·HIGH]`
 
-### 3.5 Relocator error codes `[HIGH·OBSERVED]`
+### 3.5 Relocator error codes
 
 | rc | enum | trigger | string |
 |----|------|---------|--------|
@@ -558,10 +560,10 @@ the CONST16 FLIX model]`
 Any nonzero rc aborts the loop and propagates to `prelink` → `ll_create`, failing
 the load. The on-device image is **never** partially relocated and staged.
 
-### 3.6 The UCPL header — byte-exact emit `[HIGH·OBSERVED]`
+### 3.6 The UCPL header — byte-exact emit
 
 After load + relocate succeed, `prelink @0x9b5e16..0x9b5e5b` emits the **0x20-byte
-UCPL header** into `*out_header`. Disassembled this session, instruction-anchored:
+UCPL header** into `*out_header`. Disassembled instruction-anchored:
 
 ```c
 // emit_ucpl_header(out, desc, pil)  —  prelink @0x9b5e16
@@ -601,7 +603,7 @@ typedef struct ucpl_header_t {     /* 0x20 = 32 bytes, written to device offset 
 > ```
 >
 > where `data_seg_off = 0x20 + align32(code_seg_len)` (compile-checked:
-> code=0→0x20, code=0x21→0x60, code=0x100→0x120, code=0x1234→0x1260). `[HIGH·OBSERVED]`
+> code=0→0x20, code=0x21→0x60, code=0x100→0x120, code=0x1234→0x1260).
 
 > **NOTE — what the UCPL header deliberately does NOT carry.** No version field
 > (the EI_DATA byte is the only version-like discriminator, §2.1); no checksum; no
@@ -609,7 +611,7 @@ typedef struct ucpl_header_t {     /* 0x20 = 32 bytes, written to device offset 
 > words); no per-section descriptor array, reloc-table pointer, or symbol/import
 > table. All symbol/relocation work is flattened on the host (§3); the device
 > needs only the entry/init/fini addresses and the two segment extents. This is
-> the "prelinked" contract. `[HIGH·OBSERVED]`
+> the "prelinked" contract.
 
 ---
 
@@ -625,7 +627,7 @@ is installed.
 
 > **GOTCHA — this is a plain C function-pointer table, not a `_ZTV`.** The vtable
 > is in `.data.rel.ro` with **`R_X86_64_RELATIVE`** relocs (one per populated
-> slot). **Slot N = `plat_memhandle_dummy + 8*N`.** `readelf -rW` this session:
+> slot). **Slot N = `plat_memhandle_dummy + 8*N`.** `readelf -rW`:
 >
 > ```
 > 0x9b8cf0  R_X86_64_RELATIVE  → 0x9b1820   (slot +0x00  device_malloc)
@@ -637,7 +639,7 @@ is installed.
 >
 > The dummy populates slots 0..3 and leaves slot 4 NULL. A **real** backend must
 > additionally supply `device_addr` (called unconditionally in two host paths).
-> Table size = 0x28 (5 slots). `[HIGH·OBSERVED]`
+> Table size = 0x28 (5 slots).
 
 ```c
 typedef struct memhandle_vtbl {                              /* 0x28 = 5 slots */
@@ -668,7 +670,7 @@ own state) and the region **handle by value** as arg2. The handle is an opaque
 Error code `8` = "memhandle platform not attached" — an unconfigured context fails
 loudly on every device op except `free` (silent no-op).
 
-### 4.1 `dmem_alloc` / `device_malloc` (+0x00) — the staging buffer `[HIGH·OBSERVED]`
+### 4.1 `dmem_alloc` / `device_malloc` (+0x00) — the staging buffer
 
 `device_malloc(ctx, A, B, out_handle)` returns 0/errcode and writes the new device
 handle through `out`. `ll_create @0x9b1c4e` allocates the staging buffer:
@@ -692,7 +694,7 @@ rdi = ctx; rcx = &ll->device_memhandle;       // out → ll[+0x08]
 > `dmem_alloc`; the two are independent realizations of the same staging boundary
 > (different symbols, never cross-referenced — they reconcile by role only).
 
-### 4.2 `dmem_buf_copyin` / `write_memhandle` (+0x18) — staging the image `[HIGH·OBSERVED]`
+### 4.2 `dmem_buf_copyin` / `write_memhandle` (+0x18) — staging the image
 
 `ll_create @0x9b1c81..0x9b1cc0` issues exactly **three** `write_memhandle` calls —
 the header first at device offset 0, then the two prelink-assigned body segments
@@ -730,7 +732,7 @@ log ring `head..tail` to host in `core_print_logs @0x9b0f08`); `device_addr`
 > CODE IMAGE + the control-block addresses; the per-call `at::Tensor`/scalar args
 > are pulled *on-device* by `customop_next_*` once the kernel runs (a separate
 > ABI). The result-reap for a kernel is not an image copyout — the image is code,
-> not result data. `[HIGH cross-report]`
+> not result data. `[CARRIED]`
 
 ---
 
@@ -786,7 +788,7 @@ templates). Used by device coretypes `{13, 21, 29}`; the host-only family
 ## Cross-references
 
 * [runtime/ucode-relocation-consumer.md](ucode-relocation-consumer.md) — the
-  on-device relocation/init consumer (DX-RT-12); shares the
+  on-device relocation/init consumer; shares the
   `prelink_relocate_lib @0x9b6160` / `relocate_op @0x9b6660` / `reloc_addr
   @0x9b6130` anchors and the device-blob reloc histogram that grounds the type-5
   = `R_XTENSA_32` naming (§3.1 CORRECTION).
@@ -795,15 +797,15 @@ templates). Used by device coretypes `{13, 21, 29}`; the host-only family
 * [runtime/object-model-graph.md](object-model-graph.md) — the
   `nrtucode_context_t` / `nrtucode_ll_t` object model that owns the memhandle
   vtable and the staged-library handle.
-* `neff/neff-elf-relationship.md` *(stub — pending)* — the NEFF↔ELF packaging
-  relationship for the `pi_library` blob.
+* [neff/neff-elf-relationship.md](../neff/neff-elf-relationship.md) — the NEFF↔ELF
+  packaging relationship for the `pi_library` blob.
 
 ---
 
 ## Confidence ledger
 
 **HIGH · OBSERVED** (single-instruction / verbatim-string / reloc-anchored,
-re-verified against the binary this session):
+verified against the binary):
 
 * the whole chain symbol map (`nm -n`), all addresses;
 * the UCPL emit (`movabs $0x204c504355`, the align4/align32/align4 stores, the 8-B
@@ -830,7 +832,7 @@ embedder-supplied, not in this binary); the `sunda`-mode selection mechanism
 
 **CARRIED · SIBLING** — the on-device `xtlib_target_init_pi_library` (init + entry
 expose, no relocation) is not in this binary; carried from the xtlib host/target
-API contract and the committed consumer page.
+API contract and the consumer page.
 
 > **INFERRED — v5 / Maverick interior.** This library is wired to the `cayman`
 > (HW-decode) region table; `sunda` is present but dormant. Any claim about a

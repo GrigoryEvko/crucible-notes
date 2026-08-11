@@ -8,7 +8,7 @@ When the compiler decides that an entry parameter must be laid out differently o
 
 The contract spans three actors. The **producer of the map** is upstream of this page: the penguin `InsertIOTransposes` tonga pass computes the per-input reshape/transpose dict, and the `Frontend` driver job serializes one `io_transposes.json` array per subgraph directory (`sg0x/`). The **materialization stage** is the `StaticIOTranspose` driver job — an *in-process Cython* job, not a native ELF spawn — which `simplifyWeightTransform`s each spec (folding adjacent dims), in a verify pipeline physically transposes the input tensors to `transposed_inputs/value_*.npy`, re-serializes the simplified map, and symlinks the root transposed npys into every `sg*/` dir. The **consumer** is the native `hlo-neff-wrapper`, which parses the json array(s), combines them through the netlist's partition aliases, and emits the two custom-call attributes.
 
-The format resembles a numpy `reshape`-then-`transpose` recipe stored as JSON, deduplicated and validated against a partition graph — the closest familiar analog is an XLA layout-assignment side-table, except it lives outside the HLO proto and is reconstituted into frontend-attributes only at the final wrapper stage. Both producer and consumer string-pools were recovered, and every JSON key below is anchored to a string literal in *both* sides; where the two agree the key is `CERTAIN`, and the one area neither side byte-resolves (the inner shape of `PartMap`) is flagged explicitly.
+The format resembles a numpy `reshape`-then-`transpose` recipe stored as JSON, deduplicated and validated against a partition graph — the closest familiar analog is an XLA layout-assignment side-table, except it lives outside the HLO proto and is reconstituted into frontend-attributes only at the final wrapper stage. Both producer and consumer string pools were recovered, and every JSON key below is anchored to a string literal on *both* sides. One area resolves on neither side — the inner shape of `PartMap` — and is called out where it matters.
 
 For reimplementation, the contract is:
 
@@ -41,11 +41,11 @@ For reimplementation, the contract is:
 
 Top-level type: **JSON array of objects**. Each element:
 
-| Key (verbatim) | Type | Meaning | Required | Anchor / Confidence |
-|---|---|---|---|---|
-| `input_name` | string | Name of the entry parameter this transpose applies to; becomes the StringMap key. Must be a string. | **yes** | producer `__pyx_n_u_input_name`; consumer string `input_name` + `input_name not found in json`. **CERTAIN** |
-| `reshape` | array&lt;int&gt; | Target shape to fold the flat tensor into **before** the permutation. Stored as `SmallVector<long,6>`. | **yes** | producer docstring `'reshape': […]`; consumer string `reshape` + `reshape not found in json`. **CERTAIN** |
-| `transpose` | array&lt;int&gt; | Axis permutation applied **after** the reshape (numpy `transpose` axis order). Stored as `SmallVector<long,6>`. | **yes** | producer docstring `'transpose': […]`; consumer string `transpose` + `transpose not found in json`. **CERTAIN** |
+| Key (verbatim) | Type | Meaning | Required | Anchor | Confidence |
+|---|---|---|---|---|---|
+| `input_name` | string | Name of the entry parameter this transpose applies to; becomes the StringMap key. Must be a string. | **yes** | producer `__pyx_n_u_input_name`; consumer string `input_name` + `input_name not found in json` | CERTAIN |
+| `reshape` | array&lt;int&gt; | Target shape to fold the flat tensor into **before** the permutation. Stored as `SmallVector<long,6>`. | **yes** | producer docstring `'reshape': […]`; consumer string `reshape` + `reshape not found in json` | CERTAIN |
+| `transpose` | array&lt;int&gt; | Axis permutation applied **after** the reshape (numpy `transpose` axis order). Stored as `SmallVector<long,6>`. | **yes** | producer docstring `'transpose': […]`; consumer string `transpose` + `transpose not found in json` | CERTAIN |
 
 ```json
 [
@@ -60,7 +60,7 @@ The ints are JSON **numbers**, not strings — the consumer reads them with a `g
 
 ### The 6-dim inline cap
 
-Both `reshape` and `transpose` land in `SmallVector<long,6>` — six dims inline, spilling to heap beyond that. This cap is confirmed directly from the demangled consumer signature: the in-memory map is `StringMap<pair<SmallVector<long,6>, SmallVector<long,6>>, MallocAllocator>`. The producer's entire `simplifyWeightTransform` step exists to *keep the dim count at or below this cap* by folding adjacent dims (see below).
+Both `reshape` and `transpose` land in `SmallVector<long,6>` — six dims inline, spilling to heap beyond that. The cap is visible in the demangled consumer signature: the in-memory map is `StringMap<pair<SmallVector<long,6>, SmallVector<long,6>>, MallocAllocator>`. The producer's entire `simplifyWeightTransform` step exists to *keep the dim count at or below this cap* by folding adjacent dims (see below).
 
 > **NOTE —** the cap is a soft optimization target, not a hard limit. `SmallVector<long,6>` tolerates `>6` elements by spilling to heap, so a 7-dim spec parses correctly. But `simplifyWeightTransform` is designed to avoid that, and the wider compiler's layout analysis is "much simpler with less dimensions" (producer docstring). Treat 6 as the intended ceiling.
 
@@ -76,13 +76,13 @@ Both `reshape` and `transpose` land in `SmallVector<long,6>` — six dims inline
 
 The json is `nlohmann::json_abi_v3_11_3` instantiated over `std::map` (ordered). The key paths recovered from the accessor sequence:
 
-| Path (verbatim keys) | Type | Meaning | Anchor / Confidence |
-|---|---|---|---|
-| `PartMap` | array/object of partitions | Top-level partition map; iterated to build the alias map. | string `PartMap` @0x275930; read in `createPartitionInputAliasMap` `0x1e4992f`. **CERTAIN (key); MEDIUM (element shape — see GAP)** |
-| `PartMap[*].PartIOs` | object | Per-partition IO descriptor. | string `PartIOs` @0x2438a7; `0x1e499a5`. **CERTAIN** |
-| `PartMap[*].PartIOs.Inputs` | array&lt;string&gt; | Tensor names that are this partition's inputs (entry/user-facing on this partition). | string `Inputs` @0x25e58b; `0x1e49c8b`/`0x1e49ec5`. **CERTAIN** |
-| `PartMap[*].PartIOs.IntermediateIOs` | array&lt;string&gt; | Tensor names that are intermediate (cross-partition edges, not user-facing). | string `IntermediateIOs` @0x2796c2; `0x1e499d4`. **CERTAIN** |
-| (root) `IntermediateIOs` | array&lt;string&gt; | Global intermediate-tensor list; read by `getIntermediateTensorNames`, becomes the combine forbidden-set. | same string @0x2796c2; `0x1e47af3`/`b44`/`b5f`. **CERTAIN** |
+| Path (verbatim keys) | Type | Meaning | Anchor | Confidence |
+|---|---|---|---|---|
+| `PartMap` | array/object of partitions | Top-level partition map; iterated to build the alias map. | string `PartMap` @0x275930; read in `createPartitionInputAliasMap` `0x1e4992f` | CERTAIN for the key; the element shape is MEDIUM |
+| `PartMap[*].PartIOs` | object | Per-partition IO descriptor. | string `PartIOs` @0x2438a7; `0x1e499a5` | CERTAIN |
+| `PartMap[*].PartIOs.Inputs` | array&lt;string&gt; | Tensor names that are this partition's inputs (entry/user-facing on this partition). | string `Inputs` @0x25e58b; `0x1e49c8b`/`0x1e49ec5` | CERTAIN |
+| `PartMap[*].PartIOs.IntermediateIOs` | array&lt;string&gt; | Tensor names that are intermediate (cross-partition edges, not user-facing). | string `IntermediateIOs` @0x2796c2; `0x1e499d4` | CERTAIN |
+| (root) `IntermediateIOs` | array&lt;string&gt; | Global intermediate-tensor list; read by `getIntermediateTensorNames`, becomes the combine forbidden-set. | same string @0x2796c2; `0x1e47af3`/`b44`/`b5f` | CERTAIN |
 
 ```json
 {
@@ -103,9 +103,9 @@ All leaf values in `Inputs`/`IntermediateIOs` are plain tensor-name **strings** 
 - **Forbidden set.** `getIntermediateTensorNames(netlist)` collects the root `IntermediateIOs` into a name set. In `combineIoTransposes`, an io_transpose whose `input_name` is in that set is rejected (`NCC_IIOT002`, `Forbidden io_transpose found for input: `) — a transpose may not be requested on an internal cross-partition edge, only on a real entry parameter.
 - **Alias map.** `createPartitionInputAliasMap(netlist)` walks `PartMap[*].PartIOs.{Inputs,IntermediateIOs}` to build a StringMap of partition-input aliases (which subgraph input corresponds to which user-facing input). `propagateThroughPartitionAliases` then copies a required transpose from the partition-internal input name onto the aliased user-facing input name in the accumulated map.
 
-> **GAP — `PartMap` element shape not byte-resolved.** Only the keys `PartMap`/`PartIOs`/`Inputs`/`IntermediateIOs` are string-anchored. Whether `PartMap` is a JSON object keyed by partition-id or an array indexed by id, and whether each partition carries sibling fields (id, neff name, output list) beyond `PartIOs`, were **not** resolved — `createPartitionInputAliasMap` (3352 B) and `generateNewHloModule` (5089 B) exceeded the decompiler's per-function emit limit, leaving only prologues. The example above shows `PartMap` as an array because that is the simplest form consistent with the `operator[]`-then-iterate sequence, but **MEDIUM confidence** — a reimplementer should accept either form and key off `PartIOs`. (D-A12 §8 GAP 5.)
+> **NOTE —** only the keys `PartMap`/`PartIOs`/`Inputs`/`IntermediateIOs` are string-anchored; the shape of a `PartMap` *element* is not [UNRESOLVED]. Whether `PartMap` is a JSON object keyed by partition id or an array indexed by id, and whether each partition carries sibling fields (id, neff name, output list) beyond `PartIOs`, could not be settled: `createPartitionInputAliasMap` (3352 B) and `generateNewHloModule` (5089 B) both exceeded the decompiler's per-function emit limit, leaving only prologues. The example above shows an array because that is the simplest form consistent with the `operator[]`-then-iterate sequence. Accept either form and key off `PartIOs`.
 
-> **GAP — propagation direction inferred.** That `propagateThroughPartitionAliases` reads the alias map and rewrites the io_transpose StringMap is `HIGH`; the exact rule (intermediate→input vs input→input) is inferred from the `Inputs`+`IntermediateIOs` semantics plus the forbidden-set use, not line-traced. **MEDIUM.** (D-A12 §8 GAP 6.)
+> **NOTE —** `propagateThroughPartitionAliases` reads the alias map and rewrites the io_transpose StringMap; the exact direction of the rewrite (intermediate→input vs input→input) is deduced from the `Inputs` + `IntermediateIOs` semantics and the forbidden-set use rather than traced line by line [INFERRED].
 
 ---
 
@@ -115,7 +115,7 @@ All leaf values in `Inputs`/`IntermediateIOs` are plain tensor-name **strings** 
 
 `StaticIOTranspose(Job)` is the in-process Cython driver job that *materializes* the io_transpose map. It does **not** compute the reshape/transpose — that map arrives already written (by `InsertIOTransposes` + `Frontend`). Its three jobs are: simplify each spec, physically dump transposed tensors (verify pipeline only), and fan the transposed npys out into every subgraph dir.
 
-> **CORRECTION (D-A06) —** an earlier pass listed `StaticIOTranspose` as a native ELF spawned as a subprocess. It is in-process Cython: `StaticIOTranspose.cpython-310-…so` with `PyInit_StaticIOTranspose`, class `StaticIOTranspose(Job)`, methods compiled to `__pyx_pf_*` bodies. No subprocess is spawned by this stage.
+> **GOTCHA —** `StaticIOTranspose` ships as a `.so` alongside the native sub-tools, but it is **not** a native ELF and spawns no subprocess. It is in-process Cython: `StaticIOTranspose.cpython-310-…so` with `PyInit_StaticIOTranspose`, class `StaticIOTranspose(Job)`, and methods compiled to `__pyx_pf_*` bodies. Nothing in this stage reaches `Popen`.
 
 ### Entry Point
 
@@ -180,7 +180,7 @@ function dumpTransposedFiles(io_transposes, inp_dict, verify):   // 0x177c0
         os.symlink(original_npy, "{}/{}".format(cwd, name))         // {}/{}  join template
 ```
 
-Confirmed strings: docstring lines (verbatim above), `ascontiguousarray`, `value_{}.npy` (`__pyx_kp_u_value__npy`), `inp-000.p` / `{}/inp-000.p`, `transposed_inputs`, `mkdir`, `symlink`, `verify`, `original_npy`. The npy materialization is **verify-pipeline only**; outside verify, the stage still re-serializes the simplified map and does the symlinks.
+Strings present in the body: the docstring lines quoted above, `ascontiguousarray`, `value_{}.npy` (`__pyx_kp_u_value__npy`), `inp-000.p` / `{}/inp-000.p`, `transposed_inputs`, `mkdir`, `symlink`, `verify`, `original_npy`. The npy materialization is **verify-pipeline only**; outside verify, the stage still re-serializes the simplified map and does the symlinks.
 
 ### Algorithm — link_root_npys_to_sg
 
@@ -278,10 +278,10 @@ function generateNewHloModule(module, neff, ioT):          // hilo::  0x1e5c990 
 
 `generateNewHloModule` turns the `input_name → (reshape, transpose)` StringMap into an `xla::FrontendAttributes` `Map<string,string>` set on the `AwsNeuronNeff` `kCustomCall`:
 
-| Attribute (verbatim) | Built from | Anchor / Confidence |
-|---|---|---|
-| `valid_inputs` | the set of entry-param `input_name`s that carry an io_transpose (StringMap key set) | string @0x20d2ab, refby `generateNewHloModule`; emit `@0x1e5c9af`. **CERTAIN** |
-| `required_transpose` | the reshape+transpose specs (serialized SmallVector pairs) for those inputs | string @0x26237f, refby `generateNewHloModule`; emit `@0x1e5c9ee`. **CERTAIN** |
+| Attribute (verbatim) | Built from | Anchor | Confidence |
+|---|---|---|---|
+| `valid_inputs` | the set of entry-param `input_name`s that carry an io_transpose (StringMap key set) | string @0x20d2ab, referenced by `generateNewHloModule`; emit `@0x1e5c9af` | CERTAIN |
+| `required_transpose` | the reshape+transpose specs (serialized SmallVector pairs) for those inputs | string @0x26237f, referenced by `generateNewHloModule`; emit `@0x1e5c9ee` | CERTAIN |
 
 CustomCall target literal `"AwsNeuronNeff"` is string @0x219422, also referenced by `generateNewHloModule`. If the StringMap is empty and there are no zero-sized params, the wrapper prints `There are no io transposes nor zero-sized parameters. Output will not be produced.` and emits nothing.
 

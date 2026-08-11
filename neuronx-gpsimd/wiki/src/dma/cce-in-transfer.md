@@ -57,7 +57,7 @@ uint32_t kbin_cce_op_to_sdma_cce_op(kbin_dma_desc_op op) {
 }
 ```
 
-`CSWTCH.21` @`0x9d6e00`, read byte-exact this pass, is `01 00 00 00 | 00 00 00 00 |
+`CSWTCH.21` @`0x9d6e00` is `01 00 00 00 | 00 00 00 00 |
 03 00 00 00 | 02 00 00 00`, i.e. the DWORD array `{1, 0, 3, 2}`:
 
 | kbin op | index `op−1` | `CSWTCH.21[i]` | SDMA_CCETYPE |
@@ -71,7 +71,7 @@ So `COPY(0)` and `TRANSPOSE(5)` are **not** CCE ops (COPY = plain DDMA, [§6](#6
 TRANSPOSE is the DRE / strided op). `EXT(4)` and `GCE(5)` have **no** kbin equivalent — the
 4-entry map can never emit them; they are device-only values synthesized internally by the
 combo path ([§5](#5-the-ext-and-gce-device-only-modes)). *(HIGH / OBSERVED — `CSWTCH.21`
-read this pass; function disassembled.)*
+read byte-exact; function disassembled.)*
 
 ### 1.2 The dtype remap and per-dtype byte size
 
@@ -109,7 +109,7 @@ al_sdma_m2m_meta_ctrl_data_type kbin_dtype_to_sdma_dtype(kbin_dtype d) {
 | INT64 (15) | int64 = 12 | 8 |
 
 The byte sizes come from `sdma_data_type_size` @`0x9be140` (16 × 8-byte entries, read
-byte-exact this pass), indexed by the **SDMA** dtype value.
+byte-exact), indexed by the **SDMA** dtype value.
 
 > **CORRECTION — `fp32r` has size 0, not 4.** The `sdma_data_type_size` entry for SDMA
 > dtype `fp32r` (index 11, file offset `0x9be198`) reads `00 00 00 00 00 00 00 00` — **0
@@ -183,12 +183,12 @@ This 16-byte frame is the **compute specialization** of the same `SDMA_CME_BD_DE
 entry a plain copy uses; the meta-ctrl DWORD is the WORD1 CME-command analogue carrying
 `optype = CCE`, and `W0` bit 23 is the "has-extended-meta" flag. See
 [The DMA / Descriptor / Memory Subsystem](descriptor-model.md) for the BD ring / doorbell
-model that drains these. *(W0..W3 HIGH / OBSERVED this pass; the BD-frame overlay
+model that drains these. *(W0..W3 HIGH / OBSERVED; the BD-frame overlay
 MED / INFERRED — reconciled to the descriptor model, not independently DWARF'd device-side.)*
 
 ### 2.3 The FMA descriptor — `al_sdma_m2s_build_fma_descriptor` @0x451c20
 
-Disassembled byte-exact this pass (128 bytes, tail-calls `al_copy_descriptor`):
+Disassembled byte-exact (128 bytes, tail-calls `al_copy_descriptor`):
 
 ```c
 // al_sdma_m2s_build_fma_descriptor(dst, meta_idx, a_sel, b_sel, c_sel,
@@ -243,8 +243,7 @@ MIN/MAX with `use_constant = 0` leaves `W1 = 0`. *(HIGH / OBSERVED.)*
 ### 2.6 The meta-control word
 
 The meta-control DWORD is the op-config word the CCE block reads. Each
-`al_sdma_m2s_build_*_meta_ctrl` is a pure bit-pack; all five were disassembled byte-exact
-this pass:
+`al_sdma_m2s_build_*_meta_ctrl` is a pure bit-pack; all five were disassembled byte-exact:
 
 ```c
 // FMA  @0x451bd0  [HIGH/OBSERVED]
@@ -451,7 +450,7 @@ all-reduce final leg — is a single CCE packet on Cayman and later. *(HIGH / OB
 
 EXT is not a single ALU op; it is the **combined multi-descriptor CCE packet** the combo
 builder emits when an operation needs more than one CCE descriptor.
-`aws_cayman_sdma_m2m_build_combo_op` (`0x44a3f0`, disassembled this pass) chains:
+`aws_cayman_sdma_m2m_build_combo_op` (`0x44a3f0`, disassembled) chains:
 
 1. a seed-init or constant **first** descriptor (`build_seed_init_descriptor` with the
    `0x4000000` combo-member flag set at `0x44ae3e`, or `build_min_max_descriptor`),
@@ -522,7 +521,7 @@ The contrast is exact and minimal — same ring, same 16-byte BD, same doorbell:
 
 A CCE transfer is a copy whose **M2S read leg is rewired through the CCE ALU** before the
 S2M write — the descriptor bits are the only difference at the ring level. *(HIGH /
-OBSERVED — the two producers + the descriptor field deltas read this pass.)*
+OBSERVED — the two producers + the descriptor field deltas.)*
 
 ---
 

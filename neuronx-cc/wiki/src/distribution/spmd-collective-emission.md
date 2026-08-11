@@ -54,9 +54,9 @@ SPMDCollectiveOpsCreator (256 B)
   f7 @0xE0  all-gather  (iota groups)
 ```
 
-The factory writes the eight `_M_invoke` slots at 0x18, 0x38, 0x58, 0x78, 0x98, 0xB8, 0xD8, 0xF8 — strictly monotonic in struct-offset order, so binary field order equals declaration order. (CONFIRMED from `GetDefaultCollectiveOpsCreator` disasm.)
+The factory writes the eight `_M_invoke` slots at 0x18, 0x38, 0x58, 0x78, 0x98, 0xB8, 0xD8, 0xF8 — strictly monotonic in struct-offset order, so binary field order equals declaration order. *(Read from the `GetDefaultCollectiveOpsCreator` disassembly.)*
 
-> **NOTE —** the offsets and signatures are CONFIRMED (the mangled `_Function_handler<...>` instantiations give the exact call signature of each field). The upstream *member names* (`create_cross_partition_all_reduce`, …) are STRONG — matched to fields by signature, not proven from a source string. Throughout, identity is keyed on the signature, not the name.
+> **NOTE —** the offsets and signatures come straight from the mangled `_Function_handler<...>` instantiations, which give each field's exact call signature. The upstream *member names* (`create_cross_partition_all_reduce`, …) are matched to fields **by signature**, not proven from a source string, so treat the naming as [INFERRED]. Throughout this page identity is keyed on the signature.
 
 ### Signature → collective identity
 
@@ -112,7 +112,7 @@ SPMDCollectiveOpsCreator* GetDefaultCollectiveOpsCreator(  // 0x2a930a0
     return out;
 ```
 
-The lambda numbering (#5..#12) is the source order of the captures; the factory writes them into f0..f7 monotonically. The factory does **not** heap-allocate for the small lambdas (it stores captured longs inline in `_M_functor`); it calls `operator new(0x28)`/`new(0x20)` only for the larger captures and stores the heap pointer in `_M_functor[0]`. The four `try`-blocks unwind those `new`s if a later member's construction throws. (CONFIRMED from disasm; capture-block field contents at the byte level are INFERRED from the `new` sizes and register stores.)
+The lambda numbering (#5..#12) is the source order of the captures; the factory writes them into f0..f7 monotonically. The factory does **not** heap-allocate for the small lambdas (it stores captured longs inline in `_M_functor`); it calls `operator new(0x28)`/`new(0x20)` only for the larger captures and stores the heap pointer in `_M_functor[0]`. The four `try`-blocks unwind those `new`s if a later member's construction throws. The allocation pattern is read from the disassembly; the byte-level contents of each capture block are [INFERRED] from the `new` sizes and register stores.
 
 ### What each callback emits
 
@@ -157,26 +157,26 @@ HloInstruction* create_all_gather(SpmdBuilder* b, HloInstruction* operand,
     return b->AddInstruction(ag);
 ```
 
-> **NOTE —** every builder has a second overload that takes a raw `Span<ReplicaGroup>` (the pre-`CollectiveDeviceList` form), living in the `0x9668xxx` range (e.g. `CreateAllGather` ReplicaGroup form `@0x96680b0`). The default creator always calls the **`CollectiveDeviceList`** overloads (`0x964d3d0`/`0x964d530`/`0x964d730`/`0x964d8d0`), because both group encodings funnel through `CollectiveDeviceList` first. (CONFIRMED — both overload addresses present in the symbol table.)
+> **NOTE —** every builder has a second overload that takes a raw `Span<ReplicaGroup>` (the pre-`CollectiveDeviceList` form), living in the `0x9668xxx` range (e.g. `CreateAllGather` ReplicaGroup form `@0x96680b0`). The default creator always calls the **`CollectiveDeviceList`** overloads (`0x964d3d0`/`0x964d530`/`0x964d730`/`0x964d8d0`), because both group encodings funnel through `CollectiveDeviceList` first. *(Both overload addresses are present in the symbol table.)*
 
 ### Function map
 
 | Symbol | Address | Role | Confidence |
 |---|---|---|---|
 | `GetDefaultCollectiveOpsCreator(ll)` | `0x2a930a0` | Builds the 256 B creator; sole producer | CERTAIN |
-| f0 partition-id invoke / body | `0x2aa5310` / `0x2aa51a0` | `CreatePartitionId(MakeShape(U32,{}))` | CONFIRMED |
-| f1 all-reduce(grp) body / invoke | `0x2aa7fa0` / `0x2aa8620` | explicit-group all-reduce | CONFIRMED |
-| f2 all-reduce(iota) invoke | `0x2aa8690` | iota all-reduce | CONFIRMED |
-| f3 collective-permute invoke | `0x2aaa150` | collective-permute | CONFIRMED |
-| f4 all-to-all(grp) invoke | `0x2aaa080` | explicit-group all-to-all | CONFIRMED |
-| f5 all-to-all(iota) body / handler | `0x2aa9ba0` / `0x2aa92b0` | iota all-to-all | CONFIRMED |
-| f6 all-gather(grp) body / invoke | `0x2aa77b0` / `0x2aa7c30` | explicit-group all-gather | CONFIRMED |
-| f7 all-gather(iota) invoke | `0x2aa7c90` | iota all-gather | CONFIRMED |
-| `HloInstruction::CreatePartitionId` | `0x9665aa0` | builder | CONFIRMED |
-| `HloInstruction::CreateAllReduce` (DevList) | `0x964d530` | builder | CONFIRMED |
-| `HloInstruction::CreateAllGather` (DevList) | `0x964d3d0` | builder | CONFIRMED |
-| `HloInstruction::CreateAllToAll` (DevList) | `0x964d730` | builder | CONFIRMED |
-| `HloInstruction::CreateCollectivePermute` | `0x964d8d0` | builder | CONFIRMED |
+| f0 partition-id invoke / body | `0x2aa5310` / `0x2aa51a0` | `CreatePartitionId(MakeShape(U32,{}))` | CERTAIN |
+| f1 all-reduce(grp) body / invoke | `0x2aa7fa0` / `0x2aa8620` | explicit-group all-reduce | CERTAIN |
+| f2 all-reduce(iota) invoke | `0x2aa8690` | iota all-reduce | CERTAIN |
+| f3 collective-permute invoke | `0x2aaa150` | collective-permute | CERTAIN |
+| f4 all-to-all(grp) invoke | `0x2aaa080` | explicit-group all-to-all | CERTAIN |
+| f5 all-to-all(iota) body / handler | `0x2aa9ba0` / `0x2aa92b0` | iota all-to-all | CERTAIN |
+| f6 all-gather(grp) body / invoke | `0x2aa77b0` / `0x2aa7c30` | explicit-group all-gather | CERTAIN |
+| f7 all-gather(iota) invoke | `0x2aa7c90` | iota all-gather | CERTAIN |
+| `HloInstruction::CreatePartitionId` | `0x9665aa0` | builder | CERTAIN |
+| `HloInstruction::CreateAllReduce` (DevList) | `0x964d530` | builder | CERTAIN |
+| `HloInstruction::CreateAllGather` (DevList) | `0x964d3d0` | builder | CERTAIN |
+| `HloInstruction::CreateAllToAll` (DevList) | `0x964d730` | builder | CERTAIN |
+| `HloInstruction::CreateCollectivePermute` | `0x964d8d0` | builder | CERTAIN |
 
 ---
 
@@ -186,7 +186,7 @@ HloInstruction* create_all_gather(SpmdBuilder* b, HloInstruction* operand,
 
 `PartitionedHlo::Reshard*` moves a tensor from one `HloSharding` to another, picking the cheapest collective. Every reshard reads the `SPMDCollectiveOpsCreator` out of the `PartitioningState` and dispatches through one of its callbacks by **indirect call to a fixed struct offset**. STOCK-XLA (`spmd_partitioner.cc`).
 
-The creator embedded in `PartitioningState` begins at `state+~0x168`, so the indirect call targets seen at the reshard sites resolve as: `state+0x1E0` = f3 (`0x168+0x78`), `state+0x200` = f4 (`0x168+0x98`), `state+0x220` = f5 (`0x168+0xB8`) — the 0x20 stride between consecutive callbacks is exactly one `std::function`, which is what nails the field identities. (CONFIRMED from the call sites in `ReshardWith*`.)
+The creator embedded in `PartitioningState` begins at `state+~0x168`, so the indirect call targets seen at the reshard sites resolve as: `state+0x1E0` = f3 (`0x168+0x78`), `state+0x200` = f4 (`0x168+0x98`), `state+0x220` = f5 (`0x168+0xB8`) — the 0x20 stride between consecutive callbacks is exactly one `std::function`, which is what nails the field identities. *(Read from the call sites in `ReshardWith*`.)*
 
 ### Algorithm
 
@@ -224,12 +224,12 @@ HloInstruction* ReshardWithAllToAll(target, Span<pair<long,long>> dims, bool):
 
 | Symbol | Address | Size | Callback used | Confidence |
 |---|---|---|---|---|
-| `ReshardWithCollectivePermute` | `0x2aa3b40` | 1822 | f3 | CONFIRMED |
-| `ReshardWithAllToAll` | `0x2ab9730` | 7752 | f4 / f5 (→f3 last hop) | CONFIRMED |
-| `ReshardToPartialReplicateWithAllGather` | `0x2aae160` | — | f6 / f7 (via `AllGatherShards`) | STRONG |
-| `ReshardFromPartialReplicateWithDynamicSlice` | `0x2aa4340` | — | none (dynamic-slice) | STRONG |
-| `ReshardAsWindowedInput` | `0x2ad4f30` | — | f3 (via `ExchangeHalo*`) | STRONG |
-| `CanReshardWithCollectivePermute` | `0x2ae7230` | — | predicate | CONFIRMED |
+| `ReshardWithCollectivePermute` | `0x2aa3b40` | 1822 | f3 | CERTAIN |
+| `ReshardWithAllToAll` | `0x2ab9730` | 7752 | f4 / f5 (→f3 last hop) | CERTAIN |
+| `ReshardToPartialReplicateWithAllGather` | `0x2aae160` | — | f6 / f7 (via `AllGatherShards`) | HIGH |
+| `ReshardFromPartialReplicateWithDynamicSlice` | `0x2aa4340` | — | none (dynamic-slice) | HIGH |
+| `ReshardAsWindowedInput` | `0x2ad4f30` | — | f3 (via `ExchangeHalo*`) | HIGH |
+| `CanReshardWithCollectivePermute` | `0x2ae7230` | — | predicate | CERTAIN |
 
 ---
 
@@ -270,14 +270,14 @@ HloInstruction* ExchangeHalo(HloInstruction* hlo,
 
 | Symbol | Address | Size | Role | Confidence |
 |---|---|---|---|---|
-| `ExchangeHalo` | `0x2af1150` | 5236 | slice + f3 permute + concat | CONFIRMED |
-| `ExchangeHaloCompact` | `0x2afe1e0` | 17802 | gathered-region variant; uses per-group creator | CONFIRMED |
-| `ExchangeHaloAndGetValidData` | `0x2b03f30` | 4535 | halo + validity mask | CONFIRMED |
-| `PadEachPartitionWithHaloExchange` | `0x2a63e30` | — | uniform padded shard size | STRONG |
-| `PadFromPartialReplicateShape` | `0x2b03350` | — | pad on partial-replicate | STRONG |
-| `HaloExchangeToPadOnLeft` | `0x2b07ce0` | — | left-only pad | STRONG |
-| `OffsetCalculation::MaxInRange` | `0x2af0f80` | — | max halo over a partition range | CONFIRMED |
-| `CreateSlice` / `CreateConcatenate` | `0x964dfb0` / `0x964e190` | — | margin cut / stitch | CONFIRMED |
+| `ExchangeHalo` | `0x2af1150` | 5236 | slice + f3 permute + concat | CERTAIN |
+| `ExchangeHaloCompact` | `0x2afe1e0` | 17802 | gathered-region variant; uses per-group creator | CERTAIN |
+| `ExchangeHaloAndGetValidData` | `0x2b03f30` | 4535 | halo + validity mask | CERTAIN |
+| `PadEachPartitionWithHaloExchange` | `0x2a63e30` | — | uniform padded shard size | HIGH |
+| `PadFromPartialReplicateShape` | `0x2b03350` | — | pad on partial-replicate | HIGH |
+| `HaloExchangeToPadOnLeft` | `0x2b07ce0` | — | left-only pad | HIGH |
+| `OffsetCalculation::MaxInRange` | `0x2af0f80` | — | max halo over a partition range | CERTAIN |
+| `CreateSlice` / `CreateConcatenate` | `0x964dfb0` / `0x964e190` | — | margin cut / stitch | CERTAIN |
 
 ---
 
@@ -305,7 +305,7 @@ HloInstruction* AllGatherShards(b, operand, sharding, long* next_channel_id,
     return CreateReshape(g);              // merge gathered shards into the full dim
 ```
 
-> **NOTE —** the callback reachability is a clean partition: **f1/f2** only via `AllReduceAlongShardingDims`; **f6/f7** only via `AllGatherShards`; **f3** via `ReshardWithCollectivePermute` and the halo paths; **f4/f5** via `ReshardWithAllToAll`; **f0** (partition-id) pervasively, to build the dynamic-slice offsets every per-partition slice indexes by. (CONFIRMED from the indirect-call offsets.)
+> **NOTE —** the callback reachability is a clean partition: **f1/f2** only via `AllReduceAlongShardingDims`; **f6/f7** only via `AllGatherShards`; **f3** via `ReshardWithCollectivePermute` and the halo paths; **f4/f5** via `ReshardWithAllToAll`; **f0** (partition-id) pervasively, to build the dynamic-slice offsets every per-partition slice indexes by. *(Read from the indirect-call offsets.)*
 
 ---
 
@@ -346,7 +346,7 @@ SpmdPartitioner::Run(module, threads)                                    0x2ab76
 
 Seeded in `SpmdPartitioner::Run` by `hlo_query::NextChannelId(module)` = `1 + max` existing `channel_id` in the module. Threaded as `int64_t* next_channel_id` through `PartitionComputation → CreateVisitor → visitor → PartitioningState`. Each callback receives the *current* value as its trailing `long channel_id`; `HloInstruction::Create{AllReduce,AllGather,AllToAll,CollectivePermute}` stores it as `std::optional<long>`, and the caller post-increments the counter. A **non-`nullopt` channel id means cross-partition (not cross-replica) semantics** — exactly what SPMD partition collectives need.
 
-> **CORRECTION (cross-check 13.6 / 4.x) —** the `NextChannelId @0x8ab1ac0` here is the **stock SPMD seed** during partitioning. It is *not* the Neuron channel-id machinery. The downstream Neuron `xla::hilo` passes `NeuronCollectiveStreamIdInjector` (`name()` `@0x1f94c00`) and `NeuronUniqueChannelIdEnforcer` **re-stamp** `stream_id`/`channel_id` *after* this emission and also call `NextChannelId` to mint fresh ids on collision (see [collective stream/channel-id](../hlo-opt/collective-stream-channel-id.md)). No contradiction: the SPMD partitioner assigns ids at emission, the Neuron passes repair/partition them at lowering. Both are byte-confirmed and live in different layers.
+> **GOTCHA — this `NextChannelId` is not the Neuron channel-id machinery.** `NextChannelId @0x8ab1ac0` is the stock SPMD seed, assigning ids at emission time. The downstream Neuron `xla::hilo` passes `NeuronCollectiveStreamIdInjector` (`name()` `@0x1f94c00`) and `NeuronUniqueChannelIdEnforcer` **re-stamp** `stream_id`/`channel_id` *after* this emission, and call `NextChannelId` themselves to mint fresh ids on collision (see [collective stream/channel-id](../hlo-opt/collective-stream-channel-id.md)). The two live in different layers: the partitioner assigns, the Neuron passes repair.
 
 ### Two replica-group encodings, one CollectiveDeviceList
 
@@ -367,7 +367,7 @@ The choice of group-vs-iota is made by the **caller** (compute handler / reshard
 
 The `CreateAllReduce` / `CreateAllGather` `CollectiveDeviceList` overloads take, after the device list: `bool constrain_layout`, `optional<long> channel_id`, `bool use_global_device_ids`. At the f1 all-reduce-groups call site (`@0x2aa8344`) the fixed immediates are `constrain_layout = false` and `use_global_device_ids = true` — i.e. default-creator collectives are emitted with **global device ids on**, which is required whenever a channel id is present and replica groups span partitions. `CreateCollectivePermute`/`CreateAllToAll` have no `use_global_device_ids` bool (not applicable).
 
-This pairs with [13.7](mesh-replica-group-math.md)'s `GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids)` truth table: `(channel && global==true) ⇒ kFlattenedID` (flat global device ids). SPMD partition collectives therefore select `kFlattenedID`. (Tag: the true/false immediates are STRONG — read off the call-site constants; the group-mode mapping is CONFIRMED in [13.7](mesh-replica-group-math.md).)
+This pairs with [13.7](mesh-replica-group-math.md)'s `GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids)` truth table: `(channel && global==true) ⇒ kFlattenedID` (flat global device ids). SPMD partition collectives therefore select `kFlattenedID`. The true/false immediates are read off the call-site constants; the group-mode mapping itself is established in [13.7](mesh-replica-group-math.md).
 
 ---
 
@@ -385,7 +385,7 @@ This pairs with [13.7](mesh-replica-group-math.md)'s `GetCollectiveOpGroupMode(h
 | `NeuronCollectiveStreamIdInjector` | `name() @0x1f94c00` | stamps `stream_id` post-emission |
 | `NeuronAllGatherCombiner` / `NeuronCombiner` / `RewriteCollectivePermute` / `DecomposeIntAllReduce` / `NeuronWhileLoopAllReduceCodeMotion` / … | (xla::hilo) | combine / rewrite / hoist collectives |
 
-(CONFIRMED these symbols exist in `xla::hilo`; their internals are out of scope here.)
+These symbols exist in `xla::hilo`; their internals are out of scope here.
 
 ---
 

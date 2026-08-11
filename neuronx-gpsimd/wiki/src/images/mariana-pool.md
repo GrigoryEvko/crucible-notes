@@ -27,13 +27,14 @@ that [RNG — Xorwow TIE Path](../firmware/kernels/rng-xorwow-tie.md),
 [RNG — LFSR + `rand_algo` Dispatch](../firmware/kernels/rng-lfsr-dispatch.md), and
 [RNG Seed-State Ops](../firmware/kernels/rng-seed-state-ops.md) reconstruct at the kernel level.
 
-Confidence/evidence tags follow the project
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag,
+following the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so` (sha256 `b7c67e89…632fc329b`) and decoded with the shipped `ncore2gp`
 `xtensa-elf-objdump`.
 
-> **NOTE — objects used + the baseline re-carve.** Container:
+> **NOTE — the objects used + the baseline carve.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
 > `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`, ELF64 x86-64 DYN, **not
 > stripped**). The first R `LOAD` is the identity map (`off 0x0 == vaddr 0x0`, `filesz 0x9af194`),
@@ -42,18 +43,17 @@ Confidence/evidence tags follow the project
 > this R `LOAD`. Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo,
-> Xtensa24, RI-2022.9, `NX1.1.4`, FLIX/VLIW 32B). **The CAYMAN POOL baseline was re-carved and
-> re-hashed this session for an apples-to-apples diff — all 8 anchor sha256 MATCH the committed
-> CAYMAN × POOL page** (NX_DEBUG_IRAM `8e4412b9`, NX_DEBUG_DRAM `7bdf6ed7`, NX_PERF_IRAM
+> Xtensa24, RI-2022.9, `NX1.1.4`, FLIX/VLIW 32B). **The CAYMAN POOL baseline is carved and
+> hashed from the same container for an apples-to-apples diff — all 8 anchor sha256 MATCH the
+> committed CAYMAN × POOL page** (NX_DEBUG_IRAM `8e4412b9`, NX_DEBUG_DRAM `7bdf6ed7`, NX_PERF_IRAM
 > `9049bf8c`, NX_PROF_CAM `8fd7e422`, NX_PROF_TABLE `ce761f81`, Q7_DEBUG_IRAM `513a8a22`,
 > EXTISA_0_SO `910d41c3`, EXTISA_3_SO `052ac31c`) — so the diff is against the authentic CAYMAN
-> image, not a paraphrase of it. `[HIGH/OBSERVED]`
+> image, not a paraphrase of it.
 
 > **GOTCHA — carve the blobs, not the stubs.** The getter accessor lives in `.text` (e.g.
 > `MARIANA_NX_POOL_DEBUG_IRAM_get` at `.text` VA `0x9b4320`), and `.text` carries the `0x2000`
 > VA − file-offset delta. The blob VAs in `.rodata` are identity-mapped, so the *carved blobs* are
 > correct as long as you carve at the `IMG-PTR` (`.data` accessor address), never the stub.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -78,13 +78,12 @@ patch), yet the *dispatch mechanism, reset-vector form, `0xF0` bridge, KIT key s
 arms, `cayman/seq` + `dispatch.hpp` source trees, and the dual-core split* are all **invariant**.
 A CAYMAN ↔ MARIANA POOL swap is **a recompile + the NX +0x1c reset shift + `addr_bits.hpp` + the Q7
 `Xorwow(SW)→TIE+LFSR` RNG body + re-preallocated/disarmed PROF**, not a model change.
-`[HIGH/OBSERVED]`
 
 > **NOTE — POOL is the RNG origin, not a recipient.** The cross-engine RNG migration the
 > [MARIANA × ACT](./mariana-act.md) / [MARIANA × DVE](./mariana-dve.md) pages document
 > (`RandGetState`/`RandSetState` appearing on ACT/DVE this gen) runs the **other** direction: POOL
 > shipped `RandGetState`/`RandSetState` as POOL-only handlers on CAYMAN; v4 keeps POOL's handlers
-> and gives DVE/ACT copies. POOL is the **origin engine** for the RNG handler pair. `[HIGH/OBSERVED]`
+> and gives DVE/ACT copies. POOL is the **origin engine** for the RNG handler pair.
 
 ---
 
@@ -92,7 +91,7 @@ A CAYMAN ↔ MARIANA POOL swap is **a recompile + the NX +0x1c reset shift + `ad
 
 `nm libnrtucode_internal.so | rg -c 'MARIANA_(NX|Q7)_POOL_.*_get$'` (excluding `PLUS`) = **46**:
 **14 `NX_POOL`** + **32 `Q7_POOL`**, identical split to CAYMAN POOL (28 real + 18 zero-size
-boundary cursors). Each getter is the canonical 4-instruction `(img-ptr, size)` stub. `[HIGH/OBSERVED]`
+boundary cursors). Each getter is the canonical 4-instruction `(img-ptr, size)` stub.
 
 ### 2a. `NX_POOL` (CLS = NX) — 14 getters (the SEQ sequencer)
 
@@ -134,18 +133,16 @@ boundary cursors). Each getter is the canonical 4-instruction `(img-ptr, size)` 
 
 28 real carves + 12/12 spot-reconciled byte-identical (sha256 + `cmp -s`) to the matching
 `libnrtucode.a` member `.rodata` across NX/Q7/EXTISA/PROF/DKL/JSON; the internal-`.so` getter blob
-== the `.a` member `.rodata`. `[HIGH/OBSERVED]`
+== the `.a` member `.rodata`.
 
 > **NOTE — engine ordering confirms POOL is LAST.** PE PERF_DRAM ends `@0x34b720` == MARIANA
 > `NX_POOL` PERF_IRAM start — exactly the contiguity cursor the
 > [MARIANA × PE](./mariana-pe.md) carve predicted. The ACT→DVE→PE→POOL layout adjacency holds; the
 > last POOL blob (`EXTISA_3_JSON` end `0x59c480`) precedes the PROF tables `@0x5a3080`.
-> `[HIGH/OBSERVED]`
 
 > **QUIRK — `DKL_TEST` is `DKL_PERF` (still).** `cmp` confirms MARIANA `DKL_PERF_IRAM ==
 > DKL_TEST_IRAM` (`8a8c927a`) and `DKL_PERF_DRAM == DKL_TEST_DRAM` (`0aaa01a7`) — the same
 > "DKL has only a DEBUG-vs-release split, no separate TEST flavor" property as CAYMAN.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -153,7 +150,7 @@ boundary cursors). Each getter is the canonical 4-instruction `(img-ptr, size)` 
 
 The byte-level signature that `NX_POOL` and `Q7_POOL` are **two separate cores even on MARIANA**,
 and that they absorbed the generation **differently**: the NX core's reset trampoline shifted, the
-Q7 core's did not. `[HIGH/OBSERVED]`
+Q7 core's did not.
 
 **(A) `NX_POOL` — flat, reset SHIFTED +0x1c (the MARIANA gen change):**
 
@@ -168,7 +165,7 @@ DRAM head = 34 cb 99 60                              (header word 0x6099cb34, un
 
 CAYMAN `NX_POOL` was `06 76 00` (`j 0x1dc`) / `86 77 00` (`j 0x1e8`). The boot targets each moved
 **+0x1c** (`0x1f8 − 0x1dc = 0x1c`; `0x204 − 0x1e8 = 0x1c`) — the **identical +0x1c shift** the
-MARIANA ACT/DVE/PE carves carry. `[HIGH/OBSERVED]`
+MARIANA ACT/DVE/PE carves carry.
 
 **(B) `Q7_POOL` (incl. DKL) — flat, reset UNCHANGED:**
 
@@ -183,22 +180,21 @@ IRAM head (all variants): 06 7f 00 00 00 00  86 80 00 00 00 00
 CAYMAN `Q7_POOL` was **also** `06 7f 00` (`j 0x200`) / `86 80 00` (`j 0x20c`). The Q7 compute
 core's reset vector is **byte-identical** across CAYMAN and MARIANA — the +0x1c MARIANA shift
 applies **only** to the NX SEQ core. Both trampolines still converge on `enter_run @0x90`.
-`[HIGH/OBSERVED]`
 
 **(C) `EXTISA_0..3` SO — real `EM_XTENSA` ELFs**, section geometry == CAYMAN; only `.text` grew
 **+0x48** (`EXTISA_0` `.text` `0x6f1e`→`0x6f66`), absorbed within the same blob `0xa260` — that
 `+0x48` is the new RNG-fork body. `kernel_info_table` `@0x02000380` size `0x88` (17 entries),
-`.globstruct @0x02000408`, `.bss @0x02000450` — all == CAYMAN. `[HIGH/OBSERVED]`
+`.globstruct @0x02000408`, `.bss @0x02000450` — all == CAYMAN.
 
-Disassembly proof (shipped `ncore2gp` objdump, exit 0): `NX_POOL DEBUG IRAM` decodes 697 `entry` /
+Disassembly proof (shipped `ncore2gp` objdump): `NX_POOL DEBUG IRAM` decodes 697 `entry` /
 908 `retw`; `NX_POOL PERF IRAM` 140 `entry` / 213 `retw` / 285 distinct IVP ops; `Q7_POOL DEBUG
 IRAM` 432 `entry` / 577 `retw` — both cores carry a full FLIX vector compute datapath (same
-direction as CAYMAN's 150/430). `[HIGH/OBSERVED]`
+direction as CAYMAN's 150/430).
 
 > **GOTCHA — the FLIX desync is a disassembler limit, not a finding.** The flat DEBUG IRAM carries
 > no `.xt.prop` FLIX property table, so densely-scheduled vector bundles desync under the linear
 > sweep. The `entry`/`retw` and reset-vector reads are robust; per-bundle micro-op recovery inside
-> the RNG body is MED and so flagged. `[HIGH/OBSERVED for the limit]`
+> the RNG body is MED and so flagged.
 
 ---
 
@@ -206,7 +202,7 @@ direction as CAYMAN's 150/430). `[HIGH/OBSERVED]`
 
 MARIANA `NX_POOL` uses the **same** SEQ dispatch as CAYMAN — **`addi`-normalization** (the DVE
 form), not the raw-compare chain of PE. Both DEBUG dispatch sites decode instruction-exact and
-agree: `[HIGH/OBSERVED]`
+agree:
 
 ```text
 SITE A @0x2d0f:  addi a2,a2,-65 ; movi a3,177 ; bgeu a3,a2,0x2d1b ; j 0x3075 (default) ;
@@ -219,17 +215,16 @@ CAYMAN  @0x2e5f:  addi a2,a2,-65 ; movi a3,177 ; bgeu a3,a2,0x2e6b ; j 0x3198 (d
 
 - **Normalization base `0x41` (`'A'`) — UNCHANGED** (`addi a2,a2,-65` both gens). Unlike DVE
   (which shifted its base `0x41`→`0x30` this gen), POOL keeps `'A'`-based normalization; the
-  opcode space did **not** extend downward. `[HIGH/OBSERVED]`
+  opcode space did **not** extend downward.
 - **Bound `movi a3,177` — UNCHANGED** → 177-entry table, indices `0..176`. **NO growth** —
-  contrast PE (25→29) and DVE (opcode bound 170→187). `[HIGH/OBSERVED]`
+  contrast PE (25→29) and DVE (opcode bound 170→187).
 - **Table base relocated:** CAYMAN `DRAM file 0x814`; MARIANA SITE A `@0x800`, SITE B `@0xac8`
   (the DEBUG-segmented two-table layout). Default trampoline `0x3198`→`0x3075`. The dispatch log
-  `"S: Dispatch opcode=0x%x"` moved `@0x80e38`→`@0x80e28` (−0x10). `[HIGH/OBSERVED]`
+  `"S: Dispatch opcode=0x%x"` moved `@0x80e38`→`@0x80e28` (−0x10).
 
 **Real-vs-default count: 54 real / 123 default on BOTH gens** (MARIANA default `0x3075` ×123;
 CAYMAN default `0x3198` ×123). Every real slot relocated, but the count and pattern are invariant
 (the 178-bound is `0xf2 − 0x41 + 1`; 177 = the index count `0..176`, 54 = the non-default slots).
-`[HIGH/OBSERVED]`
 
 **The handler diff (the structural claim):**
 
@@ -239,10 +234,10 @@ CAYMAN default `0x3198` ×123). Every real slot relocated, but the count and pat
 > `"PS: EmbeddingUpdate"`, `"PS: EngineNop"`, `"RS: TensorScalarAddr"`,
 > `"RS: TensorScalarAffineSelect"`, `"@S: RandGetState"`, `"@S: Rng"`, `"TS: GetSequenceBounds"`,
 > `"TS: NonzeroWithCount"`, `"VS: TensorGather"`. A naive `^S:`-only diff is wrong; the strict
-> glue-stripped diff gives a clean +0/−0. `[HIGH/OBSERVED]`
+> glue-stripped diff gives a clean +0/−0.
 
 **RESULT: MARIANA `NX_POOL` = 41 handlers; CAYMAN `NX_POOL` = 41 handlers; ADDED = 0; REMOVED = 0;
-the 41-handler set is byte-for-name IDENTICAL.** `[HIGH/OBSERVED]`
+the 41-handler set is byte-for-name IDENTICAL.**
 
 ```text
 AluOp BRANCH BranchPrefetchHint ConvLutLoad CrossLaneReduce EXT_BREAK EmbeddingUpdate EngineNop
@@ -256,14 +251,14 @@ TensorStore WRITE
 = 18 shared-all-5 SEQ control core + 7 shared-with-DVE compute primitives + 16 POOL-only handlers
 (incl. `ExtendedInst` = the `0xf0` bridge, and `RandGetState`/`RandSetState` = **the RNG handlers
 the new TIE/LFSR kernel routes into**). See [CAYMAN × POOL §5](./cayman-pool.md) for the per-token
-5-way roster derivation. `[HIGH/OBSERVED]`
+5-way roster derivation.
 
 > **The key cross-gen finding for the NX core.** POOL's SEQ handler set is the **richest of the
 > five engines and already shipped on CAYMAN with ALL** the general-compute + RNG + `ExtendedInst`
 > handlers. There was nothing to add at the SEQ layer this gen — so unlike PE
 > (+`PeManageSeed`/MX) and DVE (+`RandGet/SetState`/`Rand2`/`Sparsity`/`QuantizeMx`/`Exponential`),
 > the `NX_POOL` handler set is **unchanged**. The v4 RNG expansion lands on the Q7 **compute** core
-> (§5), reached via the **pre-existing** `RandGetState`/`RandSetState` handlers. `[HIGH/OBSERVED]`
+> (§5), reached via the **pre-existing** `RandGetState`/`RandSetState` handlers.
 
 Both gens also carry the dual-mode SEQ feature (`"S: NX in HW Decode mode"` / `"S: NX in Sunda
 mode: HW decode disabled"`), the ErrorHandler arms (`"S: ErrorHandler : Bad Opcode(0x%x)"`,
@@ -271,7 +266,6 @@ mode: HW decode disabled"`), the ErrorHandler arms (`"S: ErrorHandler : Bad Opco
 `"BEGIN on cayman"`). The new source header `addr_bits.hpp` appears on MARIANA `NX_POOL` (absent on
 CAYMAN — the gen-wide MARIANA address-rerouting header also on ACT/DVE/PE); `translate_cayman+.hpp`
 is on both gens. **No `mariana-4062` errata on either POOL core** (that patch is DVE-specific).
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -285,7 +279,6 @@ native-LE `u32` key = `(opcode<<24)|(spec<<16)`. Entry counts identical: `EXTISA
 EXTISA** (`added=[] removed=[]` for all four). The full MARIANA `EXTISA_0` table — funcVAs are
 **pure monotonic relocation** (`+0x0` at low addresses growing to `+0x44` at high, the `+0x48`
 `.text` growth distributed across the function layout); **no re-routing, no new entry**:
-`[HIGH/OBSERVED]`
 
 | idx | opcode | spec | funcVA (MAR) | Δ vs CAY | routing target |
 | --- | --- | --- | --- | --- | --- |
@@ -310,11 +303,11 @@ EXTISA** (`added=[] removed=[]` for all four). The full MARIANA `EXTISA_0` table
 `EXTISA_3` (the cptc/MX family, 9 entries): keys == CAYMAN, funcVAs moved; idx7 `0xe4`/0
 `@0x01002260` (the cptc dispatcher), idx8 `0xf0`/spec7 `@0x01003b74` (cptc extended path). The
 `cptc_decode_impl<1..6>` DTYPE-selected family lives here, byte-for-name identical on both gens.
-`EXTISA_1` = 1 entry (`0x7e` iota); `EXTISA_2` = 2 entries (`0x7c`, `0x7d`). `[HIGH/OBSERVED]`
+`EXTISA_1` = 1 entry (`0x7e` iota); `EXTISA_2` = 2 entries (`0x7c`, `0x7d`).
 
 ### 5b. The kernel-body diff — the RNG (the SOLE substantive Q7 change)
 
-`Q7_POOL DEBUG DRAM` `'P%i:'` broad-token set-diff (CAYMAN vs MARIANA): `[HIGH/OBSERVED]`
+`Q7_POOL DEBUG DRAM` `'P%i:'` broad-token set-diff (CAYMAN vs MARIANA):
 
 ```text
 ADDED on MARIANA  : Xorwow(TIE) (Init), XorwowRng(TIE), XorwowGetSeeds(TIE),
@@ -328,7 +321,7 @@ Both gens carry `"P%i: RandGetState : num_chans = %0d : rand_algo = 0x%x"` and t
 kernel-dispatch list (8 names: `ExtendedInstCopy`, `ExtendedInstCptcDecode`,
 `ExtendedInstRandGetState`, `ExtendedInstRandSetState`, `ExtendedInstTensorTensorArith`,
 `GetSequenceBounds`, `SB2SB_Collective`, `Sbuf2Sbuf`) is **identical** — `ADDED=0, REMOVED=0` at
-the dispatch-name layer. **RNG is the only substantive Q7 change.** `[HIGH/OBSERVED]`
+the dispatch-name layer. **RNG is the only substantive Q7 change.**
 
 > **The arrival, reconciled.** On CAYMAN POOL the only RNG is the Marsaglia Xorwow **software**
 > path (`Xorwow(SW)`). On MARIANA POOL that same Xorwow became the **`(TIE)` build variant** AND a
@@ -337,14 +330,14 @@ the dispatch-name layer. **RNG is the only substantive Q7 change.** `[HIGH/OBSER
 > `kernel_info_table` rows (Q7 side) — the algorithm is selected by the `rand_algo` fork **inside**
 > the kernel body, **not** by a new opcode or a new table entry. This is exactly why the KIT key
 > set is unchanged (5a) yet the Q7 IRAM grew **+0x300** (DEBUG): the new LFSR-fork + TIE-variant
-> body was compiled into the **existing** `RandGetState`/`RandSetState` kernel. `[HIGH/OBSERVED for
-> the string boundary]`
+> body was compiled into the **existing** `RandGetState`/`RandSetState` kernel.
+> `[HIGH/OBSERVED for the string boundary]`
 
 > **CORRECTION — the additions are an internal fork, NOT new table rows.** A first-pass hypothesis
 > expected the RNG arrival to show up as **new `opcode→funcVA` rows**. The observed reality is the
 > opposite: the KIT `(op,spec)` key set is byte-for-key identical across gens; the additions live
 > **inside** the existing kernel body behind the `rand_algo` selector. The image-level boundary is
-> therefore "new kernel **body**", not "new dispatch row". `[HIGH/OBSERVED]`
+> therefore "new kernel **body**", not "new dispatch row".
 
 ### 5c. The `rand_algo` fork, as annotated C (the NEW RNG dispatch)
 
@@ -398,7 +391,7 @@ void pool_rand_set_seeds(rand_algo_t rand_algo, const rng_seed_t *seed, rng_stat
 > suffix is a generation/build variant label on the *same* software Xorwow kernel. This page
 > establishes only the firmware-image **presence** boundary: `Xorwow(TIE)` + `LfsrGet/SetSeeds`
 > **first appear** on the MARIANA Q7_POOL image. The internal fork register is MED, cited from the
-> LFSR-dispatch page. `[HIGH/OBSERVED for presence; MED for the exact fork slot]`
+> LFSR-dispatch page. `[presence HIGH/OBSERVED; exact fork slot MED]`
 
 The seed-state opcodes themselves are gen-stable: `0x77 RAND_GET_STATE` / `0x78 RAND_SET_STATE` are
 flagged maintained (`// Y`) in **every** gen's `aws_neuron_isa_tpb_common.h` (mariana L215/216 vs
@@ -410,13 +403,13 @@ The Q7 dispatcher infra is invariant (`"P%i: Entering/Exiting Dispatch"`,
 `"P%i: In dispatch, CPU ID…got opcode 0x%x"`, `"P%i: UNKNOWN OPCODE=0x%x"` /
 `"…UNKNOWN EXTENDED OPCODE=%d"`, source `dispatch.hpp`): the linear scan by packed `(spec,opcode)`
 key, partitioning by `get_cpu_id()` across pool channels — see
-[CAYMAN × POOL §4b](./cayman-pool.md). `[HIGH/OBSERVED]`
+[CAYMAN × POOL §4b](./cayman-pool.md).
 
 ---
 
 ## 6. The `0xF0` ExtendedInst bridge — UNCHANGED + the dtype/MX footprint
 
-**The `0xF0` bridge registers across both cores on MARIANA, unchanged.** `[HIGH/OBSERVED]`
+**The `0xF0` bridge registers across both cores on MARIANA, unchanged.**
 
 - **SEQ side (`NX_POOL`):** index `0xf0 − 0x41 = 0xaf = 175`; slot `@table + 175·4` reads
   `0x306d` (MARIANA) / `0x3190` (CAYMAN) — **both REAL** handlers, distinct from the default
@@ -430,9 +423,9 @@ key, partitioning by `get_cpu_id()` across pool channels — see
 POOL remains the **only** engine with **both** the SEQ `0xf0` bridge **and** a Q7 compute core —
 which is exactly why only POOL has the dual-dispatch. The `0xF0` reconciliation is identical to
 CAYMAN; see [CAYMAN × POOL §4c](./cayman-pool.md) and
-[POOL Extended-Opcode (0xF0) Dispatch](../firmware/pool/pool-ext-0xf0.md). `[HIGH/OBSERVED]`
+[POOL Extended-Opcode (0xF0) Dispatch](../firmware/pool/pool-ext-0xf0.md).
 
-**dtype / MX footprint:** `[HIGH/OBSERVED]`
+**dtype / MX footprint:**
 
 - **`NX_POOL`:** `FP4`/`CPTC`/`MXTENSOR`/`SFP8`/`fp8_e` do **not** appear as named strings
   (`grep = 0`). The only dtype constants are `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}`
@@ -455,15 +448,14 @@ CAYMAN; see [CAYMAN × POOL §4c](./cayman-pool.md) and
 `dispatch_wrapper.hpp`, `"P%i: Corrupted prelink library; NULL start symbol"`, and
 `"P%i: CustomOps not supported on Cayman"`. The DKL build also carries the MARIANA TIE+LFSR RNG
 (`LfsrGet/SetSeeds`, `Xorwow(TIE)`). `DKL_PERF == DKL_TEST` byte-identical (§2b). See
-[External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md). `[HIGH/OBSERVED]`
+[External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md).
 
 > **QUIRK — `"CustomOps not supported on Cayman"` survived into MARIANA.** The CAYMAN-named source
 > string was **not** updated for MARIANA — a build-string artifact; the dynamic custom-op path
-> remains gated off. `[HIGH/OBSERVED]`
+> remains gated off.
 
 **PROF — re-preallocated + DISARMED + now per-engine.** On CAYMAN all four NX engines shared **one**
 47-record CAM (`8fd7e422`). On MARIANA POOL the CAM is **per-engine and essentially zeroed**:
-`[HIGH/OBSERVED]`
 
 | Resource | CAYMAN POOL | MARIANA POOL | cross-engine (MARIANA) |
 | --- | --- | --- | --- |
@@ -474,18 +466,18 @@ CAYMAN; see [CAYMAN × POOL §4c](./cayman-pool.md) and
 The CAYMAN shared-CAM property **did not survive the generation**: PROF is now per-engine, and POOL
 specifically got a **disarmed** CAM (contrast MARIANA PE's re-armed 22 PE-specific records).
 `Q7_POOL` ships **no** PROF. (PROF_TABLE field schema not decoded — MED.) See
-[PROF CAM/TABLE Formats](./prof-cam-table-formats.md). `[HIGH/OBSERVED]`
+[PROF CAM/TABLE Formats](./prof-cam-table-formats.md).
 
 > **CORRECTION — "disarmed" is precise, "0 records" is not.** CAYMAN POOL's shared CAM holds **46**
 > real opcode-capture records (`enable==1`, `mask=0xff`) plus one trailing null-opcode sentinel
 > (`enable==1`, `opcode=0`, `mask=0`) → a strict `enable==1` count of 47. MARIANA POOL's CAM keeps
 > **only that same null sentinel** (1 strict `enable==1`, `mask=0`) and **zero real opcode-capture
 > records** (`mask≠0`). So the literal `enable==1` count is **1, not 0** — the CAM is "disarmed"
-> because **no real capture record is armed**, not because the byte is wholly zero. `[HIGH/OBSERVED]`
+> because **no real capture record is armed**, not because the byte is wholly zero.
 
 **Size / sha deltas — 20/20 distinct (full recompile).** No MARIANA POOL image is byte-identical to
 its CAYMAN counterpart. The directional split is the signature of the diff: **NX_POOL IRAM SHRANK**
-(the tighter v4 compile), **Q7_POOL IRAM GREW** (the new TIE/LFSR RNG body): `[HIGH/OBSERVED]`
+(the tighter v4 compile), **Q7_POOL IRAM GREW** (the new TIE/LFSR RNG body):
 
 | IMAGE | CAY-sz / sha | MAR-sz / sha | ΔSize | cause |
 | --- | --- | --- | --- | --- |
@@ -504,41 +496,40 @@ its CAYMAN counterpart. The directional split is the signature of the diff: **NX
 
 The DEBUG/PERF/TEST observability split is invariant (only DEBUG carries the runtime logs: NX 177
 `S:` / Q7 158 `P%i:`; PERF/TEST strip them); the dispatch mechanism is unchanged across builds.
-`[HIGH/OBSERVED]`
 
 ---
 
-## 8. Adversarial self-verify (the 5 strongest claims, re-challenged)
+## 8. Adversarial self-verify — the 5 strongest claims
 
 1. **The RNG arrival (the headline).** *Challenge:* is `Xorwow(TIE)`/`LFSR` really NEW vs CAYMAN,
-   not a string already present on CAYMAN under a different glue? *Re-check:* `Q7_POOL DEBUG DRAM`
-   `'P%i:'` set-diff (broad token, both carves this session) — MARIANA ADDS `Xorwow(TIE)`,
+   not a string already present on CAYMAN under a different glue? *Evidence:* `Q7_POOL DEBUG DRAM`
+   `'P%i:'` set-diff (broad token, both carves) — MARIANA ADDS `Xorwow(TIE)`,
    `XorwowRng(TIE)`, `Xorwow{Get,Set}Seeds(TIE)`, `LfsrGetSeeds`, `LfsrSetSeeds`; REMOVES the four
    `(SW)` variants. CAYMAN `Q7_POOL` carries `Xorwow(SW)` only and **zero** `Lfsr`/`(TIE)` tokens.
    Corroborated structurally by Q7 IRAM growth **+0x300** (DEBUG) and the EXTISA_0 `.text` **+0x48**
-   — the new fork body has a byte cost. **PASS.** `[HIGH/OBSERVED]`
+   — the new fork body has a byte cost. **PASS.**
 2. **The +0x1c reset shift.** *Challenge:* is `06 7d` vs `06 76` a real `+0x1c` boot-target shift,
-   not a coincidental opcode byte? *Re-check:* `j 0x1f8` (MARIANA) − `j 0x1dc` (CAYMAN) = `0x1c`;
+   not a coincidental opcode byte? *Evidence:* `j 0x1f8` (MARIANA) − `j 0x1dc` (CAYMAN) = `0x1c`;
    secondary `j 0x204` − `j 0x1e8` = `0x1c`; both still land `enter_run @0x90`; the +0x1c matches
-   the MARIANA ACT/DVE/PE carves. **PASS.** `[HIGH/OBSERVED]`
+   the MARIANA ACT/DVE/PE carves. **PASS.**
 3. **Per-core handler/table deltas.** *Challenge:* is the NX 41==41 a glue-trap artifact, and is the
-   Q7 key set really unchanged? *Re-check:* the glue-stripped diff (10 documented glued prefixes
+   Q7 key set really unchanged? *Evidence:* the glue-stripped diff (10 documented glued prefixes
    `PS:`/`RS:`/`@S:`/`TS:`/`VS:`) gives +0/−0; the KIT `(op,spec)` key set is `added=[] removed=[]`
-   for all four EXTISA, funcVAs pure monotonic relocation `+0x0..+0x44`. **PASS.** `[HIGH/OBSERVED]`
+   for all four EXTISA, funcVAs pure monotonic relocation `+0x0..+0x44`. **PASS.**
 4. **The `0xF0` bridge across both cores.** *Challenge:* does the SEQ `0xf0` slot still point to a
-   REAL handler (not the default), and do the five Q7 rows survive? *Re-check:* SEQ slot
+   REAL handler (not the default), and do the five Q7 rows survive? *Evidence:* SEQ slot
    `0x306d ≠ default 0x3075`; `"S: ExtendedInst"` present; Q7 five `0xf0+spec{0,1,2,4,3}` rows
-   byte-for-key. The two-level escape is structurally invariant. **PASS.** `[HIGH/OBSERVED]`
+   byte-for-key. The two-level escape is structurally invariant. **PASS.**
 5. **The size/sha deltas.** *Challenge:* is the diff a recompile or a patch — and is the baseline
-   authentic? *Re-check:* 20/20 images distinct from CAYMAN; the CAYMAN baseline was re-carved and
+   authentic? *Evidence:* 20/20 images distinct from CAYMAN; the CAYMAN baseline carves and
    8/8 anchor sha256 MATCH the committed page; the directional split (NX shrank / Q7 grew) is
-   internally consistent with the RNG-body cause. **PASS.** `[HIGH/OBSERVED]`
+   internally consistent with the RNG-body cause. **PASS.**
 
 ---
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):**
+**HIGH / OBSERVED:**
 
 - 46 getters parsed instruction-exact (14 NX + 32 Q7; 28 real + 18 cursors); 12/12 spot-reconciled
   to `libnrtucode.a` member `.rodata`; CAYMAN baseline 8/8 anchors MATCH the committed page.

@@ -24,14 +24,15 @@ wait/signal/snapshot leaf primitives the case bodies call) is recovered separate
 re-decoding the carved NCFW IRAM under the **scalar-LX length rule** with the native
 `xtensa-elf-objdump XTENSA_CORE=ncore2gp` (§8).
 
-All claims are tagged `[CONFIDENCE × PROVENANCE]`: `HIGH/MED/LOW` ×
-`OBSERVED` (read directly from a binary/disasm/DWARF/bytes), `INFERRED` (deduced from
-naming/structure), or `CARRIED` (established on a committed sibling page).
+The page default is `[HIGH × OBSERVED]` (read directly from a binary/disasm/DWARF/
+bytes); claims that depart from it carry an explicit `[CONFIDENCE × PROVENANCE]` tag,
+with `INFERRED` (deduced from naming/structure) or `CARRIED` (established on a
+committed sibling page).
 
 > **Provenance.** Host decoders + firmware blobs from `libncfw.so`
 > (`aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce`,
 > `opt/aws/neuron/lib/libncfw.so`, BuildID `a98f8e1ca2294582835310c3a1092e0a5e500db5`,
-> ELF64 x86-64, **not stripped**, 615 640 bytes — `stat`/`readelf -n` re-verified).
+> ELF64 x86-64, **not stripped**, 615 640 bytes — `stat`/`readelf -n` confirm).
 > `.text` and `.rodata` are VMA==file-offset (`.text` @`0x10c0`, `.rodata` @`0x65000`);
 > `.data` carries a `0x1000` delta (`readelf -SW`). The host `enc_hier_primitive`
 > encoder + the `enc_alg_type`/`enc_comm_type`/`enc_op_type` DWARF and the verbatim
@@ -383,7 +384,7 @@ The hierarchical leg's device body lives in the NCFW IRAM `0x3e..` cluster (idx 
 the DRAM+0xB0 dispatch table). Re-decoded under the **scalar-LX length rule** (op0 e/f =
 3-byte boundary heuristic, resync at `retw.n`) with the native
 `xtensa-elf-objdump XTENSA_CORE=ncore2gp` against the carved v3 IRAM (SHA-256
-`d7bc8b81…e4afd`, **re-verified this session**). The body *interior* stays partly hard
+`d7bc8b81…e4afd`). The body *interior* stays partly hard
 (op0=e/f operand bytes desync a linear sweep; no LX TIE config ships to name the e/f
 leader ops — out-of-image `call` targets like `0xfffd3920` are mis-synced operand bytes,
 flagged and not followed), but the **leaf primitives the body calls** decode cleanly.
@@ -419,9 +420,9 @@ banks (a2/a3 and a5/a4), **byte-stable 10/10/10** across v3/v4/v4+; the SIGNAL i
 genuine fenced CSR stores (separated from 6 frame-spill `s32i` by base-register
 classification); a third primitive is the **atomic 64-bit CSR snapshot** (memw-fenced
 read+read of adjacent CSR words, ×3). Native disasm confirms the wait-ge loop reconverges
-at the `memw` anchor and decodes exactly as above. `[OBSERVED HIGH — primitives decoded
-this session; the per-step SCHEDULE that orders them (which sema, which target) stays in
-the e/f-dense body interior + runtime DRAM target values — **MED**.]`
+at the `memw` anchor and decodes exactly as above. `[OBSERVED HIGH — primitives; the
+per-step SCHEDULE that orders them (which sema, which target) stays in the e/f-dense
+body interior + runtime DRAM target values — **MED**.]`
 
 > **CORRECTION — the device "broadcast-back" is not a separate phase byte.** A prior
 > structural read posited a 3-phase device cursor (reduce → reduce → broadcast). The
@@ -435,7 +436,7 @@ the e/f-dense body interior + runtime DRAM target values — **MED**.]`
 ## 9. Selector — which `algo_type` picks HIERARCHICAL
 
 The ring/mesh/hierarchical choice is the `algo_type` nibble in the cc_op spad-control
-entry, `ncfw_log_spad_ctrl_cc_op_entry @0x1840` (re-verified, **OBSERVED HIGH**):
+entry, `ncfw_log_spad_ctrl_cc_op_entry @0x1840` (**OBSERVED HIGH**):
 
 ```text
 byte0: algo_type     = bits[0:3]   (movzx [+0]; and 0xf)

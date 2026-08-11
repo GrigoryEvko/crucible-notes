@@ -49,7 +49,7 @@ The int8 page ([int8-quantize-legalization.md](int8-quantize-legalization.md)) e
 
 The MX-FP8 pair documented here is **PATH D**: the genuinely-low-precision device GEMM. The contrast is sharp and worth stating plainly because it is a common misreading of the binary:
 
-> **CORRECTION —** The Neuron device quantize is **not** int8-uniform. `uniform_quantize` is a frontend/golden construct that on the device merely rides `bir::CastToNewDType` for the numeric cast; there is no dedicated int8 device quantize op. The hardware quantized matmul is MX-FP8, and `QuantizeMX` is matched as a **frontend-emitted `kCustomCall`**, never derived from `uniform_quantize`. If you are looking for "the int8 device path" you will not find one — you will find F32 emulation.
+> **GOTCHA —** the Neuron device quantize is not int8-uniform. `uniform_quantize` is a frontend/golden construct that on the device only rides `bir::CastToNewDType` for the numeric cast; there is no dedicated int8 device quantize op. The hardware quantized matmul is MX-FP8, and `QuantizeMX` is matched as a frontend-emitted `kCustomCall`, never derived from `uniform_quantize`. Looking for "the int8 device path" turns up F32 emulation, not a GEMM.
 
 > **NOTE —** "MX" here is OCP Microscaling, not a Neuron coinage. `block_size=32` is the OCP-MXFP group size, the E8M0 shared exponent is `float8_e8m0fnu`, and the supported element formats are exactly the OCP set `float8_e5m2` / `float8_e4m3fn`. The binary even cites the spec URL in an error-resolution string (`https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf`).
 
@@ -68,7 +68,7 @@ if (inst->opcode() != kCustomCall) continue;
 if (inst->custom_call_target().compare("QuantizeMX") != 0) continue;
 ```
 
-The opcode test is byte-exact in the disasm (`80 78 14 2b` at `0x1efc594`), and the target string lives at `HloInstruction+0x220` (`lea 0x220(%rax),%rdi` at `0x1efc5a1`, feeding `std::string::compare`). This is the cleanest single proof that the device quantize is a *separate, frontend-authored* MX custom-call disjoint from stock `uniform_quantize`. **CONFIRMED.**
+The opcode test is byte-exact in the disasm (`80 78 14 2b` at `0x1efc594`), and the target string lives at `HloInstruction+0x220` (`lea 0x220(%rax),%rdi` at `0x1efc5a1`, feeding `std::string::compare`). These two gates are what make the device quantize a *separate, frontend-authored* MX custom-call, disjoint from stock `uniform_quantize`.
 
 ### 2.2 Read the `backend_config`
 
@@ -80,7 +80,7 @@ The raw config string is fetched under a mutex (`BackendConfigWrapper::GetRawStr
 | `"dim"` | `int` | `0` | the microscaling (grouping) axis → `r14` |
 | `"block_size"` | `int` | `0x20`=**32** | elements per MX group |
 
-The `block_size` default is preloaded `mov dword[rbp-0x880], 0x20` at `0x1efc688` **before** the `value<>` read — so an absent `block_size` defaults to 32, the OCP-MXFP block. (`scale_method` is a *required* field per the error catalog but is **not** branched on in `Run` — `EMAX` is the only allowed value, so it is invariant; see §6.) **CONFIRMED.**
+The `block_size` default is preloaded `mov dword[rbp-0x880], 0x20` at `0x1efc688` **before** the `value<>` read — so an absent `block_size` defaults to 32, the OCP-MXFP block. `scale_method` is a *required* field per the error catalog but is never branched on in `Run` — `EMAX` is the only allowed value, so it is invariant; see §6.
 
 ### 2.3 Normalize `dim`, build the metadata constant
 
@@ -106,7 +106,7 @@ HloInstruction* meta = comp->AddInstruction(           // 0x1efca7c
     HloInstruction::CreateConstant(tuple{shape_lit, a, b, z}));  // 0x1efca41
 ```
 
-The `{shape, dim, block_size}` metadata rides into the new op as a **constant operand** rather than being re-serialized into a `backend_config` string (the output config string passed to `CreateCustomCall` is `""` for QuantizeMX). **CONFIRMED** (literal-build call sites); the exact tuple-slot ordering is **STRONG** (read from parse/create order, not bit-traced into the constant's shape).
+The `{shape, dim, block_size}` metadata rides into the new op as a **constant operand** rather than being re-serialized into a `backend_config` string (the output config string passed to `CreateCustomCall` is `""` for QuantizeMX). The literal-build call sites are direct; the exact tuple-slot ordering is only HIGH confidence, read from parse/create order rather than traced into the constant's shape.
 
 ### 2.4 Build the new target string
 
@@ -129,7 +129,7 @@ if (cfg_dtype.compare("float8_e5m2") == 0) tgt += "e5m2";    // 0x1efcc2f / 0x1e
 else                                       tgt += "e4m3fn";  // 0x1efcf46
 ```
 
-→ emitted target ∈ { `QuantizeMX_f16_e5m2`, `QuantizeMX_f16_e4m3fn`, `QuantizeMX_bf16_e5m2`, `QuantizeMX_bf16_e4m3fn` }. The literal-head bytes are decoded byte-exact from the disasm (`movabs $0x657a69746e617551` confirmed at `0x1efcbd4`, `mov $0x584d` at `0x1efcbcf`). **CONFIRMED.**
+→ emitted target ∈ { `QuantizeMX_f16_e5m2`, `QuantizeMX_f16_e4m3fn`, `QuantizeMX_bf16_e5m2`, `QuantizeMX_bf16_e4m3fn` }. The literal-head bytes are decoded byte-exact from the disasm (`movabs $0x657a69746e617551` at `0x1efcbd4`, `mov $0x584d` at `0x1efcbcf`).
 
 > **GOTCHA —** BF16 (`0x10`=16) is the *only* explicitly-tested input element type; F16 is the fall-through. The validator string *"only BF16 and F16 are supported"* is the upstream guard — by the time `Run` sees the op, anything else has already been rejected, so the two-way branch is safe.
 
@@ -144,7 +144,7 @@ HloInstruction* nw = comp->AddInstruction(                    // 0x1efcd5d
 TF_CHECK_OK(comp->ReplaceInstruction(inst, nw));              // 0x1efcdb2
 ```
 
-`inst->shape()` is reused without modification because the original `QuantizeMX` already carries the **2-tuple result {quantized_data (x4-packed FP8), scale (E8M0)}** that the validator demands (*"must return a tuple with exactly 2 outputs (quantized data and scale)"*). `api_version=1` is `API_VERSION_ORIGINAL` (`push 1` at the `CreateCustomCall` site). **CONFIRMED.**
+`inst->shape()` is reused without modification because the original `QuantizeMX` already carries the **2-tuple result {quantized_data (x4-packed FP8), scale (E8M0)}** that the validator demands (*"must return a tuple with exactly 2 outputs (quantized data and scale)"*). `api_version=1` is `API_VERSION_ORIGINAL` (`push 1` at the `CreateCustomCall` site).
 
 ---
 
@@ -159,7 +159,7 @@ if (inst->opcode() != kCustomCall) continue;
 if (inst->custom_call_target().compare("__op$block_scaled_dot") != 0) continue;
 ```
 
-> **CORRECTION —** The matched *input* target is **`__op$block_scaled_dot`** (the JAX/StableHLO block-scaled-dot composite-decomposition target), **not** the literal `"ScaledMatmul"`. `"ScaledMatmul"` appears only as the *output* target prefix and inside error strings. Earlier registry-level notes that listed pass #10 by its flag name silently implied it matched `"ScaledMatmul"`; the compare site `0x1efe264` settles it. **CONFIRMED.**
+> **GOTCHA —** the matched *input* target is `__op$block_scaled_dot` — the JAX/StableHLO block-scaled-dot composite-decomposition target — not the literal `"ScaledMatmul"`, which appears only as the *output* target prefix and inside error strings. The pass's flag name invites the wrong reading; the compare site is `0x1efe264`.
 
 ### 3.2 Read 4 operands and the nested config
 
@@ -175,7 +175,7 @@ The `backend_config` is fetched mutex-guarded and `json::parse`d (`@0x1eff0dc`),
 | `"rhs_contracting_dimensions"` | `int[]` | RHS contract dims | `0x1eff6db` / `0x1eff9b7` |
 | `"element_dtype"` | `std::string` | the FP8 *input* dtype | `0x1eff772` / `0x1eff7b4` |
 
-The four int-array dim lists are the dot dimension numbers; they are packed into a metadata constant (S64 `CreateR0<long>` ×7 at `0x1efe712…0x1efe77e`, `CreateConstant` `@0x1efea50`, `AddInstruction` `@0x1efea8b`) appended as an operand to the rewritten op. **CONFIRMED** (key reads + literal builds); the exact mapping of the 7 scalars to batch/contract lists is **STRONG** (read from parse order, not bit-traced into the constant's shape).
+The four int-array dim lists are the dot dimension numbers; they are packed into a metadata constant (S64 `CreateR0<long>` ×7 at `0x1efe712…0x1efe77e`, `CreateConstant` `@0x1efea50`, `AddInstruction` `@0x1efea8b`) appended as an operand to the rewritten op. The key reads and literal builds are direct; the mapping of the 7 scalars to batch/contract lists is only HIGH confidence, read from parse order rather than traced into the constant's shape.
 
 ### 3.3 Build the new target string
 
@@ -197,7 +197,7 @@ if (out_etype == F32)  tgt += "f32";   // F32 arm
 else /* BF16 */        tgt += "bf16";  // BF16 arm
 ```
 
-→ emitted target ∈ { `ScaledMatmul_e4m3fn_e4m3fn_f32`, `ScaledMatmul_e4m3fn_e4m3fn_bf16`, `ScaledMatmul_e5m2_e5m2_f32`, `ScaledMatmul_e5m2_e5m2_bf16` }. The literal head `movabs $0x614d64656c616353` ("ScaledMa") + `movl $0x6c756d74` ("tmul") and the length `0xD`=13 are byte-exact in the disasm at `0x1efebd8`/`0x1efebee`/`0x1efec14`. **CONFIRMED.**
+→ emitted target ∈ { `ScaledMatmul_e4m3fn_e4m3fn_f32`, `ScaledMatmul_e4m3fn_e4m3fn_bf16`, `ScaledMatmul_e5m2_e5m2_f32`, `ScaledMatmul_e5m2_e5m2_bf16` }. The literal head `movabs $0x614d64656c616353` ("ScaledMa") + `movl $0x6c756d74` ("tmul") and the length `0xD`=13 are byte-exact in the disasm at `0x1efebd8`/`0x1efebee`/`0x1efec14`.
 
 > **QUIRK —** The output-dtype branch tests both `0xB` (F32=11) and `0x10` (BF16=16) explicitly in the cp310 wheel (`0x1efec64`/`0x1efec78`); a prior trace cited a single `cmp $0xB` at `0x1efef77`, which is the equivalent test inside a different inlined arm. The *result* enumeration ({F32→`f32`, BF16→`bf16`}, matching *"only F32 and BF16 are supported"*) is identical either way. The F32 numeric `0xB`=11 and BF16 `0x10`=16 are the same `PrimitiveType` codes used by QuantizeMX's input check, internally consistent.
 
@@ -212,7 +212,7 @@ HloInstruction* nw = comp->AddInstruction(                    // 0x1efed5e
 TF_CHECK_OK(comp->ReplaceInstruction(inst, nw));              // 0x1efedb1
 ```
 
-The scale operands are bound **by position**: operand index 2 = `lhs_scale`, index 3 = `rhs_scale` — i.e. the U32 packed-MX LHS data plus its E8M0 scale, and the RHS packed data plus its E8M0 scale. The result shape (the single F32/BF16 dot output) is reused verbatim. **CONFIRMED.**
+The scale operands are bound **by position**: operand index 2 = `lhs_scale`, index 3 = `rhs_scale` — i.e. the U32 packed-MX LHS data plus its E8M0 scale, and the RHS packed data plus its E8M0 scale. The result shape (the single F32/BF16 dot output) is reused verbatim.
 
 ---
 
@@ -260,7 +260,7 @@ QuantizeMX(BF16/F16 act)  ->  {u32 data, e8m0 scale}     (x2: one for lhs, one f
    __op$block_scaled_dot(lhs_u32, rhs_u32, lhs_scale, rhs_scale)
 ```
 
-which order-9 then order-10 legalize into the dtype-tagged `QuantizeMX_*` and `ScaledMatmul_*` custom-calls. Because `QuantizeMX → ScaledMatmul` fuses naturally by dataflow, no separate quantize-hoist is needed on the device side (the `lift_up_quantize` hoist is the unrelated oneDNN/CPU one). **CONFIRMED** by construction (operand types must match).
+which order-9 then order-10 legalize into the dtype-tagged `QuantizeMX_*` and `ScaledMatmul_*` custom-calls. Because `QuantizeMX → ScaledMatmul` fuses naturally by dataflow, no separate quantize-hoist is needed on the device side (the `lift_up_quantize` hoist is the unrelated oneDNN/CPU one) — the operand types already line up by construction.
 
 ---
 
@@ -321,26 +321,26 @@ std::string hilo::formatErrorMessage<…>(hilo::ErrorCode, …);
 
 ---
 
-## 7. Adversarial self-verification
+## 7. Evidence anchors and limits
 
-The five strongest claims, re-challenged against the live binary:
+The five structural claims on this page and the bytes behind each:
 
-1. **`QuantizeMX::Run @0x1efc4f0` matches `kCustomCall` + `"QuantizeMX"` at `+0x220`.** Re-checked: `objdump` shows `cmpb $0x2b,0x14(%rax)` at `0x1efc594` and `lea 0x220(%rax),%rdi` at `0x1efc5a1` feeding the compare. Symbol `_ZN3xla18LegalizeQuantizeMX3RunE…` starts at `0x1efc4f0`. **CONFIRMED.**
+1. **`QuantizeMX::Run @0x1efc4f0` matches `kCustomCall` + `"QuantizeMX"` at `+0x220`.** `cmpb $0x2b,0x14(%rax)` at `0x1efc594` and `lea 0x220(%rax),%rdi` at `0x1efc5a1` feed the compare; symbol `_ZN3xla18LegalizeQuantizeMX3RunE…` starts at `0x1efc4f0`.
 
-2. **Emitted heads are byte-exact `"QuantizeMX_"` and `"ScaledMatmul_"`.** Re-checked: `movabs $0x657a69746e617551`("Quantize") + `mov $0x584d`("MX") at `0x1efcbd4`/`0x1efcbcf`; `movabs $0x614d64656c616353`("ScaledMa") + `movl $0x6c756d74`("tmul") at `0x1efebd8`/`0x1efebee`; lengths `0xB`/`0xD` materialized at `0x1efcc01`/`0x1efec14`. **CONFIRMED.**
+2. **Emitted heads are byte-exact `"QuantizeMX_"` and `"ScaledMatmul_"`.** `movabs $0x657a69746e617551`("Quantize") + `mov $0x584d`("MX") at `0x1efcbd4`/`0x1efcbcf`; `movabs $0x614d64656c616353`("ScaledMa") + `movl $0x6c756d74`("tmul") at `0x1efebd8`/`0x1efebee`; lengths `0xB`/`0xD` materialized at `0x1efcc01`/`0x1efec14`.
 
-3. **The MX contract is FP8 microscaling, not int8.** Re-checked: `strings` recovers *"only 'float8_e5m2' and 'float8_e4m3fn' are supported"*, *"block_size must be 32"*, the OCP spec URL, *"divisible by 4 for x4 packing"*, *"tuple with exactly 2 outputs"*, and the E8M0 type `float8_e8m0fnu`/`builtin.f8E8M0FNU`. No int8 device-quantize op exists. **CONFIRMED.**
+3. **The MX contract is FP8 microscaling, not int8.** The string table carries *"only 'float8_e5m2' and 'float8_e4m3fn' are supported"*, *"block_size must be 32"*, the OCP spec URL, *"divisible by 4 for x4 packing"*, *"tuple with exactly 2 outputs"*, and the E8M0 type `float8_e8m0fnu`/`builtin.f8E8M0FNU`. No int8 device-quantize op exists.
 
-4. **ScaledMatmul matches `__op$block_scaled_dot`, not `"ScaledMatmul"`.** Re-checked: `strings` has the literal `__op$block_scaled_dot`; the compare site is `0x1efe264` with `lea 0x220(%r13)` at `0x1efe25d`. `"ScaledMatmul"` is the *output* prefix only. **CONFIRMED.**
+4. **ScaledMatmul matches `__op$block_scaled_dot`, not `"ScaledMatmul"`.** The literal `__op$block_scaled_dot` is in the string table; the compare site is `0x1efe264` with `lea 0x220(%r13)` at `0x1efe25d`. `"ScaledMatmul"` is the *output* prefix only.
 
-5. **Crosswalk: HLO `QuantizeMX_*`/`ScaledMatmul_*` → BIR `InstQuantizeMx`(95-class wire `0x10E3`)/`InstMatmultMx`(`0x1009`+`0x100A`).** Re-checked against the live `isa/pe-matmul-encoding.md`: `LdWeightMx 0x1009`, `MatmultMx 0x100A`, `QuantizeMx 0x10E3` with the named CoreV4 generators. The BIR *class ids* 95/96 themselves come from the BIR-class enumeration (cross-task, not re-derived from this ELF) — tagged **INFERRED** for the numeric id; the opcodes and generator addresses are **CONFIRMED** in the encoding page.
+5. **Crosswalk: HLO `QuantizeMX_*`/`ScaledMatmul_*` → BIR `InstQuantizeMx`(95-class wire `0x10E3`)/`InstMatmultMx`(`0x1009`+`0x100A`).** The opcodes and CoreV4 generator addresses come from `isa/pe-matmul-encoding.md`: `LdWeightMx 0x1009`, `MatmultMx 0x100A`, `QuantizeMx 0x10E3`. The BIR *class ids* 95/96 come from the BIR-class enumeration rather than this ELF, so the numeric ids are **[INFERRED]** here.
 
-Residual **INFERRED/STRONG** items, never fabricated:
+**Limits.**
 
-- **Metadata-constant tuple-slot ordering** (which `CreateR0` maps to which dim list / scalar) — **STRONG**, read from parse/create order, not bit-traced into the constant shape.
-- **BIR class ids 95/96** — **INFERRED** (cross-task enumeration; this ELF confirms the *symbols and opcodes*, not the numeric class id).
-- **`scale_method` re-emission** — the QuantizeMX output `backend_config` is `""`; whether `scale_method` survives anywhere is **MED**. It is invariant (`EMAX` only) so it does not affect the rewrite.
-- **Output-type cmp site for ScaledMatmul** — branch *structure* CONFIRMED (`cmpl $0xb`/`$0x10`); the precise offset shifts a few bytes between inlined arms / wheels.
+- **Metadata-constant tuple-slot ordering** (which `CreateR0` maps to which dim list / scalar) — HIGH, read from parse/create order rather than traced into the constant shape.
+- **BIR class ids 95/96** — **[INFERRED]**; this ELF pins the symbols and opcodes, not the numeric class id.
+- **`scale_method` re-emission** — the QuantizeMX output `backend_config` is `""`; whether `scale_method` survives anywhere is MEDIUM. It is invariant (`EMAX` only), so it does not affect the rewrite.
+- **Output-type cmp site for ScaledMatmul** — the branch *structure* is certain (`cmpl $0xb`/`$0x10`), but the precise offset shifts a few bytes between inlined arms and wheels.
 
 ---
 

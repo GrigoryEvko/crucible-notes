@@ -46,13 +46,14 @@ Value semantics for the datapath ops are grounded against the `module__xdref_*`
 leaves of `tools/ncore2gp/config/libfiss-base.so`, **driven live** via `ctypes`.
 Confidence tags: **HIGH/MED/LOW × OBSERVED** (literal bytes / oracle round-trip /
 live value-fn) / **INFERRED** (derived over OBSERVED + canonical Xtensa
-arithmetic) / **CARRIED** (from a sibling batch report).
+arithmetic) / **CARRIED** (from a sibling batch report). The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
 ## 0. Headline
 
-[HIGH/OBSERVED] All **88** B29 opcodes resolve end-to-end and round-trip through
+All **88** B29 opcodes resolve end-to-end and round-trip through
 the device toolchain. `nm libisa-core.so | rg -c` counts **70** distinct
 SR-access encode thunks (`{rsr,wsr,xsr}` of the 26 B29 special registers) and
 **18** distinct non-SR thunks (`clamps ihi iii ipf lddr32.p lict licw nsa nsau
@@ -60,7 +61,7 @@ pptlb rfdo rptlb0 rptlb1 sddr32.p sext sict sicw wptlb`), for **88** total. Ever
 candidate word emitted by the field-resolver was assembled by `xtensa-elf-as` and
 disassembled back by `xtensa-elf-objdump` to the exact mnemonic + operands.
 
-[HIGH/OBSERVED] **Config grounding** (`core-isa.h`, shipped):
+**Config grounding** (`core-isa.h`, shipped):
 `ICACHE_SIZE = 16384` (16 KB, `ICACHE_LINESIZE = 64`, `ICACHE_WAYS = 4`) ⇒ the
 icache ops are real; `DCACHE_SIZE = 0` ⇒ **no** L1 dcache, so the dcache peers
 `DHI`/`DHU`/`DII`/`DIU`/`DPF` are **absent** from the opcode DB (`DCACHE_TEST = 0`)
@@ -74,7 +75,7 @@ MMU. `NUM_TIMERS = 3` (`TIMER{0,1,2}_INTERRUPT = 28/29/30`). `HAVE_OCD = 1`,
 `HAVE_PRID = 1`. `HAVE_EXTERN_REGS = 1` (`WER`/`RER`, owned by B27/B26).
 `HW_CONFIGID0 = 0xC4019686`, `HW_CONFIGID1 = 0x2908E4E3`.
 
-[HIGH/OBSERVED] **Privilege.** All 70 SR-access ops, plus
+**Privilege.** All 70 SR-access ops, plus
 `III`/`LICT`/`SICT`/`LICW`/`SICW`/`LDDR32.P`/`SDDR32.P`/`PPTLB`/`RPTLB0`/`RPTLB1`/`WPTLB`,
 are PRIVILEGED — each raises `PrivilegedException` and reads
 `PSRING` (PS.RING) / `MS_DISPST` / `InOCDMode` at estage 3. The only
@@ -88,7 +89,7 @@ scalar surface from every IVP vector op (B01–B24).
 
 ## 1. Encoding model — the scalar decode skeleton
 
-[HIGH/OBSERVED] All 88 B29 ops share the base-Xtensa field map. The 24-bit word
+All 88 B29 ops share the base-Xtensa field map. The 24-bit word
 `W` is emitted little-endian (`movl $W,(%rdi)` in the encode thunk; low byte
 first):
 
@@ -109,7 +110,7 @@ fld:   op2     op1      r       s       t      op0
 
 ### 1.1 The R/W/X special-register lattice
 
-[HIGH/OBSERVED] The 70 SR-access ops are `RSR`/`WSR`/`XSR` with `op0 = 0`,
+The 70 SR-access ops are `RSR`/`WSR`/`XSR` with `op0 = 0`,
 `sr[15:8] = SR#`, and `t = art`:
 
 | Family | `op0` | `op1` | `op2` | Effect |
@@ -122,7 +123,7 @@ The SR number sits as `sr = (r << 4) | s`. Worked: `RSR.PRID a3 = 0x03eb30`
 (`op1 = 3 → [19:16]`, `op2 = 0`, `sr = 0xeb`, `t = 3`); `WSR.MMID a3 = 0x135930`
 (`op2 = 1 → +0x100000`); `XSR.ATOMCTL a3 = 0x616330` (`op1 = 1`, `op2 = 6`).
 
-[HIGH/OBSERVED] **SR direction asymmetry.** Not every SR offers all three
+**SR direction asymmetry.** Not every SR offers all three
 directions. The asymmetry is proven two ways: the encode thunk for the missing
 form is **absent** from `libisa-core.so` (`nm | rg -c` returns 0), and the device
 assembler **rejects** the missing spelling. The eight absent forms are
@@ -141,7 +142,7 @@ Arithmetic: 21 full-R/W/X × 3 = 63, 2 RSR+WSR × 2 = 4, 2 RSR-only = 2,
 
 ### 1.2 The non-SR families (decode-group parents folded to the QRST root)
 
-[HIGH/OBSERVED] The 18 non-SR ops fold their appendix-P decode-group parents to
+The 18 non-SR ops fold their appendix-P decode-group parents to
 the `QRST`/`CORE` root; the leaf field is the cache-op selector / MPU sub-op /
 immediate:
 
@@ -167,7 +168,7 @@ immediate:
 
 ## 2. The B29 special-register file (number → name)
 
-[HIGH/OBSERVED] All 26 SR numbers were recovered as `sr = (W >> 8) & 0xff` from
+All 26 SR numbers were recovered as `sr = (W >> 8) & 0xff` from
 each `RSR.<S>` template word and match `core-isa.h`. The RSR base template (with
 `t = 0`) is `0x03<sr>00`; `WSR` adds `0x100000`, `XSR` is `0x6<sr>00` with the
 `r`/`s` nibbles re-derived from `sr`. (Below the words carry `t = a3` to show a
@@ -231,10 +232,10 @@ bool ibreak_hit(uint32_t pc) {
 
 * **Encoding.** `sr = 128/129`. `RSR.IBREAKA0 a3 = 0x038030`,
   `WSR.IBREAKA0 a3 = 0x138030`, `XSR.IBREAKA0 a3 = 0x618030`; `IBREAKA1` is
-  `sr + 1`. [OBSERVED via as→objdump]
+  `sr + 1`.
 * **ISS.** `RSR` DEFs `art @5`; `WSR` DEFs `IBREAKA* @6` (commit at wstage).
   No `XTSYNC` (arming the *address* alone does not resync the fetch pipe; the
-  *enable* in `IBREAKC` does — §3.2). [OBSERVED]
+  *enable* in `IBREAKC` does — §3.2).
 
 ### 3.2 Instruction breakpoint — control (`IBREAKC0` `0xc0`, `IBREAKC1` `0xc1`)
 
@@ -243,8 +244,8 @@ bool ibreak_hit(uint32_t pc) {
 * **Semantics.** `IBREAKCn` arms/disarms the instruction breakpoint; writing it
   resyncs the fetch pipeline (`WSR`/`XSR` assert `XTSYNC @6`).
 * **Encoding.** `sr = 192/193`. `RSR.IBREAKC0 a3 = 0x03c030`,
-  `WSR.IBREAKC0 a3 = 0x13c030`, `XSR.IBREAKC0 a3 = 0x61c030`. [OBSERVED]
-* **ISS.** `WSR` DEFs `IBREAKC* @6 + XTSYNC @6`; `RSR` DEFs `art @5`. [OBSERVED]
+  `WSR.IBREAKC0 a3 = 0x13c030`, `XSR.IBREAKC0 a3 = 0x61c030`.
+* **ISS.** `WSR` DEFs `IBREAKC* @6 + XTSYNC @6`; `RSR` DEFs `art @5`.
 
 ### 3.3 Data breakpoint — address (`DBREAKA0` `0x90`, `DBREAKA1` `0x91`)
 
@@ -254,8 +255,8 @@ bool ibreak_hit(uint32_t pc) {
   `DBREAKAn` (under the `DBREAKCn` mask/mode, §3.4) takes a data-watchpoint debug
   exception. `WSR`/`XSR` assert `XTSYNC @6`.
 * **Encoding.** `sr = 144/145`. `RSR.DBREAKA0 a3 = 0x039030`,
-  `WSR.DBREAKA0 a3 = 0x139030`, `XSR.DBREAKA0 a3 = 0x619030`. [OBSERVED]
-* **ISS.** `WSR` DEFs `DBREAKA* @6 + XTSYNC @6`; `RSR` DEFs `art @5`. [OBSERVED]
+  `WSR.DBREAKA0 a3 = 0x139030`, `XSR.DBREAKA0 a3 = 0x619030`.
+* **ISS.** `WSR` DEFs `DBREAKA* @6 + XTSYNC @6`; `RSR` DEFs `art @5`.
 
 ### 3.4 Data breakpoint — control (`DBREAKC0` `0xa0`, `DBREAKC1` `0xa1`)
 
@@ -282,11 +283,11 @@ bool dbreak_hit(uint32_t addr, bool is_store, uint8_t byte_lanes) {
 ```
 
 * **Encoding.** `sr = 160/161`. `RSR.DBREAKC0 a3 = 0x03a030`,
-  `WSR.DBREAKC0 a3 = 0x13a030`, `XSR.DBREAKC0 a3 = 0x61a030`. [OBSERVED]
+  `WSR.DBREAKC0 a3 = 0x13a030`, `XSR.DBREAKC0 a3 = 0x61a030`.
 * **ISS.** `WSR` DEFs `DBREAKC* @6`, the shadow `DBREAKC_SG* @6`, `XTSYNC @6`;
   `RSR` DEFs `art @5`. The presence of the `DBREAKC_SG0`/`DBREAKC_SG1`
   ("store-group") shadow states in the schedule confirms the load-vs-store +
-  byte-mask split is real silicon state, not just an ISA convention. [OBSERVED]
+  byte-mask split is real silicon state, not just an ISA convention.
 
 ### 3.5 OCD debug data register (`DDR` `0x68`)
 
@@ -298,9 +299,9 @@ bool dbreak_hit(uint32_t addr, bool is_store, uint8_t byte_lanes) {
   Because `DDR` couples the core pipeline to the external debug scan domain, **all
   three** directions assert `XTSYNC`.
 * **Encoding.** `sr = 104`. `RSR.DDR a3 = 0x036830`, `WSR.DDR a3 = 0x136830`,
-  `XSR.DDR a3 = 0x616830`. [OBSERVED]
+  `XSR.DDR a3 = 0x616830`.
 * **ISS.** `RSR` DEFs `art @5 + XTSYNC @6`; `WSR` DEFs `XTSYNC @6 + WSRBus @6`.
-  Accessible `InOCDMode` even when `PS.RING != 0`. [OBSERVED]
+  Accessible `InOCDMode` even when `PS.RING != 0`.
 
 ### 3.6 Timer — cycle count (`CCOUNT` `0xea`)
 
@@ -310,9 +311,9 @@ bool dbreak_hit(uint32_t addr, bool is_store, uint8_t byte_lanes) {
   `RSRBus` (a live bus sample, not a static SR latch). When `CCOUNT == CCOMPAREn`
   the timer-`n` interrupt fires (§3.7).
 * **Encoding.** `sr = 234`. `RSR.CCOUNT a3 = 0x03ea30`, `WSR.CCOUNT a3 = 0x13ea30`,
-  `XSR.CCOUNT a3 = 0x61ea30`. [OBSERVED]
+  `XSR.CCOUNT a3 = 0x61ea30`.
 * **ISS.** `RSR` DEFs `art @5`; `WSR` DEFs `WSRBus @6 + XTSYNC @6` (reseeding the
-  live counter resyncs the pipe). [OBSERVED]
+  live counter resyncs the pipe).
 
 ### 3.7 Timer — compare (`CCOMPARE0` `0xf0`, `CCOMPARE1` `0xf1`, `CCOMPARE2` `0xf2`)
 
@@ -329,9 +330,9 @@ for (int n = 0; n < XCHAL_NUM_TIMERS /* = 3 */; n++)
 
 * **Encoding.** `sr = 240/241/242`. `RSR.CCOMPARE0 a3 = 0x03f030`,
   `WSR.CCOMPARE0 a3 = 0x13f030`, `XSR.CCOMPARE0 a3 = 0x61f030`; `CCOMPARE1/2` are
-  `sr + 1/+2`. [OBSERVED]
+  `sr + 1/+2`.
 * **ISS.** `RSR` DEFs `art @5`; `WSR` DEFs `CCOMPARE* @6` (commit at wstage, **no**
-  `XTSYNC` — arming a compare does not resync the pipe). [OBSERVED]
+  `XTSYNC` — arming a compare does not resync the pipe).
 
 ### 3.8 Cache / RAM / MPU config (`CACHEADRDIS` `0x62`, `IRAM0CFG` `0x69`, `DRAM0CFG` `0x6a`, `MPUENB` `0x5a`, `MPUCFG` `0x5c`)
 
@@ -350,10 +351,9 @@ for (int n = 0; n < XCHAL_NUM_TIMERS /* = 3 */; n++)
     info rather than a generic latch.
 * **Encoding.** `sr = 98/105/106/90/92`. `RSR.CACHEADRDIS a3 = 0x036230`,
   `RSR.IRAM0CFG a3 = 0x036930`, `RSR.DRAM0CFG a3 = 0x036a30`,
-  `RSR.MPUENB a3 = 0x035a30`, `RSR.MPUCFG a3 = 0x035c30` (no `XSR`). [OBSERVED]
+  `RSR.MPUENB a3 = 0x035a30`, `RSR.MPUCFG a3 = 0x035c30` (no `XSR`).
 * **ISS.** `RSR` DEFs `art @5`; `WSR` DEFs `<SR> @6` (`MPUENB`/`CACHEADRDIS` add
   `XTSYNC @6`; `IRAM0CFG`/`DRAM0CFG` do not). `RSR.MPUCFG` USEs `MPUNUMENTRIES @4`.
-  [OBSERVED]
 
 > **GOTCHA — `CACHEADRDIS`/`IRAM0CFG`/`DRAM0CFG`/`ATOMCTL` are config SRs.** Their
 > SR number, privilege, direction and ISS timing are all OBSERVED, but the
@@ -395,11 +395,10 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
 ```
 
 * **Encoding.** `sr = 99`. `RSR.ATOMCTL a3 = 0x036330`,
-  `WSR.ATOMCTL a3 = 0x136330`, `XSR.ATOMCTL a3 = 0x616330`. [OBSERVED]
+  `WSR.ATOMCTL a3 = 0x136330`, `XSR.ATOMCTL a3 = 0x616330`.
 * **ISS.** `RSR` USEs `ATOMCTL @4 + XTSYNC @4` (the read serialises against
   in-flight exclusive accesses), DEFs `art @5`; `WSR` DEFs
   `ATOMCTL @6 + XTSYNC @6 + WSRBus @6` (broadcasting the new ordering policy).
-  [OBSERVED]
 
 > **QUIRK — `RSR.ATOMCTL` is the only B29 read that asserts a barrier on the
 > *read* path.** Every other `RSR.<S>` is a bare `art @5` DEF; `RSR.ATOMCTL`
@@ -418,9 +417,9 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
   `WSR.ERACCESS` DEFs `ERACCESS @5` (early — the gate must commit *before* a
   following `RER`/`WER` samples it).
 * **Encoding.** `sr = 95`. `RSR.ERACCESS a3 = 0x035f30`,
-  `WSR.ERACCESS a3 = 0x135f30`, `XSR.ERACCESS a3 = 0x615f30`. [OBSERVED]
+  `WSR.ERACCESS a3 = 0x135f30`, `XSR.ERACCESS a3 = 0x615f30`.
 * **ISS.** `RSR` USEs `ERACCESS @4`, DEFs `art @5`; `WSR` DEFs `ERACCESS @5`
-  (early commit). [OBSERVED]
+  (early commit).
 
 ### 3.11 Config / trace / processor identity + scratch (`CONFIGID0` `0xb0`, `CONFIGID1` `0xd0`, `MMID` `0x59`, `PRID` `0xeb`, `MISC0` `0xf4`, `MISC1` `0xf5`)
 
@@ -438,10 +437,10 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
 * `MISC0`/`MISC1` (full R/W/X) — 2 privileged 32-bit scratch registers
   (`NUM_MISC_REGS = 2`) for fast handler temporaries that survive without a memory
   access. `RSR.MISC0 a3 = 0x03f430`, `WSR.MISC0 a3 = 0x13f430`,
-  `XSR.MISC0 a3 = 0x61f430`; `MISC1` is `sr + 1`. [OBSERVED]
+  `XSR.MISC0 a3 = 0x61f430`; `MISC1` is `sr + 1`.
 * **ISS.** `RSR` DEFs `art @5` (the `CONFIGID0/1` read is a bare `art @5`, no
   SR-bus side effects); `WSR.MMID` DEFs `WSRBus @6 + XTSYNC @4`; `MISC` writes DEF
-  `<SR> @6`. [OBSERVED]
+  `<SR> @6`.
 
 ### 3.12 Instruction-cache hint (`IHI`, `IPF`; NON-privileged)
 
@@ -453,9 +452,9 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
   *prefetch* (pull the line into the 16 KB icache). Both advisory.
 * **Encoding.** `LSAI`/`CACHE` group, `op0 = 2`, `t = 0xe`(IHI)/`0xc`(IPF),
   `s = ars`, `uimm8x4 @[15:8]` (×4 byte scale, range 0..1020).
-  `IHI a3,0 = 0x0073e2`, `IHI a3,16 = 0x0473e2`, `IPF a6,64 = 0x1076c2`. [OBSERVED]
+  `IHI a3,0 = 0x0073e2`, `IHI a3,16 = 0x0473e2`, `IPF a6,64 = 0x1076c2`.
 * **ISS.** USEs `ars @1`, `imm @0`; DEFs `VAddrBase @1`, `VAddrOffset @0`
-  (addr-gen only, no AR result). [OBSERVED]
+  (addr-gen only, no AR result).
 
 ### 3.13 Instruction-cache invalidate (`III`; PRIVILEGED)
 
@@ -464,9 +463,9 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
   `IHI`/`IPF` hints, `III` is an **unconditional** invalidate (whether or not the
   line is present/dirty), so it is ring-gated.
 * **Encoding.** `op0 = 2`, `t = 0xf`, `s = ars`, `uimm8x4`.
-  `III a3,16 = 0x0473f2`, `III a5,16 = 0x0475f2`. [OBSERVED]
+  `III a3,16 = 0x0473f2`, `III a5,16 = 0x0475f2`.
 * **ISS.** USEs `PSRING`/`MS_DISPST`/`InOCDMode @3`, `ars @1`; DEFs
-  `VAddrBase @1`. [OBSERVED]
+  `VAddrBase @1`.
 
 ### 3.14 Instruction-cache test (tag/data) (`LICT`/`LICW` load, `SICT`/`SICW` store; PRIVILEGED)
 
@@ -479,10 +478,10 @@ bool S32EX(uint32_t *addr, uint32_t val) {  // store-exclusive
   the high nibble: `LICT 0`, `SICT 1`, `LICW 2`, `SICW 3`.
 * **Encoding.** `RST1`/`IMP`, `op0 = 0`, `op1 = 1`, `op2 = 15`, `s = ars`,
   `t = art`. `LICT a4,a3 = 0xf10340`, `SICT a4,a3 = 0xf11340`,
-  `LICW a4,a3 = 0xf12340`, `SICW a4,a3 = 0xf13340`. [OBSERVED]
+  `LICW a4,a3 = 0xf12340`, `SICW a4,a3 = 0xf13340`.
 * **ISS.** `LICT`/`LICW` USE `ars @1`, `InstructionMemDataIn @5`, DEF `art @6`
   (deep — cache-array read). `SICT`/`SICW` USE `art @5`, DEF
-  `ScalarMemDataOut32 @5`. [OBSERVED]
+  `ScalarMemDataOut32 @5`.
 
 ### 3.15 OCD fast DDR load/store (`LDDR32.P` load, `SDDR32.P` store; PRIVILEGED/OCD)
 
@@ -499,16 +498,15 @@ void SDDR32_P(uint32_t **as) { *(uint32_t*)(*as) = DDR; *as += 1; } // store + p
 
 * **Encoding.** `OCD`/`ST0`, `op0 = 0`, `op1 = 0`, `op2 = 0`, `r = 7`,
   `t = 0xe`(load)/`0xf`(store), `s = ars`. `LDDR32.P a3 = 0x0073e0`,
-  `SDDR32.P a5 = 0x0075f0`. [OBSERVED]
+  `SDDR32.P a5 = 0x0075f0`.
 * **ISS.** USE `ars @1`, `ScalarMemDataIn32 @5`/`RSRBus @4`; DEF `ars @4`
   (post-inc), `XTSYNC @6` (LDDR), `MemControl @1`. The `LDDR32.P` DEF set includes
   `SRWrite`/`SRAddr`/`WSRBus` (the load routes through the SR/`DDR` port).
-  [OBSERVED]
 
 ### 3.16 MPU / TLB region ops (`PPTLB` probe, `RPTLB0`/`RPTLB1` read, `WPTLB` write; PRIVILEGED)
 
 * **Mnemonic** `PPTLB at,as` / `RPTLB0 at,as` / `RPTLB1 at,as` / `WPTLB at,as`.
-* **CONFIG CAVEAT** [HIGH/OBSERVED]. This `ncore2gp` config has **no** paging MMU
+* **CONFIG CAVEAT.** This `ncore2gp` config has **no** paging MMU
   and **no** TLBs (`HAVE_PTP_MMU = 0`, `HAVE_TLBS = 0`, identity mapping,
   vaddr == paddr). The page-table-style `*PTLB` opcodes are present in the TIE DB
   superset and assemble cleanly, but on this silicon they address the **MPU region
@@ -535,11 +533,10 @@ uint32_t PPTLB(uint32_t vaddr) {
 * **Encoding.** `MMU`/`RST0`, `op0 = 0`, `op2 = 5`, `r = 0xd`(PPTLB)/`0xb`(RPTLB0)/
   `0xf`(RPTLB1)/`0xe`(WPTLB), `s = ars`, `t = art`. `PPTLB a4,a3 = 0x50d340`,
   `RPTLB0 a4,a3 = 0x50b340`, `RPTLB1 a4,a3 = 0x50f340`, `WPTLB a4,a3 = 0x50e340`.
-  [OBSERVED]
 * **ISS.** `R*TLB`/`PPTLB` USE `ars @1`, `MMUDataIn @4`; DEF `art @5`,
   `VAddrBase @1`. `WPTLB` USEs `art @5`, `MPUENB @6`; DEFs `MMUDataOut @6`,
   `MPUENB @6`, **`XTSYNC @8`** — the single deepest barrier in the whole base
-  scalar ISA: re-mapping a region must fully drain the access pipe. [OBSERVED]
+  scalar ISA: re-mapping a region must fully drain the access pipe.
 
 > **NOTE — MPU-vs-page-table is INFERRED.** The opcode mechanics (op-selector,
 > `MMUDataIn`/`MMUDataOut` routing, `MPUENB` read/write, `XTSYNC @8`) are
@@ -560,15 +557,15 @@ uint32_t PPTLB(uint32_t vaddr) {
   counterpart of B28's `RFE`/`RFI`. Raises `InvalidOperand` if executed outside
   OCD mode.
 * **Encoding.** `RST1`/`IMP`, `op0 = 0`, `op1 = 1`, `op2 = 15`, `r = 0xe`,
-  `imms = s`. `RFDO 0 = 0xf1e000`. [OBSERVED]
+  `imms = s`. `RFDO 0 = 0xf1e000`.
 * **ISS.** USE `InOCDMode @3`, `EPC @3`, `imms @2`; DEF `BranchTarget @3`,
-  `BranchTaken @3`, `InOCDMode @6`, `NextOCDEnabled @6`. [OBSERVED]
+  `BranchTaken @3`, `InOCDMode @6`, `NextOCDEnabled @6`.
 
 ### 3.18 Normalize-shift-amount (`NSA` signed, `NSAU` unsigned; NON-privileged)
 
 * **Mnemonic** `NSA at,as` / `NSAU at,as` (`HAVE_NSA = 1`). Out: `[art:AR]`;
   In: `[ars:AR]`. **No** privilege, **no** exception (pure datapath).
-* **Semantics** [HIGH/OBSERVED — driven live from `libfiss-base.so`].
+* **Semantics** — driven live from `libfiss-base.so`.
   * `NSAU` = count of leading **zeros** of `AR[s]` (0..32; returns 32 for input 0).
     Live: `0x80000000→0`, `0x40000000→1`, `0x00010000→15`, `0x00000003→30`,
     `0x00000001→31`, `0x00000000→32`, `0xffffffff→0` (`module__xdref_nsau_32_32`).
@@ -584,8 +581,8 @@ uint32_t NSA (int32_t  x) { return x == 0 ? 31 : __builtin_clrsb(x); } // sign-r
 ```
 
 * **Encoding.** `ST1`/`RST0`, `op0 = 0`, `op2 = 4`, `r = 0xe`(NSA)/`0xf`(NSAU),
-  `s = ars`, `t = art`. `NSA a4,a3 = 0x40e340`, `NSAU a4,a3 = 0x40f340`. [OBSERVED]
-* **ISS.** USE `ars @4`; DEF `art @4` (1-cycle E-stage ALU, bypassable). [OBSERVED]
+  `s = ars`, `t = art`. `NSA a4,a3 = 0x40e340`, `NSAU a4,a3 = 0x40f340`.
+* **ISS.** USE `ars @4`; DEF `art @4` (1-cycle E-stage ALU, bypassable).
 
 ### 3.19 Sign-extend / clamp-signed (`SEXT`, `CLAMPS`; NON-privileged)
 
@@ -613,8 +610,8 @@ int32_t CLAMPS(int32_t x, int imm) {
 * **Encoding.** `RST3`/`QRST`, `op0 = 0`, `op1 = 3`, `op2 = 2`(SEXT)/`3`(CLAMPS),
   `r = dst`, `s = src`, `t = imm − 7` (so `imm = t + 7`, range 7..22).
   `SEXT a4,a3,7 = 0x234300`, `SEXT a4,a3,22 = 0x2343f0`,
-  `CLAMPS a4,a3,7 = 0x334300`, `CLAMPS a4,a3,22 = 0x3343f0`. [OBSERVED]
-* **ISS.** USE `ars @4`, `tp7 @3`; DEF `arr @4` (1-cycle E-stage ALU). [OBSERVED]
+  `CLAMPS a4,a3,7 = 0x334300`, `CLAMPS a4,a3,22 = 0x3343f0`.
+* **ISS.** USE `ars @4`, `tp7 @3`; DEF `arr @4` (1-cycle E-stage ALU).
 
 > **QUIRK — the `imm − 7` immediate bias.** The `t` nibble does not encode the
 > bit position directly; it encodes `imm − 7`, so `t = 0` → `imm = 7` and
@@ -626,7 +623,7 @@ int32_t CLAMPS(int32_t x, int imm) {
 
 ## 4. ISS / `INSTR_SCHEDULE` timing
 
-[HIGH/OBSERVED] Pipeline frame (root `rstage = 0`, `estage = 3`, `mstage = 4`,
+Pipeline frame (root `rstage = 0`, `estage = 3`, `mstage = 4`,
 `wstage = 6`). The per-op `issue`/`stall` functions are read from the
 DWARF-bearing `libcas-core.so` (`x24_Inst_0_inst_<MN>_{issue,stall}`; e.g.
 `x24_Inst_0_inst_RSR_DDR_issue`, `..._RSR_ATOMCTL_stall`, `..._LICT_issue`,

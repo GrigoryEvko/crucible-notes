@@ -95,9 +95,9 @@ std::string bir::Dtype2string(bir::Dtype dtype) {
 }
 ```
 
-There is **no case ≥ 20**: the switch is dense `0..19` and any other value traps. The reverse map `bir::string2Dtype` @0x265fb0 corroborates the bound from the other side — it returns ordinals `2..19` (cases 0/1 are pre-filtered by length before the dispatch) and its own `default` asserts at `Dtype.cpp:49`. All 20 name strings are independently present as standalone `.rodata` literals in libBIR (`strings -a` finds exactly the 20-name set, no extras). [CONFIRMED — decompiled switch bodies + `.rodata` string set.]
+There is **no case ≥ 20**: the switch is dense `0..19` and any other value traps. The reverse map `bir::string2Dtype` @0x265fb0 corroborates the bound from the other side — it returns ordinals `2..19` (cases 0/1 are pre-filtered by length before the dispatch) and its own `default` asserts at `Dtype.cpp:49`. All 20 name strings are independently present as standalone `.rodata` literals in libBIR (`strings -a` finds exactly the 20-name set, no extras).
 
-> **CORRECTION (D-D04, re S2-04 §3.6) —** an earlier transcription annotated the Dtype roster "0 uint8 … 19 int64 (+more)". The "(+more)" is wrong. The enum is **exactly** `0..19`; both `Dtype2string` (cases 0..19, default→assert) and `string2Dtype` (returns 2..19, default→assert) independently fix the density at 20 members. Upgrade the roster to CERTAIN.
+> **NOTE — the roster is closed at 20.** `Dtype2string` (cases `0..19`, default → assert) and `string2Dtype` (returns `2..19`, default → assert) fix the density from both directions, so there is no "and more" tail to discover. A dtype the compiler cannot name is a dtype it traps on.
 
 ---
 
@@ -111,7 +111,7 @@ $ xxd -s 0x1DFBAD0 -l 24 libwalrus.so
 01dfbae0: 0a 0b 01 0c  | 11 15 17 13                          wire-tag[16..19] | adjacent LUT
 ```
 
-The first 20 bytes are the table; the four bytes after (`11 15 17 13`) are a *different* adjacent lookup table, not part of `byte_1DFBAD0` — the bounds check `cmp …,0x13` (=19) is what keeps reads inside the first 20. [CONFIRMED — direct `xxd`; byte-identical to D-D04 and to S2-06.]
+The first 20 bytes are the table; the four bytes after (`11 15 17 13`) are a *different* adjacent lookup table, not part of `byte_1DFBAD0` — the bounds check `cmp …,0x13` (=19) is what keeps reads inside the first 20.
 
 ### The reader: `sub_14347C0` @0x14347c0
 
@@ -133,7 +133,7 @@ uint8_t bir_dtype_to_wire_tag(uint32_t dtype) {        // NEURON_ISA_TPB_DTYPE
 }
 ```
 
-The rip-relative `lea` resolves to exactly `0x1DFBAD0`, confirming the symbol the table-dump targets. Observed callers (CoreV4 encoders): `visitInstExponential` @0x1439d30, `visitInstQuantizeMx` @0x143dc60, `visitInstRand2` @0x143aca0, `visitInstActivation` @0x143bbb0, `generateMatmultMx` @0x143ebd0, `generateLdweightMx` @0x143e350. [CONFIRMED — disasm of `sub_14347C0` + caller list.]
+The rip-relative `lea` resolves to exactly `0x1DFBAD0`, confirming the symbol the table-dump targets. Observed callers (CoreV4 encoders): `visitInstExponential` @0x1439d30, `visitInstQuantizeMx` @0x143dc60, `visitInstRand2` @0x143aca0, `visitInstActivation` @0x143bbb0, `generateMatmultMx` @0x143ebd0, `generateLdweightMx` @0x143e350.
 
 > **GOTCHA —** the x4-packed FP8 types share the wire-tag of their unpacked base: `float8_e4m3fn_x4` (Int 8) → 14, identical to `float8_e4m3fn` (Int 5) → 14; `float8_e5m2_x4` (Int 9) → 15, like `float8e5` (Int 7) → 15. The "×4-ness" is **not** carried in the wire-tag — it is carried by the access pattern (the `num_elem_per_partition ×4` on the MX path) and by the stride. Two distinct Dtypes collapsing onto one wire-tag is by design; do not try to recover the Dtype from the wire-tag, the map is many-to-one.
 
@@ -148,7 +148,7 @@ $ xxd -s 0x1DFC040 -l 160 libwalrus.so   (parsed as 20 × u64)
   1 1 2 1 1 1 1 1 4 4 2 2 2 2 4 4 4 4 8 8
 ```
 
-Entry 20 onward is a mangled symbol string (`*ZN9neur…`), which pins the table length at exactly 20 qwords — there is no 21st stride. [CONFIRMED — `xxd` + `struct.unpack('<20Q', …)`; byte-identical to D-D04/S2-06.]
+Entry 20 onward is a mangled symbol string (`*ZN9neur…`), which pins the table length at exactly 20 qwords — there is no 21st stride. *Anchors: `xxd` of the `.rodata` region plus a `struct.unpack('<20Q', …)` of it.*
 
 ### The reader: `generateLdweightMx` @0x143e350
 
@@ -172,7 +172,7 @@ uint64_t span     = (numElem - 1) * stride;      // imul rbx, stride[dtype]
 start_addr.addr   = base + span;
 ```
 
-`generateMatmultMx` @0x143ebd0 uses the same `+0x30` field and the same converter chain. [CONFIRMED — disasm of `generateLdweightMx`; second `lea unk_1DFC040` site at 0x143e9ea in the same function.]
+`generateMatmultMx` @0x143ebd0 uses the same `+0x30` field and the same converter chain. *Anchor: the second `lea unk_1DFC040` site at `0x143e9ea` in the same function.*
 
 > **QUIRK —** the stride is the **container** size, not the logical element size, and that is the whole point of the table for packed types. `float4_e2m1fn_x4` (Int 2) has stride **2** — a 2-byte container holding four 4-bit values. `float8_e4m3fn_x4` / `float8_e5m2_x4` (Int 8, 9) have stride **4** — a `u32` container holding four FP8 bytes — which is why their stride (4) differs from plain FP8's stride (1). For every standard-width scalar type the stride equals the byte-width (8b→1, 16b→2, 32b→4, 64b→8) and matches the alignment exactly; the packed types are the only place container ≠ logical width.
 
@@ -211,7 +211,7 @@ Mapping the wire-tag groups back through the Dtype→wire-tag remap gives the pe
 | {1, 12} | 8 | uint64, int64 |
 | {0, 16, …} | — (false) | float4_e2m1fn_x4 (wire-tag 16) — see below |
 
-This grouping is byte-for-byte the same partition as `core_v3::get_type_size` @0x136e5b0 uses to assign element byte-sizes — i.e. on `core_v3` a wire-tag's alignment always equals its element size. [CONFIRMED — decompile + disasm of `addr_aligned_dtype`; partition matches S2-08 §3 and `get_type_size`.]
+This grouping is byte-for-byte the same partition as `core_v3::get_type_size` @0x136e5b0 uses to assign element byte-sizes — i.e. on `core_v3` a wire-tag's alignment always equals its element size.
 
 > **GOTCHA —** FP4-x4 (Dtype 2 → wire-tag 16) reaches the predicate's `return false` default on `core_v3`. That does **not** mean "any address" — it means the predicate reports *not aligned* for every address, so a `core_v3` backend will never accept an FP4-x4 access. FP4-x4 is genuinely a CoreV4-only type here; only the `core_v4` predicate copy admits wire-tag 16. A reimplementer targeting an older arch must reject FP4-x4 upstream, not paper over it with align 1.
 
@@ -232,7 +232,7 @@ reportError("MX dtype must be packed with 4 elements into 1");   // x4 invariant
 assignAccessForMX<NEURON_ISA_TPB_MXMEM_PATTERN1D>();             // ×4 num_elem path
 ```
 
-The packing manifests on two axes, both already in the master table: the **access pattern** carries `num_elem_per_partition × 4` (so K = partitionDim × 4 on the MX matmul), and the **stride** is the container size (2 for FP4-x4, 4 for FP8-x4) rather than the logical element width. The wire-tag is *not* a third signal — the packed types reuse their unpacked base's wire-tag (8/9 → 14/15, as above). [CONFIRMED — `generateMatmultMx` assert string + `assignAccessForMX`; the {2,8,9} membership matches S2-08 §2.4 and D-B04.]
+The packing manifests on two axes, both already in the master table: the **access pattern** carries `num_elem_per_partition × 4` (so K = partitionDim × 4 on the MX matmul), and the **stride** is the container size (2 for FP4-x4, 4 for FP8-x4) rather than the logical element width. The wire-tag is *not* a third signal — the packed types reuse their unpacked base's wire-tag (8/9 → 14/15, as above). *Anchors: the `generateMatmultMx` assert string and `assignAccessForMX`, which is where the `{2,8,9}` membership test lives.*
 
 > **GOTCHA —** an earlier note recorded "fp8_x4 wire tag 9 = u32". That `9` is **not** a value from `byte_1DFBAD0` (where Int 8/9 → wire-tags 14/15). It is the ADDR4 **container** tag emitted by the `QuantizeMx` encoder from a *different* 20-entry LUT, where the FP8-x4 datum is addressed as a `uint32` container (wire-tag 9 = uint32). Both facts are true and non-contradictory: the *element* wire-tag is the FP8 tag (14/15); the *container* is addressed as u32. Do not conflate the two LUTs.
 
@@ -250,17 +250,17 @@ The packing manifests on two axes, both already in the master table: the **acces
 
 ## Three copies, one per arch family
 
-`addr_aligned_dtype` is instantiated once per arch family: `core_v2` @0x609d10, `core_v3` @0x136ed10, `core_v4` @0x1446420. They are not identical. The `core_v4` copy widens its always-aligned group from `{13,14,15}` to `{13,14,15,16}` (a `cmp dl,3` against `wt − 13` instead of `cmp dl,2`), pulling FP4-x4 (wire-tag 16) into "always aligned", and it adds a `sub_142DE70` sub-check for the `{4..7}` x4 range. The task scope is the **`core_v3`** copy @0x136ed10; the `core_v4` FP4 delta is noted because it is the reason FP4-x4 has no `core_v3` alignment but align 1 on `core_v4`. A full v2/v3/v4 alignment crosswalk is out of scope. [STRONG — `core_v3` fully decoded; `core_v4` delta read from its disasm but not exhaustively traced.]
+`addr_aligned_dtype` is instantiated once per arch family: `core_v2` @0x609d10, `core_v3` @0x136ed10, `core_v4` @0x1446420. They are not identical. The `core_v4` copy widens its always-aligned group from `{13,14,15}` to `{13,14,15,16}` (a `cmp dl,3` against `wt − 13` instead of `cmp dl,2`), pulling FP4-x4 (wire-tag 16) into "always aligned", and it adds a `sub_142DE70` sub-check for the `{4..7}` x4 range. The task scope is the **`core_v3`** copy @0x136ed10; the `core_v4` FP4 delta is noted because it is the reason FP4-x4 has no `core_v3` alignment but align 1 on `core_v4`. A full v2/v3/v4 alignment crosswalk is out of scope. The `core_v3` copy is fully decoded here; the `core_v4` delta is read from its disassembly but not exhaustively traced.
 
-> **NOTE —** both LUTs (`byte_1DFBAD0`, `qword_1DFC040`) have exactly one in-binary consumer each, and both consumers are CoreV4 (`sub_14347C0`, `generateLdweightMx`). So the tables appear **CoreV4-scoped**; earlier arches likely compute stride via `core_vN::get_type_size` on the wire-tag domain rather than reading these arrays. This is inferred from the single-consumer fact, not traced through every arch. [INFERRED.]
+> **NOTE —** both LUTs (`byte_1DFBAD0`, `qword_1DFC040`) have exactly one in-binary consumer each, and both consumers are CoreV4 (`sub_14347C0`, `generateLdweightMx`). So the tables appear **CoreV4-scoped**; earlier arches likely compute stride via `core_vN::get_type_size` on the wire-tag domain rather than reading these arrays. That reading rests on the single-consumer fact alone and is **[INFERRED]** — it was not traced through every arch.
 
 ---
 
 ## Open questions
 
-- **Wire-enum names.** The `NEURON_ISA_TPB_DTYPE` *integer* values (1..16) are CERTAIN — they come straight out of `byte_1DFBAD0` and the alignment/size groupings. The symbolic *names* of those wire-tags (e.g. whether 14 is spelled `DTYPE_FP8_E4M3`) are **not** recovered as a symbol table in libwalrus; an authoritative wire-enum name list would need the ISA datamodel reflection layer or the pybind decoder. The values are pinned; the names are inferred. [INFERRED — names only.]
+- **Wire-enum names.** The `NEURON_ISA_TPB_DTYPE` *integer* values (1..16) are CERTAIN — they come straight out of `byte_1DFBAD0` and the alignment/size groupings. The symbolic *names* of those wire-tags (e.g. whether 14 is spelled `DTYPE_FP8_E4M3`) are **not** recovered as a symbol table in libwalrus; an authoritative wire-enum name list would need the ISA datamodel reflection layer or the pybind decoder. The values are pinned; the names are **[INFERRED]**.
 
-- **Intra-x4 lane order.** Which of the four logical FP4/FP8 elements occupies which sub-field of the container is a hardware micro-op detail not encoded in any compiler table examined here. [SPECULATIVE — not in the binary.]
+- **Intra-x4 lane order.** Which of the four logical FP4/FP8 elements occupies which sub-field of the container is a hardware micro-op detail not encoded in any compiler table examined here — **[UNRESOLVED]**, and not present in the binary.
 
 ---
 

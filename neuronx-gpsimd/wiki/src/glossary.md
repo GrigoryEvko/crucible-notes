@@ -463,7 +463,7 @@ byte-grounded in the arch-ISA header `NEURON_ISA_TPB_OPCODE_*` enum:
 
 (`ALL_REDUCE = 0x1` is a *collective-type* code on `TriggerCollective`, not an opcode byte.)
 *Anchor:* `NEURON_ISA_TPB_OPCODE_*` in `neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_common.h`
-(bytes verified directly); `SX-CCL-11` enum report. *Deep page:* [Collective-Type + cc_op Enum Reference](collectives/ops/collective-enums.md).
+(bytes verified directly). *Deep page:* [Collective-Type + cc_op Enum Reference](collectives/ops/collective-enums.md).
 
 **SB2SB (opcode `0xBF`)** — "State-Buffer to State-Buffer": the intra-/inter-die collective hop
 the GPSIMD POOL engine performs natively (one step of a ring all-reduce). The reduce-class variant
@@ -475,7 +475,7 @@ pairs with a CCE descriptor. Handler `decode_sb2sb_collective` (`remote_copy.cpp
 between the host runtime and the device firmware. **Note:** despite the name there is **no
 Cadence XRP framework** present in the corpus; the transport is a *bespoke Annapurna-Labs host↔DSP
 message queue* (the only `xrp` substring corpus-wide is `libnrt`'s unrelated `AF_RXRPC`/`PF_RXRPC`).
-*Anchor:* the XRP host↔DSP messaging report (`SX-CCL-13`). *Deep page:* [XRP Host↔DSP Messaging Transport](collectives/ops/xrp-host-dsp-messaging.md).
+*Anchor:* the XRP host↔DSP messaging report. *Deep page:* [XRP Host↔DSP Messaging Transport](collectives/ops/xrp-host-dsp-messaging.md).
 
 **`pring`** — The physical / persistent device-memory DMA-descriptor **ring** the NCFW collective
 scheduler builds once (by copying a `vring` template into device memory) and reuses across steps.
@@ -578,7 +578,7 @@ with **provenance** (where it came from). The two axes are orthogonal.
 - **INFERRED** — reasoned *over* OBSERVED facts by a named deduction (a stride, a structural
   mirror, an absence-implies argument). No single artifact states it.
 - **CARRIED** — reused from a cited prior report *at that report's confidence*, without
-  re-reading the artifact this pass (one inheritance step from the binary).
+  re-reading the artifact (one inheritance step from the binary).
 - **HIGH** — byte-exact and either directly read, multiply-corroborated, or proven-by-execution;
   encode it as a hard requirement.
 - **MED** — sound but single-witness, partially tooling-bounded, or one structural inference;

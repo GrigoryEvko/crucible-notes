@@ -13,15 +13,15 @@ The bar for this page: a reimplementer can rebuild the metaclass hierarchy, the 
 | | |
 |---|---|
 | **Module** | `neuronxcc/nki/compiler/backends/neuron/metaclasses.so` (Cython 3.0.10) |
-| **Copyright string** | `"Copyright (c) 2023, Amazon.com. All Rights Reserved"` (CONFIRMED) |
+| **Copyright string** | `"Copyright (c) 2023, Amazon.com. All Rights Reserved"` |
 | **Base metaclass** | `nki_type(type)` — `Base metaclass for NKI types (tensor and scalar)` |
 | **Specializations** | `scalar_type(nki_type)`, `tensor_type(nki_type)` |
 | **Quantified forms** | `modified_scalar_type(scalar_type)`, `modified_tensor_type(tensor_type)` |
 | **Const-property MC** | `StaticConstProperty(type)` |
 | **dtype group MC** | `nki_dtype(type)` — `isinstance` = membership in `cls.values` |
-| **Modifiers** | `{Mutable, Immutable, ParDim}` (CONFIRMED strings; enum name `Modifiers`) |
+| **Modifiers** | `{Mutable, Immutable, ParDim}` (enum name `Modifiers`) |
 | **Placement lattice** | `@dataclass(frozen=True) Allocation` + `AutoAllocation(Allocation)` |
-| **Addr-space tags** | `psum\|sbuf`, `private_hbm`, `shared_hbm`, `tiled_hbm` (CONFIRMED) |
+| **Addr-space tags** | `psum\|sbuf`, `private_hbm`, `shared_hbm`, `tiled_hbm` |
 | **Two-stage check** | `nki_type.__instancecheck__` @176 → `_dynamic_instancecheck` → `super()` |
 | **Structural check** | `modified_tensor_type.__instancecheck__` @279 (dtype/shape/addrspace/ir_class) |
 
@@ -44,17 +44,17 @@ type
 
 `scalar` and `tensor` (the classes in `tensor.py`, [6.2.1](tile-tensor-model.md)) are *instances* of `scalar_type` / `tensor_type`. The bare class `tensor` is an unparametrized type; `tensor[bfloat16, (128,512)]` is a *new class*, an instance of `modified_tensor_type`, manufactured on the fly by `__getitem__`. This is the abstract type lattice referred to as W06's `tensor_type` — the metaclass *is* the lattice constructor.
 
-> **NOTE —** The docstrings are crisp and CONFIRMED verbatim: `scalar_type` is `"Metaclass for scalar types that allows parameterized types. This enables syntax like: scalar: Basic scalar register value / scalar[np.int32]: Typed scalar register with specific dtype …"`; `tensor_type` is `"This is the metaclass for the tensor class."` and `modified_tensor_type` is `"This is the metaclass for the quantified tensor class."` ("quantified" = the dtype/shape-parametrized form).
+> **NOTE —** The docstrings are verbatim from the binary: `scalar_type` is `"Metaclass for scalar types that allows parameterized types. This enables syntax like: scalar: Basic scalar register value / scalar[np.int32]: Typed scalar register with specific dtype …"`; `tensor_type` is `"This is the metaclass for the tensor class."` and `modified_tensor_type` is `"This is the metaclass for the quantified tensor class."` ("quantified" = the dtype/shape-parametrized form).
 
-Module imports (CONFIRMED from the string/import tables): `inspect` (Signature/Parameter/bind/apply_defaults), `dataclasses` (`@dataclass(frozen=...)`), `numpy as np`, `typing`, the canonical dtype singletons from `neuronxcc.starfish.support.dtype` (`bfloat16`, `float32r`, `tfloat32`, `float8_e4m3fn_x4`, `float4_e2m1fn_x4`, …), the IR tensor classes `NeuronSBTensor` / `NeuronPSUMTensor` / `NeuronLocalTensor` / `DRAM3DBlockTensor`, and `CoreV4`.
+Module imports, read from the string/import tables: `inspect` (Signature/Parameter/bind/apply_defaults), `dataclasses` (`@dataclass(frozen=...)`), `numpy as np`, `typing`, the canonical dtype singletons from `neuronxcc.starfish.support.dtype` (`bfloat16`, `float32r`, `tfloat32`, `float8_e4m3fn_x4`, `float4_e2m1fn_x4`, …), the IR tensor classes `NeuronSBTensor` / `NeuronPSUMTensor` / `NeuronLocalTensor` / `DRAM3DBlockTensor`, and `CoreV4`.
 
-> **CORRECTION —** The backing report (D-W09 §4.1) lists `import os` and `from enum import Enum`. Neither `os`, `enum`, nor `IntEnum` appears in this module's string/import pool. `Modifiers` is referenced (CONFIRMED string `"Modifiers"` @ `0x3e9f0`) with members `Mutable`/`Immutable`/`ParDim`, but its *base* (Enum vs. plain class) and *definition site* are not visible in this module — it is most likely imported from a sibling. Treat "`Modifiers` is an `enum.Enum`" as **INFERRED**, not confirmed.
+> **NOTE — `Modifiers` is referenced here but not defined here.** The string `"Modifiers"` @ `0x3e9f0` is present, with members `Mutable`/`Immutable`/`ParDim`, but neither `os`, `enum`, nor `IntEnum` appears anywhere in this module's string/import pool. [INFERRED] `Modifiers` is imported from a sibling module, and its base — `enum.Enum` versus a plain class — is not visible from here.
 
 ---
 
 ## 2. `nki_type` — the base metaclass
 
-`nki_type(type)` implements the parametrization protocol shared by scalars and tensors. Its seven methods (line numbers CONFIRMED):
+`nki_type(type)` implements the parametrization protocol shared by scalars and tensors. Its seven methods, with line numbers:
 
 | Method | Line | Addr | Role |
 |---|---|---|---|
@@ -109,17 +109,15 @@ PyObject *nki_type___call__(cls, *args, **kwargs) {
 }
 ```
 
-Instantiation routes through an `inspect.Signature` (built by `_get_call_signature`, using `inspect.Parameter` with `POSITIONAL_OR_KEYWORD` / `KEYWORD_ONLY` kinds — both strings CONFIRMED) so that positional and keyword arguments are normalized to a single `arguments` dict before `create_instance` runs. `scalar_type._get_call_signature` (`0x29610`) declares the `dtype` parameter; `tensor_type._get_call_signature` (`0x28b90`) declares `shape` then `dtype`.
+Instantiation routes through an `inspect.Signature` (built by `_get_call_signature`, using `inspect.Parameter` with `POSITIONAL_OR_KEYWORD` / `KEYWORD_ONLY` kinds ) so that positional and keyword arguments are normalized to a single `arguments` dict before `create_instance` runs. `scalar_type._get_call_signature` (`0x29610`) declares the `dtype` parameter; `tensor_type._get_call_signature` (`0x28b90`) declares `shape` then `dtype`.
 
 ---
 
 ## 3. `scalar_type` / `tensor_type` and their quantified forms
 
-`scalar_type` and `tensor_type` each override `extract_items`, `_create_modified_type`, and `_get_call_signature`. `tensor_type.extract_items` (`0x36d70`) is the richer parser — it consumes `[dtype, shape, Modifiers, Allocation, ...]`, validates the dtype operand against the `nki_dtype` groups and `_is_np_dtype` (`0x2a580`), and uses `any_as` (alias resolution) and the `Modifiers`/`Allocation` operands. The output attribute dict carries the four concrete constraint fields that the quantified class stores: **`tensor_dtype`**, **`tensor_shape`**, **`tensor_addrspace`**, **`tensor_ir_class`** (all four CONFIRMED as `tensor_*` strings).
+`scalar_type` and `tensor_type` each override `extract_items`, `_create_modified_type`, and `_get_call_signature`. `tensor_type.extract_items` (`0x36d70`) is the richer parser — it consumes `[dtype, shape, Modifiers, Allocation, ...]`, validates the dtype operand against the `nki_dtype` groups and `_is_np_dtype` (`0x2a580`), and uses `any_as` (alias resolution) and the `Modifiers`/`Allocation` operands. The output attribute dict carries the four concrete constraint fields that the quantified class stores: **`tensor_dtype`**, **`tensor_shape`**, **`tensor_addrspace`**, **`tensor_ir_class`** (all four present as `tensor_*` strings).
 
-`modified_tensor_type.__new__` (`0x2fb60`) assembles those into the class's `type_attrs` and calls `type.__new__`. An over-supplied subscript raises `"unexpected attr in modified tensor type."` (CONFIRMED verbatim — note the message says "modified tensor type", **not** "modified_tensor_type"; the scalar twin is `"unexpected attr in modified scalar type."`).
-
-> **CORRECTION —** D-W09 §4.4/§4.5 give the error strings as `"unexpected attr in modified_scalar_type"` / `"...modified_tensor_type"` (underscored). The binary strings are space-separated: `"unexpected attr in modified scalar type."` and `"unexpected attr in modified tensor type."`.
+`modified_tensor_type.__new__` (`0x2fb60`) assembles those into the class's `type_attrs` and calls `type.__new__`. An over-supplied subscript raises `"unexpected attr in modified tensor type."` — note the space-separated wording, *not* `modified_tensor_type`. The scalar twin is `"unexpected attr in modified scalar type."`.
 
 ---
 
@@ -157,7 +155,7 @@ bool modified_tensor_type_is_has_mutable_modifier(cls) {
 }
 ```
 
-The body references `n_s_Modifiers` and `n_s_Mutable` only (CONFIRMED), confirming the `Modifiers` enum has at least `Mutable`, and that a quantified type carries a `modifiers` collection. The full member set `{Mutable, Immutable, ParDim}` is CONFIRMED from the three standalone strings; their semantics — `Mutable`/`Immutable` gate whether a tile can be written, `ParDim` marks the partition dimension — are INFERRED from naming and the partition-dim contract in [6.2.1](tile-tensor-model.md).
+The body references `n_s_Modifiers` and `n_s_Mutable` only, confirming the `Modifiers` enum has at least `Mutable`, and that a quantified type carries a `modifiers` collection. The full member set `{Mutable, Immutable, ParDim}` comes from the three standalone strings; their semantics — `Mutable`/`Immutable` gate whether a tile can be written, `ParDim` marks the partition dimension — are INFERRED from naming and the partition-dim contract in [6.2.1](tile-tensor-model.md).
 
 ---
 
@@ -172,7 +170,7 @@ bool nki_dtype_isinstance(cls, instance) {
 }
 ```
 
-The body references `n_s_cls`, `n_s_instance`, `n_s_values` and the `Contains` (PySequence/PyMapping membership) op (CONFIRMED). So `nki_float_dtype.isinstance(bfloat16)` is `bfloat16 in nki_float_dtype.values`. `tensor_type.extract_items` consults these groups to validate the dtype operand of a parametrized tensor type. `_is_np_dtype(t)` (`0x2a580`) is the numpy-side companion (`isinstance(t, np.dtype)` / np scalar type).
+The body references `n_s_cls`, `n_s_instance`, `n_s_values` and the `Contains` (PySequence/PyMapping membership) op. So `nki_float_dtype.isinstance(bfloat16)` is `bfloat16 in nki_float_dtype.values`. `tensor_type.extract_items` consults these groups to validate the dtype operand of a parametrized tensor type. `_is_np_dtype(t)` (`0x2a580`) is the numpy-side companion (`isinstance(t, np.dtype)` / np scalar type).
 
 ---
 
@@ -191,7 +189,7 @@ bool Allocation_is_superclass(self, other) {
 }
 ```
 
-`@dataclass(frozen=True) Allocation` (the `dataclass`/`frozen` strings are CONFIRMED) models a memory-class / address-space placement. `is_superclass(self, other)` (body references `n_s_Allocation`, `n_s_excludes`, `n_s_other`, `n_s_tensor_class_type`, and an `all(...)` generator) decides whether `self` (the required allocation) is a *superclass* of `other` (the candidate's) by checking that the candidate's IR tensor classes fall within `self`'s `_tensor_class_type` set, after removing an `excludes` set. `AutoAllocation(Allocation)` adds `auto_allocate` (`0x341d0`) — the compiler-chooses-placement variant (see 6.5.15, alloc decorators).
+`@dataclass(frozen=True) Allocation` (the `dataclass`/`frozen` strings are both present) models a memory-class / address-space placement. `is_superclass(self, other)` (body references `n_s_Allocation`, `n_s_excludes`, `n_s_other`, `n_s_tensor_class_type`, and an `all(...)` generator) decides whether `self` (the required allocation) is a *superclass* of `other` (the candidate's) by checking that the candidate's IR tensor classes fall within `self`'s `_tensor_class_type` set, after removing an `excludes` set. `AutoAllocation(Allocation)` adds `auto_allocate` (`0x341d0`) — the compiler-chooses-placement variant (see 6.5.15, alloc decorators).
 
 The IR-class → address-space mapping is `ir_tensor_class_to_addr_space`:
 
@@ -202,28 +200,28 @@ PyObject *ir_tensor_class_to_addr_space(cls) {
 }
 ```
 
-`_as_translations` maps the IR tensor classes (`NeuronSBTensor`, `NeuronPSUMTensor`, `NeuronLocalTensor`, `DRAM3DBlockTensor` — all CONFIRMED) to address-space tags. The address-space tag *strings* present in the binary are **`psum|sbuf`, `private_hbm`, `shared_hbm`, `tiled_hbm`** (CONFIRMED).
+`_as_translations` maps the IR tensor classes (`NeuronSBTensor`, `NeuronPSUMTensor`, `NeuronLocalTensor`, `DRAM3DBlockTensor`) to address-space tags. The address-space tag *strings* present in the binary are **`psum|sbuf`, `private_hbm`, `shared_hbm`, `tiled_hbm`**.
 
-> **CORRECTION —** D-W09 §4.7 lists the tags as `{sbuf, psum, psum_sbuf, local, hbm, private_hbm, shared_hbm, tiled_hbm}`. The standalone strings `sbuf`, `psum`, `psum_sbuf`, `local`, and bare `hbm` are **not** present in this module. The on-chip SBUF/PSUM tag is the single compound token `psum|sbuf`; the off-chip tags are `private_hbm` / `shared_hbm` / `tiled_hbm`. The per-IR-class pairing inside `_as_translations` is **INFERRED** from naming; only the tag string set is confirmed.
+> **GOTCHA — the on-chip tag is one compound token, not two.** There are no standalone `sbuf`, `psum`, `psum_sbuf`, `local`, or bare `hbm` strings in this module. SBUF and PSUM share the single tag `psum|sbuf`; the off-chip tags are `private_hbm` / `shared_hbm` / `tiled_hbm`. [INFERRED] The per-IR-class pairing inside `_as_translations` — only the tag string set itself is read from the binary.
 
 ---
 
 ## 7. `StaticConstProperty` — read-only class attributes
 
-`StaticConstProperty(type)` is a small metaclass giving classes *static* (class-level, instance-independent) read-only properties. Docstring CONFIRMED: `"This allows us to have static properties that aren't tied to an instance of a class. By default, python properties (decorated with @property) are tied to an instance. This metaclass allows us to have static properties."`
+`StaticConstProperty(type)` is a small metaclass giving classes *static* (class-level, instance-independent) read-only properties. Docstring, verbatim: `"This allows us to have static properties that aren't tied to an instance of a class. By default, python properties (decorated with @property) are tied to an instance. This metaclass allows us to have static properties."`
 
 ```c
 // StaticConstProperty.__getattribute__  @0x33210  (metaclasses.py:402)
 //   resolve a descriptor 'get' on the named attr, else fall to type.__getattribute__.
 // StaticConstProperty.__setattr__       @0x20810  (metaclasses.py:409)
 void StaticConstProperty___setattr__(cls, name, value) {
-    raise Error("cannot assign to a static const property.");   // CONFIRMED verbatim
+    raise Error("cannot assign to a static const property.");
 }
 // getattr_for_stubgen  @0x27920  — stub-generation hook that bypasses the const guard
 //   (returns type.__getattribute__(cls, name) directly).
 ```
 
-Any attempt to *write* a static const property raises `"cannot assign to a static const property."` (CONFIRMED). `getattr_for_stubgen` is the escape hatch the stub generator uses to read declarations without tripping the const guard.
+Any attempt to *write* a static const property raises `"cannot assign to a static const property."`. `getattr_for_stubgen` is the escape hatch the stub generator uses to read declarations without tripping the const guard.
 
 ---
 
@@ -242,7 +240,7 @@ How the metaclass layer is consulted, end to end:
 
 ## 9. Grounding summary
 
-**CONFIRMED** (symbol + decompiled body + lineno):
+Read from a symbol, a decompiled body, and a line number:
 - `nki_type.__instancecheck__` (@176/`0x30c50`), `__getitem__` (@185/`0x2e160`), `__call__` (@198/`0x38a30`).
 - `modified_tensor_type.__instancecheck__` (@279/`0x32520`) field set {tensor_dtype, tensor_shape, tensor_addrspace, tensor_ir_class, is_superclass}.
 - `is_has_mutable_modifier` (@270/`0x23d90`) → `Modifiers.Mutable in cls.modifiers`.
@@ -252,4 +250,4 @@ How the metaclass layer is consulted, end to end:
 - `StaticConstProperty.__getattribute__`/`__setattr__` (@402/@409), the const-assign error string and docstring.
 - All 9 metaclass/class names, `Modifiers` member strings `{Mutable, Immutable, ParDim}`, addr-space tags `{psum|sbuf, private_hbm, shared_hbm, tiled_hbm}`, the four IR tensor classes, all docstrings.
 
-**INFERRED / SPECULATIVE:** `Modifiers` being an `enum.Enum` and its base/definition site (not in this module); the exact per-IR-class pairing inside `_as_translations`; the precise semantics of `Mutable`/`Immutable`/`ParDim`; `AutoAllocation.auto_allocate`'s placement algorithm (not traced here — see 6.5.15, alloc decorators).
+**[INFERRED] / [SPECULATIVE]:** `Modifiers` being an `enum.Enum` and its base/definition site (not in this module); the exact per-IR-class pairing inside `_as_translations`; the precise semantics of `Mutable`/`Immutable`/`ParDim`; `AutoAllocation.auto_allocate`'s placement algorithm (not traced here — see 6.5.15, alloc decorators).

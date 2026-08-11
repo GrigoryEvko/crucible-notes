@@ -8,7 +8,7 @@ Three `xla::hilo` HLO passes in `hlo-opt` pull collectives toward the cheapest e
 
 All three are `xla::OpExpanderPass` subclasses and therefore share the base `OpExpanderPass::Run` @`0x29f0bb0` (post-order walk: for each instruction, if `InstructionMatchesPattern` then `ReplaceInstruction(inst, ExpandInstruction(inst))`). A pass is fully defined by its two virtuals: the **matcher** (the gate, vtable+0x40) and the **expander** (the emitter, vtable+0x48). The interesting structure here lives almost entirely in the matchers; the two AllReduce-DynamicSlice passes are byte-identical in their emitter and differ *only* in the gate.
 
-This page reconstructs each matcher as annotated pseudocode, names the real symbols and the replica-group equality test, and walks the shared reduce-scatter emitter operand-by-operand. The `DeletePermute` name-vs-behaviour mismatch is called out as a `CORRECTION`. The AllGather/parameter dedup half of the same backing analysis (`NeuronDuplicateParameterAllGatherRemover`) is documented separately — see [§ Cross-References](#cross-references).
+This page reconstructs each matcher as annotated pseudocode, names the real symbols and the replica-group equality test, and walks the shared reduce-scatter emitter operand-by-operand. `DeletePermute`'s name-versus-behaviour mismatch gets its own GOTCHA, since it is the single easiest thing to get wrong here. The AllGather/parameter dedup companion (`NeuronDuplicateParameterAllGatherRemover`) is documented separately — see [§ Cross-References](#cross-references).
 
 For reimplementation, the contract is:
 
@@ -111,7 +111,7 @@ The `[r12+18h]/[r12+20h]` arithmetic at `0x20045fd` selects which DS start-index
 
 `IsEffectiveScalarConstant<int>(inst, val)` @`0x2003e90` is the offset-factor verifier: `inst->opcode()==0x24 (kConstant)` ∧ `ShapeUtil::TrueNumDimensions(shape)==0` (effective scalar) ∧ `LiteralBase::IsAll(LiteralUtil::CreateR0<int>(val))` — i.e. the constant's value equals `val`. Its `VLOG` reasons ("Shape is not an effective scalar. Actual shape: ", "Literal values do not match. Expected value: …, Actual literal: ", "Instruction is not a constant. Actual opcode: …, Expected opcode: ") are shared with the multiple-groups matcher.
 
-> **GOTCHA —** the offset leaf is `kPartitionId` (`0x4D`), not `kReplicaId` (`0x5A`). The single optional `kConvert` (`0x25`) wrapper is peeled before the check. A reimplementer matching only `replica-id` will miss every real instance in this binary; the partition-id form is what the upstream lowering actually emits. (The exact start-index selection formula for rank>1 is MED — only the `0x25→0x4D` leaf is byte-verified.)
+> **GOTCHA —** the offset leaf is `kPartitionId` (`0x4D`), not `kReplicaId` (`0x5A`). The single optional `kConvert` (`0x25`) wrapper is peeled before the check. A reimplementer matching only `replica-id` will miss every real instance in this binary; the partition-id form is what the upstream lowering actually emits. (Only the `0x25→0x4D` leaf is read byte-exact; the start-index selection formula for rank>1 is reconstructed.)
 
 ---
 
@@ -171,7 +171,7 @@ bool InstructionMatchesPattern(HloInstruction* inst):
 
 ### Considerations
 
-The three pools are built with `std::vector<int>` + `LiteralUtil::CreateR1<int>` and compared with `LiteralBase::Equal`; the running boolean is the return value. The human-readable labels *identity / multiplied / repeated* (builders at `0x20056c2`, `0x20058ba`, `0x2005a32`/`0x2005de2`) are reconstructed from the loop index arithmetic, not from symbols — HIGH, not CERTAIN.
+The three pools are built with `std::vector<int>` + `LiteralUtil::CreateR1<int>` and compared with `LiteralBase::Equal`; the running boolean is the return value. The human-readable labels *identity / multiplied / repeated* (builders at `0x20056c2`, `0x20058ba`, `0x2005a32`/`0x2005de2`) are reconstructed from the loop index arithmetic; no symbol names them.
 
 > **NOTE —** the "multiple groups" name refers to the matched *replica-group topology*, not to a different emitted reduction. There is **no** extra cross-group reduce op. The cross-group structure is preserved simply by passing the all-reduce's full `replica_groups` straight into the reduce-scatter, so each group reduces within itself exactly as the all-reduce did.
 
@@ -183,7 +183,11 @@ The three pools are built with `std::vector<int>` + `LiteralUtil::CreateR1<int>`
 
 Both AR passes emit one `reduce-scatter` through **the same** function @`0x2006600`. The MultipleGroups vtable slot +0x48 is byte-identical to the single-group one; only the matcher (vtable+0x40) differs.
 
-> **CORRECTION (D-A03) —** an earlier registry survey listed the MultipleGroups pass with `EntryAddr=0x2004ae0`, implying a distinct rewrite. That address is the **matcher only**. The actual rewrite is the shared `ExpandInstruction` @`0x2006600`; the binary contains exactly one `ExpandInstruction` body for this class, named `RewriteAllReduceDynamicSlice::ExpandInstruction` and reused by both passes. CERTAIN — only one such asm symbol exists, and the CreateReduceScatter call site lives inside it.
+> **GOTCHA — `0x2004ae0` is the MultipleGroups *matcher*, not a second rewrite.** A pass
+> registry that lists MultipleGroups with `EntryAddr=0x2004ae0` names only its gate. The
+> binary carries exactly one `ExpandInstruction` body for this class,
+> `RewriteAllReduceDynamicSlice::ExpandInstruction` @`0x2006600`, and it holds the sole
+> `CreateReduceScatter` call site; both passes reuse it.
 
 ### Algorithm
 
@@ -261,7 +265,12 @@ Semantics: an all-reduce followed by "each rank slices out its own 1/G shard" *i
 
 `DeletePermute` (key `aws_neuron_delete_permute`, namespace `xla::hilo`) is an `OpExpanderPass` whose matcher gates `all-reduce` (`7`) **or** `collective-permute` (`0x1D`) and whose expander replaces the matched op with its sole data operand. It is the *complement* of the rewriters above: those rewrite real collectives toward reduce-scatter; `DeletePermute` deletes collectives that are already the identity.
 
-> **CORRECTION (D-B23) —** the name is a historical label, not a description. `DeletePermute` does **not** match `transpose` (`0x76`), `bitcast` (`0x13`), `reshape` (`0x5B`), or any "permute" in the array sense. Its 19-byte matcher gates `opcode==7 (all-reduce)` ‖ `opcode==0x1D (collective-permute)` and nothing else. Any prior summary inferring "removes redundant transpose/permute" from the name is wrong. (CERTAIN — 19-byte matcher + 45-byte expander read byte-exact below; opcodes decoded from `HloOpcodeString` @`0x96bb550`.)
+> **GOTCHA — the name is a historical label, not a description.** "Permute" here means
+> `collective-permute`, never array permutation: the matcher does **not** touch
+> `transpose` (`0x76`), `bitcast` (`0x13`), or `reshape` (`0x5B`). Its whole 19-byte body
+> gates `opcode==7` (all-reduce) ‖ `opcode==0x1D` (collective-permute) and nothing else.
+> Both the matcher and the 45-byte expander are read byte-exact below; opcodes decoded
+> from `HloOpcodeString` @`0x96bb550`.
 
 ### Algorithm
 
@@ -294,7 +303,7 @@ i.e. `all_reduce(x) → x` and `collective_permute(x) → x`. Both collectives a
 
 The matcher carries **no** replica-group cardinality, shape, or single-device test — it is the only per-instruction gate. The pass is therefore correct *only* when scheduled in a context where those collectives are provably the identity: single-logical-NeuronCore / single-replica lowering (`replica_count==1`, all replica-groups singletons), where an all-reduce over one rank and a collective-permute whose source equals its target are both copies of the input.
 
-> **GOTCHA —** the provable-redundancy precondition is enforced by **when the pass is added to the run-list**, not by any in-binary check. The conditional scheduling lives upstream (`HLOToTensorizer.so` / Penguin Python), outside this binary. A reimplementer who schedules `DeletePermute` unconditionally will silently delete *real* data-moving collectives and corrupt multi-rank programs. (CERTAIN for absence-of-guard; HIGH for the single-device scheduling rationale.)
+> **GOTCHA —** the provable-redundancy precondition is enforced by **when the pass is added to the run-list**, not by any in-binary check. The conditional scheduling lives upstream (`HLOToTensorizer.so` / Penguin Python), outside this binary. A reimplementer who schedules `DeletePermute` unconditionally will silently delete *real* data-moving collectives and corrupt multi-rank programs. The absence of any in-binary guard is read directly from the 19-byte matcher; the single-device scheduling rationale is reconstructed.
 
 ---
 
@@ -333,4 +342,4 @@ Single-group requires `|groups| == 1`; multiple-groups requires all `|group[i]|`
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](collective-combiners.md) — the cost-model combiner family; `CreateReduceScatter` is the same constructor this rewrite targets
 - [Collectives → Custom-Call Forward Conversion](collectives-to-customcall.md) — where collectives leave the stock-HLO world; these rewrites run before that boundary
 - [Collective Stream-ID & Channel-ID Family](collective-stream-channel-id.md) — `hlo_query::NextChannelId` and the channel-id allocation these rewrites consume
-- **Part 4.21 — Kernel/Parameter Dedup** (`NeuronDuplicateParameterAllGatherRemover`) — the *other* half of backing analysis D-B23; that page covers the all-gather/parameter CSE, this page covers only the `DeletePermute` degenerate-collective strip
+- **Part 4.21 — Kernel/Parameter Dedup** (`NeuronDuplicateParameterAllGatherRemover`) — the companion pass: that page covers the all-gather/parameter CSE, this page covers only the `DeletePermute` degenerate-collective strip

@@ -19,21 +19,20 @@ hard, predicate-grounded answer: **`AluOp::Bypass` (`0x00`), gated by `s3s3d3_tt
 This is the **Cadence Tensilica Vision-Q7 *Cairo* (`ncore2gp`) GPSIMD compute core's** own
 firmware — windowed-ABI Xtensa code in the `ncore2gp` (Xtensa24, RI-2022.9, NX1.1.4, 32-byte
 FLIX/VLIW) configuration — plus its NX/SEQ sequencer dispatch. Every device fact below is
-byte-pinned to the same DVE carve the forward page used, re-disassembled **this pass** from
+byte-pinned to the same DVE carve the forward page used, disassembled from
 `libnrtucode_internal.so` with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); every
 host-ISA fact is read out of the `aws_neuron_isa_tpb_*.h` arch-isa headers and
 `instruction_mapping.json` shipped in the same customop-lib package. The `extracted/` tree is
 gitignored — reach it with `fd --no-ignore` or absolute paths. Confidence and evidence tags
 follow the project [Confidence & Walls model](../../reference/confidence-model.md):
-`[HIGH/OBSERVED]` = read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned
+`[HIGH/OBSERVED]` = read-from-byte / read-from-header, `[MED/INFERRED]` = reasoned
 over OBSERVED, `[…/CARRIED]` = re-used at a cited sibling page's confidence.
 
 > **NOTE — the carve, the exact objects, and the offset conventions.** The firmware container
 > is `…/custom_op/c10/lib/libnrtucode_internal.so`. The DVE images are `.rodata`-resident, so
 > **file offset == device VA** for `.text`/`.rodata` (no `.data` delta applies to these
 > carves); IRAM offset == device IRAM VA (reset vector at byte 0); DRAM string offset ==
-> device DRAM VA − `0x80000`. Re-verified byte-identical to the forward page's carve this
-> pass:
+> device DRAM VA − `0x80000`. Byte-identical to the forward page's carve:
 >
 > | carved object | sha256 (first 8) | role |
 > |---|---|---|
@@ -43,8 +42,7 @@ over OBSERVED, `[…/CARRIED]` = re-used at a cited sibling page's confidence.
 > | `DVE_PERF_DRAM` | `eb980f98` | production dispatch table |
 >
 > Reset vector (DEBUG IRAM byte 0): `06 76 00 00` = `j 0x1dc` (the SEQ boot path).
-> `objdump` exit 0, empty stderr; `DVE_DEBUG_IRAM.dis` = 44,989 lines, `DVE_PERF_IRAM.dis` =
-> 35,342 lines. `[HIGH/OBSERVED]`
+> `DVE_DEBUG_IRAM.dis` = 44,989 lines, `DVE_PERF_IRAM.dis` = 35,342 lines. `[HIGH/OBSERVED]`
 
 > **CORRECTION — the arch-isa headers ARE in the package; the `op` field is NOT a selector.**
 > Two backing-report premises are overturned here by binary read. (1) The backing survey
@@ -67,13 +65,13 @@ over OBSERVED, `[…/CARRIED]` = re-used at a cited sibling page's confidence.
    SEQ DRAM dispatch table (idx `0x24` → trampoline `0x30ae`) and **absent from the POOL
    kernel_info_table of every carved generation**. It is *not* on ACTIVATION (that runs the
    *forward inference affine*, [forward page §7](batchnorm-forward.md)) and *not* on the
-   POOL/GPSIMD compute core. `[HIGH/OBSERVED — DVE table + POOL table enumeration]`
+   POOL/GPSIMD compute core. `[HIGH/OBSERVED — DVE + POOL tables]`
 2. **It self-names `S: BatchNormalizeBackProp`** at DRAM `0x2350` (full bytes read), logged by
-   the handler body at IRAM `0xb6f0`. `[HIGH/OBSERVED]`
+   the handler body at IRAM `0xb6f0`.
 3. **The math is a two-opcode decomposition.** `BatchNormGradAccumulate(2)` (`0x63`/`0x94`,
    `S3S3D1_BN`/`BN2`) is the **batch reduce** — it writes the **three sums** `d_x` needs;
-   `BatchNormBackProp` (`0x65`, `S3S3D3_TT`) is the **per-element `d_x` apply**. `[HIGH struct
-   roles header; INFERRED-HIGH the term split]`
+   `BatchNormBackProp` (`0x65`, `S3S3D3_TT`) is the **per-element `d_x` apply**.
+   `[HIGH struct roles; INFERRED term split]`
 4. **Saved-statistics reuse, header-verbatim.** GradAccum reads `imm0 = μb` (mean) and
    `imm1 = σb^-0.5` (inv_std) as **pointer-immediates** *"saved from forward propagation"*;
    BackProp never recomputes either. There is **no `rsqrt` on the DVE** (grep `0/0`).
@@ -90,7 +88,7 @@ over OBSERVED, `[…/CARRIED]` = re-used at a cited sibling page's confidence.
 8. **The batch reduce is the DVE's own stream-accumulate, not a POOL `CrossLaneReduce`.** The
    `Σ_batch` for `d_gamma`/`d_beta` runs *inside GradAccum* on the DVE MAC / add-normalize
    datapath (`ivp_mulusp*` / `ivp_baddnormnx16`), the same fold geometry the forward Stats2
-   uses. `[HIGH IVP vocab OBSERVED; INFERRED-HIGH attribution]`
+   uses. `[HIGH IVP vocab; INFERRED attribution]`
 
 ---
 
@@ -118,8 +116,7 @@ over OBSERVED, `[…/CARRIED]` = re-used at a cited sibling page's confidence.
   └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-`[diagram: dispatch bytes + struct fields HIGH/OBSERVED; the per-term apply wiring INFERRED-HIGH
-across the FLIX-desynced apply body]`
+`[diagram: HIGH/OBSERVED dispatch + struct; INFERRED apply wiring]`
 
 ---
 
@@ -134,7 +131,7 @@ BackProp is one of those handlers.
 
 ### 2.1 The self-name string — byte-exact
 
-`strings -t x DVE_DEBUG_DRAM.bin | rg BatchNormalize` (re-read this pass):
+`strings -t x DVE_DEBUG_DRAM.bin | rg BatchNormalize`:
 
 ```
  0x2261  S: BatchNormalize            (= BatchNormStats2, op 0x61 — the forward family name)
@@ -160,11 +157,9 @@ set `{0x41, 0x45, 0x46, 0x47, 0x51, 0x52, 0x7b, 0x7c, 0x7d, 0x7e, 0xbe, 0xf0(×5
 (`TENSOR_TENSOR_ARITH_OP`, the sole arith TT) and `0x51` (`TENSOR_TENSOR_BITVEC_OP`). The POOL
 EXTISA image carries **no** `batch`/`backprop`/`grad`/`BatchNorm` string anywhere. The smaller
 EXTISA-3 table (CAYMAN_3/MARIANA_3, VMA `0x020008c8`, 9 records) is reduction/scan-only and
-also has no `0x60`–`0x66`. `[HIGH/OBSERVED — kernel_info_table enumeration across CAYMAN_0/_3
-+ MARIANA_3 + string scan this pass]` The SUNDA POOL opcode map likewise carries no `0x65` and
-no `batch_norm` function — its only tensor-tensor entry is `pool_tensor_tensor_arith_op`
-(`0x41`). `[CARRIED — SUNDA POOL descriptor read by the backing survey; the SUNDA-specific
-POOL carve was not re-reproduced this pass]`
+also has no `0x60`–`0x66`. `[HIGH/OBSERVED — CAYMAN_0/_3 + MARIANA_3 tables]` The SUNDA POOL
+opcode map likewise carries no `0x65` and no `batch_norm` function — its only tensor-tensor
+entry is `pool_tensor_tensor_arith_op` (`0x41`). `[CARRIED — SUNDA POOL descriptor]`
 
 > **GOTCHA — the same `S3S3D3_TT` wire format is decoded on TWO engines, but BackProp is only
 > on one.** `instruction_mapping.json` binds the 64-byte `S3S3D3_TT` layout to *five* opcodes:
@@ -173,15 +168,14 @@ POOL carve was not re-reproduced this pass]`
 > layout; the DVE decodes `0x65` (and its own `0x41`/`Copy`/`Cast`) against the *same* layout.
 > A reimplementer must not infer "shared struct ⇒ shared kernel": the struct binding is a
 > **wire-format** statement, not an engine statement. `0x65` is **only** in the DVE table;
-> `0x41` is in *both* (each engine decodes its own opcodes). `[HIGH/OBSERVED]`
+> `0x41` is in *both* (each engine decodes its own opcodes).
 
 ---
 
 ## 3. Dispatch — entry → DRAM jump table → trampoline → thunk → handler
 
 The BN opcodes route through the SEQ direct-indexed DRAM jump table: `key = opcode − 0x41`,
-table1 base at DRAM file offset `0x814` (device VA `0x80814`). The BackProp word is read
-byte-exact this pass.
+table1 base at DRAM file offset `0x814` (device VA `0x80814`).
 
 ### 3.1 The DRAM dispatch word
 
@@ -197,13 +191,12 @@ byte-exact this pass.
 
 For contrast, `TensorTensorArith` (`0x41`, idx `0x00`, table1[`0x814`]) → trampoline `0x31e6`,
 and `TensorTensorBitvec` (`0x51`, idx `0x10`, table1[`0x854`]) → `0x31ee` — **distinct**
-trampolines from BackProp's `0x30ae`. `[HIGH/OBSERVED — dispatch words read directly]`
+trampolines from BackProp's `0x30ae`. `[HIGH/OBSERVED]`
 
 ### 3.2 The trampoline cluster `0x309e..0x30be`
 
 Each BN trampoline is `call8 <register-handler thunk> ; j 0x3212` (8-byte aligned). The
-BackProp trampoline `@0x30ae` disassembles byte-exact (`xtensa-elf-objdump`,
-`XTENSA_CORE=ncore2gp`):
+BackProp trampoline `@0x30ae` disassembles byte-exact:
 
 ```
 30ae:  65f3fe   call8  0x1fe4      ; BackProp register-handler thunk
@@ -212,7 +205,7 @@ BackProp trampoline `@0x30ae` disassembles byte-exact (`xtensa-elf-objdump`,
 
 The five sibling trampolines (`0x309e` GradAccum→thunk `0x1fac`, `0x30a6` GradAccum2→`0x1fc8`,
 `0x30ae` BackProp→`0x1fe4`, `0x30b6` ParamLoad→`0x2000`, `0x30be` ParamLoad2→`0x201c`) sit at
-stride `0x1c` thunks apart — one register-handler shim per opcode. `[HIGH/OBSERVED]`
+stride `0x1c` thunks apart — one register-handler shim per opcode.
 
 ### 3.3 The register-handler thunk `@0x1fe4`
 
@@ -228,7 +221,7 @@ stride `0x1c` thunks apart — one register-handler shim per opcode. `[HIGH/OBSE
 ```
 
 The thunk's only job is to bind the handler-object to body VA `0xb6f0` and register it. The
-five thunks load adjacent body VAs (`const16 a2,…`, all read directly this pass):
+five thunks load adjacent body VAs (`const16 a2,…`):
 
 | opcode | thunk | handler body | self-name log |
 |---|---|---|---|
@@ -237,8 +230,6 @@ five thunks load adjacent body VAs (`const16 a2,…`, all read directly this pas
 | **`0x65` BackProp** | **`0x1fe4`** | **`0xb6f0`** | **`0x2350`** |
 | `0x64` ParamLoad | `0x2000` | `0xb62c` | `0x22f0` |
 | `0x8e` ParamLoad2 | `0x201c` | `0xb694` | `0x230c` |
-
-`[HIGH/OBSERVED — clean scalar instructions, all five thunk→body pairs read this pass]`
 
 ### 3.4 The handler body `@0xb6f0` — the thinnest frame in the family
 
@@ -260,9 +251,7 @@ heavy inline 512-bit lane fold. BackProp's thin frame is the structural signatur
 **decode-and-delegate shim**: it self-names, stages the `S3S3D3_TT` instruction context, then
 hands the elementwise compute to the shared `AluOp`/`alu_op.cpp` datapath (the same path the
 DVE `TensorTensor`/`CopyPredicated`/`CastPredicated` handlers use). It does **not** carry a
-bespoke compute body. `[HIGH/OBSERVED — entry frames + self-name log through `call8 0x18010`;
-the "delegates to AluOp" INFERRED-HIGH from the thin frame + the `S3S3D3_TT→BackProp` binding +
-the `alu_op.cpp` asserts present in DRAM §8]`
+bespoke compute body. `[HIGH/OBSERVED entry frames; INFERRED AluOp delegation]`
 
 > **GOTCHA — the `l8ui a2,a2,13` + `beqi 8 / bnei 10` chain right after the BackProp body is
 > the *MOVE* handler, not BackProp.** Reading linearly past the BackProp body's FLIX-desync
@@ -272,16 +261,14 @@ the `alu_op.cpp` asserts present in DRAM §8]`
 > `0x23b9` (`move.cpp:41`: `dtype == UINT32 || INT32 || FP32`). The byte-13 read belongs to
 > the **adjacent MOVE handler**, which shares the dtype-byte offset by coincidence of the
 > common header layout. Do *not* attribute it to BackProp. (The struct's `out_dtype@13` is
-> HIGH from the header anyway — §4 — so nothing is lost.) `[HIGH/OBSERVED — the
-> `move.cpp` assertion string + the const16 refs in the span]`
+> HIGH from the header anyway — §4 — so nothing is lost.)
 
 ### 3.5 PERF (production) build caveat
 
 In the PERF DRAM table `0x65` routes to `0x9090`, but that span overlaps the assertion
 string-pool past idx `~0x40` (the tiny `0x2fc0` PERF DRAM); the `0x9090` target is the
 deprecated/error-shim cluster, not the trusted PERF BackProp body. The **DEBUG** dispatch is
-the reliable substrate; PERF is cited only for the IVP-vocab harvest (§7). `[MED — documented
-PERF-DRAM overlap; the DEBUG chain is the HIGH path]`
+the reliable substrate; PERF is cited only for the IVP-vocab harvest (§7). `[MED — PERF-DRAM overlap; DEBUG chain is HIGH]`
 
 ---
 
@@ -321,13 +308,12 @@ typedef struct NEURON_ISA_TPB_S3S3D3_TT_STRUCT {
 `TENSOR3D` (16 B) = `{ADDR4 start_addr; int16 step_elem[3]; uint16 num_elem[3]}` (read from
 `common.h`); `start_addr` (`ADDR4`) carries the SBUF/PSUM partition-offset encoding; all three
 patterns are `AllowedInPSUM=True, AllowedInSBUF=True`. `DTYPE_PAIR` is a single packed byte
-`{dtype_lo:4, dtype_hi:4}`. `[HIGH/OBSERVED — `common.h` `TENSOR3D`/`DTYPE_PAIR`/`HEADER`]`
+`{dtype_lo:4, dtype_hi:4}`. `[HIGH/OBSERVED — `common.h`]`
 
 > **NOTE — header compile-verify.** All three sibling structs assert `sizeof == 64`
-> (`ISA_STATIC_ASSERT`), the layout was read field-exact from the shipped header, and the
-> struct→opcode binding was read from `instruction_mapping.json`
-> (`NEURON_ISA_TPB_S3S3D3_TT_STRUCT → {…, NEURON_ISA_TPB_OPCODE_BATCH_NORM_BACK_PROP}`,
-> `jq`-verified this pass). `[HIGH/OBSERVED]`
+> (`ISA_STATIC_ASSERT`), the layout is field-exact from the shipped header, and the
+> struct→opcode binding comes from `instruction_mapping.json`
+> (`NEURON_ISA_TPB_S3S3D3_TT_STRUCT → {…, NEURON_ISA_TPB_OPCODE_BATCH_NORM_BACK_PROP}`).
 
 ### 4.1 The validity predicate — the decisive `op == Bypass` gate
 
@@ -369,15 +355,14 @@ live `AluOp` selector through `s3s3d3_tt_valid_op`. `[HIGH/OBSERVED — header p
 > arithmetic BackProp performs — the `op` byte is *zero*. The multiply-subtract-scale chain
 > that forms `d_x` is **hard-coded in the handler body** (`@0xb6f0`), keyed off the opcode
 > `0x65` alone, not off `op`. This is the opposite of TensorTensor, where the entire kernel
-> *is* the `op` selector. `[HIGH/OBSERVED — the `op==Bypass` gate; the hard-coded apply
-> INFERRED-HIGH]`
+> *is* the `op` selector. `[HIGH/OBSERVED gate; INFERRED hard-coded apply]`
 
 > **GOTCHA — BackProp sources forbid FP32R **and** 64-bit ints; TensorTensor allows them.**
 > The sibling `is_valid_tensor_tensor` predicate uses `is_valid_dtype_64(…, AllowU64=true,
 > AllowI64=true)` for its operands; `is_valid_batchnorm_backprop` uses plain
 > `is_valid_dtype(…, AllowFP32R=false)` — **no** `AllowU64`/`AllowI64`. So `u64`/`i64`, valid
 > on the POOL TensorTensor path, are **invalid** for DVE BackProp. The same struct, different
-> dtype envelope per opcode. `[HIGH/OBSERVED — the two predicates side by side]`
+> dtype envelope per opcode. `[HIGH/OBSERVED — both predicates]`
 
 ---
 
@@ -411,8 +396,7 @@ The Neuron DVE realises this as **two composable opcodes**, not one monolithic k
 * **STEP B — the APPLY (the per-element `d_x`): `BatchNormBackProp`** (`0x65`, struct
   `S3S3D3_TT`). It streams the per-element `d_y` and `x_norm` and combines them with the three
   GradAccum'd sums and the `(gamma·inv_std/N)` prefactor to emit `d_x` element-wise on the
-  shared `AluOp` datapath. `[HIGH dispatch this pass; INFERRED-HIGH the exact term mapping
-  across the FLIX-desynced apply body]`
+  shared `AluOp` datapath. `[HIGH dispatch; INFERRED term mapping (FLIX desync)]`
 
 So: **GradAccum = the sums; BackProp = the element-wise apply that consumes them.** The two
 compose into the full backward.
@@ -442,12 +426,11 @@ The `S3S3D1_BN` header's `bnga_dst_element_cnt_check` predicate is hard:
 `immediate_out_dtype` (a `DTYPE_PAIR` packing imm-dtype-lo / out-dtype-hi) and adds
 `imm0_imm1_src` at off 62 (an `IMM_SRC_PAIR`: lower-4 bits select imm0's source, upper-4
 imm1's — *"pointers coming from registers"*), so the saved stats can arrive **from a register
-pointer** rather than an instruction-field pointer. `[HIGH/OBSERVED — `s3s3d1_bn.h` /
-`s3s3d1_bn2.h` field-exact]`
+pointer** rather than an instruction-field pointer. `[HIGH/OBSERVED — both BN headers]`
 
 The instruction-exact GradAccum / GradAccum2 **body** decode is the
 [GradAccum page](batchnorm-gradaccum.md)'s subject; this page states the boundary and uses the
-struct/role to pin the reduce↔apply split. `[boundary stated]`
+struct/role to pin the reduce↔apply split.
 
 ### 5.4 The reuse of the saved statistics — header-verbatim
 
@@ -464,8 +447,8 @@ So **`μb`, `inv_std = σb^-0.5`, and `Om` are all forward-saved**; BackProp/Gra
 them, never recompute. The `+ε` is folded into the host's variance **before** the rsqrt — it
 is **not** a field anywhere in the BN structs. `N` is staged by `BatchNormParamLoad` (the
 [ParamLoad page](batchnorm-paramload.md)) and the `1/N` divide is the same 256-entry
-reciprocal Parameter-RAM the [forward page §3](batchnorm-forward.md) documents. `[HIGH/OBSERVED
-— `s3s3d1_bn.h` verbatim + `bnga_imm_check`]`
+reciprocal Parameter-RAM the [forward page §3](batchnorm-forward.md) documents.
+`[HIGH/OBSERVED — `bnga_imm_check`]`
 
 > **CORRECTION — the header spells it `σb-0.5`, not `σb^-0.5`.** The recovered arch-isa comment
 > uses plain text `σb-0.5` (no caret); it denotes `(σb²)^(−1/2)` = the reciprocal square root
@@ -503,8 +486,7 @@ for (each element e of the S3S3D3_TT stream, per active channel) {          /* i
    NOT off the op field — the apply is hard-wired in the handler body. */
 ```
 
-`[struct + IVP vocab HIGH/OBSERVED; the per-term op→intrinsic binding INFERRED-HIGH across the
-FLIX desync — the apply body is densely-scheduled FLIX VLIW that desyncs under stock objdump]`
+`[HIGH/OBSERVED struct + IVP vocab; INFERRED per-term binding (FLIX desync)]`
 
 ### 5.6 The batch reduce — DVE stream-accumulate, NOT a POOL `CrossLaneReduce`
 
@@ -515,17 +497,15 @@ accumulator, summing the `d_y·x_norm` products for `d_gamma`) and the add-norma
 geometry the forward Stats2 uses** for its `sum` / `sum-of-squares` fold. The POOL
 `CrossLaneReduce` (opcodes `0x7c`/`0x7d`, with `reduce_op ∈ {ADD, AVG, MAX, OR, AND, XOR}`) is
 a **separate** primitive on a **separate** engine — the intra-vector / cross-partition fold —
-and is *not* the carrier of BN-backward's batch reduce. `[HIGH IVP vocab OBSERVED §7;
-INFERRED-HIGH the GradAccum-internal-reduce attribution — the GradAccum body is FLIX-desynced
-so the exact fold schedule is structural]`
+and is *not* the carrier of BN-backward's batch reduce. `[HIGH IVP vocab §7; INFERRED
+GradAccum-internal-reduce attribution]`
 
 ---
 
 ## 6. The DVE multiply / subtract / accumulate / Newton vocabulary
 
-Harvested across the DVE DEBUG + PERF IRAM `.dis` (`rg -c`, OBSERVED counts this pass; these
-are whole-IRAM family counts for the DVE engine, not BackProp-body-specific — the FLIX desync
-prevents a body-scoped count):
+Harvested across the DVE DEBUG + PERF IRAM `.dis` (whole-IRAM family counts for the DVE
+engine, not BackProp-body-specific — the FLIX desync prevents a body-scoped count):
 
 | IVP op | DEBUG | PERF | role in the backward |
 |---|---|---|---|
@@ -545,24 +525,23 @@ prevents a body-scoped count):
 | `ivp_mulsone*` | 0 | 3 | the fused `(1 − d·x)` Newton helper |
 | `ivp_rsqrt0`/`ivp_sqrt0`/`ivp_recip0` | **0** | **0** | *(absent — no rsqrt/recip SEED on DVE)* |
 
-`[HIGH/OBSERVED — counts `rg -c` this pass; the per-term op binding INFERRED-HIGH across the
-FLIX desync]`
+`[HIGH/OBSERVED counts; INFERRED per-term op binding]`
 
 > **NOTE — the only DVE seed→Newton is reciprocal *division*, for the means, not rsqrt.** The
 > `ivp_div0nxf16t → ivp_divnn_2xf32t / ivp_mulsone*` triple is the DVE's reciprocal-division
 > Newton step (`x_{n+1} = x_n·(2 − d·x_n)`, expressed with the `mulsone` "one-minus" helper),
 > used for `sum ÷ count` when no reciprocal-RAM entry applies — it is **not** `rsqrt`.
 > `ivp_rsqrt0`/`sqrt0`/`recip0` grep `0/0` in both builds confirms `σb^-0.5` is
-> forward/host-precomputed, never a DVE op. `[HIGH/OBSERVED — grep 0/0 + the
-> [forward page §4](batchnorm-forward.md) Newton decode, CARRIED]`
+> forward/host-precomputed, never a DVE op. `[HIGH/OBSERVED grep 0/0; CARRIED
+> [forward page §4](batchnorm-forward.md)]`
 
 ---
 
 ## 7. Why the `S3S3D3_TT` is shared but the apply is on the DVE `AluOp` path
 
 The shared `AluOp` / `alu_op.cpp` elementwise-execute path is resident in the DVE DRAM and is
-what the thin BackProp body delegates to. The `alu_op.cpp` assertion / log strings are read
-directly from `DVE_DEBUG_DRAM.bin` this pass:
+what the thin BackProp body delegates to. The `alu_op.cpp` assertion / log strings in
+`DVE_DEBUG_DRAM.bin`:
 
 ```
  0x2b93  /opt/workspace/NeuronUcode/src/decode/alu_op.cpp:262 0
@@ -580,15 +559,14 @@ POOL engine's `pool_tensor_tensor_arith_op` (`0x41`) is a *separate* implementat
 same wire format on the POOL GPSIMD core. The two never collide: `0x65` is only in the DVE
 table, `0x41` is decoded by each engine against its own table. For BackProp the `op` byte is
 `Bypass`, so the `alu_op.cpp` op-selector is *not* the carrier of the `d_x` arithmetic — the
-multiply-subtract-scale chain is the opcode-`0x65` body's own. `[HIGH/OBSERVED — `alu_op.cpp`
-strings + the S3S3D3_TT family self-names; INFERRED-HIGH the BackProp-delegates-to-AluOp-for-
-the-elementwise-load/store-shell, op-keyed compute hard-coded]`
+multiply-subtract-scale chain is the opcode-`0x65` body's own. `[HIGH/OBSERVED strings +
+self-names; INFERRED AluOp delegation]`
 
 ---
 
 ## 8. The dtype matrix
 
-`NEURON_ISA_TPB_DTYPE` (4-bit, read from `common.h` this pass): `INVALID 0x0`, `UINT64 0x1`,
+`NEURON_ISA_TPB_DTYPE` (4-bit, read from `common.h`): `INVALID 0x0`, `UINT64 0x1`,
 `INT8 0x2`, `UINT8 0x3`, `INT16 0x4`, `UINT16 0x5`, `BFLOAT16 0x6`, `FP16 0x7`, `INT32 0x8`,
 `UINT32 0x9`, `FP32 0xA`, `FP32R 0xB`, `INT64 0xC`, `FP8_EXP3 0xD`, `FP8_EXP4 0xE`,
 `FP8_EXP5 0xF`.
@@ -604,16 +582,15 @@ the-elementwise-load/store-shell, op-keyed compute hard-coded]`
 | **GradAccum out** | fp32/fp16/bf16; dst == 3 elems | `bnga_valid_output_type` + `bnga_dst_element_cnt_check` |
 
 `num_active_channels` is capped at `POOLING_NUM_CHANNELS = 128` (`s3s3d1_bn_channels`:
-`!= 0 && <= 128`). `[HIGH/OBSERVED — `common.h` DTYPE enum + the two structs' validity
-predicates, read this pass]` See the [unified dtype model](dtype-model.md) for the full code
-space.
+`!= 0 && <= 128`). `[HIGH/OBSERVED — DTYPE enum + validity predicates]` See the
+[unified dtype model](dtype-model.md) for the full code space.
 
 ---
 
 ## 9. Per-generation presence
 
 The two BackProp-relevant structs (`s3s3d3_tt`, `s3s3d1_bn` + `s3s3d1_bn2`) and the BN opcode
-enum are present byte-for-byte across the arch-isa header trees, `fd`/`rg`-verified this pass:
+enum are present byte-for-byte across the arch-isa header trees:
 `s3s3d3_tt.h` + `s3s3d1_bn.h` exist and `BATCH_NORM_BACK_PROP = 0x65` (marked `// Y` =
 active) + the `s3s3d3_tt_is_zero_op` predicate are present in **sunda / cayman / mariana /
 maverick** (`maverick` header self-labels `ISA header for NC-v5`). `mariana_plus` ships no
@@ -621,7 +598,7 @@ separate `neuron_mariana_plus_arch_isa` dir in this checkout — it shares the `
 
 | GEN | `s3s3d3_tt` + `s3s3d1_bn` headers | opcode `0x65` (`// Y`) | DVE BackProp dispatch/handler |
 |---|---|---|---|
-| **SUNDA** (v2) | present (NC-v? header) | present | not separately carved/diffed this pass |
+| **SUNDA** (v2) | present (NC-v? header) | present | not separately carved/diffed |
 | **CAYMAN** (v3) | present — **the carve substrate** | present | **OBSERVED** (`0x65 → 0x30ae → 0x1fe4 → 0xb6f0` byte-exact) |
 | **MARIANA** (v4) | present | present | structurally identical SEQ NX engine |
 | **MARIANA_PLUS** (v4+) | shares MARIANA headers | present | structurally identical SEQ NX engine |
@@ -629,9 +606,8 @@ separate `neuron_mariana_plus_arch_isa` dir in this checkout — it shares the `
 
 The DVE firmware is the same `cayman/seq` NX SEQ engine across the Trainium-class generations
 that ship the DVE engine; the **POOL engine carries no batch-norm opcode (`0x60`–`0x66`) in
-any carved generation** (CAYMAN `kernel_info_table` + SUNDA opcode map, §2.2). `[HIGH/OBSERVED
-— per-gen header presence (fd-verified) + the CAYMAN DVE dispatch decoded this pass; the
-non-CAYMAN DVE BackProp handler-body byte-equality not exhaustively diffed → INFERRED]`
+any carved generation** (CAYMAN `kernel_info_table` + SUNDA opcode map, §2.2).
+`[HIGH/OBSERVED headers + CAYMAN dispatch; INFERRED other gens]`
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 BackProp
@@ -646,7 +622,7 @@ non-CAYMAN DVE BackProp handler-body byte-equality not exhaustively diffed → I
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED (disassembly, byte read, or header read this pass):**
+**HIGH / OBSERVED (disassembly, byte read, or header read):**
 
 * The DVE carves reproduce the forward page's anchor byte-identically (sha `259769ff` /
   `c106642d` / `9fa066f4` / `eb980f98`); reset vector `06 76 00 00` (`j 0x1dc`).
@@ -668,11 +644,11 @@ non-CAYMAN DVE BackProp handler-body byte-equality not exhaustively diffed → I
   `S3S3D1_BN2` register-immediate variant (`imm0_imm1_src@62`, `immediate_out_dtype@61`).
 * No `ivp_rsqrt0`/`sqrt0`/`recip0` in the DVE (grep `0/0` both builds); the
   `ivp_div0nxf16t`/`divnn_2xf32t`/`mulsone*` reciprocal-division Newton triple (PERF-only) +
-  the MAC/`muln_2xf32t`/`subn_2xf32t`/`baddnormnx16` vocabulary (counts this pass).
+  the MAC/`muln_2xf32t`/`subn_2xf32t`/`baddnormnx16` vocabulary (counts §6).
 * The `alu_op.cpp` assert strings (DRAM `0x2b93`/`0x2bca`/`0x2c17`/`0x2c64`/`0x2cb4`,
   `S: AluOp` @`0x2d01`) + the S3S3D3_TT family self-names.
 * POOL `kernel_info_table` (CAYMAN, VMA `0x02000380`, file `0x7400`, 17 records) has **no**
-  `0x65` / `0x60`–`0x66` (verified across CAYMAN_0/_3 + MARIANA_3 this pass); POOL has no
+  `0x65` / `0x60`–`0x66` (across CAYMAN_0/_3 + MARIANA_3); POOL has no
   `BatchNorm` string; `0x41` is its sole TT-arith entry. SUNDA POOL map (no `0x65`) CARRIED.
 * `DTYPE` enum + `POOLING_NUM_CHANNELS = 128` read from `common.h`.
 * Per-gen header presence (s3s3d3_tt + s3s3d1_bn + `0x65` + is_zero_op) in

@@ -121,7 +121,7 @@ InstFetchWidth = 256   HasVectorPipe = 1   IsaUseMul16 = 1   MUL32ImplementsMul1
 The Vision SIMD (`xt_ivp32`, `coprocessorCount=7`, `vectorPipe=1`) issues into a much longer
 datapath that is **not** a continuation of the 7-stage scalar pipe. Its architectural operand
 **read port is stage 10** and its results land at 11/12/13 by latency class; stage-14 carries
-IEEE status flags and stage-15 the deferred imprecise exception. `[HIGH × OBSERVED]`
+IEEE status flags and stage-15 the deferred imprecise exception.
 
 | stage | role | ISS evidence |
 | --- | --- | --- |
@@ -135,7 +135,7 @@ IEEE status flags and stage-15 the deferred imprecise exception. `[HIGH × OBSER
 
 **Quantitative anchor — every operand stamp in the ISS.** A full sweep of all 2149 `_issue`
 functions (6081 operand callbacks, 0 unresolved) gives the read/write-stage histogram per
-regfile, confirming the read-port/result-stage structure above to the unit `[HIGH × OBSERVED]`:
+regfile, confirming the read-port/result-stage structure above to the unit:
 
 ```
 vec    (2815): {10:1972, 11:225, 12:341, 13:277}   ; read port 10; writes 11/12/13 by class
@@ -223,7 +223,7 @@ from at least one `…_issue` function (the named exemplar). `[HIGH × OBSERVED]
 | branch `B*`, `B*.W15` | `BEQZ_W15` `@0x1189070`, `BALL_W15` `@0x11890b0` | AR 3 | resolve **3** (B) | — |
 
 `Div32=1` (config) provides a scalar 32-bit divide; `writeBufferEntries=8` buffers stores.
-`Mulh=1` enables the high-half multiply. `[HIGH × OBSERVED]`
+`Mulh=1` enables the high-half multiply.
 
 ---
 
@@ -231,7 +231,7 @@ from at least one `…_issue` function (the named exemplar). `[HIGH × OBSERVED]
 
 Because every result lands at a *fixed* stage with no observed recurrence other than the
 accumulator self-forward, each unit is **fully pipelined, initiation interval = 1** as far as
-the shipped tables show. `[HIGH × OBSERVED for the latency; MED × INFERRED for II=1, see §6]`
+the shipped tables show. `[HIGH × OBSERVED latency; MED × INFERRED II=1 — §6]`
 
 ```c
 // One canonical reservation/forwarding sketch per latency class. RESULT_STAGE and READ_PORT
@@ -312,9 +312,9 @@ cycle below the FLIX slot ceiling. The realizable bound **is** recoverable: it i
 `operand-availability (RAW/WAW scoreboard) + the 2 LSU mem-ports + the FLIX slot count + the
 class-exclusive lane partition`. The per-`(format,slot,opcode,stage)` bodies that encode it ship
 **fully populated** in `libcas-core.so` (`_issue` = 2149, `_stall` = 1746, `_stage<N>` ≈ 160 k,
-stages 0–15 — re-counted `nm | rg -c` this pass). What stays `[MED]` is only the reduction of
+stages 0–15). What stays `[MED]` is only the reduction of
 those populated bodies to an **exact per-port single-issue stall cycle count** — a task, not a
-wall. `[HIGH × OBSERVED on the bodies + the slot/mem-port bound; MED × the exact cycle counts]`
+wall. `[HIGH × OBSERVED bodies; MED × exact cycle counts]`
 
 > **CORRECTION (divergence #1, resolved at the capstone) — the reservation model is PRESENT, not
 > an empty wall.** An earlier framing of this section called the model "the honest empty-reservation
@@ -324,7 +324,7 @@ wall. `[HIGH × OBSERVED on the bodies + the slot/mem-port bound; MED × the exa
 > function bodies above. The honest residual is the **exact stall cycle count** (MED), not the
 > model's existence. This is unified across the Part-4 pages in
 > [Microarchitecture Synthesis §2.4 + §8 row 1](microarch-synthesis.md) and
-> [co-issue-matrix §4](./co-issue-matrix.md); this page adopts that resolution. `[HIGH × OBSERVED]`
+> [co-issue-matrix §4](./co-issue-matrix.md); this page adopts that resolution.
 
 Two observations describe *what* the populated bodies model (a per-register scoreboard + one
 memory-only functional-unit port), and *what* they do not (a per-compute-unit issue counter):
@@ -371,7 +371,7 @@ memory-only functional-unit port), and *what* they do not (a per-compute-unit is
    bodies in `libcas-core.so` (the `_issue`/`_stall`/`_stage<N>` functions of §6 intro) **are**
    populated — they are where the scoreboard + the one memory-only port live ([co-issue-matrix §4],
    [microarch-synthesis §2.4](microarch-synthesis.md)). The empty `MODULE_SCHEDULE` is the
-   *TIE-DB* table; the populated `_issue`/`_stage<N>` bodies are the reservation. `[HIGH × OBSERVED]`
+   *TIE-DB* table; the populated `_issue`/`_stage<N>` bodies are the reservation.
 
 **Consequence.** The structural bounds that *are* sound:
 
@@ -440,15 +440,15 @@ by FLIX slot count + operand availability, with the finer single-port cycle coun
 | claim | this page (ISS ground truth) | prior / sibling | verdict |
 | --- | --- | --- | --- |
 | scalar pipe `A1/B3/E4/M5/W6/D9` | `core.xparm` `<core>`, `default-params` | TIE `r0/e3/m4/w6` | **RECONCILED** (+1 on E/M; W,vec-ports equal) |
-| vec read port @10 | universal `opnd_sem_vec_addr → 0xa` | DX-HW-01 §11 | CONSISTENT |
+| vec read port @10 | universal `opnd_sem_vec_addr → 0xa` | prior report | CONSISTENT |
 | vec-ALU 1-cyc @11 | `IVP_MINN`/`ANDB`/`LTNX16` @11 | [B02](../isa/ref/b02-vec-alu-fp.md) | CONSISTENT |
 | MAC/multiply 2-cyc @12 | `IVP_MULQA2N8QXR8` @12 | [B04](../isa/ref/b04-mac-integer.md) | CONSISTENT |
-| FMA 3-cyc @13 | `IVP_MULAN_2XF32T`/`MULANXF16T` @13 | DX-ISA FMA 3-cyc | CONSISTENT |
+| FMA 3-cyc @13 | `IVP_MULAN_2XF32T`/`MULANXF16T` @13 | prior report (FMA 3-cyc) | CONSISTENT |
 | convert @13, `TRUNC` @12 | `FLOATN` @13, `TRUNCN` @12 | [B13](../isa/ref/b13-sp-cvt.md) L66/492 | CONSISTENT |
-| MUL32 2-cyc @6 (W) | `MUL16S` arr@6 | DX-HW-01 | CONSISTENT |
-| load-use @5 / @10 | `L16UI` @5, `IVP_LV2NX8_I` @10 | DX-ISA ld_st | CONSISTENT |
-| FSR flags @14 | 4–5× `mov $0xe` per FP op | DX-ISA-02 @14 | CONSISTENT |
-| branch resolve @3 (B) | `BEQZ_W15` AR @3 | DX-HW-01 §2 | CONSISTENT |
+| MUL32 2-cyc @6 (W) | `MUL16S` arr@6 | prior report | CONSISTENT |
+| load-use @5 / @10 | `L16UI` @5, `IVP_LV2NX8_I` @10 | prior report (ld/st) | CONSISTENT |
+| FSR flags @14 | 4–5× `mov $0xe` per FP op | prior report (@14) | CONSISTENT |
+| branch resolve @3 (B) | `BEQZ_W15` AR @3 | prior report | CONSISTENT |
 | reservation model | `_stall` (1746) = per-register scoreboard + 1 mem-only port; `_issue` (2149) / `_stage<N>` (~160 k) bodies PRESENT | MODULE_SCHEDULE (TIE-DB) empty | **PRESENT** (scoreboard + mem-port + slot-count; exact cycle counts MED) |
 | multiply-per-format ceiling | slot-count bound `1×S2 + 1×S3`; finer cycle count MED, methods diverge | prior `3/2/1` | **RESOLVED** at [synthesis §2.2](microarch-synthesis.md) (§6) |
 

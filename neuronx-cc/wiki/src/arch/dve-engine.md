@@ -26,10 +26,10 @@ For reimplementation, the contract is:
 | **Per-gen sets** | gen2 = 5 sets; gen3 = 5 sets; gen4 = 3 sets (`default`, `saturate`, `transformer`) |
 | **Schema (gen2)** | `dve_table_keys = ["opcode_table", "control_table", "datapath_table"]` (3 keys) |
 | **Schema (gen3/gen4)** | `dve_table_keys = ["opcode_table", "control_fast_table", "control_slow_table", "datapath_table"]` (4 keys) |
-| **Default opcode counts** | gen2 = **46**, gen3 = **52**, gen4 = **59** (`jq '.ops\|length'`, re-derived) |
+| **Default opcode counts** | gen2 = **46**, gen3 = **52**, gen4 = **59** |
 | **Opcode index space** | `opcode_table` is a 256-entry LUT indexed by the raw opcode integer; roster `[48..240]` is a subset |
 | **Opcode→name** | `neuronxcc::core_v2::enum_variant_string_opcode` (thunk `0x5edcb0` → off `0x3DCC640`); `core_v3`/`core_v4` siblings — one literal-string switch per gen |
-| **Cross-build** | all three `dve_info.json` are byte-identical across cp310/cp311/cp312 (`cmp -s` OK) |
+| **Cross-build** | all three `dve_info.json` are byte-identical across cp310/cp311/cp312 |
 
 ---
 
@@ -65,15 +65,15 @@ saturate     — gen4 ONLY. Same opcode roster as gen4 default (byte-identical o
 
 | Gen | Sets present | Count | Confidence |
 |---|---|---|---|
-| gen2 | `default`, `transformer`, `transformer_fwd`, `transformer_bwd`, `transformer_bwd2` | 5 | CONFIRMED (`jq`) |
-| gen3 | `default`, `transformer`, `transformer_fwd`, `transformer_bwd`, `transformer_bwd2` | 5 | CONFIRMED (`jq`) |
-| gen4 | `default`, `saturate`, `transformer` | 3 | CONFIRMED (`jq`) |
+| gen2 | `default`, `transformer`, `transformer_fwd`, `transformer_bwd`, `transformer_bwd2` | 5 | CERTAIN |
+| gen3 | `default`, `transformer`, `transformer_fwd`, `transformer_bwd`, `transformer_bwd2` | 5 | CERTAIN |
+| gen4 | `default`, `saturate`, `transformer` | 3 | CERTAIN |
 
 > **QUIRK — `saturate` is not an alias of `default`.** Its `ops[]` is byte-identical to gen4 default (`jq '.tables[0].ops == .tables[1].ops'` → `true`), so it enables the exact same 59 opcodes. But its four `.bin` blobs all differ from default: `cmp` puts the first datapath divergence at byte 9161. The two sets wire the same sequencer and the same opcode→row map, yet hand the datapath lanes different field values — `saturate` is a pure datapath-payload variant that makes the arithmetic ops clamp instead of wrap. A reimplementer who treats `saturate` as a synonym for `default` ships wrong silicon behavior on overflow.
 
 ### How membership is encoded
 
-A set's `ops[]` is a convenience list; the *authoritative* membership lives in the set's `opcode_table.bin`. The opcode table is a 256-entry LUT indexed by the raw opcode integer (see [The Indexed-Lookup Flow](#the-indexed-lookup-flow)); an opcode is **enabled in a set iff its slot is nonzero**. Disabling an op in a derived set is therefore "zero the slot", and enabling one is "write the descriptor". Comparing gen2 `default` vs `transformer` opcode tables, 34 of 256 entries differ: ops dropped from `transformer` (e.g. 88, 108–111) go to `0x0`; ops added (138, 139, 143, 154, 155) become nonzero; ops in both carry **different** control-row values, because each set compacts its own control/datapath tables independently (CONFIRMED — opcode-table diff, ISA 2.25).
+A set's `ops[]` is a convenience list; the *authoritative* membership lives in the set's `opcode_table.bin`. The opcode table is a 256-entry LUT indexed by the raw opcode integer (see [The Indexed-Lookup Flow](#the-indexed-lookup-flow)); an opcode is **enabled in a set iff its slot is nonzero**. Disabling an op in a derived set is therefore "zero the slot", and enabling one is "write the descriptor". Comparing gen2 `default` vs `transformer` opcode tables, 34 of 256 entries differ: ops dropped from `transformer` (e.g. 88, 108–111) go to `0x0`; ops added (138, 139, 143, 154, 155) become nonzero; ops in both carry **different** control-row values, because each set compacts its own control/datapath tables independently; [ISA 2.25](../isa/dve-opcode-table.md) walks the diff entry by entry.
 
 ### KaenaDVE version stamp
 
@@ -83,7 +83,7 @@ Every generation ships an identical 80-byte `version.json`:
 { "KaenaDVE": { "brazil_version": "", "git_sha": "" } }
 ```
 
-Both fields are empty in this release — the DVE component carries no semantic version of its own, so the only reliable handle on the table generation is the wheel build (`2.24.5133.0+58f8de22`). (CONFIRMED — `cat` over all three.)
+Both fields are empty in this release — the DVE component carries no semantic version of its own, so the only reliable handle on the table generation is the wheel build (`2.24.5133.0+58f8de22`). All three generations ship the same file.
 
 > **NOTE — the roster is a property of the toolchain version, not the Python ABI.** The three `dve_info.json` are byte-identical across the cp310, cp311, and cp312 wheels (`cmp -s`, all OK). A reimplementer can treat the DVE table roster as fixed per toolchain release and ignore the interpreter ABI entirely.
 
@@ -99,13 +99,13 @@ Both fields are empty in this release — the DVE component carries no semantic 
 
 | Gen | `dve_table_keys` | Keys | Confidence |
 |---|---|---|---|
-| gen2 | `["opcode_table", "control_table", "datapath_table"]` | 3 | CONFIRMED (`jq`) |
-| gen3 | `["opcode_table", "control_fast_table", "control_slow_table", "datapath_table"]` | 4 | CONFIRMED (`jq`) |
-| gen4 | `["opcode_table", "control_fast_table", "control_slow_table", "datapath_table"]` | 4 | CONFIRMED (`jq`) |
+| gen2 | `["opcode_table", "control_table", "datapath_table"]` | 3 | CERTAIN |
+| gen3 | `["opcode_table", "control_fast_table", "control_slow_table", "datapath_table"]` | 4 | CERTAIN |
+| gen4 | `["opcode_table", "control_fast_table", "control_slow_table", "datapath_table"]` | 4 | CERTAIN |
 
 The change is a **single control table (gen2) splitting into fast + slow (gen3, unchanged at gen4)**. The `opcode_table` and `datapath_table` keys are constant across all three generations.
 
-> **CORRECTION (DVE-SCHEMA) —** an earlier overview claimed gen3 had a *null* control table (opcode + datapath only) and that the fast/slow split first appeared at gen4. Direct `jq` of `dve_table_keys` refutes this: gen3 already carries both `control_fast_table` and `control_slow_table`, and the gen3 directory ships `default_control_fast_table.bin` (4096 B) + `default_control_slow_table.bin` (4096 B) — not a null. The schema lineage is gen2 (3-key, single control) → gen3 (4-key, split control) → gen4 (4-key, identical to gen3). There is no null-control generation.
+The full lineage is therefore gen2 (3-key, single control) → gen3 (4-key, split control) → gen4 (4-key, identical to gen3). The split lands at gen3, not gen4: the gen3 directory already ships both `default_control_fast_table.bin` (4096 B) and `default_control_slow_table.bin` (4096 B). No generation ships a null control table.
 
 ### Why the control table split
 
@@ -120,7 +120,7 @@ control_slow — the multi-cycle / iterative microcode (reductions, batch-norm p
                a nonzero slow-row index.
 ```
 
-So `control_fast` = one datapath block fired inline; `control_slow` = a loopable microcode program in its own table. The set of ops that carry a nonzero slow index is exactly the known iterative DVE families (tensor-reduce, batch-norm, gather, cumulative). (STRONG — the slow-op set matches the iterative families; the gen2-hidden-field ↔ gen3-slow-table correspondence is byte-exact in ISA 2.26.)
+So `control_fast` = one datapath block fired inline; `control_slow` = a loopable microcode program in its own table. The set of ops that carry a nonzero slow index is exactly the known iterative DVE families — tensor-reduce, batch-norm, gather, cumulative. That the split *is* a latency-class partition follows from this correspondence rather than from any label in the blobs; the gen2-hidden-field ↔ gen3-slow-table mapping itself is byte-exact in [ISA 2.26](../isa/dve-control-table.md).
 
 ### Blob geometry per generation
 
@@ -128,13 +128,13 @@ The `.bin` blobs are **headerless raw LUTs** — no magic, opaque content; the d
 
 | Table | gen2 | gen3 | gen4 | Confidence |
 |---|---|---|---|---|
-| `opcode_table` | 2048 B | 1024 B | 1024 B | CONFIRMED (`ls`) |
-| `control_table` | 2048 B (single) | — | — | CONFIRMED |
-| `control_fast_table` | — | 4096 B | 4096 B | CONFIRMED |
-| `control_slow_table` | — | 4096 B | 4096 B | CONFIRMED |
-| `datapath_table` | 8192 B | 16384 B | 16384 B | CONFIRMED |
+| `opcode_table` | 2048 B | 1024 B | 1024 B | CERTAIN |
+| `control_table` | 2048 B (single) | — | — | CERTAIN |
+| `control_fast_table` | — | 4096 B | 4096 B | CERTAIN |
+| `control_slow_table` | — | 4096 B | 4096 B | CERTAIN |
+| `datapath_table` | 8192 B | 16384 B | 16384 B | CERTAIN |
 
-The `opcode_table` **halves** at gen3 (2048→1024) and the `datapath_table` **doubles** (8192→16384). Neither is a row-count change: the opcode table holds 256 entries in both, but gen2 packs each as a `u64` (8 B, five high bytes wasted) and gen3 re-packs as a `u32` (4 B); the datapath doubles because the control split takes the row count from 128 (gen2) to 256 (gen3) and the datapath keeps 64 B per row. gen4 keeps gen3's geometry but lights ~55% more datapath blocks and widens the datapath word (~33-bit at gen3 to ~61-bit at gen4), which is why gen4's same-size datapath is ~2.3× denser. (CONFIRMED sizes; the width/density mechanism is ISA 2.27.)
+The `opcode_table` **halves** at gen3 (2048→1024) and the `datapath_table` **doubles** (8192→16384). Neither is a row-count change: the opcode table holds 256 entries in both, but gen2 packs each as a `u64` (8 B, five high bytes wasted) and gen3 re-packs as a `u32` (4 B); the datapath doubles because the control split takes the row count from 128 (gen2) to 256 (gen3) and the datapath keeps 64 B per row. gen4 keeps gen3's geometry but lights ~55% more datapath blocks and widens the datapath word (~33-bit at gen3 to ~61-bit at gen4), which is why gen4's same-size datapath is ~2.3× denser. The sizes are read off the shipped blobs; the width/density mechanism belongs to [ISA 2.27](../isa/dve-datapath-table.md).
 
 ---
 
@@ -148,8 +148,8 @@ The DVE opcode roster is the set of integers a generation's `default` table enab
 
 | Transition | Added | Removed | Net | Result | Confidence |
 |---|---|---|---|---|---|
-| gen2 → gen3 | `{96, 147, 152, 154, 155, 188, 230, 233, 240}` (9) | `{140, 141, 159}` (3) | +6 | 46 → 52 | CONFIRMED (`jq $b-$a`) |
-| gen3 → gen4 | `{48, 119, 120, 224, 225, 226, 227}` (7) | `{}` (0) | +7 | 52 → 59 | CONFIRMED (clean superset) |
+| gen2 → gen3 | `{96, 147, 152, 154, 155, 188, 230, 233, 240}` (9) | `{140, 141, 159}` (3) | +6 | 46 → 52 | CERTAIN |
+| gen3 → gen4 | `{48, 119, 120, 224, 225, 226, 227}` (7) | `{}` (0) | +7 | 52 → 59 | CERTAIN |
 
 The arithmetic checks: `46 + 9 − 3 = 52`; `52 + 7 + 0 = 59`. gen4 default is a **clean superset** of gen3 default (no removals); gen2→gen3 is **not** a pure append — three legacy ops are dropped.
 
@@ -161,13 +161,13 @@ The 65-opcode universe (the union of every set in every generation) partitions i
 
 | Class | Opcodes | Count | Confidence |
 |---|---|---|---|
-| **Stable core** — in all three default sets | 65–73, 77, 78, 81–84, 88, 94, 97–102, 105–111, 114, 127, 130–132, 142, 148, 153, 157, 158, 229, 232, 234 | 43 | CONFIRMED |
-| **Introduced at gen3**, kept through gen4 | 96, 147, 152, 154, 155, 188, 230, 233, 240 | 9 | CONFIRMED |
-| **Introduced at gen4** (genuinely new to the roster) | 48, 119, 120, 224, 225, 226, 227 | 7 | CONFIRMED |
-| **Dropped after gen2** (gen2 default only) | 140, 141, 159 | 3 | CONFIRMED |
-| **Transformer-family only** (never in any default) | 138, 139, 143 | 3 | CONFIRMED |
+| **Stable core** — in all three default sets | 65–73, 77, 78, 81–84, 88, 94, 97–102, 105–111, 114, 127, 130–132, 142, 148, 153, 157, 158, 229, 232, 234 | 43 | CERTAIN |
+| **Introduced at gen3**, kept through gen4 | 96, 147, 152, 154, 155, 188, 230, 233, 240 | 9 | CERTAIN |
+| **Introduced at gen4** (genuinely new to the roster) | 48, 119, 120, 224, 225, 226, 227 | 7 | CERTAIN |
+| **Dropped after gen2** (gen2 default only) | 140, 141, 159 | 3 | CERTAIN |
+| **Transformer-family only** (never in any default) | 138, 139, 143 | 3 | CERTAIN |
 
-The 43-opcode stable core is the generation-independent DVE kernel; the entire 46→52→59 growth layers on top of it (`43 + gen-specific additions = each gen's default`). Three opcodes (138 `TensorTensorAddBf16`, 139 `TensorTensorMultBf16`, 143 `TensorTensorSubBf16`) are gen2-transformer-exclusive — present only in gen2 transformer sets, gone by gen3. Note opcode **48** (`Exponential`) is the first op *below* the gen2/gen3 opcode floor of 65, and `{224, 225, 226, 227}` are a new high contiguous cluster — both gen4 additions (CONFIRMED — `jq` set diff).
+The 43-opcode stable core is the generation-independent DVE kernel; the entire 46→52→59 growth layers on top of it (`43 + gen-specific additions = each gen's default`). Three opcodes (138 `TensorTensorAddBf16`, 139 `TensorTensorMultBf16`, 143 `TensorTensorSubBf16`) are gen2-transformer-exclusive — present only in gen2 transformer sets, gone by gen3. Note opcode **48** (`Exponential`) is the first op *below* the gen2/gen3 opcode floor of 65, and `{224, 225, 226, 227}` are a new high contiguous cluster — both gen4 additions.
 
 ### Default-set presence grid
 
@@ -211,7 +211,7 @@ neuronxcc::core_v4::enum_variant_string_opcode   — gen4 name table
 // a per-generation literal-string switch; one arm per ISA opcode the gen defines.
 char *enum_variant_string_opcode(int op, char *buf, int buflen):
     switch (op):
-        case 65:  return copy(buf, "TensorTensorArithOp");   // CONFIRMED, all 3 gens
+        case 65:  return copy(buf, "TensorTensorArithOp");   // present in all 3 gens
         case 70:  return copy(buf, "Copy");
         case 188: return copy(buf, "RangeSelect");           // NEW @ core_v3 (absent in v2)
         case 227: return copy(buf, "QuantizeMX");            // NEW @ core_v4 (✔ matches the
@@ -220,7 +220,7 @@ char *enum_variant_string_opcode(int op, char *buf, int buflen):
         default:  return copy(buf, "Unknown");
 ```
 
-> **NOTE — the Rosetta bodies are recovered as a literal switch; this page re-confirmed the symbol and its generation binding, and treats the individual case strings as STRONG (from the recovered switch) rather than re-disassembling all ~150 arms here.** The `core_v3` thunk is byte-present (`0x5edcb0: ff 25 8a e9 7d 03  jmp cs:off_3DCC640`), and the per-op names corroborate independently against the `libwalrus` `klr::*_des` stringifier roster (`Copy_des`, `Max8_des`, `FindIndex8_des`, `MatchReplace8_des`, `SelectReduce_des`, `TensorTensor_des`, `ScalarTensorTensor_des`, `Dropout_des` are all real recovered symbols) and against the simulator's independent pin of opcode `0xE3 = 227 = QuantizeMX`. Two independent paths agree on the new gen4 MX opcode.
+The stringifier symbol and its `core_vN ↔ genN` binding are direct: the `core_v3` thunk is byte-present at `0x5edcb0` (`ff 25 8a e9 7d 03  jmp cs:off_3DCC640`). The individual case strings below come from the recovered switch rather than a fresh disassembly of all ~150 arms, but two independent rosters corroborate them — the `libwalrus` `klr::*_des` stringifiers (`Copy_des`, `Max8_des`, `FindIndex8_des`, `MatchReplace8_des`, `SelectReduce_des`, `TensorTensor_des`, `ScalarTensorTensor_des`, `Dropout_des` are all real symbols) and the simulator's independent pin of opcode `0xE3 = 227 = QuantizeMX`.
 
 ### Named roster (the integers that grow the default set)
 
@@ -228,25 +228,25 @@ The opcodes that enter or leave the default roster across generations, named:
 
 | Int | Hex | Name | Δ | Confidence |
 |---|---|---|---|---|
-| 48 | 0x30 | `Exponential` | ADD @ gen4 (roster-promoted; ISA-pre-existing) | CONFIRMED name / STRONG |
-| 96 | 0x60 | `BatchNormStats` | ADD @ gen3 (base BN-stats; gen2 had only 97) | CONFIRMED name / STRONG |
-| 119 | 0x77 | `RandGetState` | ADD @ gen4 (RNG-state read; roster-promoted) | CONFIRMED name / STRONG |
-| 120 | 0x78 | `RandSetState` | ADD @ gen4 (RNG-state write; roster-promoted) | CONFIRMED name / STRONG |
-| 140 | 0x8C | `TensorReduceAddBf16` | REMOVE @ gen3 (ISA-removed) | CONFIRMED name / STRONG |
-| 141 | 0x8D | `TensorReduceMaxBf16` | REMOVE @ gen3 (ISA-removed) | CONFIRMED name / STRONG |
-| 147 | 0x93 | `TransposeTensorScalarArithOp` | ADD @ gen3 (ISA-pre-existing) | CONFIRMED name / STRONG |
-| 152 | 0x98 | `TensorScalarSelect` | ADD @ gen3 (ISA-pre-existing) | CONFIRMED name / STRONG |
-| 154 | 0x9A | `TensorScalarCacheReduce` | gen2-xform → gen3 default | CONFIRMED name / STRONG |
-| 155 | 0x9B | `DveReadAccumulator` | gen2-xform → gen3 default | CONFIRMED name / STRONG |
-| 159 | 0x9F | `EngineNop` | REMOVE @ gen3 (roster only; ISA kept) | CONFIRMED name / STRONG |
-| 188 | 0xBC | `RangeSelect` | ADD @ gen3 (**NEW** core_v3 ISA op) | CONFIRMED name / STRONG |
-| 224 | 0xE0 | `SparsityCompress` | ADD @ gen4 (**NEW** core_v4 ISA op) | CONFIRMED name / STRONG |
-| 225 | 0xE1 | `SparsityCompressTag` | ADD @ gen4 (**NEW** core_v4 ISA op) | CONFIRMED name / STRONG |
-| 226 | 0xE2 | `Rand2` | ADD @ gen4 (**NEW** core_v4 ISA op) | CONFIRMED name / STRONG |
-| 227 | 0xE3 | `QuantizeMX` | ADD @ gen4 (**NEW** core_v4 ISA op; ✔ sim-pinned) | CONFIRMED |
-| 230 | 0xE6 | `TensorScalarCacheCumulative` | gen2-xform → gen3 default | CONFIRMED name / STRONG |
-| 233 | 0xE9 | `DveReadIndices` | ADD @ gen3 (**NEW** core_v3 ISA op) | CONFIRMED name / STRONG |
-| 240 | 0xF0 | `ExtendedInst` | ADD @ gen3 (extended-instruction escape; ISA-pre-existing) | CONFIRMED name / STRONG |
+| 48 | 0x30 | `Exponential` | ADD @ gen4 (roster-promoted; ISA-pre-existing) | CERTAIN name / HIGH Δ |
+| 96 | 0x60 | `BatchNormStats` | ADD @ gen3 (base BN-stats; gen2 had only 97) | CERTAIN name / HIGH Δ |
+| 119 | 0x77 | `RandGetState` | ADD @ gen4 (RNG-state read; roster-promoted) | CERTAIN name / HIGH Δ |
+| 120 | 0x78 | `RandSetState` | ADD @ gen4 (RNG-state write; roster-promoted) | CERTAIN name / HIGH Δ |
+| 140 | 0x8C | `TensorReduceAddBf16` | REMOVE @ gen3 (ISA-removed) | CERTAIN name / HIGH Δ |
+| 141 | 0x8D | `TensorReduceMaxBf16` | REMOVE @ gen3 (ISA-removed) | CERTAIN name / HIGH Δ |
+| 147 | 0x93 | `TransposeTensorScalarArithOp` | ADD @ gen3 (ISA-pre-existing) | CERTAIN name / HIGH Δ |
+| 152 | 0x98 | `TensorScalarSelect` | ADD @ gen3 (ISA-pre-existing) | CERTAIN name / HIGH Δ |
+| 154 | 0x9A | `TensorScalarCacheReduce` | gen2-xform → gen3 default | CERTAIN name / HIGH Δ |
+| 155 | 0x9B | `DveReadAccumulator` | gen2-xform → gen3 default | CERTAIN name / HIGH Δ |
+| 159 | 0x9F | `EngineNop` | REMOVE @ gen3 (roster only; ISA kept) | CERTAIN name / HIGH Δ |
+| 188 | 0xBC | `RangeSelect` | ADD @ gen3 (**NEW** core_v3 ISA op) | CERTAIN name / HIGH Δ |
+| 224 | 0xE0 | `SparsityCompress` | ADD @ gen4 (**NEW** core_v4 ISA op) | CERTAIN name / HIGH Δ |
+| 225 | 0xE1 | `SparsityCompressTag` | ADD @ gen4 (**NEW** core_v4 ISA op) | CERTAIN name / HIGH Δ |
+| 226 | 0xE2 | `Rand2` | ADD @ gen4 (**NEW** core_v4 ISA op) | CERTAIN name / HIGH Δ |
+| 227 | 0xE3 | `QuantizeMX` | ADD @ gen4 (**NEW** core_v4 ISA op; ✔ sim-pinned) | CERTAIN |
+| 230 | 0xE6 | `TensorScalarCacheCumulative` | gen2-xform → gen3 default | CERTAIN name / HIGH Δ |
+| 233 | 0xE9 | `DveReadIndices` | ADD @ gen3 (**NEW** core_v3 ISA op) | CERTAIN name / HIGH Δ |
+| 240 | 0xF0 | `ExtendedInst` | ADD @ gen3 (extended-instruction escape; ISA-pre-existing) | CERTAIN name / HIGH Δ |
 
 > **QUIRK — the gen4 growth is two-pronged.** Of the seven gen4 additions, `{48, 119, 120}` (`Exponential`, `RandGetState`, `RandSetState`) are **roster promotions** of opcodes the ISA already defined in v2/v3 — the silicon could always decode them; gen4 merely added them to the DVE default repertoire. The other four `{224, 225, 226, 227}` (`SparsityCompress`, `SparsityCompressTag`, `Rand2`, `QuantizeMX`) are **genuinely new core_v4 ISA opcodes**, absent from the core_v3 switch — the sparsity + MX-quantize hardware extension. A reimplementer must not assume "new in the default roster" means "new silicon"; only the latter four are new ISA.
 
@@ -312,13 +312,13 @@ The same logical op (`TensorTensorArithOp`) acquires a slow program as the gener
 
 | Gen | `opcode_table[65]` (LE) | Decode | Confidence |
 |---|---|---|---|
-| gen2 | `03 00 00 00 00 00 00 00` | row 3, slow_idx 0 — fast-only | CONFIRMED (byte) |
-| gen3 | `…` | fast_row 16, slow_row 48 | CONFIRMED (ISA 2.25) |
-| gen4 | `10 30 00 00` | `0x3010` → fast_row 16, slow_row 48 | CONFIRMED (byte) |
+| gen2 | `03 00 00 00 00 00 00 00` | row 3, slow_idx 0 — fast-only | CERTAIN |
+| gen3 | `…` | fast_row 16, slow_row 48 | CERTAIN (ISA 2.25) |
+| gen4 | `10 30 00 00` | `0x3010` → fast_row 16, slow_row 48 | CERTAIN |
 
-Opcode 65 had **no** slow program in gen2 (fast row 3 only), then acquired iterative microcode at gen3 (slow row 48) and kept it at gen4 — the engine's response to the same opcode grows richer without the opcode integer changing. A fast-only op like gen4 `opcode_table[48]` = `0x08` (fast_row 8, slow 0) lights its datapath block inline; a pure slow op like gen2 `opcode_table[102]` = `0x09cf` (control row 79, slow index 19) parks on an idle base row and runs entirely from its slow program. (CONFIRMED — `xxd` byte-read.)
+Opcode 65 had **no** slow program in gen2 (fast row 3 only), then acquired iterative microcode at gen3 (slow row 48) and kept it at gen4 — the engine's response to the same opcode grows richer without the opcode integer changing. A fast-only op like gen4 `opcode_table[48]` = `0x08` (fast_row 8, slow 0) lights its datapath block inline; a pure slow op like gen2 `opcode_table[102]` = `0x09cf` (control row 79, slow index 19) parks on an idle base row and runs entirely from its slow program.
 
-> **QUIRK — the opcode table is a superset of the JSON `ops[]`.** Parsing gen2's `default_opcode_table.bin` yields nonzero entries at 50 indices, four more than the JSON's 46: `{147, 240, 241, 242}` are always-resident helper descriptors the table pre-stages (147 and 240 become default ops at gen3 — the table stages them a generation early). A reimplementer who derives the live opcode set purely from nonzero table slots will see four ops the `ops[]` list does not advertise; the `ops[]` array is the authoritative *enabled* set, the table is a slightly wider staging area. (CONFIRMED — ISA 2.25 nonzero-index enumeration.)
+> **QUIRK — the opcode table is a superset of the JSON `ops[]`.** Parsing gen2's `default_opcode_table.bin` yields nonzero entries at 50 indices, four more than the JSON's 46: `{147, 240, 241, 242}` are always-resident helper descriptors the table pre-stages (147 and 240 become default ops at gen3 — the table stages them a generation early). A reimplementer who derives the live opcode set purely from nonzero table slots will see four ops the `ops[]` list does not advertise; the `ops[]` array is the authoritative *enabled* set, the table is a slightly wider staging area; ISA 2.25 enumerates every nonzero index.
 
 ---
 
@@ -339,13 +339,26 @@ Opcode 65 had **no** slow program in gen2 (fast row 3 only), then acquired itera
 
 > **NOTE — the gen↔device mapping is INFERRED, not stamped in the DVE JSON.** The DVE blobs carry no device label; the `gen2≈Trn1/Inf2`, `gen3≈Trn2`, `gen4≈Trn3` mapping is derived from the codename taxonomy and the `core_vN` ABI ordering, which the new-ISA-op boundaries corroborate exactly (224–227 appear precisely at `core_v4`). The fit is exact, so confidence is high, but the label itself is derived. See [Codename Taxonomy](codename-taxonomy.md).
 
-## Gaps and Confidence
+## Evidence summary and limits of this reading
 
-- **Roster, counts, deltas, schema — CONFIRMED.** Every `ops[]`, the 46/52/59 counts, the gen2→gen3 +9/−3 and gen3→gen4 +7/−0 deltas, the 3-vs-4-key schema, the gen3 fast/slow split, `version.json` empties, all blob sizes, the `saturate.ops == default.ops` identity with differing blobs, and cross-build (cp310/11/12) identity are all byte-verified from the shipped JSON and `.bin` blobs in this turn.
-- **Opcode→name binding — CONFIRMED symbol / STRONG per-name.** The `enum_variant_string_opcode` stringifier symbol and its `core_vN ↔ genN` binding are confirmed (thunk byte-present, names corroborated by the `klr::*_des` roster and the simulator's `0xE3 = 227` pin); the individual case strings are taken from the recovered switch rather than re-disassembling all ~150 arms here.
-- **gen↔device mapping — INFERRED** (from taxonomy + ABI ordering, corroborated by ISA-op boundaries).
-- **control_fast / control_slow semantics — STRONG** (the slow-op set matches the iterative families; the gen2-hidden-field ↔ gen3-slow-table correspondence is byte-exact in the ISA microcode page).
-- **Byte-exact table interiors — out of scope here.** Entry strides, control-word field maps, and datapath-word bit layout live in [ISA 2.25–2.27](../isa/dve-datapath-table.md); this page cross-references rather than duplicates them.
+The roster itself needs no interpretation. Every `ops[]` array, the 46/52/59 counts, the
+gen2→gen3 +9/−3 and gen3→gen4 +7/−0 deltas, the 3-vs-4-key schema change, the gen3
+fast/slow split, the empty `version.json` fields, all blob sizes, the
+`saturate.ops == default.ops` identity against differing blobs, and the cp310/cp311/cp312
+byte-identity all come straight off the shipped JSON and `.bin` files.
+
+Three claims sit one step back from that. The opcode→name binding is anchored at the
+symbol level — the stringifier and its `core_vN ↔ genN` binding are direct — while the
+individual case strings come from the recovered switch, cross-checked against the
+`klr::*_des` roster and the simulator's `0xE3 = 227` pin. The latency-class reading of
+`control_fast` versus `control_slow` is an inference from which ops carry a nonzero slow
+index, backed by the byte-exact gen2-hidden-field ↔ gen3-slow-row correspondence. And the
+gen↔device mapping is derived from the codename taxonomy plus `core_vN` ABI ordering; the
+DVE blobs carry no device label at all.
+
+Byte-exact table interiors — entry strides, control-word field maps, datapath-word bit
+layout — are deliberately out of scope; they live in
+[ISA 2.25–2.27](../isa/dve-datapath-table.md).
 
 ## Cross-References
 

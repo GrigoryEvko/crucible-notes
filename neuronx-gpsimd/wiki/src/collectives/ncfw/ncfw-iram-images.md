@@ -21,18 +21,18 @@ is re-grounded against the blob bytes below.
 > Do not cross the wires. See the [scalar-LX core page](../../uarch/ncfw-lx-core.md)
 > for the full ISA evidence.
 
-**Provenance & confidence.** Every fact below is read **this session** from the
-shipped host library `libncfw.so` (sha256 `598920d7…`) with stock binutils
-(`readelf` / `nm` / `objdump` / `sha256sum`) and a Python ELF/byte reader, plus a
-native Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) run on the carved
-blob. Lawful interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no
-vendor source snapshot consulted. Tags are `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`
-per the [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED`
-= a byte / size / symbol / disassembler output read from the binary **this pass**;
-`CARRIED` = OBSERVED in a cited prior carve and reused; `INFERRED` = reasoned over
-those. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
-reimplementation trap), **NOTE** (orientation), **CORRECTION** (overturns a prior
-reading).
+**Provenance & confidence.** Every fact below is read from the shipped host library
+`libncfw.so` (sha256 `598920d7…`) with stock binutils (`readelf` / `nm` / `objdump`
+/ `sha256sum`) and a Python ELF/byte reader, plus a native Cadence
+`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) run on the carved blob. Lawful
+interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
+snapshot consulted. The page default is `[HIGH/OBSERVED]`; claims that depart from
+it carry an explicit tag, per the
+[Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
+byte / size / symbol / disassembler output read from the binary; `CARRIED` =
+OBSERVED in a cited prior carve and reused; `INFERRED` = reasoned over those.
+Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation
+trap), **NOTE** (orientation), **CORRECTION** (overturns a prior reading).
 
 > **THE v5 / MAVERICK WALL — read before any v5 claim.** `libncfw` ships **exactly
 > four** NCFW generations (v2/v3/v4/v4_plus). **There is no MAVERICK (v5) NCFW
@@ -44,9 +44,9 @@ reading).
 
 ---
 
-## 0. Target binary identity (all anchors match this session)
+## 0. Target binary identity
 
-| Field | Value | How verified `[HIGH/OBSERVED]` |
+| Field | Value | How verified |
 |---|---|---|
 | Path | `…/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libncfw.so` | `fd --no-ignore` |
 | Size | **615640** bytes | `stat -c %s` |
@@ -63,7 +63,7 @@ each symbol's address *is* its file offset and every blob is a direct
 trap applies only to `.data`-resident structs, not these). The four `.c` source
 strings in `.rodata` are **`sunda.c` / `cayman.c` / `mariana.c` / `mariana_plus.c`**
 plus `ncfw_bins.c` (the blob-defining TU), `libncfw.c`, `ctx_log.c` — **exactly
-four codenames, no `maverick.c` / `v5.c`.** `[HIGH/OBSERVED]`
+four codenames, no `maverick.c` / `v5.c`.**
 
 ---
 
@@ -73,7 +73,7 @@ Each generation ships an **IRAM** (code) blob and a **DRAM** (data) blob, each
 followed by a `u32 *_size` word that the selector loads. The size word sits
 *immediately at the blob's end* (`start + size`); the **carved length, the `u32`
 size word, and the `nm` symbol size all agree** for every blob — no padding slack.
-Read this pass from `nm -S` and re-carved + hashed with Python `[HIGH/OBSERVED]`:
+Read from `nm -S`, then carved and hashed with Python:
 
 | gen | codename | NC | kind | file-off | size (B / hex) | `u32` szword | tz | sha256 (carved) |
 |---|---|---|---|---|---|---|---|---|
@@ -94,7 +94,7 @@ codename↔NC binding is per the committed
 SUNDA=NC-v2, CAYMAN=NC-v3, MARIANA=NC-v4, MARIANA_PLUS=NC-v4+, MAVERICK=NC-v5.
 `[HIGH/OBSERVED for inventory; codename↔NC HIGH/CARRIED]`
 
-Three structural facts fall straight out of the table `[HIGH/OBSERVED]`:
+Three structural facts fall straight out of the table:
 
 - **MARIANA and MARIANA_PLUS share a byte-identical DRAM** (both sha256
   `1c3ac5f4…`, md5 `7ff55158…`) — verified by carving both and comparing.
@@ -114,14 +114,14 @@ Three structural facts fall straight out of the table `[HIGH/OBSERVED]`:
 > 3 == slot 0 = the unknown-command guard) — and `v4_dram+0xB0` is the 12-entry
 > `algo_type` jump table `{0x3c38, 0x3c35, 0x3c2e, 0x48f0, …}`. The
 > [main dispatch loop](main-dispatch-loop.md) page decodes those tables; here they
-> only confirm the kind split (DRAM=data, IRAM=code). `[HIGH/OBSERVED]`
+> only confirm the kind split (DRAM=data, IRAM=code).
 
 ### 1.1 The raw-image head — reset vectors at the IRAM base
 
 There is **no load-address header**: the carved blob *is* the IRAM-resident image,
 with the Xtensa XEA2 vector table at offset `0x0` and code following. The first
 twelve bytes are two back-to-back `j` (opcode `0x06`) reset/window vectors; the
-`j` immediate is the only head difference between the two lineages `[HIGH/OBSERVED]`:
+`j` immediate is the only head difference between the two lineages:
 
 | lineage | head bytes | reset `j` @ `0x0` | secondary `j` @ `0x6` |
 |---|---|---|---|
@@ -138,25 +138,25 @@ byte-identical for ~60 bytes across all four **except** a per-generation marker 
 
 > **CORRECTION — the per-gen marker byte is at `0x1022`, not `0x1021`.** A prior
 > carve placed the boot-stage-2 generation marker at IRAM `0x1021`. Byte-exact
-> reading this session shows `[0x1021] = 0x14` (an opcode byte, **identical** across
+> reading shows `[0x1021] = 0x14` (an opcode byte, **identical** across
 > all four); the **differing** byte is one further on, at **`0x1022`**:
 > SUNDA=`0x08`, CAYMAN=`0x09`, MARIANA=`0x0a`, MARIANA_PLUS=`0x0a`. (SUNDA also
 > differs at `0x1026`: `0x40` vs `0x00`.) The prior "`14 0X 00` at `0x1021`" was
 > reading the marker as the *middle* byte of a three-byte span anchored at `0x1021`;
 > the gen-specific nibble is the byte at `0x1022`. The PRID self-id gates at `0x10ce`
 > and `0x1118` (`50 eb 03` = `rsr.prid a5`) are **byte-identical across all four** —
-> the master/worker per-core split is generation-invariant. `[HIGH/OBSERVED]`
+> the master/worker per-core split is generation-invariant.
 
 ---
 
 ## 2. The host selector `libncfw_get_image` (`.text 0x1179`)
 
 The image is chosen by the **exported** (`nm -D` → `T`) host function
-`libncfw_get_image`, fully disassembled this session (`0x1179`–`0x12f9`, 385 B). It
+`libncfw_get_image`, fully disassembled (`0x1179`–`0x12f9`, 385 B). It
 takes `arch_id` in `edi` and an out-pointer in `rsi`, and writes a four-slot struct.
 The out-struct offsets are *proven from the actual stores* — e.g. the v2 arm writes
 `mov [rax+0x10],rdx` (dram_ptr) / `mov [rax+0x18],rdx` (dram_size) / `mov [rax],rdx`
-(iram_ptr) / `mov [rax+0x8],rdx` (iram_size) `[HIGH/OBSERVED]`:
+(iram_ptr) / `mov [rax+0x8],rdx` (iram_size):
 
 ```c
 // Recovered signature + out-struct (offsets proven from the per-arm stores):
@@ -190,7 +190,7 @@ The `lea rip+…` displacements in the disassembly resolve to the **exact blob
 symbols** — `# 6a140 <v2_ncfw_iram_bin>`, `# 79860 <v3_ncfw_iram_bin>`,
 `# 83260 <v4_ncfw_iram_bin>`, `# 8ccc0 <v4_plus_ncfw_iram_bin>` (and the four DRAM
 counterparts) — so the selector→blob binding is byte-grounded, not inferred. The
-size loads (`mov eax,[size_sym]`) zero-extend a `u32`. `[HIGH/OBSERVED]`
+size loads (`mov eax,[size_sym]`) zero-extend a `u32`.
 
 ### 2.1 The arch_id → image → coretype map
 
@@ -216,7 +216,7 @@ decoders — `call sunda_ncfw_ctx_log (0x1a12b)`, `cayman… (0x32ed2)`,
 `mariana… (0x4bc79)`, `mariana_plus… (0x64a20)`. Two dispatchers keyed on the same
 four arch_ids, one routing to `v#_*_bin` images and the other to codename functions,
 independently nail the `arch_id ↔ codename` binding **and** the count of exactly
-four. `[HIGH/OBSERVED]` The deep ISA-naming/arch_id reconciliation is consolidated
+four. The deep ISA-naming/arch_id reconciliation is consolidated
 in the [LX-ISA / arch_id synthesis](lx-isa-naming-archid-synthesis.md) page.
 
 > **NOTE — `libncfw_get_version` returns the *library* ABI, not the firmware
@@ -226,14 +226,13 @@ in the [LX-ISA / arch_id synthesis](lx-isa-naming-archid-synthesis.md) page.
 > firmware. No IRAM blob carries a semver / git-hash / build-date string at all
 > (`strings` on each returns only instruction noise). **The stable per-image
 > fingerprint is `arch_id` + the sha256/md5 in [§1](#1-the-image-inventory--four-iram--four-dram-blobs).**
-> `[HIGH/OBSERVED]`
 
 ---
 
 ## 3. The v4_plus identity, and the shared lineage
 
 The open question on these images is *what `v4_plus` actually is*. Byte-diffing the
-two 19488-byte IRAM blobs settles it `[HIGH/OBSERVED]`:
+two 19488-byte IRAM blobs settles it:
 
 | pair | shared prefix | shared suffix | bytes differ / len | identical |
 |---|---|---|---|---|
@@ -246,7 +245,7 @@ two 19488-byte IRAM blobs settles it `[HIGH/OBSERVED]`:
 identical 4496-byte boot/vector prefix, and an identical 371-byte init/idle/panic
 suffix — only the engine-dispatch *middle* `[0x1190 … 0x4aad)` (14621 B, 39.8% of
 which actually differs) is rewritten. It is a feature-flag refresh of the same
-MARIANA (NC-v4) silicon family, **not** a new generation. `[HIGH/OBSERVED]`
+MARIANA (NC-v4) silicon family, **not** a new generation.
 
 > **QUIRK — v3↔v4 "share only 1 byte" is a de-alignment artifact, not a redesign.**
 > The literal common prefix of v3 vs v4 collapses to **one** byte, yet their
@@ -257,13 +256,13 @@ MARIANA (NC-v4) silicon family, **not** a new generation. `[HIGH/OBSERVED]`
 > the packed window-vector skeleton — then diverge structurally (SUNDA monolith vs
 > CAYMAN refactor). So the lineage is: **one common firmware base across
 > CAYMAN/MARIANA/MARIANA_PLUS**, with SUNDA an older, 2.2×-larger ancestor sharing
-> only the vector prologue. `[HIGH/OBSERVED]`
+> only the vector prologue.
 
 The size-delta story in one line: `v2 SUNDA 43232 B → v3 CAYMAN 19392 B`
 (−55%, monolith→refactor) `→ v4 MARIANA 19488 B` (+96 B, +`dii`/D-cache-writeback)
 `→ v4+ MARIANA_PLUS 19488 B` (±0, handler-middle rewrite, 70.2% byte-identical to
 v4). The shared **end-of-image stub** `36 81 00 … 1d f0` (`entry a1,…; <body>;
-retw.n`) is present verbatim at the tail of all four. `[HIGH/OBSERVED]`
+retw.n`) is present verbatim at the tail of all four.
 
 ---
 
@@ -279,26 +278,26 @@ over each carved IRAM (op0 `0..7` ⇒ 3-byte 24-bit core ops; op0 `8..d` ⇒ 2-b
 density ops; op0 `e/f` ⇒ 3-byte resync) finds **~22–24% 2-byte / ~76–78% 3-byte**
 across all four — the textbook Xtensa-LX shape. There are **no genuine wide
 bundles.** A real FLIX core's body would be dominated by 8-/16-byte instructions;
-NCFW's is not. `[HIGH/OBSERVED]`
+NCFW's is not.
 
 **(b) The native Vision-Q7 disassembler mis-decodes the LX stream.** The only
 Xtensa config that ships anywhere in the corpus is `ncore2gp` (the Vision-Q7
 datapath core) — there is exactly one `core-isa.h`, and the native
 `xtensa-elf-objdump` registers no other core. Pointing it (`XTENSA_CORE=ncore2gp`)
 at the **real v4 IRAM** decodes the base op `rsr.excvaddr a2` @ `0x6c` correctly but
-spews **impossible-for-a-control-core** Vision-DSP opcodes around it — verbatim this
-session at `0x76`: `ivp_scatterw` (a Cairo vector-scatter), plus `l32dis.it`,
+spews **impossible-for-a-control-core** Vision-DSP opcodes around it — verbatim at
+`0x76`: `ivp_scatterw` (a Cairo vector-scatter), plus `l32dis.it`,
 `s32stk`, `s32dis.h`, `orb b1,b6,b0`, and `.byte` resyncs. Those `ivp_*`/scatter
 opcodes **cannot** exist on a scalar management core; they are the wrong-config
 artifact — the `ncore2gp` FLIX length table greedily eating `op0=e/f` operand bytes
 as 16-/8-byte Vision bundles. This is the entire mechanism of the spurious
-"~26–28% FLIX" earlier passes measured. `[HIGH/OBSERVED]`
+"~26–28% FLIX" earlier readings measured.
 
 > **GOTCHA — decode these blobs with the LX rule, not the Vision FLIX rule.** For
 > the NCFW management core, treat `op0 ∈ {e,f}` as a **3-byte resync width, not a
 > FLIX bundle leader**, and resync at `retw.n` (`1d f0`). Under that scalar
 > `(e3,f3)` rule the `retw.n` anchors land far better than under the `ncore2gp`
-> `(e16,f8)` Vision rule — verified this session on the carved blobs:
+> `(e16,f8)` Vision rule, on the carved blobs:
 
 | gen | scalar `(e3,f3)` | `ncore2gp` `(e16,f8)` |
 |---|---|---|
@@ -312,8 +311,7 @@ as 16-/8-byte Vision bundles. This is the entire mechanism of the spurious
 > only the base-ISA / windowed-vector skeleton decodes reliably. There is **no real
 > FLIX layer to recover**; do not budget a FLIX issue port for this core. The full
 > debunk + four-way proof is on the [scalar-LX core page](../../uarch/ncfw-lx-core.md).
-> `[HIGH/OBSERVED for the resync table this pass; the un-nameable leaders are the
-> only residual]`
+> `[HIGH/OBSERVED for the resync table; the un-nameable leaders are the residual]`
 
 ---
 
@@ -404,9 +402,9 @@ on the [scalar-LX core page](../../uarch/ncfw-lx-core.md) §7):
 
 ---
 
-## 8. Verification ledger (grounded this session)
+## 8. Verification ledger
 
-| # | claim | how grounded **this session** | verdict |
+| # | claim | how grounded | verdict |
 |---|---|---|---|
 | 1 | Four IRAM + four DRAM blobs; carved size == `u32` szword == `nm` size for all eight | `nm -S` + Python carve + `<I` unpack: all eight `szword==size` True; sha256/md5 match the cited carves | **HIGH/OBSERVED** |
 | 2 | `get_image` selector: `cmpl {0x1c,0x14,0x05,0x0c}`, out-struct `{iram@0,iram_size@8,dram@16,dram_size@24}`, EINVAL=22 / unsupported=2 | `objdump -d 0x1179`: stores `mov [rax+{0,8,10,18}]`, `lea` to the eight `v#_*_bin` symbols, `0x118f mov eax,0x16` | **HIGH/OBSERVED** |

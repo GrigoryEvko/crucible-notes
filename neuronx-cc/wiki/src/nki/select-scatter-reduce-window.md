@@ -21,7 +21,7 @@ For reimplementation, the contract is:
 | | |
 |---|---|
 | **Generic `reduce_window` printer** | `MhloToPythonPrinter::print<ReduceWindowOp>` @ `0x20d5ff0` (3642 B, 134 bb) |
-| **Reduce-body decode** | `extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` → `getReduceOpStrFromOperation` @ `0x20af670` (all CONFIRMED symbols) |
+| **Reduce-body decode** | `extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` → `getReduceOpStrFromOperation` @ `0x20af670` |
 | **`select_and_scatter` printer** | `MhloToPythonPrinter::printSelectAndScatter` @ `0x20de190` |
 | **Dilation verifier** | `xla::hilo::isValidReduceWindowOp` @ `0x2022dc0` (1386 B, 61 bb) |
 | **Native-kernel pass** | `xla::LowerToCustomNativeKernel::Run` @ `0x1ffe750` (2007 B, 71 bb) |
@@ -54,7 +54,7 @@ A windowed reduction does **not** have a single lowering. There are three distin
 
 ### Native-kernel flags
 
-The native-kernel route is gated by `cl::opt` globals, each with help text in `.rodata` (CONFIRMED):
+The native-kernel route is gated by `cl::opt` globals, each with help text in `.rodata`:
 
 | Flag | Help / role | Source anchor |
 |---|---|---|
@@ -66,7 +66,7 @@ The native-kernel route is gated by `cl::opt` globals, each with help text in `.
 
 When a pattern matches **and** its flag is on, the op is replaced by an HLO `custom_call` with target `"AwsNeuronCustomNativeKernel"` (`@0x2521b1`); `hlo_utils::isCustomCallWithNativeKernel` @ `0x1f986f0` detects it downstream. `xla::LowerToCustomNativeKernel::Run` @ `0x1ffe750` walks `entry_computation->MakeInstructionPostOrder()` and delegates to the per-pattern lowerer. If the pass is on but no kernel flag is set it logs `"LowerToCustomNativeKernel pass is enabled but none of the kernels is enabled."` (`@0x2d4b60`).
 
-> **NOTE — native-kernel selection is split across two passes.** The HLO-level `LowerToCustomNativeKernel` is one site; the MLIR-level `CanonicalizeForTensorizer` is the other (C09's `lowerResizeNearestGrad` lives there — [4.39](../hlo-opt/canonicalize-for-tensorizer.md)). Both end in either a `custom_call` or a generic `mhlo.reduce_window` the printer can emit. The select-and-scatter / resize matcher *bodies* inside `LowerToCustomNativeKernel.cc` are not individually decompiled (`Run @0x1ffe750` is decompile-skipped; only the attention callee `lowerMMSoftmaxMMToAttentionKernel @0x1ffe0d0` is directly visible). The flag-gated dispatch and the `custom_call` target are CONFIRMED from strings; the exact match predicate is INFERRED from the kernel's own asserts (below). MEDIUM.
+> **NOTE — native-kernel selection is split across two passes.** The HLO-level `LowerToCustomNativeKernel` is one site; the MLIR-level `CanonicalizeForTensorizer` is the other (C09's `lowerResizeNearestGrad` lives there — [4.39](../hlo-opt/canonicalize-for-tensorizer.md)). Both end in either a `custom_call` or a generic `mhlo.reduce_window` the printer can emit. The select-and-scatter / resize matcher *bodies* inside `LowerToCustomNativeKernel.cc` are not individually decompiled (`Run @0x1ffe750` is decompile-skipped; only the attention callee `lowerMMSoftmaxMMToAttentionKernel @0x1ffe0d0` is directly visible). The flag-gated dispatch and the `custom_call` target are pinned by strings; the exact match predicate is [INFERRED] from the kernel's own asserts, below.
 
 ### The generic XLA expanders (fallback)
 
@@ -106,7 +106,7 @@ The reduce-window region (an `mhlo` block with one binary op + a return) is deco
 | `mhlo.{bitwise,logical}_{and,or,xor}` | same names | bit/logical pool |
 
 ```c
-// extractReduceFunction (@0x20afca0) → getReduceOpStrFromOperation — CONFIRMED (string set)
+// extractReduceFunction (@0x20afca0) → getReduceOpStrFromOperation (per the string set)
 // The reduce-window body is exactly one binary op over the two block args; this
 // returns its numpy name. The printer emits it as reduce_function=<name>.
 str getReduceOpStrFromOperation(Operation *innerOp):
@@ -123,32 +123,35 @@ str getReduceOpStrFromOperation(Operation *innerOp):
 
 > **QUIRK — avg-pool is not a single op; it is `add` + `÷N`.** There is no `avgpool` reduction body in HLO and **no `Sum` `PoolFunctionType`** in BIR (`PoolFunctionType2string` @ `0x4010e0` is exactly `{0 Max, 1 Avg}` — [1.09 pool-engine](../arch/pool-engine.md) confirms it independently). Avg is always `reduce_window{body=add}` followed by a *separate* `Div` (or `Mul` by `1/N`); the back-end recognises that `add`+scale pattern and folds the reciprocal `1/N` into the `InstPool(Avg)` encoding at `bundle+0x28` ([2.5 pool-reduce-encoding](../isa/pool-reduce-encoding.md)). A *pure* `add`-window with no following scale has no Pool function — it lowers to `InstTensorReduce(add)` on the reduce engine. Exactly the structure C09 builds for `ResizeNearestGrad`: `Div(ReduceWindow_sum(grad), Π scale)` ([4.39](../hlo-opt/canonicalize-for-tensorizer.md)).
 
-> **CORRECTION — where the body→engine choice actually lives.** The printer does *not* pick Pool vs. reduce engine; it only stamps `reduce_function=<numpy name>`. The mapping `body=maximum, undilated, 2-innermost-window → InstPool(Max=0)` and `body=add+×(1/N) → InstPool(Avg=1)` vs. `body∈{min,multiply,pure-add,>2 spatial dims} → InstTensorReduce` happens downstream in the NKI/penguin compiler + KLIR→BIR codegen ([2.5 pool-reduce-encoding](../isa/pool-reduce-encoding.md)). The precise FE heuristic that decides Pool-Avg (when a `Div`/`Mul`-by-`1/N` is fusable) vs. reduce-engine was not traced past `hlo2penguin`. MEDIUM.
+The body→engine choice is **not** made here. This printer only stamps `reduce_function=<numpy name>`; the mapping `body=maximum, undilated, 2-innermost-window → InstPool(Max=0)`, `body=add+×(1/N) → InstPool(Avg=1)`, and `body ∈ {min, multiply, pure-add, >2 spatial dims} → InstTensorReduce` happens downstream in the NKI/penguin compiler and the KLIR→BIR codegen ([2.5 pool-reduce-encoding](../isa/pool-reduce-encoding.md)). The precise front-end heuristic that decides Pool-Avg — when a `Div`/`Mul`-by-`1/N` is fusable — versus the reduce engine is [INFERRED]; it was not traced past `hlo2penguin`.
 
 ### The dilation legality gate
 
-`NeuronHloVerifier` calls `xla::hilo::isValidReduceWindowOp(HloInstruction*)` @ `0x2022dc0`, which invokes `xla::window_util::HasBaseDilation(Window&)` @ `0x93935e0` and `HasWindowDilation(Window&)` @ `0x9393630` and emits `NeuronLogger` errors `NCC_EVRF017` / `NCC_EVRF018` / `NCC_EVRF019` (`@0x2727f5` / `@0x26e4ab` / `@0x255fc3`) when the window carries dilation. The Neuron pooling path supports **only undilated windows** (`base_dilation==1`, `window_dilation==1` per dim). Window dimensions, strides, and padding are fully parameterised. Corroborating `.rodata` strings: `"w.window_dilation() == 1"`, `"valid_num_dims(base_dilation)"`, `"valid_num_dims(window_dilation)"`, `"Window %s has a non-positive window dilation factor."` (CONFIRMED).
+`NeuronHloVerifier` calls `xla::hilo::isValidReduceWindowOp(HloInstruction*)` @ `0x2022dc0`, which invokes `xla::window_util::HasBaseDilation(Window&)` @ `0x93935e0` and `HasWindowDilation(Window&)` @ `0x9393630` and emits `NeuronLogger` errors `NCC_EVRF017` / `NCC_EVRF018` / `NCC_EVRF019` (`@0x2727f5` / `@0x26e4ab` / `@0x255fc3`) when the window carries dilation. The Neuron pooling path supports **only undilated windows** (`base_dilation==1`, `window_dilation==1` per dim). Window dimensions, strides, and padding are fully parameterised. Corroborating `.rodata` strings: `"w.window_dilation() == 1"`, `"valid_num_dims(base_dilation)"`, `"valid_num_dims(window_dilation)"`, `"Window %s has a non-positive window dilation factor."`.
 
-> **NOTE — re-verification ceiling.** The two dilation callees `HasBaseDilation` / `HasWindowDilation` and all five `ReduceWindowOp` attribute getters (`getWindowDimensions`/`getWindowStrides`/`getPadding`/`getBaseDilations`/`getWindowDilations`) are CONFIRMED as real exported symbols in the `hlo2penguin` export table. `isValidReduceWindowOp` itself is an internal (non-exported) symbol resolved through the IDA function-address index, not the export table — its address `0x2022dc0` and the `NCC_EVRF0*` string bindings are CONFIRMED at the report's grounding level but were not independently re-isolated from the export json here. STRONG.
+*Anchors: the two dilation callees `HasBaseDilation` / `HasWindowDilation` and all five `ReduceWindowOp` attribute getters (`getWindowDimensions`, `getWindowStrides`, `getPadding`, `getBaseDilations`, `getWindowDilations`) are exported symbols in the `hlo2penguin` export table. `isValidReduceWindowOp` is internal, resolved through the IDA function-address index rather than the export table, so its address `0x2022dc0` and the `NCC_EVRF0*` string bindings rest on that index.*
 
 ---
 
 ## `select_and_scatter` — the printer emit & legality
 
-`MhloToPythonPrinter::printSelectAndScatter` @ `0x20de190` (source `hilo/MLIRPasses/Transforms/MhloToPythonPrinter.cc`) emits a `NeuronTensorOp` carrying `kernel_config = '{"kernel_name":"SelectAndScatter"}'` plus the kwargs that fully describe the op:
+`MhloToPythonPrinter::printSelectAndScatter` @ `0x20de190` (source `hilo/MLIRPasses/Transforms/MhloToPythonPrinter.cc`) emits a `NeuronTensorOp` carrying a `kernel_config` naming the kernel `SelectAndScatter`, plus the kwargs that fully describe the op:
 
-| kwarg | Meaning |
-|---|---|
-| `window_shape`, `window_strides`, `window_size`, `padding` | the window geometry (NO dilations — `select_and_scatter` has only these 3 geometric attrs in mhlo) |
-| `operand_shape`, `src_shape`, `mask_shape` | the three tensor shapes |
-| `select_reduce_name` | the select reduction's numpy name — `"maximum"` when `select=GT`, `"minimum"` when `select=LT` (`@0x23e4d2`; STRONG) |
-| `is_select_first` | the tie-break: pick the **first** matching position (= the iota+min "first argmax" below) (`@0x2465e5`; STRONG) |
-| `binary_op_name` | the scatter body op (e.g. numpy `add`) (`@0x266996`; STRONG) |
-| `scatter_op_type`, `scatter_ident` | scatter computation kind + identity (`0` for add) (`scatter_op_type`@`0x2669a5` STRONG; `scatter_ident`@`0x26a7f4` CONFIRMED — direct `.rodata` load inside this printer) |
-| `init_val` | reduce-window init for the select (e.g. `-inf` / `0`) |
+| kwarg | Meaning | Confidence |
+|---|---|---|
+| `window_shape`, `window_strides`, `window_size`, `padding` | the window geometry (NO dilations — `select_and_scatter` has only these 3 geometric attrs in mhlo) | CERTAIN |
+| `operand_shape`, `src_shape`, `mask_shape` | the three tensor shapes | CERTAIN |
+| `select_reduce_name` | the select reduction's numpy name — `"maximum"` when `select=GT`, `"minimum"` when `select=LT` (`@0x23e4d2`) | HIGH |
+| `is_select_first` | the tie-break: pick the **first** matching position (= the iota+min "first argmax" below) (`@0x2465e5`) | HIGH |
+| `binary_op_name` | the scatter body op (e.g. numpy `add`) (`@0x266996`) | HIGH |
+| `scatter_op_type` | scatter computation kind (`@0x2669a5`) | HIGH |
+| `scatter_ident` | scatter identity (`0` for add) — a direct `.rodata` operand load inside this printer (`@0x26a7f4`) | CERTAIN |
+| `init_val` | reduce-window init for the select (e.g. `-inf` / `0`) | CERTAIN |
+
+> **GOTCHA — the kwarg set spans two printers.** Only `scatter_ident` is a direct `.rodata` operand load inside `printSelectAndScatter`. `use_init_operand`, often listed alongside these, is a direct load inside `print<ReduceWindowOp>` (@`0x20d5ff0`) — it belongs to the **reduce_window** printer, not this one. The four HIGH-confidence names above exist as `.rodata` strings but show no direct operand reference in any disassembled function here, so their attribution to this exact printer is [INFERRED]. The kwarg *set* is real; only `scatter_ident` and `use_init_operand` are firmly pinned to a specific printer.
 
 ```c
-// printSelectAndScatter (@0x20de190) legality — CONFIRMED (NCC_PYP029..035 strings)
+// printSelectAndScatter (@0x20de190) legality — per the NCC_PYP029..035 strings
 // The select region MUST be a single mhlo.compare over two BlockArguments;
 // its ComparisonDirection maps to (select_reduce_name, is_select_first).
 void printSelectAndScatter(Operation *op):
@@ -158,8 +161,8 @@ void printSelectAndScatter(Operation *op):
         error("SelectAndScatter: requires select to be a compare, but got {0}", cmp);
     if (!isBlockArg(cmp.lhs) || !isBlockArg(cmp.rhs))
         error("expected BlockArgument for cmpOp's lhs and rhs ...");
-    // ComparisonDirection → (select_reduce_name, is_select_first). GT→"maximum",
-    // LT→"minimum" are CONFIRMED; the exact GE/LE→is_select_first booleans are
+    // ComparisonDirection → (select_reduce_name, is_select_first). GT→"maximum"
+    // and LT→"minimum" are pinned; the exact GE/LE→is_select_first booleans are
     // not isolated in the disasm (INFERRED: the strict directions set is_select_first).
     switch (cmp.getComparisonDirection()):
       case GT /*GE*/: select_reduce_name = "maximum"; is_select_first = true;
@@ -169,17 +172,15 @@ void printSelectAndScatter(Operation *op):
     //   "Ensure padding values are less than corresponding window dimensions.
     //    Check that padding[%d] = (%d,%d) < window_size[%d] = %d."
     // is the RESOLUTION text bound to the code via hilo::lookup_resolution(ErrorCode)
-    // (@0x21eaa80), NOT a string this printer emits inline. (correction below)
+    // (@0x21eaa80), NOT a string this printer emits inline.
     emit NeuronTensorOp(kernel_config={kernel_name: "SelectAndScatter"}, ...kwargs);
 ```
 
-> **CORRECTION — the padding-advice string is a resolution entry, not a printer literal.** `"Ensure padding values are less than corresponding window dimensions. Check that padding[%d] = (%d,%d) < window_size[%d] = %d."` (`@0x3494d0`) is referenced from `hilo::lookup_resolution(ErrorCode)` (`@0x21eaa80`) — it is the user-facing *resolution* text the diagnostic system pairs with the error code, not a literal emitted inline by `printSelectAndScatter`. What the printer *does* reference directly are the error codes `NCC_PYP030..034` and the two legality strings `"SelectAndScatter: requires select to be a compare, but got {0}"` (`@0x3a9a00`) and `"SelectAndScatter: expected BlockArgument…{0}"`. STRONG.
+> **GOTCHA — the padding advice is a resolution entry, not a printer literal.** `"Ensure padding values are less than corresponding window dimensions. Check that padding[%d] = (%d,%d) < window_size[%d] = %d."` (`@0x3494d0`) is reached from `hilo::lookup_resolution(ErrorCode)` (`@0x21eaa80`) — it is the user-facing text the diagnostic system pairs with the error code, so searching `printSelectAndScatter` for it comes up empty. What the printer *does* reference directly are the error codes `NCC_PYP030..034` and the two legality strings `"SelectAndScatter: requires select to be a compare, but got {0}"` (`@0x3a9a00`) and `"SelectAndScatter: expected BlockArgument…{0}"`.
 
-This printer path produces the call that, in the FE, dispatches to the NKI `select_and_scatter_kernel` — i.e. the kernel below is the *body* of this named kernel.
+This printer path produces the call that, in the front end, dispatches to the NKI `select_and_scatter_kernel` — the kernel below is the *body* of this named kernel.
 
-> **CORRECTION — `kernel_config` is protobuf-assembled, not a JSON literal.** The page earlier wrote `kernel_config = '{"kernel_name":"SelectAndScatter"}'` as if a single embedded string. It is not: re-verification against the `hlo2penguin` `.rodata` shows the literal `{"kernel_name":"SelectAndScatter"}` does **not** exist as one constant — the `kernel_name` field tag (`xla.cpu.KernelThunkProto.kernel_name`) and the value `"SelectAndScatter"` are serialized separately (protobuf wire form `\nkernel_name` + `SelectAndScatter`). Treat `{kernel_name: "SelectAndScatter"}` as the *logical* config, not a byte-for-byte string. The native-kernel match is corroborated by the diagnostic `"Found match SelectAndScatter for native kernel with result shape: "` (CONFIRMED in `.rodata`). CONFIRMED.
-
-> **CORRECTION — the printer kwargs are split across two printers.** Of the eight kwargs listed, only `scatter_ident` is a *direct* `.rodata` operand load inside `printSelectAndScatter` (@`0x20de190`); `use_init_operand` is a direct load inside `print<ReduceWindowOp>` (@`0x20d5ff0`) — i.e. it is the **reduce_window** printer's kwarg, not select-and-scatter's. The remaining four — `select_reduce_name` (@`0x23e4d2`), `is_select_first` (@`0x2465e5`), `binary_op_name` (@`0x266996`), `scatter_op_type` (@`0x2669a5`) — exist as `.rodata` strings (`scatter_ident`@`0x26a7f4`) but show no direct operand reference in any disassembled function here, so their attribution to this exact printer is STRONG-not-CONFIRMED. The kwarg *set* is real (the strings are all present); which printer emits each is only firmly pinned for `scatter_ident` (SelectAndScatter) and `use_init_operand` (ReduceWindow). STRONG.
+> **GOTCHA — `kernel_config` is protobuf-assembled, not a JSON literal.** The literal `{"kernel_name":"SelectAndScatter"}` does not exist as a single constant anywhere in `hlo2penguin`'s `.rodata`. The `kernel_name` field tag (`xla.cpu.KernelThunkProto.kernel_name`) and the value `"SelectAndScatter"` are serialized separately (protobuf wire form `\nkernel_name` + `SelectAndScatter`). Read `{kernel_name: "SelectAndScatter"}` as the logical config, never as a byte string to grep for. The native-kernel match surfaces instead in the `.rodata` diagnostic `"Found match SelectAndScatter for native kernel with result shape: "`.
 
 ---
 
@@ -192,7 +193,7 @@ The hand-written NKI kernel is the backward pass of 2-D max-pooling. Given the f
 
 ### The hard-wired window and its asserts
 
-The kernel implements **exactly one shape** and asserts every parameter (CONFIRMED, `vision.py:42–54`):
+The kernel implements **exactly one shape** and asserts every parameter (`vision.py:42–54`):
 
 ```c
 sw_h, sw_w   = (3, 3)       // window dimensions
@@ -214,7 +215,7 @@ assert C == 64 and N % 2 == 0    // two batches packed into P=128 partitions
 ### The six-step algorithm
 
 ```c
-// vision.select_and_scatter_kernel (vision.py:60–163) — CONFIRMED (full read)
+// vision.select_and_scatter_kernel (vision.py:60–163)
 for ib in affine_range(N // 2):                         // batch-pair
   operand_local = full((128, padded_h, padded_w), finfo(dtype).min)   // -inf init
   load operand interior [1:H+1, 1:W+1] for both batches into [0:64],[64:128]
@@ -271,7 +272,7 @@ Window `(3,3)` with stride `(2,2)` means adjacent windows **overlap by 1**: one 
 
 ## The lowered form — `private_nkl/select_and_scatter.py`
 
-The beta3 FE traces to the same algorithm emitted with low-level `nisa.*` intrinsics, double-buffering, and explicit engine assignment — the form the front-end actually traces to penguin.ir. Signature `select_and_scatter_kernel(a_ptr, b_ptr)` (`a`=operand=fwd input, `b`=source=upstream grad). The intrinsic-to-step mapping (CONFIRMED, full read of `select_and_scatter.py`):
+The beta3 FE traces to the same algorithm emitted with low-level `nisa.*` intrinsics, double-buffering, and explicit engine assignment — the form the front-end actually traces to penguin.ir. Signature `select_and_scatter_kernel(a_ptr, b_ptr)` (`a`=operand=fwd input, `b`=source=upstream grad). The intrinsic-to-step mapping, from a full read of `select_and_scatter.py`:
 
 | `nisa.*` intrinsic | BIR op / engine | Step / role |
 |---|---|---|
@@ -287,15 +288,15 @@ The beta3 FE traces to the same algorithm emitted with low-level `nisa.*` intrin
 | `nisa.tensor_tensor(add)` | `InstTensorTensor` `op=add` | Step 6 accumulate overlapping-window contributions |
 
 ```c
-// private_nkl/select_and_scatter.py — LICM hoist (lines 47–52) — CONFIRMED
+// private_nkl/select_and_scatter.py — LICM hoist (lines 47–52)
 _win_indices = iota(pattern=[[0,src_w],[sw_w,sw_h],[1,sw_w]], offset=0)   // uint8 0..8,
               // col axis broadcast over src_w; = vision.py's `3*y+z`, precomputed once
 _win_indices_max = memset(255)        // sentinel tensor (see QUIRK — dead in this body)
 ```
 
-> **QUIRK — the materialized `255` sentinel tensor is dead; the literal won.** `private_nkl` LICM-hoists `_win_indices_max = memset(255)` out of all loops (lines 51–52), but the Step-3 `select_reduce` actually passes the **immediate** `on_false=255.0` (line 137), never reading `_win_indices_max`. The hoisted tensor is unused — an artifact of the lowering preferring an inline literal to a materialized broadcast for the "lose the min" sentinel. The public `vision.py` Step 3 uses `sw_h*sw_w = 9` as its sentinel (`where(..., 9)`); the lowered form uses `255` (uint8 max) for the same "non-max position can never win the `min`" role. Same math, different sentinel magnitude. CONFIRMED.
+> **QUIRK — the materialized `255` sentinel tensor is dead; the literal won.** `private_nkl` LICM-hoists `_win_indices_max = memset(255)` out of all loops (lines 51–52), but the Step-3 `select_reduce` actually passes the **immediate** `on_false=255.0` (line 137), never reading `_win_indices_max`. The hoisted tensor is unused — an artifact of the lowering preferring an inline literal to a materialized broadcast for the "lose the min" sentinel. The public `vision.py` Step 3 uses `sw_h*sw_w = 9` as its sentinel (`where(..., 9)`); the lowered form uses `255` (uint8 max) for the same "non-max position can never win the `min`" role. Same math, different sentinel magnitude.
 
-> **NOTE — the lowered scatter stays in SBUF.** Public `vision.py` spills the 9 scatter passes to `private_hbm` (`vals_nonlocal`) between Step 5 and Step 6, then loads and adds. The lowered `private_nkl` form keeps `vals_interm` in SBUF and does `out_local += vals_interm` in place (lines 195–206) — same arithmetic, one fewer HBM round-trip. CONFIRMED.
+> **NOTE — the lowered scatter stays in SBUF.** Public `vision.py` spills the 9 scatter passes to `private_hbm` (`vals_nonlocal`) between Step 5 and Step 6, then loads and adds. The lowered `private_nkl` form keeps `vals_interm` in SBUF and does `out_local += vals_interm` in place (lines 195–206) — same arithmetic, one fewer HBM round-trip.
 
 ### Access-pattern encoding
 

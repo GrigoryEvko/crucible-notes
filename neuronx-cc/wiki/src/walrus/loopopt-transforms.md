@@ -6,7 +6,7 @@
 
 `LoopOptimization` is one walrus-backend pass (`run(Module&)` @`0xb9bb30`) that, per basic block, applies LICM and a greedy fusion driver. Inside that driver sit three *restructuring* transforms that reshape the loop nest so that more fusion becomes legal and profitable: **loop distribution** (split one loop into several), **loop interchange** (swap two nest levels), and **loop tiling** (strip-mine a loop by a factor). The fusion driver, its profit model, and the priority queue are documented on the [LICM / fusion sibling page](loopopt-licm-fusion.md); this page documents the three transforms it calls and the two numeric rules that govern them.
 
-The two headline numbers are a **positional candidate window** `distanceThreshold = 8` (CONFIRMED across all three ABIs) and a **GCD tile factor** `N = GCD(partitionExtent(l1), partitionExtent(l2))` (STRONG — the Euclidean GCD is inline at `0xb93b08`). The threshold is *not* a dependence distance — it is the maximum index-gap, in program order, between two loops that the profit-graph builder will even consider as a fusion pair. The tile factor is *not* a fixed constant and *not* a budget division — it is the greatest common divisor of the two candidate loops' partition-dimension trip counts, chosen so that after tiling both loops have the same inner trip count and can be legally interchanged or fused.
+The two headline numbers are a **positional candidate window** `distanceThreshold = 8`, identical across all three ABIs, and a **GCD tile factor** `N = GCD(partitionExtent(l1), partitionExtent(l2))`, whose Euclidean GCD is inline at `0xb93b08`. The threshold is *not* a dependence distance — it is the maximum index-gap, in program order, between two loops that the profit-graph builder will even consider as a fusion pair. The tile factor is *not* a fixed constant and *not* a budget division — it is the greatest common divisor of the two candidate loops' partition-dimension trip counts, chosen so that after tiling both loops have the same inner trip count and can be legally interchanged or fused.
 
 All three transforms ultimately defer their *legality* to the same dependence machinery: a `SymbolicAccessPattern` partition-dimension preflight (`cmpl $0x1, 0x110(AP)`) and a signed dependence distance from `bir::getDefUseDistance` (libBIR `0x20d4e0`), wrapped by `has_negative_distance` @`0xb8f100`. That dependence model has its own [page](../penguin/backend-dependence-distance.md); here it is the gate the transforms consult, not the subject.
 
@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 
 ## The Two Distances
 
-> **GOTCHA —** there are **two** unrelated "distances," and conflating them is the single biggest trap on this page. `distanceThreshold = 8` is a *positional* index gap in program order; the *dependence* distance is a signed integer from `bir::getDefUseDistance`. The candidate window prunes which pairs are scored; the dependence sign decides whether a scored pair is legal. They are read in different functions, mean different things, and a reimplementation that uses one where the other belongs will either drop legal fusions or commit illegal ones. There is **no** function literally named `getLoopPairDistance` — that earlier narration name maps onto this two-level model. `[C]`
+> **GOTCHA —** there are **two** unrelated "distances," and conflating them is the single biggest trap on this page. `distanceThreshold = 8` is a *positional* index gap in program order; the *dependence* distance is a signed integer from `bir::getDefUseDistance`. The candidate window prunes which pairs are scored; the dependence sign decides whether a scored pair is legal. They are read in different functions, mean different things, and a reimplementation that uses one where the other belongs will either drop legal fusions or commit illegal ones. Note also that no function is literally named `getLoopPairDistance`; the two-level model above is what that name would refer to.
 
 ### The positional window — `distanceThreshold = 8`
 
@@ -60,11 +60,11 @@ The cl::opt default is fixed in the static registrar (`__cxa_atexit` chain, `0x7
 7cf86b:  movl   $0x8,0x88(%rbp)           ; default = 8
 ```
 
-> **NOTE —** the store at `0x7cf85d` reads `movl $0x8,0x78` byte-identically in cp310, cp311, and cp312 (the same VA in all three wheels). The threshold is a stable, cross-ABI constant — not a per-build heuristic. The cl::opt name is `loop-opt-distance-threshold`, help string `"legitimate candidate loop pair distance threshold"`. `[C]`
+> **NOTE —** the store at `0x7cf85d` reads `movl $0x8,0x78` byte-identically in cp310, cp311, and cp312 (the same VA in all three wheels). The threshold is a stable, cross-ABI constant — not a per-build heuristic. The cl::opt name is `loop-opt-distance-threshold`, help string `"legitimate candidate loop pair distance threshold"`.
 
 ### The dependence distance — sign and partition-dim legality
 
-The dependence distance is computed by `bir::getDefUseDistance(SAP const&, SAP const&, int)` (libBIR `0x20d4e0`) and tested for sign by `has_negative_distance` @`0xb8f100`. The third `int` argument selects the axis along which the distance is measured (the partition axis; identity `[I]`). Before any distance is computed, both access patterns face a partition-dimension preflight — the field at `+0x110` of the `SymbolicAccessPattern` must equal `1`:
+The dependence distance is computed by `bir::getDefUseDistance(SAP const&, SAP const&, int)` (libBIR `0x20d4e0`) and tested for sign by `has_negative_distance` @`0xb8f100`. The third `int` argument selects the axis along which the distance is measured; reading it as the partition axis is a reconstruction. Before any distance is computed, both access patterns face a partition-dimension preflight — the field at `+0x110` of the `SymbolicAccessPattern` must equal `1`:
 
 ```asm
 b8f1c9:  cmpl   $0x1,0x110(%rax)          ; SAP partition-dim descriptor count must be 1
@@ -133,9 +133,9 @@ function split_for_distribution(InstLoop *loop, vector<SAP*> &commonAPs):  // 0x
 
 ### The distribution rule, stated precisely
 
-> **A loop may be distributed at a point iff no dependence cycle crosses that point, and the split is committed only when *both* resulting loop groups are non-empty.** The first half is the def→use partitioning in `split_for_distribution` (a tensor's producer and all its consumers must stay in the same group, so a group is a maximal set with no outward def→use edge). The second half is the pair of asserts at `0xb953db`/`0xb9554b` — a "split" that empties one side is a no-op and is rejected. `[C]` for both asserts (strings `0x1ce60c0`/`0x1ce60e8` confirmed present); `[S]` for the cycle-free phrasing (the binary partitions by def→last-use, which is the operational form of "no dependence cycle crosses the split").
+> **A loop may be distributed at a point iff no dependence cycle crosses that point, and the split is committed only when *both* resulting loop groups are non-empty.** The first half is the def→use partitioning in `split_for_distribution` (a tensor's producer and all its consumers must stay in the same group, so a group is a maximal set with no outward def→use edge). The second half is the pair of asserts at `0xb953db`/`0xb9554b` — a "split" that empties one side is a no-op and is rejected. Both asserts are read directly (strings `0x1ce60c0`/`0x1ce60e8`). The cycle-free phrasing is an interpretation: what the binary actually does is partition by def→last-use, which is the operational form of "no dependence cycle crosses the split".
 
-> **NOTE —** the string `"Const Load Distribution: nConsts:"` (`0x1d06148`) belongs to a **separate** constant-hoist path @`0xd27584`, *not* to core loop distribution. A reimplementer scanning for distribution strings should not fold it into this transform. `[C]`
+> **NOTE —** the string `"Const Load Distribution: nConsts:"` (`0x1d06148`) belongs to a **separate** constant-hoist path @`0xd27584`, *not* to core loop distribution. A reimplementer scanning for distribution strings should not fold it into this transform.
 
 ### Function Map
 
@@ -205,9 +205,13 @@ function loop_interchange(InstLoop *l1, InstLoop *l2):              // 0xb92ef0
 
 ### Interchange legality, stated precisely
 
-> **Interchange of `l1` and `l2` is legal iff both loops access the partition dimension (`SAP +0x110 == 1`) and reordering them preserves the dependence-direction sign on the partition axis (a non-negative `getDefUseDistance`).** The legality is decided **per pair**, not from a materialized dependence-direction matrix. The two stack booleans at `0x30(%rsp)`/`0x40(%rsp)` plus `r14b` (`0xb94cb9..0xb94ccf`) are the partition-dim flags; the direction sign reuses the same `has_negative_distance` test as fusion. On failure the pass logs `"invalid b/c not on partition dim"` (`0x1ce5fd8`). `[C]` for the strings, the GCD/tiling dataflow, and the partition-dim gate; `[S]` for the "direction sign preserved" phrasing.
+> **Interchange of `l1` and `l2` is legal iff both loops access the partition dimension (`SAP +0x110 == 1`) and reordering them preserves the dependence-direction sign on the partition axis (a non-negative `getDefUseDistance`).** The legality is decided **per pair**, not from a materialized dependence-direction matrix. The two stack booleans at `0x30(%rsp)`/`0x40(%rsp)` plus `r14b` (`0xb94cb9..0xb94ccf`) are the partition-dim flags; the direction sign reuses the same `has_negative_distance` test as fusion. On failure the pass logs `"invalid b/c not on partition dim"` (`0x1ce5fd8`). The strings, the GCD/tiling dataflow, and the partition-dim gate are read directly; "direction sign preserved" is the phrasing this page puts on the non-negative test.
 
-> **CORRECTION —** an earlier narration described interchange as consulting a "dependence-direction matrix." No such matrix object is materialized in the binary. Legality is a per-pair *test*: the `SAP +0x110` partition-dim check plus the `getDefUseDistance` sign. For nests deeper than two levels only pairwise tests were observed — whether a multi-level direction vector is consulted is a `[GAP]`.
+> **GOTCHA — there is no dependence-direction matrix.** Textbook interchange is usually
+> described as consulting one, but no such object is materialized here. Legality is a
+> per-pair *test*: the `SAP +0x110` partition-dim check plus the `getDefUseDistance` sign.
+> For nests deeper than two levels only pairwise tests were observed, so whether a
+> multi-level direction vector is ever consulted is an open question.
 
 ### Function Map
 
@@ -259,7 +263,7 @@ b94f63:  call   loop_tiling@plt           ; loop_tiling(l2, N)
 
 And the chosen factor is logged via `"[LOOP TILING] by "` (`0x1c76bb6`, `lea` @`0xb94ebb`) followed by `operator<<(int)` on `0x44(%rsp)` (@`0xb94f14`).
 
-> **The tile size is the greatest common divisor of the two loops' partition-dimension trip counts, applied iff `GCD > 1`.** It is therefore neither a fixed constant nor an SB/PSUM-budget division. Choosing the GCD guarantees both loops divide evenly into tiles of the *same* inner extent `N`, which is precisely the precondition the following interchange/fusion needs. `[C]` for the GCD instruction sequence, the `GCD > 1` guard, the same-`N` apply, and the `"[LOOP TILING] by N"` log; `[S]` for the rule as a whole; `[I]` for the exact identity of vtable slot `+0x140` (almost certainly `Argument::getNumPartitionsAccessed`, libBIR `0x234170`, the partition-extent getter — its *role* as the value fed to GCD is CONFIRMED by the dataflow even though the slot is called indirectly).
+> **The tile size is the greatest common divisor of the two loops' partition-dimension trip counts, applied iff `GCD > 1`.** It is therefore neither a fixed constant nor an SB/PSUM-budget division. Choosing the GCD guarantees both loops divide evenly into tiles of the *same* inner extent `N`, which is precisely the precondition the following interchange/fusion needs. The GCD instruction sequence, the `GCD > 1` guard, the same-`N` apply, and the `"[LOOP TILING] by N"` log are all read directly. The identity of vtable slot `+0x140` is not: it is almost certainly `Argument::getNumPartitionsAccessed` (libBIR `0x234170`, the partition-extent getter), and its *role* as the value fed to GCD follows from the dataflow, but the slot is called indirectly.
 
 ```c
 function loop_tiling(InstLoop *loop, int N):                        // 0xb8d4d0
@@ -271,17 +275,22 @@ function loop_tiling(InstLoop *loop, int N):                        // 0xb8d4d0
             ap.retarget_to_tiled_space(N);
 ```
 
-> **GOTCHA —** do **not** confuse this with the `tilingThreshold` cl::opt @`0x3e03e20`. That global is `"DMA-tiling-threshold"` (help `"DMA tiling threshold for Copy descriptor"`, `0x1d61ab0`); its consumers are `CoreV*GenImpl::hasTilingConfigChanged` and `DescGenHelper::determineTilingDimForDMADesc` — DMA *descriptor* tiling in codegen, unrelated to `loop_tiling`. The struct it controls inits to `{2,1,0}` (a DMA-dim mode array). The loop tile factor is the GCD above, not any cl::opt. `[C]`
+> **GOTCHA —** do **not** confuse this with the `tilingThreshold` cl::opt @`0x3e03e20`. That global is `"DMA-tiling-threshold"` (help `"DMA tiling threshold for Copy descriptor"`, `0x1d61ab0`); its consumers are `CoreV*GenImpl::hasTilingConfigChanged` and `DescGenHelper::determineTilingDimForDMADesc` — DMA *descriptor* tiling in codegen, unrelated to `loop_tiling`. The struct it controls inits to `{2,1,0}` (a DMA-dim mode array). The loop tile factor is the GCD above, not any cl::opt.
 
-> **CORRECTION —** the loop tile factor does **not** reuse `full_unroll`'s `getLargestFactorWithThreshold` (MaxFactor=16). That primitive is a storage/engine split granularity (largest divisor with cofactor ≤ 16); this tile `N` is the GCD of two partition extents. Two distinct "factor" primitives — do not conflate. `[I]` (cross-pass distinction, from the separate symbol roster).
+> **GOTCHA — two unrelated "factor" primitives.** The loop tile factor does **not** reuse
+> `full_unroll`'s `getLargestFactorWithThreshold` (MaxFactor=16). That one is a
+> storage/engine split granularity — the largest divisor with cofactor ≤ 16. This tile `N`
+> is the GCD of two partition extents. The distinction rests on the two passes having
+> separate symbol rosters, not on a shared call site being ruled out instruction by
+> instruction.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
 | `loop_tiling` | `0xb8d4d0` | Strip-mine one loop by `N` | CERTAIN |
-| GCD computation | inline `0xb93ad3..0xb93b1c` | `N = GCD(extent l1, extent l2)` | CERTAIN (seq) / STRONG (rule) |
-| `Argument::getNumPartitionsAccessed` | libBIR `0x234170` | Candidate for vtable slot `+0x140` | INFERRED |
+| GCD computation | inline `0xb93ad3..0xb93b1c` | `N = GCD(extent l1, extent l2)` | CERTAIN (sequence) / HIGH (rule) |
+| `Argument::getNumPartitionsAccessed` | libBIR `0x234170` | Candidate for vtable slot `+0x140` | MEDIUM |
 
 ---
 
@@ -317,17 +326,17 @@ The two `loop_opt_sb_size` / `loop_opt_psum_size` cl::opts (both default `0` →
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-Five strongest claims re-checked against the binary:
+Read at the instruction or symbol level:
 
-1. **`distanceThreshold` default = 8, positional window.** `[C]` — `movl $0x8,0x78` and `movl $0x8,0x88` at the cl::opt registrar (`0x7cf85d`/`0x7cf86b`, both value and default cells), and the window read `mov 0x78(%rax),%eax` @`0xba122d` with `jae` @`0xba1258` in `constructFusionProfitGraph`. Cross-ABI: the `0x7cf85d` store is byte-identical in cp311/cp312.
-2. **Tile factor `N = GCD(partitionExtent l1, partitionExtent l2)`, applied iff `> 1`.** `[C]` for the sequence — two `call *0x140(%rax)` extent getters (`0xb93add`/`0xb93af3`), the Euclidean GCD loop `idiv`/`test`/`jne` @`0xb93b08`, `mov %ecx,0x44(%rsp)` @`0xb93b13`, `cmpl $0x1` skip-if-one @`0xb93b17`, and the same-`N` apply `call loop_tiling` @`0xb94f53`/`0xb94f63`. `[S]` for the rule; `[I]` for the `+0x140` getter identity (`getNumPartitionsAccessed`, libBIR `0x234170`).
-3. **Distribution commits only when both halves are non-empty.** `[C]` — the assert strings `l1_loops_after_distribution.size() > 0` and `l2_loops_after_distribution.size() > 0` are present in the binary; the asserts fire at `0xb953db`/`0xb9554b`. `[S]` for the cycle-free partition phrasing (operationally a def→last-use grouping in `split_for_distribution`).
-4. **Interchange legality = partition-dim access + non-negative dependence sign, per pair.** `[C]` — the `cmpl $0x1,0x110` partition-dim gate (`0xb8f1c9`), the `"invalid b/c not on partition dim"` string (`0x1ce5fd8`), and the `collect_interchangeable_loops` calls @`0xb934b9`/`0xb934d1`. `[S]` for "direction sign preserved"; `[I]` for deeper-than-2 nests (only pairwise tests observed).
-5. **`bir::getDefUseDistance` is the dependence-distance primitive.** `[C]` — symbol confirmed in libBIR at `0x20d4e0` (`nm -DC`), called from `has_negative_distance` with the `test %r14d; jle` sign reject.
+- **`distanceThreshold` default = 8, a positional window.** `movl $0x8,0x78` and `movl $0x8,0x88` at the cl::opt registrar (`0x7cf85d`/`0x7cf86b` — value and default cells), and the window read `mov 0x78(%rax),%eax` @`0xba122d` with `jae` @`0xba1258` in `constructFusionProfitGraph`. The `0x7cf85d` store is byte-identical in cp311/cp312.
+- **Tile factor `N = GCD(partitionExtent l1, partitionExtent l2)`, applied only when `> 1`.** Two `call *0x140(%rax)` extent getters (`0xb93add`/`0xb93af3`), the Euclidean GCD loop `idiv`/`test`/`jne` @`0xb93b08`, `mov %ecx,0x44(%rsp)` @`0xb93b13`, the `cmpl $0x1` skip-if-one @`0xb93b17`, and the same-`N` apply `call loop_tiling` @`0xb94f53`/`0xb94f63`.
+- **Distribution commits only when both halves are non-empty.** The assert strings `l1_loops_after_distribution.size() > 0` and `l2_loops_after_distribution.size() > 0` are present, and the asserts fire at `0xb953db`/`0xb9554b`.
+- **Interchange legality is partition-dim access plus a non-negative dependence sign, decided per pair.** The `cmpl $0x1,0x110` partition-dim gate (`0xb8f1c9`), the `"invalid b/c not on partition dim"` string (`0x1ce5fd8`), and the `collect_interchangeable_loops` calls @`0xb934b9`/`0xb934d1`.
+- **`bir::getDefUseDistance` is the dependence-distance primitive**, at libBIR `0x20d4e0` (`nm -DC`), called from `has_negative_distance` with the `test %r14d; jle` sign reject.
 
-**Honest re-verify ceiling.** The `distanceThreshold = 8` constant, the GCD instruction sequence, the same-`N` tiling apply, the distribution non-empty asserts, the partition-dim gate, and the interchange/distribution/tiling symbol addresses are all CONFIRMED at the instruction or symbol level — bedrock. What remains below CONFIRMED: (a) the identity of vtable slot `+0x140` as the partition-extent getter (`[I]`, but its *role* in the GCD dataflow is confirmed); (b) the third `int` axis argument of `getDefUseDistance` as the partition axis index (`[I]`); (c) whether interchange consults a multi-level direction vector for nests deeper than two (`[GAP]` — only pairwise tests seen); (d) the exact `mem_loc_info` layout used by `split_for_distribution` (`[GAP]`). No address, default, or field meaning on this page is fabricated; every inference carries its tag.
+Four things sit below that. The identity of vtable slot `+0x140` as the partition-extent getter is a reconstruction, though its role in the GCD dataflow is read from the dataflow itself. So is reading the third `int` argument of `getDefUseDistance` as the partition axis index. Whether interchange consults a multi-level direction vector for nests deeper than two is unresolved — only pairwise tests were observed. And the exact `mem_loc_info` layout used by `split_for_distribution` was never recovered.
 
 ---
 

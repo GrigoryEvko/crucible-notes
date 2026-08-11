@@ -1,6 +1,6 @@
 # The klr Node Schema & KLR Wire Format
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins carry the identical roster and counts). Subject binary: `neuronxcc/.../bin/nki_klr_sim` — the stripped KLR simulator/driver that **statically links the whole `translate_nki_ast_to_bir` lowering set plus the `klr::*` CBOR deserializers**, so both the node deserializers and the `codegenNc<Op>` consumer bodies live in `.text` (`0x4dxxxx`–`0x56xxxx`). Names are recovered from RTTI typeinfo and from assert/source-line strings in `.rodata` (`0x87xxxx`–`0x88xxxx`); `.text`/`.rodata` have VA == file-offset. Evidence below is from this binary: `strings`, the IDA decompiled/disasm sidecars, and `xrefs.json`. Every claim is tagged CONFIRMED (read literally off a body/string) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins carry the identical roster and counts). Subject binary: `neuronxcc/.../bin/nki_klr_sim` — the stripped KLR simulator/driver that **statically links the whole `translate_nki_ast_to_bir` lowering set plus the `klr::*` CBOR deserializers**, so both the node deserializers and the `codegenNc<Op>` consumer bodies live in `.text` (`0x4dxxxx`–`0x56xxxx`). Names are recovered from RTTI typeinfo and from assert/source-line strings in `.rodata` (`0x87xxxx`–`0x88xxxx`); `.text`/`.rodata` have VA == file-offset. Evidence below is from this binary: `strings`, the IDA decompiled/disasm sidecars, and `xrefs.json`. Anything not read literally off a body or string is marked [INFERRED] or [SPECULATIVE] inline.*
 
 ## Abstract
 
@@ -8,7 +8,7 @@
 
 KLR is to NKI roughly what LLVM bitcode is to a `.ll` file: a stable, versioned serialization of an in-memory IR, but with two differences a reimplementer must internalize. First, the discriminant model is **nominal, not positional** — every node, at every level, leads with an integer tag at offset `+0`, and the deserializer asserts the *exact* `(type-id, sub-id, field-count)` triple before it will read a body. Second, the wire is **canonical CBOR**: each node is a CBOR tag (major 6) carrying a CBOR array (major 4) of its fields, and the magic that marks the outer container is itself just a CBOR tag-number. The codec primitives (the `Nat` reader, the tag reader/writer) are owned by [7.32](klr-extendedinst-cbor.md#2-the-cbor-encoding--tag-210); this page builds on them and does **not** re-derive them.
 
-The roster size is the page's first correction. The brief and the working notes cite an "88-entry type-id table"; the binary carries exactly **87** distinct `Expecting <Class>:(type-id,sub-id,field-count)` assert strings — one per deserializable record class — and a byte-identical second family (`Could not find tag, expecting …`). The two families name the same 87 classes; across them there are **86 distinct primary type-id bytes**, because `Activate2` and `KLRFile` collide on `217` and are split only by the sub-id byte. The full 87-row table is reproduced in [§3](#3-the-type-id-roster-87-records).
+The roster has exactly **87** entries. The binary carries 87 distinct `Expecting <Class>:(type-id,sub-id,field-count)` assert strings — one per deserializable record class — plus a byte-identical second family (`Could not find tag, expecting …`) naming the same 87 classes. Across them there are **86 distinct primary type-id bytes**, because `Activate2` and `KLRFile` collide on `217` and are split only by the sub-id byte. The full 87-row table is reproduced in [§3](#3-the-type-id-roster-87-records).
 
 For reimplementation, the contract is:
 
@@ -35,9 +35,9 @@ For reimplementation, the contract is:
 
 Every `klr::*` node is handled as `Ptr<T> = std::shared_ptr<T>` — a 16-byte `{raw_ptr, control_block}` pair. The decompiled bodies make this unmistakable: every field touch is bracketed by a ref-count bump on the control block, which appears as the recurring `_libc_single_threaded ? ++*(refcount) : _InterlockedAdd(refcount, 1)` idiom around each read (e.g. `sub_4F4970` lines 18–24). A reimplementer can ignore the bumps for layout purposes — they are noise around the real access — but they confirm that the object pointer is the *first* word of the `Ptr` and the control block the second.
 
-The **discriminant convention is uniform**: a node's TAG is the first dword, `*(int*)node`. This holds at every level of the descent and for every operand record. The codegen always reads `*(int*)*Ptr` (deref the shared_ptr, then load `+0`) before branching — see `sub_50EDA0` line 253 (`switch(*(DWORD*)*a2)`), `sub_4F6950` line 43 (`*(DWORD*)a3->[0]`), `sub_4F4970` line 14 (`**a2`). [CONFIRMED — three independent bodies.]
+The **discriminant convention is uniform**: a node's TAG is the first dword, `*(int*)node`. This holds at every level of the descent and for every operand record. The codegen always reads `*(int*)*Ptr` (deref the shared_ptr, then load `+0`) before branching — see `sub_50EDA0` line 253 (`switch(*(DWORD*)*a2)`), `sub_4F6950` line 43 (`*(DWORD*)a3->[0]`), `sub_4F4970` line 14 (`**a2`) — three independent bodies.
 
-> **NOTE —** the in-memory variant tag (`*(int*)node`, e.g. `Operator::Tag::cmpBranch == 47`) is a **different number** from the on-wire serialization type-id ([§3](#3-the-type-id-roster-87-records), e.g. `CmpBranch` ser type-id `193`). The first is the C++ `std::variant` index; the second is the CBOR tag byte. Do not conflate them — `NcMatMul` is in-memory Operator-tag `0x16`=22 but wire type-id `183`. [CONFIRMED — §7 of the working notes; cross-checked against `sub_50EDA0` and the `Expecting NcMatMul:(183,0,9)` string.]
+> **GOTCHA — the in-memory variant tag is a different number from the wire type-id.** `*(int*)node` (e.g. `Operator::Tag::cmpBranch == 47`) is the C++ `std::variant` index; the serialization type-id ([§3](#3-the-type-id-roster-87-records), e.g. `CmpBranch` = `193`) is the CBOR tag byte. `NcMatMul` is in-memory Operator-tag `0x16` = 22 but wire type-id `183`. *Anchors: `sub_50EDA0` and the `Expecting NcMatMul:(183,0,9)` string.*
 
 ---
 
@@ -64,15 +64,15 @@ Five discriminated unions appear in the descent and operand graph. Each is a sea
 
 | Union | Discriminant tags (named) | Carrier / evidence | Confidence |
 |---|---|---|---|
-| `klr::Contents` | `lnc` (the `LncKernel` arm); `Wrapper` RTTI also names `hlo`/`kernel`/`nki`/`python` arms | driver `sub_4D2820:624,673` assert `contents->tag == klr::Contents::Tag::lnc` | CONFIRMED (lnc), STRONG (others, from `Contents{Lnc,Nki,Hlo,Kernel,Python}Wrapper` RTTI) |
-| `klr::Stmt` | `oper` (the `StmtOperWrapper` arm) | `sub_512130:515` assert `lastStmt->tag == klr::Stmt::Tag::oper` | CONFIRMED |
-| `klr::Operator` | ~60 arms, one per leaf op; `cmpBranch == 47` (`0x2F`) | `sub_512130:531` assert; `sub_50EDA0` switch = 60 cases | CONFIRMED |
-| `klr::ReplicaGroup` | `literal == 3`, plus `named`/`unspecified` arms | `sub_500990:136`, `sub_4FF840:110` assert `…Tag::literal && "guaranteed by frontend API"` | CONFIRMED (literal=3), INFERRED (named/unspecified ordinals) |
-| `klr::TensorRef` | `1` = sbuf/psum access path, `4` = HBM path | `sub_4F6950` ([§4](#4-tensorref--the-universal-operand)) | CONFIRMED |
+| `klr::Contents` | `lnc` (the `LncKernel` arm); `Wrapper` RTTI also names `hlo`/`kernel`/`nki`/`python` arms | driver `sub_4D2820:624,673` assert `contents->tag == klr::Contents::Tag::lnc` | CERTAIN (lnc), HIGH (others, from `Contents{Lnc,Nki,Hlo,Kernel,Python}Wrapper` RTTI) |
+| `klr::Stmt` | `oper` (the `StmtOperWrapper` arm) | `sub_512130:515` assert `lastStmt->tag == klr::Stmt::Tag::oper` | CERTAIN |
+| `klr::Operator` | ~60 arms, one per leaf op; `cmpBranch == 47` (`0x2F`) | `sub_512130:531` assert; `sub_50EDA0` switch = 60 cases | CERTAIN |
+| `klr::ReplicaGroup` | `literal == 3`, plus `named`/`unspecified` arms | `sub_500990:136`, `sub_4FF840:110` assert `…Tag::literal && "guaranteed by frontend API"` | CERTAIN (literal=3), MEDIUM (named/unspecified ordinals) |
+| `klr::TensorRef` | `1` = sbuf/psum access path, `4` = HBM path | `sub_4F6950` ([§4](#4-tensorref--the-universal-operand)) | CERTAIN |
 
-The `StmtOperWrapper → Operator → Operator<Op>Wrapper → <Op>` chain is the **wrapper pattern**: each leaf op `klr::<Op>` is boxed by an `Operator<Op>Wrapper` variant arm, and `codegenOperator` (`sub_50EDA0`) unboxes via the variant tag → a thunk → `codegenNc<Op>(Ptr<klr::<Op>>)`. The rationale and the full Operator→leaf routing table live in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf); this page documents the *records*, not the dispatch.
+The `StmtOperWrapper → Operator → Operator<Op>Wrapper → <Op>` chain is the **wrapper pattern**: each leaf op `klr::<Op>` is boxed by an `Operator<Op>Wrapper` variant arm, and `codegenOperator` (`sub_50EDA0`) unboxes via the variant tag → a thunk → `codegenNc<Op>(Ptr<klr::<Op>>)`. The rationale and the full Operator→leaf routing table live in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf); this page documents the *records*, not the dispatch.
 
-> **GOTCHA —** the brief calls this a "four-level tree". It is four *discriminated* levels (`Contents`, `Stmt`, `Operator`, leaf), but the carrier nesting is deeper: a `StmtOperWrapper` sits between `Stmt` and `Operator`, and an `Operator<Op>Wrapper` between `Operator` and `<Op>`. A reimplementer who models only four physical objects will mis-place the two wrapper boxes and read fields at the wrong offset. [CONFIRMED — RTTI `StmtOperWrapper`, `Operator…Wrapper`.]
+> **GOTCHA — "four levels" counts discriminants, not objects.** There are four *discriminated* levels (`Contents`, `Stmt`, `Operator`, leaf), but the carrier nesting is deeper: a `StmtOperWrapper` sits between `Stmt` and `Operator`, and an `Operator<Op>Wrapper` between `Operator` and `<Op>` (both named in RTTI). A reimplementer who models only four physical objects will mis-place the two wrapper boxes and read fields at the wrong offset.
 
 ---
 
@@ -80,7 +80,7 @@ The `StmtOperWrapper → Operator → Operator<Op>Wrapper → <Op>` chain is the
 
 Every deserializable `klr::*` record class carries a header assert of the form `Expecting <Class>:(type-id, sub-id, field-count)`, emitted before the class reads its body. Mining `nki_klr_sim` for this string family yields exactly **87** distinct rows; a second, byte-identical family (`Could not find tag, expecting <Class>:type-id,sub-id`) names the **same 87** classes (verified by set-diff). These two families together are the authoritative wire schema.
 
-> **CORRECTION (KLR-1) —** the working notes and the task brief cite an **"88-entry"** type-id table. The binary carries **87** distinct `Expecting` strings across all three Python ABIs (cp310/311/312 all = 87). There is no 88th record. The "88" appears to be an off-by-one in the source notes; pin to **87**. Of the 87, there are **86 distinct primary type-id bytes** — `Activate2(217,0,14)` and `KLRFile(217,247,3)` share byte `217`, disambiguated by the sub-id (`0` vs `247`). [CONFIRMED — `strings | rg '^Expecting ' | sort -u | wc -l` = 87 on all three binaries.]
+All three Python ABIs (cp310/311/312) carry the same 87. Of those, **86 distinct primary type-id bytes** are in use: `Activate2(217,0,14)` and `KLRFile(217,247,3)` share byte `217`, disambiguated by the sub-id (`0` vs `247`). *Anchor: `strings | rg '^Expecting ' | sort -u | wc -l` = 87 on all three binaries.*
 
 The roster is a structured catalog, not a data dump — each row's type-id is the CBOR tag byte that selects it on the wire, the sub-id is `0` for every record except the `KLRFile` container, and the field-count is the CBOR array arity the deserializer enforces exactly. Rows are grouped by role; every `(type-id, sub-id, field-count)` triple is verbatim from the `.rodata` `Expecting` string.
 
@@ -115,7 +115,7 @@ The roster is a structured catalog, not a data dump — each row's type-id is th
 
 ### Leaf operator records
 
-This is the body of the roster — the ~60 leaf ops the codegen consumes. (The Operator-variant in-memory tags differ; see [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf).)
+This is the body of the roster — the ~60 leaf ops the codegen consumes. (The Operator-variant in-memory tags differ; see [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf).)
 
 | Class | type-id | fields | Class | type-id | fields |
 |---|---|---|---|---|---|
@@ -155,7 +155,7 @@ This is the body of the roster — the ~60 leaf ops the codegen consumes. (The O
 | | | | `Exponential` | 216 | 6 |
 | | | | `Activate2` | 217 | 14 |
 
-> **NOTE —** `ExtendedInst` is wire type-id **210**, matching [7.32](klr-extendedinst-cbor.md)'s CBOR tag-210 exactly (`0xD9 0xD2 0x00 0x86`). `Activate2` is the 14-field extended activation — the largest leaf — and is the record that shares byte `217` with the container. The 199 total `klr::` RTTI names (`strings | rg N3klr | sort -u` = 199) include these 87 deserializable records plus their `Operator<Op>Wrapper`, `TensorRef*Wrapper`, `Immediate*Wrapper`, `ReplicaGroup*Wrapper`, and `Contents*Wrapper` variant arms — the wrappers are not separately serialized records, so they carry no `Expecting` string. [CONFIRMED — counts.]
+> **NOTE —** `ExtendedInst` is wire type-id **210**, matching [7.32](klr-extendedinst-cbor.md)'s CBOR tag-210 exactly (`0xD9 0xD2 0x00 0x86`). `Activate2` is the 14-field extended activation — the largest leaf — and is the record that shares byte `217` with the container. The 199 total `klr::` RTTI names (`strings | rg N3klr | sort -u` = 199) include these 87 deserializable records plus their `Operator<Op>Wrapper`, `TensorRef*Wrapper`, `Immediate*Wrapper`, `ReplicaGroup*Wrapper`, and `Contents*Wrapper` variant arms — the wrappers are not separately serialized records, so they carry no `Expecting` string.
 
 ---
 
@@ -182,7 +182,7 @@ function codegenTensorRefImpl(Ptr<TensorRef> tr, bool allowDynamic):   // sub_4F
         assert(false && "Unsupported tensorRef type encountered!")  // cpp:0x135
 ```
 
-Tags `1` and `4` are the only two handled; everything else aborts at `klir_to_bir_codegen.cpp:0x135`. The five memory-space arms in RTTI — `TensorRefSbufWrapper`, `TensorRefPsumWrapper`, `TensorRefHbmWrapper`, `TensorRefRegisterWrapper`, `TensorRefAbstractWrapper` — collapse onto these two paths at codegen time (sbuf and psum both reach tag `1`; the `to_string` prefixes `"TensorRefSbufWrapper("`/`"TensorRefPsumWrapper("` are present in `.rodata`). [CONFIRMED — `sub_4F6950` body + RTTI.]
+Tags `1` and `4` are the only two handled; everything else aborts at `klir_to_bir_codegen.cpp:0x135`. The five memory-space arms in RTTI — `TensorRefSbufWrapper`, `TensorRefPsumWrapper`, `TensorRefHbmWrapper`, `TensorRefRegisterWrapper`, `TensorRefAbstractWrapper` — collapse onto these two paths at codegen time (sbuf and psum both reach tag `1`; the `to_string` prefixes `"TensorRefSbufWrapper("`/`"TensorRefPsumWrapper("` are present in `.rodata`).
 
 ### The Access sub-object
 
@@ -194,23 +194,23 @@ The tag-`1` path hands `Access` (`TensorRef+8`) and the AP (`TensorRef+16`) to `
 | `4` | `BirAccessPattern` | a pre-lowered BIR access pattern |
 | else | — | `throw "Unsupported access type encountered <n>"` (`sub_4F6810:38`) |
 
-`isDynamicAccess` (`sub_4F4750`) returns true iff the access is tag `1` **and** its offset is a register/dynamic value rather than a constant; ordinary ops reject it, and `NcCopy` is the one op that passes `allowDynamic=1` to route `TensorCopy` → `TensorCopyDynamicSrc`/`…DynamicDst`. [CONFIRMED — `sub_4F6950` line 26 gate, `sub_50B110` routing.]
+`isDynamicAccess` (`sub_4F4750`) returns true iff the access is tag `1` **and** its offset is a register/dynamic value rather than a constant; ordinary ops reject it, and `NcCopy` is the one op that passes `allowDynamic=1` to route `TensorCopy` → `TensorCopyDynamicSrc`/`…DynamicDst`. *Anchors: the `sub_4F6950` line-26 gate and the `sub_50B110` routing.*
 
 ### TensorRef composed layout
 
 | Field | Offset | Type | Meaning | Confidence |
 |---|---|---|---|---|
-| `tag` | `+0x00` | `int` | memory space: `1`=sbuf/psum-access, `4`=hbm | CONFIRMED |
-| `ap` | `+0x08` | `Ptr<Access>` | the access-pattern sub-object (tag-`1` path) | CONFIRMED |
-| `tensor`/`name` | `+0x10` | `Ptr<…>` | `TensorName` for HBM; sbuf storage handle otherwise | STRONG |
+| `tag` | `+0x00` | `int` | memory space: `1`=sbuf/psum-access, `4`=hbm | CERTAIN |
+| `ap` | `+0x08` | `Ptr<Access>` | the access-pattern sub-object (tag-`1` path) | CERTAIN |
+| `tensor`/`name` | `+0x10` | `Ptr<…>` | `TensorName` for HBM; sbuf storage handle otherwise | HIGH |
 
-The HBM arm (`sub_4F3050`) emits the BIR arg with `TensorClass=6`, base-partition `8`, elem-size `2`, built from the `TensorName` string and the `Shape`/`Address` sub-objects. [CONFIRMED — `sub_4F3050` constants.]
+The HBM arm (`sub_4F3050`) emits the BIR arg with `TensorClass=6`, base-partition `8`, elem-size `2`, built from the `TensorName` string and the `Shape`/`Address` sub-objects.
 
 ---
 
 ## 5. The KLRFile container frame
 
-The outer document frame is read by `sub_53A210`. It is the only record whose sub-id byte is non-zero, and the only place the brief's `0xD9F703` token appears.
+The outer document frame is read by `sub_53A210`. It is the only record whose sub-id byte is non-zero, and the only place the `0xD9F703` token appears.
 
 ### The deserializer
 
@@ -229,13 +229,13 @@ function deserialize_KLRFile(out, FILE *s):              // sub_53A210
     *out = f
 ```
 
-The header reader `sub_567F10` (via thunk `sub_567090`) does the actual byte work — `fread(ptr,1,3,s)`, then **`if ptr[0] != 0xD9 return 0`** (disasm `0x567f43: cmp [ptr], 0xD9`), then `*type_id = ptr[1]`, `*sub_id = ptr[2]`, and reads the array arity as a `Nat` capped at `0x17` (23). So the *literal* on-wire bytes of the `KLRFile` frame are **`0xD9 0xD9 0xF7`** + `Nat(3)`: a CBOR major-6 tag marker, then the two-byte tag-number `0xD9F7`, then a CBOR array of three. [CONFIRMED — `sub_567F10` body + `sub_53A210` disasm.]
+The header reader `sub_567F10` (via thunk `sub_567090`) does the actual byte work — `fread(ptr,1,3,s)`, then **`if ptr[0] != 0xD9 return 0`** (disasm `0x567f43: cmp [ptr], 0xD9`), then `*type_id = ptr[1]`, `*sub_id = ptr[2]`, and reads the array arity as a `Nat` capped at `0x17` (23). So the *literal* on-wire bytes of the `KLRFile` frame are **`0xD9 0xD9 0xF7`** + `Nat(3)`: a CBOR major-6 tag marker, then the two-byte tag-number `0xD9F7`, then a CBOR array of three.
 
-> **QUIRK — `0xD9F703` is the tag-*number*, not the first three wire bytes.** The brief's `0xD9F703` is the `(type-id=217, sub-id=247, arity=3)` tuple rendered hi-lo-count: the CBOR tag-number is `(217<<8) | 247 = 0xD9F7 = 55799`, and `3` is the array arity. On the wire there is a **fourth, leading** byte — the `0xD9` CBOR major-6 "tag, 2-byte argument follows" marker — so the actual prefix is `0xD9 0xD9 0xF7`. This mirrors [7.32](klr-extendedinst-cbor.md#2-the-cbor-encoding--tag-210)'s `ExtendedInst` frame `0xD9 0xD2 0x00 0x86` (marker + tag-number `0xD200` + array(6)); `KLRFile` is the same shape with tag-number `0xD9F7` and arity `3`. A reimplementer who writes the literal bytes `D9 F7 03` (dropping the marker) produces an unparseable stream. [CONFIRMED.]
+> **QUIRK — `0xD9F703` is the tag-*number*, not the first three wire bytes.** `0xD9F703` renders the `(type-id=217, sub-id=247, arity=3)` tuple hi-lo-count: the CBOR tag-number is `(217<<8) | 247 = 0xD9F7 = 55799`, and `3` is the array arity. On the wire there is a **fourth, leading** byte — the `0xD9` CBOR major-6 "tag, 2-byte argument follows" marker — so the actual prefix is `0xD9 0xD9 0xF7`. This mirrors [7.32](klr-extendedinst-cbor.md#2-the-cbor-encoding--tag-210)'s `ExtendedInst` frame `0xD9 0xD2 0x00 0x86` (marker + tag-number `0xD200` + array(6)); `KLRFile` is the same shape with tag-number `0xD9F7` and arity `3`. A reimplementer who writes the literal bytes `D9 F7 03` (dropping the marker) produces an unparseable stream.
 
 ### The driver
 
-`sub_4D2820` is the `nki_klr_sim` entry that drives the whole descent: `fopen(*argv, "r")` (line 148) → `deserialize_KLRFile` → `KLRMetaData` (`sub_53A640`) → `Contents`, then asserts `contents->tag == klr::Contents::Tag::lnc` (lines 624, 673), extracts the `LncKernel`, and calls `KlirToBirCodegen::codegenLncKernel`. A KLR file whose `Contents` is any arm other than `lnc` aborts here — `nki_klr_sim` only simulates the LncKernel payload. [CONFIRMED — driver body + assert strings.]
+`sub_4D2820` is the `nki_klr_sim` entry that drives the whole descent: `fopen(*argv, "r")` (line 148) → `deserialize_KLRFile` → `KLRMetaData` (`sub_53A640`) → `Contents`, then asserts `contents->tag == klr::Contents::Tag::lnc` (lines 624, 673), extracts the `LncKernel`, and calls `KlirToBirCodegen::codegenLncKernel`. A KLR file whose `Contents` is any arm other than `lnc` aborts here — `nki_klr_sim` only simulates the LncKernel payload.
 
 ---
 
@@ -258,16 +258,16 @@ function codegenImmediate(Ptr<Immediate> imm):    // sub_4F4970
 
 | Field | Offset | Type | Meaning | Confidence |
 |---|---|---|---|---|
-| `tag` | `+0x00` | `int` | `3`=INT (`ImmediateIntWrapper`), `4`=FLOAT (`ImmediateFloatWrapper`) | CONFIRMED |
-| `value` | `+0x04` | `int`/`float` | 4-byte payload, read per-tag; both arms read `*(T*)(imm+4)` | CONFIRMED |
+| `tag` | `+0x00` | `int` | `3`=INT (`ImmediateIntWrapper`), `4`=FLOAT (`ImmediateFloatWrapper`) | CERTAIN |
+| `value` | `+0x04` | `int`/`float` | 4-byte payload, read per-tag; both arms read `*(T*)(imm+4)` | CERTAIN |
 
-The variant's returned discriminant is `0` for the float arm, `1` for the int arm. The RTTI roster also lists `ImmediatePointerWrapper` and `ImmediateRegisterWrapper`, but `codegenImmediate` handles **only** `int`/`float` — pointer and register immediates are resolved elsewhere (e.g. an op's scale/bias operand, like `NcActivate`'s tagged `ScaleOperand`), never through this const-folding path. [CONFIRMED — `sub_4F4970` body + the `cpp:0x1A9` assert; pointer/register handling INFERRED from the absent cases.]
+The variant's returned discriminant is `0` for the float arm, `1` for the int arm. The RTTI roster also lists `ImmediatePointerWrapper` and `ImmediateRegisterWrapper`, but `codegenImmediate` handles **only** `int`/`float` — pointer and register immediates are resolved elsewhere (e.g. an op's scale/bias operand, like `NcActivate`'s tagged `ScaleOperand`), never through this const-folding path. [INFERRED] That routing is deduced from the cases `codegenImmediate` does *not* handle, not from a traced body.
 
 ---
 
 ## 7. Worked node layouts
 
-The codegen bodies reveal each leaf's field offsets directly. Two are reproduced here as representative — the multi-operand matmul and the routed copy — both pinned to their consumer bodies. The remaining ~60 follow the same `[+0] tag, [+10/+20/…] Ptr<TensorRef> operands, [+30…] scalar attrs` skeleton; their routing tags are tabulated in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf).
+The codegen bodies reveal each leaf's field offsets directly. Two are reproduced here as representative — the multi-operand matmul and the routed copy — both pinned to their consumer bodies. The remaining ~60 follow the same `[+0] tag, [+10/+20/…] Ptr<TensorRef> operands, [+30…] scalar attrs` skeleton; their routing tags are tabulated in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf).
 
 ### `NcMatMul` (183,0,9) — `codegenNcMatMul` `sub_4F7580`
 
@@ -283,7 +283,7 @@ Lowers to `bir::InstMatmult` (the `"matmult_"` name at `sub_4F7580:92`). The two
 | `tileSizeVector` | `+0x50` | `std::list<int>` | asserted `size()==2` (`sub_4F7580:185`) → `{x,y}` |
 | `calcMode` | `+0x68` | `int` | `==2` ⇒ sets `InstMatmult+720` (`*((DWORD*)*a2+26)==2`, line 145) |
 
-[CONFIRMED — `tileSizeVector.size()==2` / `tilePositionVector.size()==2` asserts and the `node[26]==2` test, all read off `sub_4F7580`.]
+*Anchors: the `tileSizeVector.size()==2` / `tilePositionVector.size()==2` asserts and the `node[26]==2` test, all in `sub_4F7580`.*
 
 ### `NcCopy` (178,0,4) — `codegenNcCopy` `sub_50B110`
 
@@ -298,7 +298,7 @@ function codegenNcCopy(Ptr<NcCopy> n):        // sub_50B110
     dtype = n->[+0x28]; codegenDtype(dtype) -> Inst+144        // sub_4F20E0
 ```
 
-`NcCopy` is the op that *permits* dynamic access (it calls `codegenTensorRef` with `allowDynamic=1`); every other op rejects it via the `"Dynamic Access is not allowed"` throw in [§4](#4-tensorref--the-universal-operand). [CONFIRMED — `sub_50B110` routing + the three BIR name strings.]
+`NcCopy` is the op that *permits* dynamic access (it calls `codegenTensorRef` with `allowDynamic=1`); every other op rejects it via the `"Dynamic Access is not allowed"` throw in [§4](#4-tensorref--the-universal-operand).
 
 ---
 
@@ -313,28 +313,26 @@ The codegen maps klr enum ordinals to bir enum ordinals through small index LUTs
 | `codegenActivationFunc` | `sub_4F2030` | `0x8AE5E0` | 1 | klr `ActFn` → bir activation enum |
 | `codegenDtype` (variant) | `sub_4F2100` | — | 1 | `NcActivate` dtype/round form |
 
-These are the klr-side mirror of the BIR enum cross-walk. [CONFIRMED — function addresses + LUT base offsets from the working notes; cross-checked against the `sub_4F20xx` cluster.]
+These are the klr-side mirror of the BIR enum cross-walk. *Anchors: the four function addresses and their LUT base offsets, read from the `sub_4F20xx` cluster.*
 
 ---
 
-## 9. Adversarial self-verification
+## 9. Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary:
+| Claim | Anchor |
+|---|---|
+| The type-id roster is **87** records | `strings nki_klr_sim \| rg '^Expecting ' \| sort -u \| wc -l` = 87 on cp310/311/312; the second `Could not find tag` family is also 87 with an identical name set (set-diff empty) |
+| Four discriminated descent levels with the named tags | `Contents::Tag::lnc` (driver `sub_4D2820:624`), `Stmt::Tag::oper` (`sub_512130:515`), `Operator::Tag::cmpBranch`==47 (`sub_512130:531`; switch `sub_50EDA0` = 60 cases), `ReplicaGroup::Tag::literal`==3 (`sub_500990:136`) |
+| `KLRFile` magic = tag-number `0xD9F7` + arity `3` | `Expecting KLRFile:(217,247,3)` (`0x8740fd`); `sub_53A210` disasm `cmp [..],0D9h` / `cmp [..],0F7h`; `sub_567F10` requires `ptr[0]==0xD9` |
+| `TensorRef` tag {1=access, 4=hbm}; `Access` {1,4}; `Immediate` {3=int, 4=float} | `sub_4F6950` (cpp:0x135), `sub_4F6810` ("Unsupported access type"), `sub_4F4970` (cpp:0x1A9) — three independent assert-bearing bodies |
+| In-memory variant tag ≠ on-wire type-id | `NcMatMul` Operator-tag `0x16`=22 vs wire `183`; `cmpBranch` tag `47` vs wire `193`; `switch(*(int*)*op)` in `sub_50EDA0` is the variant index, the `Expecting` byte is the wire id |
 
-| Claim | Verdict | Evidence |
-|---|---|---|
-| The type-id roster is **87** records (not 88) | **CONFIRMED — corrects the brief** | `strings nki_klr_sim \| rg '^Expecting ' \| sort -u \| wc -l` = **87** on cp310/311/312; second `Could not find tag` family also 87, identical name set (set-diff empty). The "88" is a notes off-by-one. |
-| Four discriminated descent levels with the named tags | **CONFIRMED** | `Contents::Tag::lnc` (driver `sub_4D2820:624`), `Stmt::Tag::oper` (`sub_512130:515`), `Operator::Tag::cmpBranch`==47 (`sub_512130:531`; switch `sub_50EDA0`=60 cases), `ReplicaGroup::Tag::literal`==3 (`sub_500990:136`) |
-| `KLRFile` magic = tag-number `0xD9F7` + arity `3` | **CONFIRMED** | `Expecting KLRFile:(217,247,3)` (`0x8740fd`); `sub_53A210` disasm `cmp [..],0D9h` / `cmp [..],0F7h`; `sub_567F10` requires `ptr[0]==0xD9`. `0xD9F703` is the *tuple*, the literal prefix is `0xD9 0xD9 0xF7`. |
-| `TensorRef` tag {1=access, 4=hbm}; `Access` {1,4}; `Immediate` {3=int, 4=float} | **CONFIRMED** | `sub_4F6950` (cpp:0x135), `sub_4F6810` ("Unsupported access type"), `sub_4F4970` (cpp:0x1A9) — three independent assert-bearing bodies |
-| In-memory variant tag ≠ on-wire type-id | **CONFIRMED** | `NcMatMul` Operator-tag `0x16`=22 vs wire `183`; `cmpBranch` tag `47` vs wire `193`; `switch(*(int*)*op)` in `sub_50EDA0` is the variant index, the `Expecting` byte is the wire id |
+What is *not* pinned:
 
-### Verification ceiling — what is *not* pinned
-
-- **`Contents` arm ordinals other than `lnc`.** Only `lnc` is asserted in this binary (the others abort before codegen). The `hlo`/`kernel`/`nki`/`python` arms are named by `Contents*Wrapper` RTTI but their tag *values* are not read off any body here. [INFERRED.]
-- **`ReplicaGroup::Tag` values for `named`/`unspecified`.** Only `literal==3` is asserted; the other two arms exist in RTTI but their ordinals are not pinned. [INFERRED.]
-- **Per-field semantics inside each leaf's CBOR array.** The roster pins each record's *arity* (the field count the deserializer enforces) and §7 pins two records' *offsets*; the field-by-field meaning of the other ~60 leaves is not exhaustively traced here — it is recoverable from each `codegenNc<Op>` body the same way §7 recovers `NcMatMul`/`NcCopy`. [Method shown, remainder OPEN.]
-- **Whether the in-memory offset (`+0x08` `ap`, `+0x10` name) and the on-wire field *order* coincide.** The page pins both, but a producer could serialize fields in a different order than the in-memory layout; that round-trip ordering is owned by [7.32](klr-extendedinst-cbor.md)'s serializer analysis, not re-derived here. [Deferred to 7.32.]
+- **[INFERRED] `Contents` arm ordinals other than `lnc`.** Only `lnc` is asserted in this binary — the others abort before codegen. The `hlo`/`kernel`/`nki`/`python` arms are named by `Contents*Wrapper` RTTI, but their tag *values* are not read off any body here.
+- **[INFERRED] `ReplicaGroup::Tag` values for `named`/`unspecified`.** Only `literal == 3` is asserted; the other two arms exist in RTTI with unpinned ordinals.
+- **Per-field semantics inside each leaf's CBOR array.** The roster pins each record's *arity* and §7 pins two records' *offsets*; the field-by-field meaning of the other ~60 leaves is recoverable from each `codegenNc<Op>` body the same way §7 recovers `NcMatMul`/`NcCopy`, but is not traced here.
+- **Whether the in-memory offsets (`+0x08` `ap`, `+0x10` name) and the on-wire field *order* coincide.** A producer could serialize in an order different from the in-memory layout; that round-trip ordering belongs to [7.32](klr-extendedinst-cbor.md)'s serializer analysis.
 
 ---
 

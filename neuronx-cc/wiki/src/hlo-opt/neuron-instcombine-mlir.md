@@ -61,7 +61,7 @@ void NeuronInstCombine::runOnOperation():           // 0x20f94b0
     patterns.addImpl<SimplifyReduceSliceReducePattern>(/*labels=*/{}, ctx); // 0x20f95b5 — only pattern
     FrozenRewritePatternSet frozen(move(patterns));  // 0x20f95d2
 
-    GreedyRewriteConfig cfg = {                       // built inline 0x20f9724..0x20f9759 (HIGH)
+    GreedyRewriteConfig cfg = {                       // built inline 0x20f9724..0x20f9759
         .maxIterations  = 10,        // 0xA  (kDefaultMaxIterations)
         .maxNumRewrites = -1,        // kNoLimit (two -1 int fields)
         .useTopDown     = true,      // word 0x101 -> two adjacent bools = 1
@@ -179,7 +179,7 @@ LogicalResult matchAndRewrite(mhlo::ReduceOp op, PatternRewriter &rw):   // 0x20
     return success();
 ```
 
-> **QUIRK —** the merged reduce is the **inner** reduce re-pointed, and the merge of the two dim sets is realized *implicitly* by R2's geometry — the rebuilt slice runs over `X` with the inner-reduced dims projected out, so the surviving reduce's footprint already covers the union. R6 replaces the *outer* reduce with the rebuilt-slice value; only one `mhlo.slice` and one `mhlo.reduce` remain. Whether a fresh `ReduceOp` is constructed with union dims or the inner one's `dimensions` attr is mutated in place is not separately emitted (MED).
+> **QUIRK —** the merged reduce is the **inner** reduce re-pointed, and the merge of the two dim sets is realized *implicitly* by R2's geometry — the rebuilt slice runs over `X` with the inner-reduced dims projected out, so the surviving reduce's footprint already covers the union. R6 replaces the *outer* reduce with the rebuilt-slice value; only one `mhlo.slice` and one `mhlo.reduce` remain. Whether a fresh `ReduceOp` is constructed with union dims or the inner one's `dimensions` attr is mutated in place is not separately emitted, so that detail is **[INFERRED]**.
 
 > **NOTE —** the `report_fatal_error("Building op \`mhlo.slice\` but it isn't known in this MLIRContext…")` guard (@0x20f9010) and its `mhlo.reshape` twin (@0x20f90a8) are the stock `OpBuilder::create` dialect-registration check, not pattern logic. They fire only if the mhlo dialect is unloaded.
 
@@ -189,7 +189,7 @@ LogicalResult matchAndRewrite(mhlo::ReduceOp op, PatternRewriter &rw):   // 0x20
 
 Both lambdas use the shared membership helper `llvm::is_contained<ElementsAttrRange<DenseElementsAttr::ElementIterator<long>>&, long>` @0x20f7270 — a linear scan of a long value over an i64 `DenseElementsAttr` range.
 
-### lambda#1 @0x20f7360 — disjoint reduction dims (CERTAIN)
+### lambda#1 @0x20f7360 — disjoint reduction dims
 
 Symbol: `any_of<SmallVector<long,6>&, …matchAndRewrite…UllE_>`. For each outer-reduce dim `d`, returns true if `d` is also an inner-reduce dim. `any_of` true ⇒ **reject** (continue scanning M5).
 
@@ -199,7 +199,7 @@ bool lambda1(long d) { return is_contained(innerReduceDims, d); }  // 4-way unro
 
 The two reduces must reduce **disjoint** axes. Reducing the same axis on both sides of a slice is not a single equivalent reduce; their union is only well-defined when the sets do not overlap. The overlapping case is left for other folds.
 
-### lambda#2 @0x20f7520 — slice hoistability (HIGH)
+### lambda#2 @0x20f7520 — slice hoistability
 
 Symbol: `any_of<ElementsAttrRange<DenseElementsAttr::ElementIterator<long>>&, …UllE0_>`. Iterates the slice's `start_indices`; captures `{reducedDims range, sliceDims vector, reduceInput RankedTensorType*}`.
 
@@ -214,21 +214,21 @@ bool lambda2(long e):                                  // 4-way unrolled @0x20f7
 
 The slice may be hoisted below the merged reduce **only if every dimension it trims is either (a) a reduced dim or (b) of extent 1**. A slice that trims a *kept, non-degenerate* axis cannot commute with the reduce — it would change the reduce's input footprint on a surviving axis — so the fold is rejected.
 
-> **GOTCHA —** the precise role of the iterated element `e` (slice-start coordinate vs dim-id) is inferred from the `shape[idx]` indexing pattern, not byte-proven against a live input (HIGH). The `{size-1 OR reduced}` legality conclusion is directly readable from the two branch tests; the element semantics are the inferred part.
+> **GOTCHA —** the precise role of the iterated element `e` (slice-start coordinate vs dim-id) is **[INFERRED]** from the `shape[idx]` indexing pattern, not byte-proven against a live input. The `{size-1 OR reduced}` legality conclusion is directly readable from the two branch tests; the element semantics are the inferred part.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+The central claims and where each is anchored:
 
-1. **Single pattern, benefit 1, root `mhlo.reduce`.** `addImpl` symbol @0x20f9330 confirmed; the only pattern symbol in the binary is `SimplifyReduceSliceReducePattern`; `mhlo.reduce` confirmed byte-exact at fileoff 0x5e533 (`6d 68 6c 6f 2e 72 65 64 75 63 65`). CONFIRMED.
-2. **Two `any_of` lambdas distinguished by operand type.** Both mangled symbols recovered verbatim: `…UllE_` over `SmallVector<long,6>&` (@0x20f7360), `…UllE0_` over `ElementsAttrRange<…ElementIterator<long>>` (@0x20f7520). The `_` vs `0_` suffix proves distinct closures from the same enclosing function. CONFIRMED.
-3. **Module-level pass over getMainFunction.** `_ZN4hilo15getMainFunctionERN4mlir8ModuleOpE` @0x21c1e70 confirmed; pass typeinfo is `PassWrapper<…OperationPass<ModuleOp>>` (`_ZTSN4mlir11PassWrapperIN4hilo17NeuronInstCombineENS_13OperationPassINS_8ModuleOpEEEEE`). CONFIRMED.
-4. **Rewritten ops `mhlo.slice` / `mhlo.reshape`.** Both strings confirmed byte-exact (0x2222ac, 0x23e451); `is_contained` and `matchAndRewrite` symbols confirmed. CONFIRMED.
-5. **Outer reduce is the replaced op; slice hoisted below the merged reduce.** R6 replaces `op` (the root = outer reduce) via vtable slot 0; the rebuilt slice runs over `X`. The exact union-dim mechanism (R2 geometry vs explicit attr mutation) is tagged MED. STRONG for the replace-outer/hoist-slice shape; MED for the union mechanism.
+1. **Single pattern, benefit 1, root `mhlo.reduce`.** `addImpl` symbol @0x20f9330; the only pattern symbol in the binary is `SimplifyReduceSliceReducePattern`; `mhlo.reduce` is byte-exact at fileoff 0x5e533 (`6d 68 6c 6f 2e 72 65 64 75 63 65`).
+2. **Two `any_of` lambdas distinguished by operand type.** Both mangled symbols recovered verbatim: `…UllE_` over `SmallVector<long,6>&` (@0x20f7360), `…UllE0_` over `ElementsAttrRange<…ElementIterator<long>>` (@0x20f7520). The `_` vs `0_` suffix marks distinct closures from the same enclosing function.
+3. **Module-level pass over getMainFunction.** `_ZN4hilo15getMainFunctionERN4mlir8ModuleOpE` @0x21c1e70; pass typeinfo is `PassWrapper<…OperationPass<ModuleOp>>` (`_ZTSN4mlir11PassWrapperIN4hilo17NeuronInstCombineENS_13OperationPassINS_8ModuleOpEEEEE`).
+4. **Rewritten ops `mhlo.slice` / `mhlo.reshape`.** Both strings are byte-exact (0x2222ac, 0x23e451); `is_contained` and `matchAndRewrite` symbols present.
+5. **Outer reduce is the replaced op; slice hoisted below the merged reduce.** R6 replaces `op` (the root = outer reduce) via vtable slot 0; the rebuilt slice runs over `X`. The replace-outer/hoist-slice shape is read off the rewrite; the exact union-dim mechanism (R2 geometry vs explicit attr mutation) is **[INFERRED]**.
 
-Tagged inferred: GreedyRewriteConfig field *names* (bit-pattern `{10, -1, topDown}` is HIGH; the leading discriminator semantics MED); lambda#2 element semantics (HIGH); union-dim realization (MED).
+Also **[INFERRED]**: the `GreedyRewriteConfig` field *names* — the bit-pattern `{10, -1, topDown}` is read from the inline construction, but the leading discriminator's semantics are reconstructed; lambda#2's element semantics; and the union-dim realization.
 
 ---
 

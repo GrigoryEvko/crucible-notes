@@ -23,8 +23,7 @@ FLIX/VLIW layer; `XCHAL_HAVE_FLIX3 = 0` does **not** mean "scalar"). Decode the 
 with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the scalar-LX rule decodes the
 *different* NCFW management core and is wrong here.
 
-> **NOTE — what was re-carved this session, and the exact objects used.** Every fact below was
-> re-derived from a fresh independent carve out of the static archive `libnrtucode.a`
+> **NOTE — the objects used.** The carve source is the static archive `libnrtucode.a`
 > (`sha256 158dadc5…d7bd6130`; byte-identical to the repo copy under
 > `extracted/…/gpsimd/custom_op/c10/lib/`). Two members carry the POOL dispatcher:
 >
@@ -40,11 +39,11 @@ with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the scalar-LX rul
 >
 > The `'P%i:'` prefix (per-pool-core index `i`) is what distinguishes the POOL execute path
 > from the SEQ engine's `'S:'` stream. The `kernel_info_table` and `.text` were re-parsed /
-> re-disassembled from `internal_CAYMAN_0.so` this session; the table is fully byte-exact, the
-> dispatch *loop body* is partly FLIX-desynced (§4, honestly flagged). `[HIGH/OBSERVED]`
+> re-disassembled from `internal_CAYMAN_0.so`; the table is fully byte-exact, the
+> dispatch *loop body* is partly FLIX-desynced (§4, honestly flagged).
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` = reasoned
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` = reasoned
 over OBSERVED facts (often across a FLIX/literal-pool desync); `CARRIED` = consolidated from a
 cited cross-page anchor at its original confidence. Crossed with `HIGH`/`MED`/`LOW`. Callouts:
 **QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION**
@@ -160,13 +159,13 @@ mutually-independent ways:
 
 `0x88 / 8 = 17`. The table ends exactly where `.globstruct` begins (`0x02000408`); the bytes
 after entry 16 are `.globstruct` data (`0x6099cb34 …`), **not** a `0x00000000` / `0xffffffff`
-terminator. `[HIGH/OBSERVED]`
+terminator.
 
 **(2) Relocation count.** Exactly **17** `R_XTENSA_RELATIVE` (type 5) relocations exist whose
 `r_offset = base + 8*i + 4` for `i = 0..16` — one per entry, each pointing at the `funcVA`
 slot, stride 8, addend 0. This independently proves 8-byte stride, `funcVA` at `+4`, key
-**not** relocated, and count = 17. (Re-checked this session: 17/17 land exactly at
-`base+8*i+4`.) `[HIGH/OBSERVED]`
+**not** relocated, and count = 17. (Re-checked: 17/17 land exactly at
+`base+8*i+4`.)
 
 **(3) Firmware count arithmetic.** The dispatcher loads the bounds inline and computes the
 count. Two helper getters sit just before the entry point:
@@ -196,7 +195,7 @@ three ways), the exact instruction encodings INFERRED from the bounds + the coun
 > The `0x380`/`0x408` const16 immediates that build BASE and END occur **once** in the entire
 > `.text`; there is no other place the table is bounded, and no terminator record. A
 > reimplementation that scans for a `0x00000000`/`0xffffffff` sentinel will read into
-> `.globstruct`. Bound the scan by `count = (end−base)>>3`. `[HIGH/OBSERVED]`
+> `.globstruct`. Bound the scan by `count = (end−base)>>3`.
 
 ---
 
@@ -262,7 +261,7 @@ void pool_dispatch(uint8_t opcode, uint8_t spec) {     /* opcode handed in by SE
 > is **sparse and keyed**: it holds only the ~17 opcodes *this image* implements, the key
 > column is in **registration order** (`7e 7c 7d 45 51 41 f0 f0 f0 f0 f0 52 46 47 be f2 7b`,
 > not ascending), and it cannot be binary-searched. The lookup is an O(17) linear key compare.
-> A reimplementation that direct-indexes by opcode reads garbage. `[HIGH/OBSERVED]`
+> A reimplementation that direct-indexes by opcode reads garbage.
 
 ### 4a. The hit path — `callx8` to a per-opcode kernel entry trampoline
 
@@ -272,7 +271,7 @@ trampoline**. There is no SEQ-style impl-shim/thunk chain — the POOL hit is **
 presence of a register-indirect call in the routine is consistent with the `callx8` opcodes the
 sweep prints in this region, but the exact hit-bundle is desynced; reported MED.
 
-All 17 `funcVA`s were re-confirmed this session to land on a clean Xtensa windowed-ABI prologue
+All 17 `funcVA`s were re-confirmed to land on a clean Xtensa windowed-ABI prologue
 (`entry a1,N`), proving each is a real function entry, not the middle of an instruction:
 
 - **16 of 17** begin `entry a1, 32` (bytes `36 41 00`).
@@ -281,7 +280,7 @@ All 17 `funcVA`s were re-confirmed this session to land on a clean Xtensa window
 
 ### 4b. Trampoline shape — two flavours, OBSERVED
 
-Re-disassembling each `funcVA` this session splits the trampolines into two structural shapes:
+Re-disassembling each `funcVA` splits the trampolines into two structural shapes:
 
 **State-pointer trampolines** (entries 3, 5, 8, 15, 16) decode **cleanly** as:
 
@@ -307,8 +306,8 @@ a2,0 ; retw.n` — a near-empty stub.
 
 > **CORRECTION (vs the backing report's specific route immediates) — the cleanly-decoding
 > trampolines load a `.bss` state pointer first; the deeper `const16 a2,0xbc0; callx8
-> decode_pool` step lives *past* the FLIX-desync point.** SX-FW-14/§6 reports e.g. funcVA[3]
-> (`0x45`) as `const16 a2,0xbc0 ; callx8 → decode_pool@0x1000bc0`. Re-disassembled this session,
+> decode_pool` step lives *past* the FLIX-desync point.** FW-14/§6 reports e.g. funcVA[3]
+> (`0x45`) as `const16 a2,0xbc0 ; callx8 → decode_pool@0x1000bc0`. Re-disassembled,
 > funcVA[3]'s *first* materialised constant is `const16 a2,0x200 ; const16 a2,0x458` =
 > **state pointer `0x02000458`** (a `.bss` slot), and the byte after that (`8f …`) is a FLIX
 > format-selector beginning the desynced bundle that holds the deeper decode-call. Both
@@ -334,7 +333,7 @@ Evidence points to a **SEQ→POOL handoff**, not the pool core self-fetching fro
 
 - **SEQ owns the fetch vocabulary** (`"fetch_cache_line"`, `"S: start_fill_siram: fetch_addr=0x%llx"`,
   `"setup_enqueue_dispatch_descriptors"`, the HW/SW-decode toggle). The `'P%i:'` strings contain
-  **no** fetch/fill/`fetch_addr` token at all (re-grepped this session). `[HIGH/OBSERVED]`
+  **no** fetch/fill/`fetch_addr` token at all (re-grepped).
 - The POOL dispatcher logs `"P%i: In dispatch, CPU ID: %0d, got opcode 0x%x."` — by the time the
   core is *"In dispatch"* it already **has** the opcode (it *"got"* it), tagged with its CPU ID.
   The opcode is formatted as a small integer (`0x%x`) and compared against the table's 8-bit
@@ -351,8 +350,8 @@ name is not pinned by the available images → MED.)*
 ## 6. The opcode → kernel dispatch MAP (the per-kernel cross-link table)
 
 This is the table the per-kernel pages (#688–#748) cross-link back to. Each row is the
-byte-exact `(opcode, spec) → funcVA` from the CAYMAN `kernel_info_table` (re-decoded this
-session, §3), annotated with the resolved kernel / routing target. The **table itself is
+byte-exact `(opcode, spec) → funcVA` from the CAYMAN `kernel_info_table` (re-decoded, §3),
+annotated with the resolved kernel / routing target. The **table itself is
 HIGH/OBSERVED** (every byte re-read); the **kernel-name resolution** carries its own confidence
 per row (EXACT `.xt.prop` match = HIGH; trampoline route = MED; SUNDA op-number corroboration is
 CARRIED from the cross-image opcode JSON the backing reports cite).
@@ -379,7 +378,7 @@ CARRIED from the cross-image opcode JSON the backing reports cite).
 
 > **NOTE — name resolution sources and what is grounded here.** The **funcVA / opcode / spec
 > columns are fully byte-grounded** (re-decoded from `internal_CAYMAN_0.so` `kernel_info_table`
-> this session). Kernel *names* combine: (a) EXACT `.xt.prop.<mangled>` function-start matches
+>). Kernel *names* combine: (a) EXACT `.xt.prop.<mangled>` function-start matches
 > (entries 1, 2, 7 — funcVA == a named worker start) → HIGH; (b) trampoline routes recovered
 > across the desync (entries 3, 8, 16) → HIGH/MED; (c) DEBUG `'P%i:'` per-kernel run/decode log
 > strings (`"P%i: Iota"`, `"P%i: Copy : num_chans"`, `"P%i: Cast : num_chans"`,
@@ -425,8 +424,8 @@ byte (`spec 0,1,2,4,3`). The DEBUG strings prove a **second-level** dispatcher r
 "P%i: UNKNOWN EXTENDED OPCODE=%d"                        ; its own miss path
 ```
 
-and the per-variant Decode + run log lines confirm the sub-variants (all re-grepped this
-session from `dbg_dram.bin`):
+and the per-variant Decode + run log lines confirm the sub-variants (all re-grepped from
+`dbg_dram.bin`):
 
 | spec | variant (DEBUG string) | resolution | conf |
 |---|---|---|---|
@@ -443,7 +442,7 @@ pairing is MED. Full treatment: [POOL Extended-Opcode (0xF0) Dispatch](pool-ext-
 > `spec = 0`; only `0xf0` multiplexes on spec. That is why the key is `(opcode<<24)\|(spec<<16)`
 > and not just the opcode: the spec field exists to disambiguate the five `0xf0` variants. A
 > reimplementation must include `spec` in the compare key even though 12 of 17 rows leave it
-> zero. `[HIGH/OBSERVED]`
+> zero.
 
 ---
 
@@ -481,7 +480,7 @@ is_tpb=%u is_die_0=%u engine_idx=%u"`.
 ## 9. The miss path — UNKNOWN OPCODE
 
 Two string-anchored miss paths exist, each appearing **exactly once** as a record in
-`dbg_dram.bin` (re-counted this session):
+`dbg_dram.bin` (re-counted):
 
 ```
 top-level scan exhausted        →  "P%i: UNKNOWN OPCODE=0x%x"          (1 record)
@@ -517,7 +516,7 @@ those three generations**. The smaller per-engine sub-images (CAYMAN_1/2/3) each
 *smaller* `kernel_info_table` (1 / 2 / 9 entries) at their own VMAs (`0x02000048` /
 `0x02000070` / `0x020008c8`), with the same 8-byte format and the same dispatch mechanism. Full
 layout detail: [kernel_info_table Binary Layout](kernel-info-table.md). `[HIGH/CARRIED
-from SX-FW-14/§11, SX-FW-18 cross-image section]`
+from FW-14/§11, FW-18 cross-image section]`
 
 ---
 
@@ -551,7 +550,7 @@ To rebuild the POOL per-core dispatch loop:
 
 ## 12. Adversarial self-verification
 
-Five strongest claims, each re-challenged against the re-carved image this session (carve SHAs
+Five strongest claims, each re-challenged against the re-carved image (carve SHAs
 match: PERF `internal_CAYMAN_0.so 910d41c3…`, DEBUG `dbg_dram.bin 226f4254…`):
 
 | # | Claim | Challenge | Verdict |
@@ -577,7 +576,7 @@ match: PERF `internal_CAYMAN_0.so 910d41c3…`, DEBUG `dbg_dram.bin 226f4254…`
 
 ## 13. Honesty ledger
 
-**HIGH / OBSERVED (re-run this session):**
+**HIGH / OBSERVED (re-run):**
 
 - Carve reproduced: PERF `internal_CAYMAN_0.so` 41,568 B / sha256 `910d41c3…b4b55527`, entry
   `0x01005610` (`entry a1,32`, bytes `36 41 00`); DEBUG `dbg_dram.bin` 89,344 B / sha256

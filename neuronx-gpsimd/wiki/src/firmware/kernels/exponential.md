@@ -30,7 +30,7 @@
 > model wants one, is composed **host-side** from [`Rand2`](rand2.md) uniform draws plus
 > (separately) this exp() transform — but the on-device `0x30` op is the transform only.
 > The op shares only (a) the DVE engine and (b) an adjacent registration-stub slot with the
-> RNG family; that adjacency is what makes the name mislead. `[HIGH/OBSERVED]`
+> RNG family; that adjacency is what makes the name mislead.
 
 ---
 
@@ -58,7 +58,7 @@ shipped host customop-lib **ISA C headers**. No source was consulted.
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — the FW-26/27/28/41/48/76 anchor, re-verified in-task |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — the FW-26/27/28/41/48/76 anchor |
 | Disassembler | `gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
 | MARIANA `NX_DVE` DEBUG IRAM | host VA `0x408fc0`, size `0x1c560` (`.rodata` VA == device file offset) |
 | MARIANA `NX_DVE` DEBUG DRAM | host VA `0x425520`, size `0x7000` |
@@ -78,7 +78,7 @@ The authoritative struct/enum source is the shipped public ISA headers (same pac
 > in `s3d3_ts.h` and **no** `OPCODE_EXPONENTIAL` member in `instruction_mapping.json`'s
 > `S3D3_TS_STRUCT` binding (verified by directory listing + `rg`). The opcode is reserved
 > everywhere but only *wired* from NC-v4 on. This matches the [`Rand2`](rand2.md) per-gen
-> matrix exactly. `[HIGH/OBSERVED]`
+> matrix exactly.
 
 ---
 
@@ -107,7 +107,7 @@ not to `Rand`. The **only** things `0x30` shares with the RNG family are (a) the
 > `ivp_*` roster is the *Xtensa ISA* axis. There is **no** dedicated `ivp_exp`/`ivp_log` ISA
 > mnemonic (the [`sp_lookup`](../../isa/ref/b15-sp-lookup.md) roster has only `nexp01` range-split
 > + `recip0`/`rsqrt0` seeds). Exponential `0x30` is a firmware opcode whose exp() function is the
-> silicon PWL unit, not an ISA op. `[HIGH/OBSERVED]`
+> silicon PWL unit, not an ISA op.
 
 ---
 
@@ -130,7 +130,7 @@ verbatim, mariana — `OPCODE_EXPONENTIAL` is the 8th member of the `S3D3_TS_STR
 ```
 
 The `s3d3_ts.h` struct-usage comment also lists `` - `Exponential` `` among the opcodes that share
-this struct. `[HIGH/OBSERVED]`
+this struct.
 
 ### 4a. The layout (`s3d3_ts.h`, `ISA_STATIC_ASSERT == 64`)
 
@@ -160,7 +160,7 @@ this struct. `[HIGH/OBSERVED]`
 > slots, and two immediates. It carries **no** `rand_algorithm`, **no** `seed`/state pointer, **no**
 > `post_process` selector, **no** `min`/`max` range — every field [`Rand2`](rand2.md)'s `d3_rand`
 > struct has and this one lacks. A reimplementer wiring `0x30` against the `d3_rand` struct (the
-> sampler reading) builds a struct of the wrong shape; `0x30` is `S3D3_TS`, full stop. `[HIGH/OBSERVED]`
+> sampler reading) builds a struct of the wrong shape; `0x30` is `S3D3_TS`, full stop.
 
 ### 4b. The Exponential validation contract (`is_valid_exponential`, verbatim sense)
 
@@ -194,7 +194,7 @@ The `s3d3_ts.h` validator pins the whole op. Read verbatim (mariana):
 In one sentence: **apply the intrinsic exponential transform to every element of the `src`
 `TENSOR3D` (which may be in PSUM or SBUF) and write the `dst` `TENSOR3D`**, with `op0`/`op1`
 unused, an optional per-element scalar immediate (`imm0`), and the engine's running accumulator
-optionally engaged. There is no rate/lambda, no seed, no algorithm field. `[HIGH/OBSERVED]`
+optionally engaged. There is no rate/lambda, no seed, no algorithm field.
 
 ### 4c. The accumulator contract (`has_valid_exponential_accum_cmd`, verbatim)
 
@@ -213,7 +213,7 @@ optionally engaged. There is no rate/lambda, no seed, no algorithm field. `[HIGH
 Exponential can run with the DVE per-lane running accumulator engaged — `exp()` *then* accumulate,
 a softmax-style fused reduction — and the accumulator is drained the same way Activate's is (the
 [`0x24 ACTIVATION_READ_ACCUMULATOR`](activate-pwl.md) / `D1_RD` path). When *not* `LoadAccumulate`,
-`imm1` must be `InstructionImmediate`-sourced and exactly `0`. `[HIGH/OBSERVED]`
+`imm1` must be `InstructionImmediate`-sourced and exactly `0`.
 
 ### 4d. The num_elements / parity contract (`has_valid_exponential_num_elements`, verbatim)
 
@@ -231,7 +231,7 @@ OR the inner-dim step is non-unit, OR `num_elem[0]` is even; `exp_upper_src_dim_
 upper dims to even counts. The **packed fp16/bf16 path processes lanes in 2-wide pairs** (the `ivp`
 `_2x` pairing), so when the accumulator is engaged the inner-dim element count must be **even** (or the
 access non-unit-stride / indirect). For fp32/int32 (unpacked) the parity is waived. This is the FP16
-even-pair processing constraint — **not** a distribution gate. `[HIGH/OBSERVED]`
+even-pair processing constraint — **not** a distribution gate.
 
 ### 4e. The immediate union (`imm0` / `imm1`)
 
@@ -248,7 +248,7 @@ It is **not** a rate `λ`. `[HIGH/OBSERVED struct + `IMM_SRC` enum; the `imm0` *
 `MEM_PATTERN3D = union { TENSOR3D t ; INDIRECT16B i }` (common.h). `TENSOR3D = ADDR4 start_addr +
 int16 step_elem[3] + uint16 num_elem[3]`; the `INDIRECT16B` arm is the gather/indirect form the
 `num_elements` gate references. `src` is `AllowedInPSUM` **and** `AllowedInSBUF` — Exponential can read
-the matmul PSUM directly (e.g. an attention-logit `exp()` straight off the PE-array output). `[HIGH/OBSERVED]`
+the matmul PSUM directly (e.g. an attention-logit `exp()` straight off the PE-array output).
 
 ---
 
@@ -268,7 +268,7 @@ registration template). MARIANA DVE IRAM, byte-decoded:
 
 `s32i a2,[a1+12]` writes the `funcVA` into the DVE `kernel_info` slot; `call8 0x9920` is the DVE
 kernel-register routine. Exponential is the **third** stub in the contiguous trio — *adjacent to*
-the RNG family but functionally unrelated to it. `[HIGH/OBSERVED]`
+the RNG family but functionally unrelated to it.
 
 > **GOTCHA — the opcode→funcVA descriptor literal is out-of-carve.** The Exponential stub's two
 > `l32r` literals resolve to `0xfffc84b8` / `0xfffc3a38` — **negative** PC-relative addresses that
@@ -290,7 +290,7 @@ Handler `0xf698` logs `"S: Exponential"`:
 
 `DRAM @0x3072 = 53 3a 20 45 78 70 6f 6e 65 6e 74 69 61 6c 0a 00 = "S: Exponential\n"` (xxd-verified).
 The DVE DRAM also embeds the firmware's **own** source-file strings: `@0x3082 = "exponential\0"`
-(the function name) and `@0x308e = "exponential.cpp\0"` (the file). `[HIGH/OBSERVED]`
+(the function name) and `@0x308e = "exponential.cpp\0"` (the file).
 
 ### 5c. The canonical chain
 
@@ -348,7 +348,7 @@ datapath window).
 
 > **CORRECTION — these bundles are FLIX-desync artifacts, not real opcodes.** The flat DEBUG image
 > ships no `.xt.prop` FLIX property table, so stock `xtensa-elf-objdump` desyncs across the VLIW
-> bundle stream here (the SX-FW-00/26/27/41/48 limitation). The `.byte 0x2f/0xb3/0x8f` and
+> bundle stream here (the FW-26/27/41/48 desync limitation). The `.byte 0x2f/0xb3/0x8f` and
 > `call0 0xfffc…` it prints in this range are **decode artifacts**, not instructions — the bundles
 > are not byte-pinnable. The window-program *shape* (which control fields are packed, that it is more
 > extensive than Rand2's) is `[HIGH/OBSERVED]`; the exact bundles are `[MED]`.
@@ -371,7 +371,7 @@ faf4: retw.n                                       ; *** Exponential handler RET
 - **The assert (`0xb800`)** loads the format strings `0x22c0` (`"S: Assertion failure! %s(%s:%u)"`)
   + `0x22e1` and calls the log/abort path. The triple `(func="exponential", file="exponential.cpp",
   line=76)` is the standard `func(file:line)` assert — pinning `exponential.cpp:76` as a device-side
-  validation guard. `[HIGH/OBSERVED]`
+  validation guard.
 - **The worker (`0xa184`)** self-names `"S: Tensor-Scalar"` (`DRAM 0x1fd4 = "S: Tensor-Scalar\n"`;
   sibling `0x1ff4 = "S: Tensor-Scalar-PTR\n"`). So Exponential's per-element compute is the DVE
   **Tensor-Scalar worker** — the SAME datapath as `TensorScalarArithOp`, here driven with
@@ -395,7 +395,7 @@ An exhaustive `const16`-xref scan of the handler body `0xf698..0xfaf4` finds:
 
 So Exponential is a deterministic exp-family transform of an INPUT tensor, not a draw from an
 exponential distribution. The "`U=0 → ln(0)=−∞` edge guard" a sampler would need **does not exist**
-because there is no `ln` and no `U`. `[HIGH/OBSERVED]`
+because there is no `ln` and no `U`.
 
 ---
 
@@ -412,14 +412,14 @@ The DVE ships its own activation profile tables — `MARIANA_NX_DVE_PROF_CAM` (`
 `PROF_TABLE` (`0x59ec80/0x2000`) — in the same four-table format the activation page documents
 (CAM / PROFILE / CONTROL / BUCKET). The `PROF_CAM` carries 48 populated 16-byte staging records
 `{opcode_id:u32, mask=0xff:u32, enable=1:u32, rsvd:u32}`; entry `@0x2d0` reads
-**`opcode_id = 0x30, enable = 1`** (byte-read this task). `0xe2` (Rand2) is armed at `@0x290`. So
+**`opcode_id = 0x30, enable = 1`**. `0xe2` (Rand2) is armed at `@0x290`. So
 `0x30` is a **CAM-matched activation-class op** the DVE routes through its piecewise-cubic
 transcendental datapath. `[PROF_CAM-arming HIGH/OBSERVED]`
 
 > **GOTCHA — the CAYMAN DVE PROF_CAM is the negative control.** The CAYMAN DVE `PROF_CAM`
 > (`0x304ca0/0x400`) arms **neither** `0x30` **nor** `0xe2` — matching CAYMAN's missing
 > `is_valid_exponential` and missing struct binding. The op is reserved but unwired on CAYMAN at
-> *every* layer: header, struct, handler string, and CAM. `[HIGH/OBSERVED]`
+> *every* layer: header, struct, handler string, and CAM.
 
 ### 7b. The PWL evaluation — segment-index → coefficient-fetch → Horner cubic
 
@@ -534,7 +534,7 @@ contracts are byte-identical (verified by `diff` of the two headers). Identical 
 `is_valid_dtype(in_dtype, DtypeAllowFP32R::False)` (input **bars** FP32R) and
 `is_valid_dtype(out_dtype, DtypeAllowFP32R::True)` (output **admits** FP32R). The `exp_x_even_or_unpacked`
 gate names FP32/UINT32/INT32 as the "unpacked" dtypes (parity waived, §4d); the packed path is the
-fp16 family (2-wide lane pairs). DTYPE codes (`common.h` / SX-ABI-06):
+fp16 family (2-wide lane pairs). DTYPE codes (`common.h`):
 
 | dtype | code | as `in_dtype`? | as `out_dtype`? | note |
 |-------|-----:|:--------------:|:---------------:|------|
@@ -575,7 +575,7 @@ The two framings reconcile cleanly: Exponential **is** "separate from the unifor
 (true — different opcode, different struct, different band), but it is **not a sampler** — it is an
 `exp()` transform that merely shares the DVE engine + the adjacent registration slot with the RNG
 family. The GPSIMD RNG subsystem stays **uniform-only** on device (see [`rand2.md`](rand2.md) §9);
-Exponential is an **activation-family transform**. `[HIGH/OBSERVED]`
+Exponential is an **activation-family transform**.
 
 ### 9b. Do-not-repeat row
 

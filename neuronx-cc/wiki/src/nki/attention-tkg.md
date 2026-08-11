@@ -8,7 +8,7 @@
 
 Three things make the decode kernel its own algorithm rather than a degenerate prefill. First, the scores are kept **transposed** throughout: `[s_prior, s_active·q_head]` with the cache axis on the partition dimension, so the softmax reduces *along partitions*. Second, that reduction is done not by a reduce-engine pass but by a **matmul against a ones-vector** — the softmax denominator `Σ exp(·)` falls out of `nc_matmul(stationary=exp_scores, moving=ones)`, reusing the PE array that already holds the data. Third, decode has **no in-kernel causal triangle** at all (`grep "causal"` returns 0, against 65 in the prefill kernel): every cache position is in the past, so the only masking is a validity cut (`index < cache_len`), an optional sliding window, and — for speculative decode — a small causal sub-block among the active tokens.
 
-The mask is where decode and prefill diverge most sharply, and it is the single fact most easily gotten wrong. `attention_cte` writes additive `−inf` *directly into the scores* via `affine_select`/`range_select`. `attention_tkg` never materializes `−inf` in its mask: `gen_mask_tkg` emits a **multiplicative 0/1 mask** (1 = attend, 0 = masked), and the consumer converts it to `−inf` *lazily* by a predicated copy into a `−inf`-prefilled buffer. Two kernels, two representations — documented in §[gen_mask_tkg](#gen_mask_tkg--the-01-multiplicative-mask) and called out as a [CORRECTION](#correction--mask-representation).
+The mask is where decode and prefill diverge most sharply, and it is the single fact most easily gotten wrong. `attention_cte` writes additive `−inf` *directly into the scores* via `affine_select`/`range_select`. `attention_tkg` never materializes `−inf` in its mask: `gen_mask_tkg` emits a **multiplicative 0/1 mask** (1 = attend, 0 = masked), and the consumer converts it to `−inf` *lazily* by a predicated copy into a `−inf`-prefilled buffer. Two kernels, two representations — worked through in §[gen_mask_tkg](#gen_mask_tkg--the-01-multiplicative-mask).
 
 For reimplementation, the contract is:
 
@@ -38,7 +38,7 @@ For reimplementation, the contract is:
 Compute `O = softmax(scale · Q·Kᵀ) · V` for `s_active` new query tokens against `s_prior` cached keys/values, with the cache axis on the PE partition dimension so the softmax reduces along partitions. The torch reference (`attention_tkg_torch.py:306-418`) is the ground truth and is worth reading as the spec the kernel implements:
 
 ```python
-# _attention_tkg_fwd_ref, attention_tkg_torch.py:306-418  [CONFIRMED]
+# _attention_tkg_fwd_ref, attention_tkg_torch.py:306-418
 k_prior[..., -s_active:]    = k_active     # :376  APPEND new K at cache tail
 v_prior[..., -s_active:, :] = v_active     # :377  APPEND new V at cache tail
 score = k_prior.permute(0,1,3,2) @ q       # :380  K·Q → [b,n,s_prior,s_active]  (TRANSPOSED)
@@ -98,7 +98,7 @@ function decode_attention_tile(i_b, fa_tile):
 
 ### The matmul operand contract
 
-All three matmuls follow the `nc_matmul(out_psum, stationary=…, moving=…)` contract (the QK/PV stationary=weights, moving=ifmap convention; CONFIRMED at all three TKG sites):
+All three matmuls follow the `nc_matmul(out_psum, stationary=…, moving=…)` contract (the QK/PV stationary=weights, moving=ifmap convention, at all three TKG sites):
 
 | Matmul | `stationary` | `moving` | Contracts over | PSUM output | Line |
 |---|---|---|---|---|---|
@@ -156,7 +156,7 @@ active_blocks_table : [B, num_blocks_per_batch]  dtype uint32   (THE PAGE TABLE,
 The cache read is an **indirect (gather) DMA** keyed by the page table — this is the vLLM-style paged-attention lookup. The block indices for the current fold (`cur_blks`) are loaded from `active_blocks_table` and handed to the DMA as a `vector_offset`:
 
 ```c
-// block-KV K gather, _compute_qk_matmul          :1674-1688  [CONFIRMED verbatim]
+// block-KV K gather, _compute_qk_matmul          :1674-1688  (verbatim)
 dma_copy(dst=k_loaded,
          src=k_prior_reshaped.ap([[block_len*d_head, P_MAX],
                                   [1, block_len*d_head]],
@@ -223,14 +223,14 @@ RoPE applies per-q-head to Q but with `ignore_heads=True` for `k_active` (`:1554
 ### The three mask types
 
 ```c
-// (A) CAUSAL / PADDING  (default; start_pos is None)        :401-413  [CONFIRMED]
+// (A) CAUSAL / PADDING  (default; start_pos is None)        :401-413
 cur_mask = tensor_scalar(data=mask_iota, op0=nl.less,
                          operand0=pos_ids[:, batch*s_active])     // = (iota < pos_ids[b])
 // pos_ids[b] = cache length / next-write position. Because the active query SITS at
 // position pos_ids[b], "index < pos_ids" is simultaneously the causal cutoff (no future)
 // AND the padding cutoff (no unwritten slots). Golden: (k_indices < cache_lens), torch :186.
 
-// (B) SLIDING WINDOW  (start_pos provided)                  :467-549  [CONFIRMED]
+// (B) SLIDING WINDOW  (start_pos provided)                  :467-549
 ge   = (iota >= start)                  // greater_equal
 lt   = (iota <  end)                    // less,  end = pos_ids
 norm = ge * lt                          // AND via multiply
@@ -238,7 +238,7 @@ wrap = max(ge, lt)                      // OR  via maximum  (circular cache, win
 final = norm + (start>end) * (wrap - norm)   // = select(start>end, wrap, norm)   :525-549
 // Built BRANCHLESS — start/end are runtime data; no Python `if` on them.
 
-// (C) ACTIVE  (active_mask provided)                        :552-681  [CONFIRMED]
+// (C) ACTIVE  (active_mask provided)                        :552-681
 // The last s_active KV slots are the current query block. Mask is NOT computed — it is a
 // caller-supplied tensor DMA-loaded onto the tail of mask_out. For s_active>1 (spec decode)
 // the golden supplies tril(ones(s_active,s_active)): the active sub-block is itself causal.
@@ -273,7 +273,9 @@ tensor_copy_predicated(src=qk_psum, dst=qk_sb,       // :2005
 
 So decode realizes masking as `select(mask, score, −inf)` feeding an ordinary additive-free softmax. The `−inf` is injected once by the prefill + predicated copy, never re-added per tile. The mask is consumed two ways (`:1430-1503`): `cfg.use_pos_id=True` builds it **in-kernel** by calling `gen_mask_tkg()` straight into `bufs.mask_sb` (`:1485-1502`, saving HBM bandwidth); `cfg.use_pos_id=False` DMA-loads a **pre-generated** HBM mask (output of `gen_mask_tkg_hbm`, `:1430-1468`).
 
-> **CORRECTION — mask representation.** Any prior claim that "the attention mask is additive `−inf` everywhere" is wrong. Only the **prefill** kernel (`attention_cte`) emits the `−inf` value: it writes `_FLOAT32_MIN = −3.4028235e38` (`attention_cte.py:135`) directly into the scores via `nisa.affine_select` (static causal/SWA, `cmp_op=nl.greater_equal`, `on_false_value=_FLOAT32_MIN`, `:2691`/`:2704`) and `nisa.range_select` (dynamic, `comp_op0`/`comp_op1` + `bound0`/`bound1` + `on_false_value=_FLOAT32_MIN`, `:2738`). Strictly it is a *select/overwrite* — the masked branch replaces the score with `_FLOAT32_MIN`, not a literal `score + (−inf)` add — but it is semantically the additive-`−inf` bias and produces the masked value *in the same instruction that masks*. The **decode** kernel (`attention_tkg`) instead keeps a 0/1 multiplicative mask (fp32 in HBM, uint8 in SBUF) and converts it to `−inf` lazily via `tensor_copy_predicated` into a separately `−inf`-prefilled buffer. `attention_cte` uses **no** `tensor_copy_predicated` and **no** `−np.inf` memset (it reuses `_FLOAT32_MIN` even for the running-max init, `:2107`/`:2353`); `gen_mask_tkg` never materializes `−inf`, never adds to scores, and contains no `exp`/`softmax` — it is purely an index/compare/copy builder. Two kernels, two representations. (CONFIRMED both sides; D-O16 §7.)
+**The two kernels use two different mask representations, and neither is "additive `−inf` everywhere".** Only the **prefill** kernel (`attention_cte`) ever emits the sentinel value: it writes `_FLOAT32_MIN = −3.4028235e38` (`attention_cte.py:135`) directly into the scores via `nisa.affine_select` for the static causal/SWA case (`cmp_op=nl.greater_equal`, `on_false_value=_FLOAT32_MIN`, `:2691`/`:2704`) and `nisa.range_select` for the dynamic case (`comp_op0`/`comp_op1` plus `bound0`/`bound1` plus `on_false_value=_FLOAT32_MIN`, `:2738`). Strictly that is a *select/overwrite* rather than a literal `score + (−inf)` add — the masked branch replaces the score with `_FLOAT32_MIN` — but it is semantically the additive-`−inf` bias, and it produces the masked value in the very instruction that masks. `attention_cte` never uses `tensor_copy_predicated` and never memsets `−np.inf`; it reuses `_FLOAT32_MIN` even for the running-max init (`:2107`/`:2353`).
+
+The **decode** kernel (`attention_tkg`) does the opposite: it keeps a 0/1 multiplicative mask (fp32 in HBM, uint8 in SBUF) and converts it to `−inf` lazily via `tensor_copy_predicated` into a separately `−inf`-prefilled buffer. `gen_mask_tkg` never materializes `−inf`, never adds to scores, and contains no `exp`/`softmax` at all — it is purely an index/compare/copy builder.
 
 > **NOTE — SWA appears in two forms.** The two-sided band `[start,end)` is open-coded here with `tensor_scalar`/`tensor_tensor` (multiply for AND, maximum for OR), whereas `attention_cte` expresses the same band with the `nisa.range_select` primitive. A reader cross-referencing the range-select primitive should expect the band-select in both a primitive form (CTE) and a hand-rolled tensor-op form (TKG).
 
@@ -308,7 +310,7 @@ Both share: stable `exp(x−max)/Σ` softmax, PSUM accumulation, LNC2 sharding (
 
 ## NISA primitive histogram
 
-The authoritative per-op count for `attention_tkg` (use it to ground any inflated count claims; CONFIRMED, D-O14 §6):
+The authoritative per-op count for `attention_tkg`:
 
 ```text
 dma_copy ×32   tensor_copy ×24   tensor_tensor ×18   tensor_scalar ×12
@@ -323,21 +325,21 @@ The shape tells the story: `dma_copy ×32` (the memory-bound cache read) dominat
 
 | Function | Lines | Role | Confidence |
 |---|---|---|---|
-| `attention_tkg` | `:56-394` | kernel entry + main `batch_tile → FA_tile` loop | CONFIRMED |
-| `_compute_qk_matmul` | `:~1600-2010` | K load (flat/transpose/gather), MM1, mask predicated copy | CONFIRMED |
-| `_cascaded_max_reduce` | `:2060` | online max over `s_prior` tiles + transpose/clamp | CONFIRMED |
-| `_compute_exp_qk` | `:2318` | `exp(qk ± qk_max)` → io dtype | CONFIRMED |
-| `_tile_sum_reduction` | `:2563` | **ones-vector matmul** per tile → Σexp | CONFIRMED |
-| `_cascaded_sum_reduction` | `:2395` | sum across tiles + reciprocal + broadcast | CONFIRMED |
-| `_compute_pv_matmul_and_store` | `:2650` | V load/append, MM2, normalize, store | CONFIRMED |
-| `_setup_block_kv_cache` | `:867` | paged-cache setup, `uint32` table assert | CONFIRMED |
-| `_load_and_reshape_active_blk_table` | `:3369` | page-table load + resize_factor expand | CONFIRMED |
-| `_perform_rope` / `_apply_rope` | `:~1500-1567` | RoPE + fused `1/sqrt(d_head)` Q scale | CONFIRMED |
-| `_prep_sink` | `:3285` | attention-sink load + replicate `[1,H]→[BHS,1]` | CONFIRMED |
-| `gen_mask_tkg` | `gen_mask_tkg.py:53-286` | in-SBUF mask entry (iota → compare → active) | CONFIRMED |
-| `_create_batch_masks` | `gen_mask_tkg.py:368-423` | standard `iota < pos_ids` | CONFIRMED |
-| `_create_batch_masks_swa` | `gen_mask_tkg.py:426-549` | branchless `[start,end)` band | CONFIRMED |
-| `gen_mask_tkg_hbm` | `gen_mask_tkg.py:860-1117` | HBM entry: shard decision + tiling + store | CONFIRMED |
+| `attention_tkg` | `:56-394` | kernel entry + main `batch_tile → FA_tile` loop | CERTAIN |
+| `_compute_qk_matmul` | `:~1600-2010` | K load (flat/transpose/gather), MM1, mask predicated copy | CERTAIN |
+| `_cascaded_max_reduce` | `:2060` | online max over `s_prior` tiles + transpose/clamp | CERTAIN |
+| `_compute_exp_qk` | `:2318` | `exp(qk ± qk_max)` → io dtype | CERTAIN |
+| `_tile_sum_reduction` | `:2563` | **ones-vector matmul** per tile → Σexp | CERTAIN |
+| `_cascaded_sum_reduction` | `:2395` | sum across tiles + reciprocal + broadcast | CERTAIN |
+| `_compute_pv_matmul_and_store` | `:2650` | V load/append, MM2, normalize, store | CERTAIN |
+| `_setup_block_kv_cache` | `:867` | paged-cache setup, `uint32` table assert | CERTAIN |
+| `_load_and_reshape_active_blk_table` | `:3369` | page-table load + resize_factor expand | CERTAIN |
+| `_perform_rope` / `_apply_rope` | `:~1500-1567` | RoPE + fused `1/sqrt(d_head)` Q scale | CERTAIN |
+| `_prep_sink` | `:3285` | attention-sink load + replicate `[1,H]→[BHS,1]` | CERTAIN |
+| `gen_mask_tkg` | `gen_mask_tkg.py:53-286` | in-SBUF mask entry (iota → compare → active) | CERTAIN |
+| `_create_batch_masks` | `gen_mask_tkg.py:368-423` | standard `iota < pos_ids` | CERTAIN |
+| `_create_batch_masks_swa` | `gen_mask_tkg.py:426-549` | branchless `[start,end)` band | CERTAIN |
+| `gen_mask_tkg_hbm` | `gen_mask_tkg.py:860-1117` | HBM entry: shard decision + tiling + store | CERTAIN |
 
 ## Related Components
 

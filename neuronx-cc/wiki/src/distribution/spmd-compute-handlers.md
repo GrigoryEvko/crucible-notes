@@ -124,12 +124,12 @@ HloInstruction* SpmdBuilder::AddInstruction(unique_ptr<HloInstruction> inst):  /
 > **NOTE —** the 53-caller list of `AddInstruction` *is* the proof that this is the choke
 > point: every `Handle*` (`HandleElementwise`, `HandleReduce`, `HandleBroadcast`,
 > `HandleDynamicUpdateSlice`, …), `DefaultAction`, and `EmitWindowedDotGeneral` appear in
-> it. There is no second path from a handler to a registered instruction. [CONFIRMED — caller table]
+> it. There is no second path from a handler to a registered instruction.
 
 > **GOTCHA —** step 3 is the only Neuron deviation in this whole subsystem, and it is easy
 > to miss: a reimplementation that keeps the `xla.sdy.has_unreduced_axes` frontend attribute
 > on partitioned ops will leave a stale Shardy partial-reduction marker that downstream
-> Shardy-aware passes may act on. Strip it here, on every emitted op. [CONFIRMED — string `0x485480`]
+> Shardy-aware passes may act on. Strip it here, on every emitted op. *(The attribute string lives at `0x485480`.)*
 
 ### `SetBroadcastDimsForAddedHlo` — the replicated-dims propagator
 
@@ -151,10 +151,10 @@ The per-op rules (each takes an intersection/remap of the operands' `broadcast_d
 
 | Op | Rule for `broadcast_dims_[out]` | Symbol | Confidence |
 |---|---|---|---|
-| Elementwise | `∩` over operands of `broadcast_dims_[operand]` — uniform in result only if uniform in *every* operand | `sub_2A99F10` (1257 B) | STRONG |
-| Transpose | permute operand's broadcast set through the transpose permutation | `sub_2A99620` (1225 B) | STRONG |
-| Reshape | a result dim is broadcast iff *all* contributing operand dims are (split/merge bookkeeping via `xla::Product`) | `sub_2A98A10` (3004 B, 119 bb) | STRONG |
-| Slice | a dim stays broadcast iff it is **not** among the sliced (limited) dims | `sub_2A97C80` (452 B) | STRONG |
+| Elementwise | `∩` over operands of `broadcast_dims_[operand]` — uniform in result only if uniform in *every* operand | `sub_2A99F10` (1257 B) | HIGH |
+| Transpose | permute operand's broadcast set through the transpose permutation | `sub_2A99620` (1225 B) | HIGH |
+| Reshape | a result dim is broadcast iff *all* contributing operand dims are (split/merge bookkeeping via `xla::Product`) | `sub_2A98A10` (3004 B, 119 bb) | HIGH |
+| Slice | a dim stays broadcast iff it is **not** among the sliced (limited) dims | `sub_2A97C80` (452 B) | HIGH |
 
 These are stock-XLA `SpmdBuilder` helpers (`spmd_partitioner.cc`). [INFERRED stock XLA from
 symbol set; bodies not decompiled.]
@@ -201,13 +201,13 @@ into the `PartitionedHlo` — that snapshot is what `Reshard` later reads to bui
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `HandleElementwise` | `sub_2AC0CC0` | reshard operands → clone with sharded shape → register | CONFIRMED |
-| `GetPartitionedHlo` | `sub_2A21540` | lookup HLO → `PartitionedHlo` in visitor's map (HloPtrComparator) | CONFIRMED |
-| `SetPartitionedHlo` (value) | `sub_2AB2B30` | record the partitioned result | CONFIRMED |
-| `SetPartitionedHlo` (lazy) | `sub_2A21AC0` | `FunctionRef<HloInstruction*()>` builder form | CONFIRMED |
-| `MakePartitionedShape` | `sub_2AEE040` | per-partition (tile) shape | CONFIRMED |
-| `MakePartitioningState` | `sub_2A92B00` | snapshot the partitioning state into a `PartitionedHlo` | CONFIRMED |
-| `PartitionedHlo::Reshard` | `sub_2ABFEF0` | bring a value to a target sharding (the reshard engine) | CONFIRMED |
+| `HandleElementwise` | `sub_2AC0CC0` | reshard operands → clone with sharded shape → register | CERTAIN |
+| `GetPartitionedHlo` | `sub_2A21540` | lookup HLO → `PartitionedHlo` in visitor's map (HloPtrComparator) | CERTAIN |
+| `SetPartitionedHlo` (value) | `sub_2AB2B30` | record the partitioned result | CERTAIN |
+| `SetPartitionedHlo` (lazy) | `sub_2A21AC0` | `FunctionRef<HloInstruction*()>` builder form | CERTAIN |
+| `MakePartitionedShape` | `sub_2AEE040` | per-partition (tile) shape | CERTAIN |
+| `MakePartitioningState` | `sub_2A92B00` | snapshot the partitioning state into a `PartitionedHlo` | CERTAIN |
+| `PartitionedHlo::Reshard` | `sub_2ABFEF0` | bring a value to a target sharding (the reshard engine) | CERTAIN |
 
 ### `HandleElementwiseWithDimsToReplicate` — the forced-replicate variant
 
@@ -227,7 +227,7 @@ void HandleElementwiseWithDimsToReplicate(HloInstruction* hlo, Span<long> dims):
     // then: HandleElementwise template with target sharding s' for every operand.
 ```
 
-[CONFIRMED callers + callee `PartiallyReplicateTiledShardingOnDims`; tile-folding detail STRONG.]
+*Anchors: the caller set plus the callee `PartiallyReplicateTiledShardingOnDims`; the tile-folding detail is reconstructed from those.*
 
 ---
 
@@ -315,10 +315,10 @@ Grouping is done with `hlo_sharding_util::GroupShardingOnDims` / `UngroupShardin
 
 | Strategy | Addr | Sharded dim class | Collective needed | Confidence |
 |---|---|---|---|---|
-| `PartitionDotGroupOnBatch` | `sub_2A558D0` (10688 B, 276 bb) | batch dims | **none** — each group owns whole batch slices | STRONG |
-| `PartitionDotGroupOnNonContracting` | `sub_2A5AEB0` (4341 B, 183 bb) | LHS/RHS output dim | **none** — output naturally sharded | STRONG |
-| `PartitionDotGroupOnContracting` | `sub_2A5C740` (7535 B, 204 bb) | contracting dim (`K`) | **AllReduce** of partial products | CONFIRMED |
-| `PartitionBaseCase` | `sub_2A4E2D0` (9098 B, 322 bb) | none left | optional windowed einsum | CONFIRMED |
+| `PartitionDotGroupOnBatch` | `sub_2A558D0` (10688 B, 276 bb) | batch dims | **none** — each group owns whole batch slices | HIGH |
+| `PartitionDotGroupOnNonContracting` | `sub_2A5AEB0` (4341 B, 183 bb) | LHS/RHS output dim | **none** — output naturally sharded | HIGH |
+| `PartitionDotGroupOnContracting` | `sub_2A5C740` (7535 B, 204 bb) | contracting dim (`K`) | **AllReduce** of partial products | CERTAIN |
+| `PartitionBaseCase` | `sub_2A4E2D0` (9098 B, 322 bb) | none left | optional windowed einsum | CERTAIN |
 
 The contracting-dim case is the tensor-parallel matmul (each device holds `1/k` of `K`):
 
@@ -365,7 +365,7 @@ StatusOr<HloInstruction*> PartitionBaseCase(...):  // sub_2A4E2D0
 The three windowed-einsum threshold strings are present verbatim in `strings.json`
 (`xla_gpu_threshold_for_windowed_einsum_mib`, default documented as `100000`;
 `xla_gpu_operand_bytes_threshold_for_windowed_einsum`; `Overhead outweighs benefit. Skipping
-windowed einsum`). [CONFIRMED — strings.]
+windowed einsum`).
 
 ### `EmitWindowedDotGeneral` — the collective-matmul ring loop
 
@@ -403,14 +403,14 @@ Two loop variants are selected by the six trailing `optional<HloSharding>` param
 signature (confirmed in the demangled signature): an **all-gather windowed** variant (gather
 the partitioned operand across the ring) and a **reduce-scatter windowed** variant (scatter
 partial outputs). An experimental **all-to-all** windowed-einsum variant is gated by the knob
-string `xla_gpu_experimental_enable_alltoall_windowed_einsum`. [variants STRONG; all-to-all knob CONFIRMED string.]
+string `xla_gpu_experimental_enable_alltoall_windowed_einsum`. The knob string is present verbatim; the two-variant split is read from the signature's optional parameters.
 
 > **QUIRK —** `EmitWindowedDotGeneral` does **not** emit a fused collective-matmul op — it
 > emits an ordinary `kWhile` whose body contains a local dot, a collective-permute, and an
 > add, and *records the loop* in `loops` for a later pass to recognize and pipeline. A
 > reimplementation that looks for a single "collective matmul" HLO will not find one; the
-> structure is a while-loop plus a side-table entry (`WindowedDotGeneralLoop`). [CONFIRMED —
-> `CreateWhile` + `WindowedDotGeneralLoop` vector insert in the callee table.]
+> structure is a while-loop plus a side-table entry (`WindowedDotGeneralLoop`). *(Anchors:
+> `CreateWhile` and the `WindowedDotGeneralLoop` vector insert in the callee table.)*
 
 > **NOTE —** the ring structure is stock GSPMD, but the `CollectivePermute` it builds is
 > produced by the state's `SPMDCollectiveOpsCreator`, which is where Neuron customizes the
@@ -444,10 +444,10 @@ When the partitioned dim is a spatial/feature/batch-group conv dim, `PartitionCo
 
 | Conv strategy | Addr | Confidence |
 |---|---|---|
-| `PartitionConvolutionWithBatchGroupCount` | `sub_2A15500` | CONFIRMED |
-| `PartitionConvolutionWithFeatureGroupCount` | `sub_2A161D0` | CONFIRMED |
-| `PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS` | `sub_2A17F90` (8678 B, 328 bb) | CONFIRMED |
-| `PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS` | `sub_2A1AE70` (9722 B, 351 bb) | CONFIRMED |
+| `PartitionConvolutionWithBatchGroupCount` | `sub_2A15500` | CERTAIN |
+| `PartitionConvolutionWithFeatureGroupCount` | `sub_2A161D0` | CERTAIN |
+| `PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS` | `sub_2A17F90` (8678 B, 328 bb) | CERTAIN |
+| `PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS` | `sub_2A1AE70` (9722 B, 351 bb) | CERTAIN |
 
 The spatial-halo variants call `PartitionedHlo::ReshardAsWindowedInput` (`sub_2AD4F30`,
 13772 B, 479 bb) to reshard the input so each partition holds its local window **plus the
@@ -455,7 +455,7 @@ overlapping halo region** the conv window needs, adjust the `Window` for the per
 stride/pad, then call `create_sharded_conv`. The actual halo collective (collective-permute
 exchange of edge slices) is emitted *inside* `ReshardAsWindowedInput`/`ExchangeHalo` — owned
 by [13.6](spmd-collective-emission.md). This handler only chooses the strategy and computes
-the local windowed shape. [CONFIRMED.]
+the local windowed shape.
 
 ---
 
@@ -495,7 +495,7 @@ void SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo):  // sub_2ACC080
 `GetPartitionGroupsForReplication` (`sub_2AE9DB0`) / `GetIotaPartitionGroupsForReplication`
 (`sub_2AEB450`), then emits an AllReduce with the **same** reduction computation
 (`add`/`max`/`and`/…) over those groups via `collective_ops_creator`, assigning a fresh
-channel id. Variadic/multi-output reduces use `HloSharding::Tuple`. [CONFIRMED.]
+channel id. Variadic/multi-output reduces use `HloSharding::Tuple`.
 
 ### HandleReduceWindow — halo, no AllReduce
 
@@ -543,7 +543,7 @@ void SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo):  // sub_2AC9
                             broadcast_dimensions and sharded shapes);
 ```
 
-[CONFIRMED — `RemoveShapeDimensions` + `MakePartitionedShape` callees; broadcast is purely local.]
+*Anchors: the `RemoveShapeDimensions` and `MakePartitionedShape` callees; the broadcast itself is purely local.*
 
 ### HandleDynamicSlice — sliced dims must be replicated
 
@@ -559,7 +559,7 @@ void SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo):  // sub_2
 ```
 
 The sibling `HandleDynamicUpdateSlice` (not in this set, but a caller of `AddInstruction`)
-mirrors this with a select/mask over the partition that owns the updated region. [CONFIRMED.]
+mirrors this with a select/mask over the partition that owns the updated region.
 
 ### HandleGather — strategy dispatch with index masking
 
@@ -587,8 +587,9 @@ result_local = gather(operand_shard, masked_indices);
 result = AllReduce/select over operand partitions(result_local);  // combine across operand tiles
 ```
 
-[CONFIRMED — strategy set + order from the dispatcher callee table; `CreateCompare` +
-`IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims` confirm the masking.]
+*Anchors: the strategy set and its order come from the dispatcher's callee table;
+`CreateCompare` plus `IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims`
+pin the masking.*
 The sibling `HandleScatter` (not in this set) mirrors this with `PartitionScatter*` and an
 update-combine reduction. These are stock GSPMD gather/scatter handlers.
 
@@ -615,11 +616,11 @@ reshard:
 
 | Reshard kind | What it does | Confidence |
 |---|---|---|
-| `Replicate()` | AllGather to full replication | CONFIRMED |
-| `ReplicatePartial(dims)` | AllReduce/AllGather a subset of dims | CONFIRMED |
-| `ReshardToPartialReplicateWithAllGather` / `…FromPartialReplicateWithDynamicSlice` | tile ↔ partial-replicate (all-gather up / dynamic-slice down) | CONFIRMED |
-| `ReshardPartialReplicateWithAllToAll` / `TryComplexReshardHandling` | dim permutations via all-to-all | CONFIRMED |
-| `ReshardAsWindowedInput` | halo-exchange reshard for windowed ops | CONFIRMED |
+| `Replicate()` | AllGather to full replication | CERTAIN |
+| `ReplicatePartial(dims)` | AllReduce/AllGather a subset of dims | CERTAIN |
+| `ReshardToPartialReplicateWithAllGather` / `…FromPartialReplicateWithDynamicSlice` | tile ↔ partial-replicate (all-gather up / dynamic-slice down) | CERTAIN |
+| `ReshardPartialReplicateWithAllToAll` / `TryComplexReshardHandling` | dim permutations via all-to-all | CERTAIN |
+| `ReshardAsWindowedInput` | halo-exchange reshard for windowed ops | CERTAIN |
 
 > **GOTCHA —** the compute handlers **never** call the collective creator directly — they
 > always go through `Reshard`. A reimplementation that wires a handler straight to an
@@ -631,13 +632,13 @@ reshard:
 
 | Helper | Addr | Role | Confidence |
 |---|---|---|---|
-| `MakePartitionedShape` | `sub_2AEE040` | per-partition tile shape: per dim `ceil(dim / tile_count)`; tuples recurse; uneven → `GetPaddedShapeForUnevenPartitioning` | CONFIRMED |
-| `MakePartitionOffsets` | `sub_2AF98B0` | per tiled dim, start offset = `ordinal[dim] * tile_size[dim]` | CONFIRMED |
-| `MakeTiledPartitionOrdinals` | `sub_2AF9CB0` | linear `partition_id` → multi-dim tile coordinate | CONFIRMED |
-| `AllReduceAlongShardingDims` | `sub_2A94E60` | device-group AllReduce used by reduce + `ReplicatePartial` | CONFIRMED |
-| `AllGatherShards` | `sub_2AA39D0` | the dual of the above, used by `Reshard`'s all-gather paths | CONFIRMED |
-| `CreateZero` | `sub_2AAA0B0` | zero of element type (sum init / pad) | CONFIRMED |
-| `PadToShape` | `sub_2A43C30` | pad an HLO up to a target shape (uneven tiles before a collective) | CONFIRMED |
+| `MakePartitionedShape` | `sub_2AEE040` | per-partition tile shape: per dim `ceil(dim / tile_count)`; tuples recurse; uneven → `GetPaddedShapeForUnevenPartitioning` | CERTAIN |
+| `MakePartitionOffsets` | `sub_2AF98B0` | per tiled dim, start offset = `ordinal[dim] * tile_size[dim]` | CERTAIN |
+| `MakeTiledPartitionOrdinals` | `sub_2AF9CB0` | linear `partition_id` → multi-dim tile coordinate | CERTAIN |
+| `AllReduceAlongShardingDims` | `sub_2A94E60` | device-group AllReduce used by reduce + `ReplicatePartial` | CERTAIN |
+| `AllGatherShards` | `sub_2AA39D0` | the dual of the above, used by `Reshard`'s all-gather paths | CERTAIN |
+| `CreateZero` | `sub_2AAA0B0` | zero of element type (sum init / pad) | CERTAIN |
+| `PadToShape` | `sub_2A43C30` | pad an HLO up to a target shape (uneven tiles before a collective) | CERTAIN |
 
 ---
 
@@ -658,8 +659,9 @@ dispatch structure, and helper set match OpenXLA (`spmd_partitioner.cc`, `dot_ha
 | Concrete wire collectives (`SPMDCollectiveOpsCreator`) | **Neuron** (Trainium channels, replica groups) | [13.6](spmd-collective-emission.md)'s scope |
 
 The compute handlers themselves are faithful stock XLA: they decide reshard + strategy and
-emit local ops; they contain no Neuron-specific hardware logic. [STRONG — symbol-set match;
-the three custom-call handlers and the attr strip are the only confirmed Neuron deltas.]
+emit local ops; they contain no Neuron-specific hardware logic. The symbol set matches stock
+XLA, and the three custom-call handlers plus the attribute strip are the only Neuron deltas
+in this subsystem.
 
 ---
 

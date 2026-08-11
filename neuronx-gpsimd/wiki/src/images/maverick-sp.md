@@ -22,7 +22,7 @@ carved from identity-mapped `.rodata`, with the shipped Cadence Vision-Q7
 > `OBSERVED` — and on SP the *carved reset bytes and the 8-getter count ARE
 > OBSERVED*. But v5 **deep interior** — the exact per-opcode→trampoline row binding
 > on the SP DRAM table, the inlined fetch/sync control-flow under the SRAM
-> residence — is **not** byte-resolved (FLIX-VLIW desync frontier, SX-FW-00) and is
+> residence — is **not** byte-resolved (FLIX-VLIW desync frontier) and is
 > tagged **`INFERRED`** wherever it appears. The 18-handler *retention* is
 > `INFERRED-HIGH` (the only carrier of the named `S:` roster — the DEBUG image — is
 > dropped). `arch_id 36` is `INFERRED` (`coretype = arch_id + 1`; no NCFW v5 image
@@ -84,7 +84,7 @@ Related pages: [MARIANA_PLUS × SP (the diff base)](./mariana-plus-sp.md) ·
 > **NOTE — the objects used.** Container
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
 > `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`, ELF64
-> x86-64 DYN, **not stripped**, re-hashed this session). First R `LOAD` is the
+> x86-64 DYN, **not stripped**). First R `LOAD` is the
 > identity map (`off 0x0 == vaddr 0x0`), so each `<NAME>.data` accessor address is
 > simultaneously the `.rodata` VA and the file offset of its blob — carve =
 > `so[ptr : ptr+size]`. **SRAM/IRAM segment-VA == device VA within that segment**
@@ -93,14 +93,14 @@ Related pages: [MARIANA_PLUS × SP (the diff base)](./mariana-plus-sp.md) ·
 > boot stub + dispatch table resolve to **SRAM device base `0x04100000`** (boot
 > `const16 a0,0x410`; trampolines `0x0410xxxx`). Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
-> (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, Xtensa Tools 14.09;
-> `--version` exit 0). **MAVERICK is internal.so-EXCLUSIVE:** `libnrtucode.a`
+> (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, Xtensa Tools 14.09).
+> **MAVERICK is internal.so-EXCLUSIVE:** `libnrtucode.a`
 > (435 members = **420 image** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 / MAVERICK 0]
 > **+ 15 framework `.c.o`**) carries **0** MAVERICK members,
 > so unlike the MARIANA_PLUS SP 6/6 `.so`↔`.a` reconciliation there is **no**
 > second-source byte-identity check — the carve is single-source. The shipped C
 > ISA header `neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` is cited for
-> the engine enum. `[HIGH/OBSERVED]`
+> the engine enum.
 
 ---
 
@@ -109,9 +109,8 @@ Related pages: [MARIANA_PLUS × SP (the diff base)](./mariana-plus-sp.md) ·
 The whole page in one table. `(==)` marks an invariant row; the **bold** rows are
 the v5 deltas. Read the [MARIANA_PLUS SP page](./mariana-plus-sp.md) for the engine
 *model* — this table documents the cross-gen delta, leading with the six OBSERVED
-v5 deltas and the DGE-fast-path-dropped contrast. Every row re-verified this
-session against fresh carves from `libnrtucode_internal.so`.
-`[HIGH/OBSERVED unless tagged]`
+v5 deltas and the DGE-fast-path-dropped contrast. Every row is grounded in a carve
+from `libnrtucode_internal.so`.
 
 | PROPERTY | MARIANA_PLUS SP ([baseline](./mariana-plus-sp.md)) | MAVERICK SP (this page) | Δ |
 |---|---|---|---|
@@ -156,7 +155,7 @@ The diff reduces to **a genuine independent v5 rebuild** that moves the code to
 SRAM, drops the DEBUG image, drops the DGE fast-path, re-laps the reset geometry to
 `enter_run @0x94`, and shrinks ≈62 % — while keeping the base-subtraction dispatch
 mechanism, the lean sync/control surface, the `.globstruct` state and numeric dtype
-byte-stable. `[HIGH/OBSERVED]`
+byte-stable.
 
 ---
 
@@ -185,18 +184,17 @@ stubs disassemble instruction-exact and match the catalog
 
 The four zero-size IRAM/EXTRAM getters all execute `movq $0x0,(%rsi)`; their `lea`
 resolves to the contiguous-layout cursor. The four **real** carves (identity
-`.rodata`), re-hashed this session — **all four match the backing carve and the
-catalog**: `[HIGH/OBSERVED]`
+`.rodata`) — **all four match the published carve and the catalog**: `[HIGH/OBSERVED]`
 
-| IMAGE | SIZE | sha256 (MAVERICK SP, this session) |
+| IMAGE | SIZE | sha256 (MAVERICK SP) |
 |---|---:|---|
 | `MAV_SP_PERF_DRAM` | `0x24c0` | `d5d3ba2d80aa87b00faffac764716dd8c2e72326af9a8a47d390a0c7566db9d2` |
 | `MAV_SP_PERF_SRAM` | `0xf580` | `08e3594546fce8c8f84503617015a5061313f4a03d74193283ae996b0d8b8d63` |
 | `MAV_SP_TEST_DRAM` | `0x2740` | `c2b2436a4b231ff2929b80a630876314e82456a44a49a40bf96d3204fe2995f5` |
 | `MAV_SP_TEST_SRAM` | `0xf6c0` | `27908ff6347e9135543b4f68364b0b502f4a128b7b100b0e58fa73d05bf3711c` |
 
-The **MARIANA_PLUS SP baseline** (the diff target) was re-carved + re-hashed this
-session at its IMG-17 offsets — **all 6 anchors MATCH** the committed
+The **MARIANA_PLUS SP baseline** (the diff target) is carved and hashed
+at its IMG-17 offsets — **all 6 anchors MATCH** the committed
 [mariana-plus-sp.md](./mariana-plus-sp.md): `PERF_IRAM 3a815569`,
 `PERF_DRAM 79c2e2fa`, `TEST_IRAM 11527767`, `TEST_DRAM c9aaac9f`,
 `DEBUG_IRAM 84ee1c05`, `DEBUG_DRAM 2958154e`. The diff below is against authentic
@@ -207,7 +205,7 @@ MARIANA_PLUS SP. `[HIGH/OBSERVED]`
 > (`r MAVERICK_NX_SP_…_get.data`). A naïve `rg -c 'MAVERICK_NX_SP.*_get'` returns
 > **16**; the count of distinct getters is the `_get$`-anchored sweep = **8**. The
 > `.data` symbol addresses are the IMG-PTRs (`0x8eeae0`/`0x8f0fa0`/`0x900520`/
-> `0x902c60`/`0x912320`). `[HIGH/OBSERVED]`
+> `0x902c60`/`0x912320`).
 
 ---
 
@@ -216,8 +214,7 @@ MARIANA_PLUS SP. `[HIGH/OBSERVED]`
 The MAVERICK `.rodata` layout is **VARIANT-MAJOR, ENGINE-MINOR**, and with ACT
 amputated ([maverick-act.md](./maverick-act.md)) the NX order is
 **DVE → PE → POOL → SP**, the same terminal position SP held on MARIANA_PLUS. Read
-from `nm` `.data` addresses, with 4/4 contiguity proofs (re-verified this session):
-`[HIGH/OBSERVED]`
+from `nm` `.data` addresses, with 4/4 contiguity proofs: `[HIGH/OBSERVED]`
 
 ```text
 … POOL_TEST_DRAM @0x8ec320  <  SP region @0x8eeae0        (POOL precedes SP)        ✓
@@ -228,7 +225,6 @@ SP_TEST_EXTRAM cursor 0x912320 == MAVERICK_Q7_POOL_PERF_DRAM head @0x912320     
 
 SP's TEST block ends exactly at the `MAVERICK_Q7_POOL_PERF_DRAM` head — SP **precedes**
 the Q7_POOL compute core; SP is the last NX sequencer, exactly as on MARIANA_PLUS.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -236,7 +232,7 @@ the Q7_POOL compute core; SP is the last NX sequencer, exactly as on MARIANA_PLU
 
 The SP **SRAM** is a flat device segment (no ELF magic), single-NX-core packaging;
 the reset vector sits at byte 0 of the SRAM blob (the *resident* code segment, since
-IRAM is empty). Decoded instruction-exact with `ncore2gp` (exit 0): `[HIGH/OBSERVED]`
+IRAM is empty). Decoded instruction-exact with `ncore2gp`: `[HIGH/OBSERVED]`
 
 ```text
 SP SRAM head (12 B):  06 78 00 00 00 00 86 79 00 00 00 00
@@ -249,8 +245,7 @@ enter_run @0x94: const16 a2,0x410 ; const16 a2,0xe086 ; beqz a2,0xa0 ; callx0 a2
 DRAM head:  34 cb 99 60   (.globstruct magic 0x6099cb34, byte-identical both gens)
 ```
 
-**The precise v5 reset map** (all three decoded with `ncore2gp` this session):
-`[HIGH/OBSERVED]`
+**The precise v5 reset map** (all three decoded with `ncore2gp`): `[HIGH/OBSERVED]`
 
 ```text
 ENGINE            reset bytes      primary    secondary  enter_run
@@ -266,7 +261,6 @@ MARIANA_PLUS SP (`0x1f8`/`0x204`) and **+0xc** from `j 0x1d8`, a distinct, short
 **"Top-Sync"** boot stub. The DRAM `.globstruct` magic `0x6099cb34` and its init
 block `[0x18:0x38]` (`4×0x00001000` + `4×0x00ffffff`) are **byte-identical** between
 MAVERICK SP and MARIANA_PLUS SP — the shared dispatcher-state initialization, intact.
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — the SP reset is NOT `j 0x1d8 / −0x20`.** A coarse "v5 = `−0x20`"
 > reading (true for DVE/PE/POOL, per [maverick-act.md](./maverick-act.md)) does
@@ -278,10 +272,10 @@ MAVERICK SP and MARIANA_PLUS SP — the shared dispatcher-state initialization, 
 > **confirmed by direct decode**. `[HIGH/OBSERVED — all bytes decoded with ncore2gp]`
 
 The SP PERF SRAM decodes a genuine, separately-compiled, **smaller** `cayman/seq`
-sequencer — census (native `ncore2gp` objdump, exit 0): **107 `entry` / 140 `retw`
+sequencer — census (native `ncore2gp` objdump): **107 `entry` / 140 `retw`
 / 407 `call8` / 1943 `const16`** vs MARIANA_PLUS SP PERF IRAM **127 / 183 / 686 /
 2204** — not a stub. The FLIX-vector datapath is partly bundle-interleaved by the
-linear sweep (the SX-FW-00 limitation); the windowed-ABI control spine decodes
+linear sweep (the FLIX-desync limitation); the windowed-ABI control spine decodes
 cleanly. `[HIGH/OBSERVED]`
 
 ---
@@ -292,7 +286,7 @@ cleanly. `[HIGH/OBSERVED]`
 lines from its DEBUG DRAM. MAVERICK SP has **no DEBUG image**, so `^S: ` count = **0**
 across all four images (vs 141 on the MPLUS SP DEBUG DRAM). The handler diff is
 therefore done at the ISA-enum + decode-roster + dispatch-mechanism level — exactly
-as [maverick-pe.md](./maverick-pe.md) handled the no-DEBUG PE. `[HIGH/OBSERVED]`
+as [maverick-pe.md](./maverick-pe.md) handled the no-DEBUG PE.
 
 The MARIANA_PLUS SP baseline — the **18-handler 5-way-intersection sync/control core**:
 
@@ -320,7 +314,6 @@ SP uses the **segmented / Sunda-mode HW-decode** dispatch flavor: the register-b
 subtraction `sub a2,a2,a3` normalization (the **sub-flavor**, not the `addi a2,a2,-65`
 ASCII normalization of DVE/POOL nor the raw-compare chain of PE), feeding a
 `srli a2,a2,6` 6-bit segmentation. The encoding is **byte-identical across gens**:
-`[HIGH/OBSERVED]`
 
 ```text
 MAVERICK SP @SRAM 0xe326:  sub a2,a2,a3  (enc 3022c0)   ; srli a2,a2,6 @0x233a
@@ -333,7 +326,7 @@ identical. The DRAM dispatch table sits at **file `0x800` on both gens**; on
 MAVERICK its trampolines are **absolute SRAM addresses** (`0x0410xxxx`, base
 `0x04100000`) rather than the MARIANA_PLUS IRAM offsets — the SRAM-residence
 relocation of the same table architecture. The first-16 LE-32 trampolines and the
-size-class array, read directly from the PERF DRAM blob: `[HIGH/OBSERVED]`
+size-class array, read directly from the PERF DRAM blob:
 
 ```text
 @0x800: 0x4107fcd 0x4107fe6 0x4107fff 0x4108021 0x4108042 0x410806a 0x4108570 0x410808b
@@ -349,7 +342,7 @@ dispatch. **No opcode-space growth on SP.** The dual-mode machinery survives as 
 `S:`-prefixed runtime log strings lived only in the dropped DEBUG image and are
 amputated. `[HIGH/OBSERVED for the sub-enc byte-identity / srli / table base /
 SRAM-abs trampolines / size-class array / sunda symbols; per-opcode→segment row
-binding is the FLIX-desync frontier, MED/INFERRED.]`
+binding MED/INFERRED — the FLIX-desync frontier]`
 
 ### 5.2 The new v5 opcodes do NOT land on SP
 
@@ -366,7 +359,7 @@ as named handlers); (b) SP carries no `dma_immediate` / `dma_memcpy` /
 sync/control core; the new DMA/control opcodes ride the compute/DMA engines that own
 the descriptor path. The SP opcode surface is **STABLE**. `[HIGH/OBSERVED enum +
 firmware-wide handler-string absence + SP decode roster; "not bound to SP"
-INFERRED-HIGH — SP has no PROF/DEBUG to read the binding directly.]`
+INFERRED-HIGH — SP has no PROF/DEBUG to read the binding directly]`
 
 ---
 
@@ -402,7 +395,7 @@ MAVERICK SP region: `[HIGH/OBSERVED]`
 > re-model, consistent with [maverick-dve.md](./maverick-dve.md) /
 > [maverick-pe.md](./maverick-pe.md). The shrink (§7) is consistent with the removed
 > fast-path code. `[HIGH/OBSERVED counts; the "re-architected to HW DMA" reading
-> INFERRED-HIGH.]`
+> INFERRED-HIGH]`
 
 ---
 
@@ -434,7 +427,7 @@ MAVERICK SP region: `[HIGH/OBSERVED]`
 
 * **size — ≈62 % smaller (the INVERSE of the v4→v4+ growth).** Where the
   MARIANA→MARIANA_PLUS SP transition **grew** IRAM (the inserted DGE fast-path),
-  MARIANA_PLUS→MAVERICK SP **shrinks** in every dimension. Computed this session:
+  MARIANA_PLUS→MAVERICK SP **shrinks** in every dimension:
   total `0x23840` (4 imgs) vs `0x5d9c0` (6 imgs) = **−62.1 %**. `[HIGH/OBSERVED]`
 
   | role | MPLUS size | MAV size | dSize | note |
@@ -486,7 +479,7 @@ MAVERICK SP region: `[HIGH/OBSERVED]`
 
 With SP carved and diffed, **all five MAVERICK NX engine slots are now resolved**:
 ACT (folded into DVE), DVE (head), PE, POOL, SP. The cross-engine MARIANA_PLUS → MAVERICK
-divergence, each row anchored to its committed/in-flight page:
+divergence, each row anchored to its committed page:
 `[HIGH/OBSERVED for ACT/DVE/PE/SP; POOL MED-CARRIED]`
 
 | engine | idx | image shape | PROF (v5) | DGE FP | the v5 change | page |
@@ -542,7 +535,7 @@ for ACT/DVE/PE/SP; the POOL line MED-CARRIED where not directly re-derived here.
 
 ## 9. Adversarial self-verify
 
-The five strongest claims, re-challenged against the binary this session:
+The five strongest claims, challenged against the binary:
 
 1. **SRAM-resident (IRAM size 0).** `nm` `.data`: `MAVERICK_NX_SP_PERF_IRAM_get.data`
    and `…PERF_DRAM_get.data` share VA `0x8eeae0` — the IRAM getter is the zero-size
@@ -557,7 +550,7 @@ The five strongest claims, re-challenged against the binary this session:
 3. **DGE-fast-path-dropped contrast.** All four fast-path strings (`dge_decode_fast` /
    `dge_reshape_memcopy_transpose_fast` / `tensor_reshape_transpose_sb2sb` /
    `wait_for_credit`) = **0** on MAVERICK SP (region-wide); = **1** each on the
-   MARIANA_PLUS SP DEBUG DRAM (re-verified). Only shared `dge_shape` survives (SP 2).
+   MARIANA_PLUS SP DEBUG DRAM. Only shared `dge_shape` survives (SP 2).
    SP hosts no DGE handler → **gen-wide DROPPED. HOLDS.** `[HIGH/OBSERVED]`
 4. **v5 reset geometry.** SRAM head `06 78 00 00 00 00 86 79` → `ncore2gp`:
    `j 0x1e4` / `j 0x1f0`; boot `const16 a0,0x410 ; const16 a0,148 ; jx a0` →
@@ -571,7 +564,7 @@ The five strongest claims, re-challenged against the binary this session:
    brief's "≈61 %" is the same figure rounded). `[HIGH/OBSERVED]`
 
 All five survive. The residual frontier is the exact per-opcode→segment-trampoline
-row decode (FLIX-desync, SX-FW-00 — no DEBUG image to fall back on) and the
+row decode (FLIX-desync — no DEBUG image to fall back on) and the
 18-handler retention (INFERRED-HIGH from the decode roster + the unchanged
 dispatch + the SP-is-the-substrate model, since the strict-string proof needs the
 dropped DEBUG image).
@@ -580,16 +573,16 @@ dropped DEBUG image).
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - Container sha `b7c67e89…632fc329b` MATCH. 8 `MAVERICK_NX_SP_*_get` getters
   (4 real + 4 zero-size cursors); `nm | rg -c` DEBUG/PROF = 0/0. 4 real carves
-  re-hashed (`d5d3ba2d` / `08e35945` / `c2b2436a` / `27908ff6`); single-source
-  (0 `.a` members of 435). MARIANA_PLUS SP baseline 6/6 re-hashed, MATCH the
+  hashed (`d5d3ba2d` / `08e35945` / `c2b2436a` / `27908ff6`); single-source
+  (0 `.a` members of 435). MARIANA_PLUS SP baseline 6/6 hashed, MATCH the
   committed page.
 - Code residence SRAM: IRAM getters size 0; code in SRAM (`0xf580`/`0xf6c0`); SRAM
   base `0x04100000` (boot `const16 a0,0x410`; trampolines `0x0410xxxx`).
-- Reset/boot decoded `ncore2gp` (exit 0): `06 78` → `j 0x1e4`; `86 79` → `j 0x1f0`;
+- Reset/boot decoded `ncore2gp`: `06 78` → `j 0x1e4`; `86 79` → `j 0x1f0`;
   boot → `enter_run @0x94`; secondary `halt 0`; `enter_run @0x94` real code
   (`const16 a2,0x410 ; const16 a2,0xe086 ; beqz ; callx0 a2`). DRAM magic
   `0x6099cb34` + init block `[0x18:0x38]` byte-identical to MARIANA_PLUS SP.
@@ -602,7 +595,7 @@ dropped DEBUG image).
   `branch_prefetch_hint`/`move_shape`/`signal_handler`/`interrupt_handler`/`regfile`/
   `sunda_*`/`setup_enqueue_dispatch_descriptors`/`get_window_addr`/`exception_handler`).
 - DGE fast-path 0 on SP + region-wide (4 strings); only `dge_shape` survives (SP 2 /
-  region 7); MARIANA_PLUS SP DEBUG DRAM carried all four (1/1/1/1) — re-verified.
+  region 7); MARIANA_PLUS SP DEBUG DRAM carried all four (1/1/1/1).
 - dtype: only `UINT32`/`INT32`/`FP32` (`move.cpp:41`); 0 FP8/INT4/SFP8/MX/TILE_SIZE/
   CPTC/QuantizeMx/proc_4bit/dequant across all four SP images. PROF none. Q7/EXTISA
   none.
@@ -621,7 +614,7 @@ dropped DEBUG image).
   INFERRED-HIGH from the firmware-wide handler-string absence + the SP decode roster +
   SP's lack of PROF/DEBUG.
 - The exact per-opcode→segment-trampoline row binding on the SP DRAM table — the
-  SX-FW-00 FLIX-desync frontier. Table base `0x800`, SRAM-abs trampolines, default
+  FLIX-desync frontier. Table base `0x800`, SRAM-abs trampolines, default
   `0x0410857d` and the size-class array are HIGH; per-row binding is the frontier.
 - "DGE fast-path re-architected to HW DMA" — the SEQ-side absence is OBSERVED; the
   HW-DMA reading is INFERRED-HIGH.

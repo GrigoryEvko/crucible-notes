@@ -23,13 +23,13 @@ Two facts shape everything downstream and are easy to get wrong. First, the per-
 | **Set loader** | `InstLoadActFuncSet` (InstructionType=6) — loads exactly one set by index |
 | **Residency rule** | engine LUT holds one set; to use function X you load the set whose `act` map contains X (and get every other function in that set for free) |
 
-The catalog and enum facts are CONFIRMED from D-D11 (libBIR.so static analysis); the function-set rosters are CONFIRMED from the shipped `act_info.json` (D-M04, `jq`-extracted and re-verified here).
+The catalog and enum facts come from static analysis of `libBIR.so`; the function-set rosters are extracted from the shipped `act_info.json` files.
 
 ---
 
 ## 1. The function catalog — 31 members, hardwired vs LUT
 
-All 31 activation variants route through **one** BIR opcode — `InstActivation` (InstructionType=4) — selected by a 4-byte `ActivationFunctionType` enum stored at object offset `+0x120` and serialized under the JSON key `"func"` (`InstActivation::toJson` @ `0x435450`; the `lea [rbx+0x120]` precedes the `bir::to_json(...ActivationFunctionType...)` call @ `0x4354ec`). The enum is InstaBrew-generated: its forward serializer (`ActivationFunctionType2string` @ `0x4002a0`, a 31-arm switch) and inverse (`string2ActivationFunctionType` @ `0x40d710`) agree byte-exactly on the ordinal↔name mapping in both directions, so the table below is CERTAIN.
+All 31 activation variants route through **one** BIR opcode — `InstActivation` (InstructionType=4) — selected by a 4-byte `ActivationFunctionType` enum stored at object offset `+0x120` and serialized under the JSON key `"func"` (`InstActivation::toJson` @ `0x435450`; the `lea [rbx+0x120]` precedes the `bir::to_json(...ActivationFunctionType...)` call @ `0x4354ec`). The enum is InstaBrew-generated: its forward serializer (`ActivationFunctionType2string` @ `0x4002a0`, a 31-arm switch) and inverse (`string2ActivationFunctionType` @ `0x40d710`) agree byte-exactly on the ordinal↔name mapping in both directions, so the table below is fixed in both directions.
 
 Two functions also have **dedicated hardwired opcodes** that bypass the generic path: `Exp(7)` can be emitted as `InstExponential` (IT=103, no `func` field — value implicit in the opcode), and `Reciprocal(25)` as `InstReciprocal` (IT=21, a stub `readFieldsFromJson` @ `0x405e10`). The compiler may emit either encoding for those two; the enum members 7/25 reach the same silicon via the generic `InstActivation` path.
 
@@ -140,7 +140,7 @@ struct ActFuncSet {
 //                  (pwp_jsons/<func>_<budget>p.json), NOT the LUT bucket count.
 ```
 
-> **CORRECTION —** the budget integer is **not** the polynomial bucket count. It is the `_Np` profile-variant selector — a foreign key into `pwp_jsons/<func>_<budget>p.json`. The actual resolution `lut_size` lives *inside* that profile and is an independent number. Verified seven ways: `exp` 400→`lut_size` 777 · `softplus` 40→828 · `sigmoid` 40→796 · `sqrt` 65536→1113 · `reciprocal_sqrt` 40000→1202 · `mish` 4→1099 · `gelu` 4→504. Conflating budget with `lut_size` is the single most common mistake reading these files.
+> **GOTCHA —** the budget integer is **not** the polynomial bucket count, despite reading like one. It is the `_Np` profile-variant selector — a foreign key into `pwp_jsons/<func>_<budget>p.json`. The actual resolution `lut_size` lives *inside* that profile and is an independent number. Seven paired reads make the independence plain: `exp` 400→`lut_size` 777 · `softplus` 40→828 · `sigmoid` 40→796 · `sqrt` 65536→1113 · `reciprocal_sqrt` 40000→1202 · `mish` 4→1099 · `gelu` 4→504.
 
 **Co-residency rule.** To compute activation X the compiler must load the (unique-or-cheapest) set Y whose `act` map contains X; that load *also* brings in every other function in Y. You cannot mix two heroes from different sets without a second `InstLoadActFuncSet`. The engine LUT holds one set at a time — `InstLoadActFuncSet` is the residency gate, and the allocator ([10.7](set-cover.md)) is a greedy set-cover over the requested function list.
 
@@ -148,7 +148,7 @@ struct ActFuncSet {
 
 ## 3. The `trainium` catalog — 21 sets
 
-Legend: **HERO** = function(s) at budget>1 (the high-resolution polynomial payload). The **13 universal residents** `{abs, copy, derivative_identity, derivative_leaky_relu, derivative_relu, identity, is_finite, leaky_relu, memset_zero, parametric_relu, relu, sign, square}` appear at budget=1 in **all 21** sets (this is the hardwired always-on block from §1.2 — confirmed by intersecting the budget-1 keys across all sets). Below, that block is abbreviated `+13univ`; only the heroes are spelled out. Sizes are `bkt`/`ctrl`/`profile` in bytes.
+Legend: **HERO** = function(s) at budget>1 (the high-resolution polynomial payload). The **13 universal residents** `{abs, copy, derivative_identity, derivative_leaky_relu, derivative_relu, identity, is_finite, leaky_relu, memset_zero, parametric_relu, relu, sign, square}` appear at budget=1 in **all 21** sets (this is the hardwired always-on block from §1.2, obtained by intersecting the budget-1 keys across all sets). Below, that block is abbreviated `+13univ`; only the heroes are spelled out. Sizes are `bkt`/`ctrl`/`profile` in bytes.
 
 | #  | set name | HERO(s) [budget] | #funcs | bkt/ctrl/prof (B) |
 |---:|----------|------------------|-------:|-------------------|
@@ -280,20 +280,22 @@ So `with_ln` drops all 7 backward-pass derivative functions + `copy` + `memset_z
 
 ---
 
-## 7. Confidence & gaps
+## 7. Evidence summary
 
-| Claim | Confidence | Anchor |
-|-------|-----------|--------|
-| `ActivationFunctionType` = 31 members 0..30 | **CONFIRMED** | `ActivationFunctionType2string` @ `0x4002a0`, both serializers byte-exact (D-D11) |
-| Hardwired = 9 BIR members (`lut_size`==0) + 3 deriv + memset | **CONFIRMED** | `pwp_jsons` `lut_size` read per function (D-D11) |
-| trainium = 21 sets, with_ln = 14 sets | **CONFIRMED** | `jq '.act_func_sets|length'`, both files (D-M04, re-verified) |
-| Per-set hero/budget maps (all of §3, §4) | **CONFIRMED** | `jq` over shipped `act_info.json` (re-verified here) |
-| 13 universal residents (trainium) / `abs` only (with_ln) | **CONFIRMED** | budget-1 intersection across all sets (re-verified) |
-| budget ≠ `lut_size` | **CONFIRMED** | 7 paired reads (exp 400→777, sqrt 65536→1113, …) |
-| with_ln ⊂ trainium function-universe | **CONFIRMED** | `comm` over `act`-key unions (re-verified) |
-| cp310/311/312 byte-identical rosters | **CONFIRMED** | md5 match across all three wheels |
-| `InstLoadActFuncSet` (IT=6) loads one set | **STRONG** | D-E02 (IT6 residency gate); codegen wire encoding is [10.6](loadactfuncset.md) scope |
+| Claim | Anchor | Confidence |
+|-------|--------|-----------|
+| `ActivationFunctionType` = 31 members 0..30 | `ActivationFunctionType2string` @ `0x4002a0`; both serializers agree byte-exactly | CERTAIN |
+| Hardwired = 9 BIR members (`lut_size`==0) + 3 derivatives + memset | `lut_size` read per function from `pwp_jsons` | CERTAIN |
+| trainium = 21 sets, with_ln = 14 sets | `jq '.act_func_sets\|length'` over both shipped files | CERTAIN |
+| Per-set hero/budget maps (all of §3, §4) | `jq` over the shipped `act_info.json` | CERTAIN |
+| 13 universal residents (trainium) / `abs` only (with_ln) | budget-1 key intersection across all sets | CERTAIN |
+| budget ≠ `lut_size` | seven paired reads (exp 400→777, sqrt 65536→1113, …) | CERTAIN |
+| with_ln ⊂ trainium function universe | `comm` over the `act`-key unions | CERTAIN |
+| cp310/311/312 byte-identical rosters | md5 match across all three wheels | CERTAIN |
+| `InstLoadActFuncSet` (IT=6) loads exactly one set | the IT6 residency gate; the codegen wire encoding belongs to [10.6](loadactfuncset.md) | HIGH |
 
-**Out of scope here** (owned by sibling pages): the `bkt`/`ctrl` blob byte-decode; the per-SET `profile_json` schema and polynomial coefficient layout; the `InstLoadActFuncSet` codegen / `act_func_set_id` wire encoding ([10.6](loadactfuncset.md)) and the greedy set-cover allocator ([10.7](set-cover.md)); and the per-engine legal-function gate (the libBIR `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>` static-image — structure known, contents not dumped; this is the per-arch gate on which of the 31 functions an engine accepts).
+## 8. Out of scope here
 
-> *Sourced from D-M04 (PWP `act_info.json` catalog) and D-D11 (`ActivationFunctionType` enum + hardwired/PWP split), both re-verified against the shipped `act_info.json` / `pwp_jsons/` and the libBIR.so serializer addresses for this build.*
+Owned by sibling pages: the `bkt`/`ctrl` blob byte-decode; the per-set `profile_json` schema and polynomial coefficient layout; the `InstLoadActFuncSet` codegen and `act_func_set_id` wire encoding ([10.6](loadactfuncset.md)); the greedy set-cover allocator ([10.7](set-cover.md)).
+
+One item is genuinely open rather than delegated: the per-engine legal-function gate — the libBIR `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>` static image. Its structure is known but its contents were not dumped, so which of the 31 functions each engine accepts on each arch is [UNRESOLVED].

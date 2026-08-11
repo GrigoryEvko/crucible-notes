@@ -60,8 +60,7 @@ page is the end-to-end view. Front-end DMA bucketing is in [`front/pipeline`](..
 
 A KLR `Access` of `kind==4` carries a `klr::BirAccessPattern` (BAP). A BAP is **dynamic**
 iff it holds a runtime offset, and the predicate is a one-line byte OR
-(`isAccessDynamic(BAP)` @`0xf14030`, CONFIRMED — the decompiled body reads
-`result = *(u8*)(*a1 + 64); LOBYTE(result) = *(u8*)(*a1 + 88) | result`):
+(`isAccessDynamic(BAP)` @`0xf14030`):
 
 ```c
 bool isAccessDynamic(klr::BirAccessPattern *bap) {  // 0xf14030
@@ -70,8 +69,7 @@ bool isAccessDynamic(klr::BirAccessPattern *bap) {  // 0xf14030
 }
 ```
 
-The two wrappers that reach it gate on the KLR object kind first (CONFIRMED from the
-symbol-table delegation chain):
+The two wrappers that reach it gate on the KLR object kind first:
 
 - `isAccessDynamic(klr::Access)` @`0xf16540` — true only if `Access.kind == 4` (it *is* a BAP).
 - `isAccessDynamic(klr::TensorRef)` @`0xf16760` — true only if `TensorRef.kind == 1` (an
@@ -80,8 +78,8 @@ symbol-table delegation chain):
 
 The two presence bits are **mutually exclusive**. A dynamic BAP carries *either* a scalar
 runtime offset *or* a vector gather index, never both, and the invariant is enforced before
-any work begins (`_validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided` @`0xf140a0`,
-CONFIRMED disasm `movzx ecx,[rax+0x40]; cmp [rax+0x58],cl; jz fault`):
+any work begins — `_validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided` @`0xf140a0`
+compares the two presence bytes and faults when they are equal:
 
 ```c
 void _validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided(BAP *bap) {  // 0xf140a0
@@ -97,10 +95,10 @@ void _validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided(BAP *bap) {  // 0x
 
 ### The `klr::BirAccessPattern` field map
 
-Reconstructed from the `[rsi+NN]`/`[rax+NN]` loads in both function bodies (STRONG — no
-dedicated KLR-struct strand maps the full BAP header, so unread slots are not pinned; the
-read slots below are CONFIRMED against the disasm of `assembleDynamicInfo` and
-`extractDynamicApToStandAlone`):
+Every slot below is read directly by `assembleDynamicInfo` or
+`extractDynamicApToStandAlone`, and the table is reconstructed from those `[rsi+NN]` /
+`[rax+NN]` loads. No separate strand maps the full BAP header, so slots neither function
+touches carry no type here — this is the *used* subset of the struct, not its full layout.
 
 | Off | Type | Meaning | Evidence |
 |---|---|---|---|
@@ -126,14 +124,14 @@ asserts `Access.kind==4`, and returns the BAP at `Access+0x08`.
 ### Signature and role
 
 ```c
-// _ZN9neuronxcc7backend16KlirToBirCodegen19assembleDynamicInfoE…  @0xf20230  [CONFIRMED]
+// _ZN9neuronxcc7backend16KlirToBirCodegen19assembleDynamicInfoE…  @0xf20230
 bir::InstArg KlirToBirCodegen::assembleDynamicInfo(
         std::unique_ptr<bir::DynamicAPINFO> &dyn,   // OUT: the companion to fill
         std::shared_ptr<klr::TensorRef>      ref,   // the dynamic operand
         bir::InstArg                        &arg);  // the ALREADY-built STATIC InstArg
 ```
 
-The signature is byte-confirmed against `nm -DC`. The caller has already encoded the
+The signature matches `nm -DC`. The caller has already encoded the
 operand's **static** geometry into `arg` — an `InstArg` is `{MemLoc*, SmallVector<APPair,4>
 pattern, partition, dtype, valid}` (the kind-1 form; see
 [`codegen-accesspattern`](codegen-accesspattern.md)). `assembleDynamicInfo` builds the
@@ -144,7 +142,7 @@ hangs off `PhysicalAccessPattern+0x1D8` and serializes to the `dynamic_ap_info` 
 ### Prologue — common to every branch
 
 ```c
-// 0xf20230..0xf20338  [CONFIRMED]
+// 0xf20230..0xf20338
 BAP *bap = castToBirAp(ref);                                   // 0xf20280
 _validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided(bap);// 0xf202b4
 
@@ -157,7 +155,7 @@ PelicanContext *ctx = *(*(this+0x38) + 0xA0);                 // 0xf202e6
 
 // Build ONE pelican IndirectArgExpr (kind 3) up front:
 auto *idx = (Expr*) tc_new(0x28);                             // 0xf202f9
-pelican::Expr::Expr(idx, /*kind=*/3, ctx);                    //   esi=3  (CONFIRMED imm)
+pelican::Expr::Expr(idx, /*kind=*/3, ctx);                    //   esi=3
 idx->vptr = &_ZTVN7pelican15IndirectArgExprE + 0x10;          // 0xf20309 (off_3DAA110)
 idx[+0x20] = 1;                                               // 0xf20310  arg_id = 1
 inc_ref(idx);
@@ -169,7 +167,7 @@ switch (presence) {                                           // 0xf20334 / 0xf2
 }
 ```
 
-The `arg_id = 1` store is CONFIRMED (`mov qword [rbp+0x20], 1` @`0xf20310`). The
+The `arg_id` slot is hard-stored as `1` @`0xf20310`. The
 `IndirectArgExpr` is built unconditionally in the prologue and reused as the per-axis term
 in both the vector path and the scalar `codegenAccess` sub-path; only the scalar
 register-name path mints a *different* expr (kind 7). The `default` arm is a redundant
@@ -178,7 +176,7 @@ fail-safe — the XOR validator already excludes it.
 ### 2.2 Vector branch — a runtime gather index (kind 3)
 
 ```c
-// loc_F20860..  [CONFIRMED]
+// loc_F20860..
 VECTOR:
   Access *offAcc = bap[+0x48];                  // 0xf20860 the gather-index inner Access
   codegenAccess(offAcc);                        // 0xf20887 ENCODE the index AP (result
@@ -220,7 +218,7 @@ the gatherable rows.
 ### 2.3 Scalar branch — a register-backed runtime offset (kind 7)
 
 ```c
-// 0xf20348..  [CONFIRMED]
+// 0xf20348..
 SCALAR:
   dyn[+0x74] = 0;                               // 0xf20365  indirect_dim = 0
   Access *offAcc = bap[+0x38];                  // the scalar-offset inner Access
@@ -228,7 +226,7 @@ SCALAR:
   else                   goto CODEGEN_ACCESS;   // a full Access
 ```
 
-**§2.3a Register-name path** (`loc_F20580..0xf2075b`, CONFIRMED) — the offset is a bare
+**§2.3a Register-name path** (`loc_F20580..0xf2075b`) — the offset is a bare
 register name:
 
 ```c
@@ -238,7 +236,7 @@ REGISTER_NAME:
   if (!r) throw "Cannot find register: " + name + " for scalar offset";  // 0x1c7e0a0/0x1c7e0b7
 
   auto *rv = (Expr*) tc_new(0x48);                                // 0xf20619
-  pelican::Expr::Expr(rv, /*kind=*/7, ctx);                       //   esi=7  (CONFIRMED imm)
+  pelican::Expr::Expr(rv, /*kind=*/7, ctx);                       //   esi=7
   rv->vptr = &_ZTVN3bir18BirIntRuntimeValueE + 0x10;             // 0xf2062d
   rv[+0x40] = r;                                                  // 0xf20634  regref = Register*  ⭐
   rv[+0x20] = (i64)-1;                                            // 0xf20638  no static index
@@ -253,10 +251,11 @@ REGISTER_NAME:
 (`IntRuntimeValueBase`). Its `regref` at `+0x40` is the same field the
 [Pelican Index/Runtime](pelican-index-runtime.md) page documents as the dynamic-shape
 spine: a `Register*` parked inside an `Expr` node, treated downstream as an opaque
-loop-invariant scalar. The `mov [r15+0x40], r13` store @`0xf20634` is CONFIRMED, and the
-vtable VA `0x3d8de40` matches `nm -DC` (`vtable for bir::BirIntRuntimeValue`).
+loop-invariant scalar. The `Register*` lands in that slot @`0xf20634`, immediately after
+`getRegisterByName` returns, and the vtable VA `0x3d8de40` matches `nm -DC`
+(`vtable for bir::BirIntRuntimeValue`).
 
-**§2.3b Codegen-Access path** (`0xf2037a..0xf204d6`, CONFIRMED) — the scalar offset is a
+**§2.3b Codegen-Access path** (`0xf2037a..0xf204d6`) — the scalar offset is a
 full `Access` rather than a register name:
 
 ```c
@@ -308,7 +307,7 @@ the static residue. This is the offset-expression the device evaluates per acces
 ## 3. `_computeAccumulatedShape` — the per-axis coefficient
 
 ```c
-// 0xf152e0  [CONFIRMED]
+// 0xf152e0
 long _computeAccumulatedShape(std::shared_ptr<klr::Shape> shape, int dim) {
     assert(0 <= dim && dim <= shape->numDims + 1);   // else range fault sub_6D6FDE
     node = shape.dims_head;                          // shape+0x08 intrusive dim list
@@ -323,7 +322,7 @@ long _computeAccumulatedShape(std::shared_ptr<klr::Shape> shape, int dim) {
 The accumulated stride is the **product of all dim extents from `dim` inward** — the
 row-major stride of axis `dim` in element units. It is paired as the `long` half of each
 `aff_expr` entry, so `addr += coef · expr`. The `dim` argument is the BAP's `indirect_dim`
-(`bap+0x60`). (CONFIRMED — the walk-then-multiply loop is in the decompiled body.)
+(`bap+0x60`).
 
 ### The offset-expr vector assigners
 
@@ -333,8 +332,9 @@ with a **40-byte element stride** (a `QuasiAffineExpr` is 32 B = `{RefPtr<Expr>@
 SmallVector<LoopAxis*>@+0x8}` plus the `long coef@+0x20`, padded to 5 qwords). They
 refcount-bump each `RefPtr<Expr>` via the nanobind intrusive counter. `sub_F1FB60` builds
 the stack working vector; `sub_F13410` installs it into the companion's persistent
-`aff_expr` field at `DynamicAPINFO+0x50`. (CONFIRMED — the `+= 40` loop stride and the
-`QuasiAffineExpr` destructor on old elements identify the type.)
+`aff_expr` field at `DynamicAPINFO+0x50`. The 40-byte loop stride and the
+`QuasiAffineExpr` destructor run over the displaced elements are what identify the element
+type.
 
 ---
 
@@ -343,7 +343,7 @@ the stack working vector; `sub_F13410` installs it into the companion's persiste
 ### Signature and role
 
 ```c
-// _ZN9neuronxcc7backend16KlirToBirCodegen28extractDynamicApToStandAloneE…  @0xf1e2c0  [CONFIRMED]
+// _ZN9neuronxcc7backend16KlirToBirCodegen28extractDynamicApToStandAloneE…  @0xf1e2c0
 bir::InstArg KlirToBirCodegen::extractDynamicApToStandAlone(
         std::shared_ptr<klr::TensorRef> ref);
 ```
@@ -355,7 +355,7 @@ then **strips the vector-offset flag** so the parent AP is no longer dynamic at 
 and the index is encoded exactly once.
 
 ```c
-// full 104-ins body  [CONFIRMED]
+// full 104-ins body
 bir::InstArg extractDynamicApToStandAlone(std::shared_ptr<klr::TensorRef> ref) {
   assert(isAccessDynamic(ref));                       // 0xf1e303
       // else throw "Compiler Logic Fault: cannot extract dynamic ap from a static access!"
@@ -380,11 +380,10 @@ bir::InstArg extractDynamicApToStandAlone(std::shared_ptr<klr::TensorRef> ref) {
 }
 ```
 
-Every error string above is verified at its cited `.rodata` address, and the decompiled C
-shows the exact branch structure: the scalar guard fires the `unique_indices=True` string,
-the missing-vector guard fires "should have vector offset," `codegenAccess` reads the
-vector-offset Access at `bap+72` (`0x48`), and the tail clears `bap+0x58` after releasing
-`bap+0x80`.
+Each error string sits at its cited `.rodata` address. The branch structure is exactly as
+transcribed: the scalar guard fires the `unique_indices=True` string, the missing-vector
+guard fires "should have vector offset," `codegenAccess` reads the vector-offset Access at
+`bap+72` (`0x48`), and the tail clears `bap+0x58` after releasing `bap+0x80`.
 
 > **GOTCHA — the two error strings are inverted guards on the same gather contract.** The
 > *scalar* flag present here is an error ("unique_indices=True … vector_offset is set");
@@ -396,8 +395,8 @@ vector-offset Access at `bap+72` (`0x48`), and the tail clears `bap+0x58` after 
 
 ### Relation to `assembleDynamicInfo`
 
-The two are **siblings on the dynamic-DMA path, not nested** (CONFIRMED by their disjoint
-bodies and shared `codegenAccess` leaf):
+The two are **siblings on the dynamic-DMA path, not nested** — their bodies are disjoint and
+neither calls the other; they share only the `codegenAccess` leaf:
 
 - `assembleDynamicInfo` packages the runtime offset **into** a symbolic companion
   (`DynamicAPINFO`, attached to the *data* AP).
@@ -440,15 +439,18 @@ of the *address compute*.
 The `DynamicAPINFO` is **not** a per-op top-level JSON key. It is nested in the
 access-pattern object under the common-header `ins` / `indirection_ins` arrays.
 
-> **CORRECTION —** an earlier draft attributed the serialization to
-> `bir::DynamicAPINFO::toJson` @`0x268c00`. There is **no** such symbol in `libwalrus.so`:
-> the `DynamicAPINFO` class exports only `getCanonicalPattern`, `setActualPattern`,
-> `isPartitionContiguous`, `setStaticOffsetPortion`, and `getNumElementsPerPartition` (the
-> full method set in `_names.json`) — no member named `toJson`. The address `0x268c00`
-> (body frame `0x1268c00`) is in fact `neuronxcc::backend::CoreV2GenImpl::generateIndirectLoadSave(bir::InstDMA&, bool)`,
-> an unrelated CoreV2 encoder, not a serializer. The field→key mapping below is recovered
-> from the `DynamicAPINFO` member layout (the offsets each setter writes), not from a named
-> `toJson` body, and the wrapping serializer was not pinned to a specific symbol.
+The `DynamicAPINFO` class has no serializer of its own. Its full exported method set is
+`getCanonicalPattern`, `setActualPattern`, `isPartitionContiguous`,
+`setStaticOffsetPortion`, and `getNumElementsPerPartition` — there is no `toJson` member,
+and the code that walks these fields into the wire object is not pinned to a named symbol.
+The field→key mapping below is therefore read off the member layout: the offsets each
+setter writes.
+
+> **GOTCHA — `0x268c00` is not a `DynamicAPINFO` serializer.** That VA (body frame
+> `0x1268c00`) is
+> `neuronxcc::backend::CoreV2GenImpl::generateIndirectLoadSave(bir::InstDMA&, bool)`, a
+> CoreV2 *encoder*. Its indirect-DMA subject matter makes it an easy misattribution when
+> hunting for where the dynamic AP reaches the wire.
 
 The field→key mapping (from the member layout):
 
@@ -492,22 +494,30 @@ The codegen leaves that produce these are `codegenNcDmaCopy` (dynamic case calls
 
 ---
 
-## 8. Confidence and what is not pinned
+## 8. Evidence summary and limits of this reading
 
-| ID | Confidence | Claim |
+Both bodies are transcribed in full — `assembleDynamicInfo` 603 instructions,
+`extractDynamicApToStandAlone` 104 — at their `nm -DC` VAs and with the signatures those
+symbols carry. Every offset, immediate, vtable VA, and error string quoted on this page is
+read out of the cp310 `libwalrus.so`.
+
+The central structural claims and where they come from:
+
+| Claim | Anchors | Confidence |
 |---|---|---|
-| C1 | **CONFIRMED** | Both bodies fully transcribed (`assembleDynamicInfo` 603 ins, `extractDynamicApToStandAlone` 104 ins) from decompiled C + disasm offset checks; both at their `nm -DC` VAs with the exact signatures. |
-| C2 | **CONFIRMED** | scalar→kind-7 / vector→kind-3 split: `mov esi,3` @`0xf202f9` + `IndirectArgExpr` vtable LEA @`0xf20309`; `mov esi,7` @`0xf20619` + `BirIntRuntimeValue` vtable LEA @`0xf2062d`; both `pelican::Expr::Expr` calls and both vtable VAs match `nm -DC`. |
-| C3 | **CONFIRMED** | `regref` @`+0x40`: `mov [r15+0x40], r13` @`0xf20634`, after `getRegisterByName`; matches the `IntRuntimeValueBase` `+0x40` regref documented independently. |
-| C4 | **CONFIRMED** | index pre-materialization: `extract…` calls `codegenAccess(bap+0x48)` then clears `bap+0x58` and releases `bap+0x80`; the two guard strings verified at `0x1d1d7b0` / `0x1d1d818`. |
-| C5 | **CONFIRMED** | the XOR validator (`cmp [rax+0x58],cl; jz fault` @`0xf140a0`) and the `isAccessDynamic(BAP)` OR (`bap+0x40 \| bap+0x58` @`0xf14030`). |
-| C6 | **CONFIRMED** | `dtype_bytes[]` table at `qword_1DE98C0` = `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` read directly from `.rodata`. |
-| G1 | **STRONG** | The full `klr::BirAccessPattern` header is not mapped by any dedicated KLR-struct strand; the read slots (`+0x10`, `+0x28`, `+0x38`, `+0x40`, `+0x48`, `+0x58`, `+0x60`, `+0x80`) are CONFIRMED from the loads, but unread slots' types are not pinned. |
-| G2 | **STRONG** | `extract…`'s tail resets `+0x58` (the flag) and releases `+0x80` (the offset shared_ptr ctrl); the precise field reset is read from the test+store+release pattern. The returned standalone operand is the function return value (CONFIRMED). |
-| G3 | **STRONG** | `arg_id` is hard-set to `1` (`mov qword [rbp+0x20],1` @`0xf20310`); whether multiple indirect args ever bump it is not exercised in this body (single index per dynamic AP). No NEFF/BIR-JSON fixture byte-diff was available to cross-check the serialized form. |
-| G4 | **INFERRED** | The MoE-expert-routing / dynamic-shape *use-site* mapping (§7) follows from the error strings (`nisa.dma_copy`, `unique_indices`) and the codegen-leaf names, not from a traced front-end fixture. |
+| scalar→kind-7 / vector→kind-3 split | `mov esi,3` @`0xf202f9` + `IndirectArgExpr` vtable LEA @`0xf20309`; `mov esi,7` @`0xf20619` + `BirIntRuntimeValue` vtable LEA @`0xf2062d`; both vtable VAs match `nm -DC` | CERTAIN |
+| `regref` lives at `+0x40` | the `Register*` store @`0xf20634` right after `getRegisterByName`; matches the independently-mapped `IntRuntimeValueBase` `+0x40` | CERTAIN |
+| index pre-materialization | `extract…` calls `codegenAccess(bap+0x48)`, clears `bap+0x58`, releases `bap+0x80`; guard strings at `0x1d1d7b0` / `0x1d1d818` | CERTAIN |
+| the XOR validator and the dynamic predicate | `0xf140a0` (byte inequality) and `0xf14030` (`bap+0x40 \| bap+0x58`) | CERTAIN |
+| `dtype_bytes[]` = `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` | `qword_1DE98C0` in `.rodata` | CERTAIN |
+| `arg_id` is always `1` | hard store @`0xf20310` | HIGH |
+| the hoist clears the flag at `+0x58` and releases the ctrl block at `+0x80` | the test/store/release tail of `extract…` | HIGH |
+| §7 use-site mapping (MoE routing, dynamic shape) | the error strings `nisa.dma_copy` / `unique_indices` and the codegen-leaf names | MEDIUM |
 
-The hard verification ceiling: every offset, immediate, vtable VA, and error string on this
-page is CONFIRMED against the cp310 `libwalrus.so` binary. The two STRONG items (the unread
-BAP slots, the precise shared_ptr-ctrl field cleared on hoist) and the single INFERRED item
-(the front-end use-site attribution) are the only places a reader should keep a reservation.
+Three things a reader should keep a reservation about. The `klr::BirAccessPattern` header is
+mapped only where these two functions read it — the slots at `+0x10`, `+0x28`, `+0x38`,
+`+0x40`, `+0x48`, `+0x58`, `+0x60`, `+0x80` are pinned, the rest are unknown. Whether
+`arg_id` ever exceeds 1 is not exercised anywhere in this body (one index per dynamic AP is
+all these paths construct), and no NEFF/BIR-JSON fixture was diffed against the serialized
+form. And the front-end attribution in §7 is read off error-string wording rather than a
+traced front-end fixture.

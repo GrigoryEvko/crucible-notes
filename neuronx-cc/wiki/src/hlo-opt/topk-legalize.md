@@ -54,7 +54,7 @@ xla::LegalizeTopK::Run  (0x1f01260, 2879 B)          ── pass body (HloPassIn
 
 ### Algorithm
 
-Reconstructed instruction-by-instruction from the `0x1f01260` disasm. Callee/immediate facts are CERTAIN; loop/skip control flow is MEDIUM (no Hex-Rays — reconstructed from jump targets). Anchors in `«addr»`.
+Reconstructed instruction-by-instruction from the `0x1f01260` disasm, with anchors in `«addr»`. The callees and immediates are read directly; the loop and skip control flow is reconstructed from jump targets, since this binary carries no Hex-Rays output.
 
 ```c
 StatusOr<bool> LegalizeTopK::Run(HloModule* m, const flat_hash_set<string_view>& threads) {
@@ -172,13 +172,13 @@ The wider Neuron-TopK constraint set surfaces through the `hilo` diagnostic cata
 
 Net contract: **exactly 1 operand; element type F16/BF16/F32 (no 32/64-bit int); k ≤ INT32_MAX.**
 
-> **CORRECTION (D-B03) —** the upstream framed `xla::HloTopKInstruction` *does* carry explicit `k=` and `largest=` attributes (printed by `PrintExtraAttributesImpl` `0x9686460`). That is the *stock XLA-TopK* representation, **not** the `AwsNeuronTopK` opaque string consumed here. Do not conflate the two: the Neuron form is the bare integer, the XLA form is the structured instruction. Likewise `formatErrorMessage<PrimitiveType,PrimitiveType>` (`0x1eeb8d0`) is ArgMax-only — its sole caller is `LegalizeAwsNeuronArgMax::Run`, not TopK.
+> **GOTCHA — two different TopK representations coexist in this ELF.** The framed `xla::HloTopKInstruction` carries explicit `k=` and `largest=` attributes (printed by `PrintExtraAttributesImpl` `0x9686460`), but that is the *stock XLA* form and never reaches this pass; the `AwsNeuronTopK` form consumed here encodes `k` as a bare integer string with no `largest` field at all. Note also that `formatErrorMessage<PrimitiveType,PrimitiveType>` (`0x1eeb8d0`) belongs to ArgMax — its sole caller is `LegalizeAwsNeuronArgMax::Run` — so it is not part of the TopK diagnostic path despite sitting beside it.
 
 ---
 
 ## HLO-TopK → BIR-DVE Crosswalk
 
-The legalized `TopK_<dtype>` custom-call is realized by an internal NKI kernel (registered in `_INTERNAL_KERNEL_REGISTRY`), which lowers through KLR/KlirToBirCodegen into the BIR DVE reduce/index family. Each hop is anchored to a prior report (D-A03 / S2-04 / S2-06 / S2-08 / S2-09).
+The legalized `TopK_<dtype>` custom-call is realized by an internal NKI kernel (registered in `_INTERNAL_KERNEL_REGISTRY`), which lowers through KLR/KlirToBirCodegen into the BIR DVE reduce/index family.
 
 ```text
  upstream XLA (same ELF, other path)        hlo-opt (this pass)            NKI ISA (nisa.*)          BIR InstructionType (88-91)        DVE microcode op
@@ -199,7 +199,7 @@ The legalized `TopK_<dtype>` custom-call is realized by an internal NKI kernel (
                                                                                           nc_match_replace_indices8  → codegenMaxIndexAndMatchReplace → 91 MaxIndexAndMatchReplace
 ```
 
-**BIR `InstructionType` enum** (`InstructionType2string` @ `0x2d5bf0`, 110 values, CERTAIN per S2-04 §3.1):
+**BIR `InstructionType` enum** (`InstructionType2string` @ `0x2d5bf0`, 110 values):
 
 | Inst | BIR opcode | NKI ISA | DVE microcode | Role |
 |---|---|---|---|---|
@@ -208,23 +208,25 @@ The legalized `TopK_<dtype>` custom-call is realized by an internal NKI kernel (
 | 90 | `MatchReplace` | `nisa.nc_match_replace8` | `Match-Value-Load` | match-value-load / replace |
 | 91 | `MaxIndexAndMatchReplace` | `nc_match_replace_indices8` | (fused) | fused argmax + match-replace |
 
-KLR/Walrus codegen hooks (CERTAIN names, S2-06/S2-09): `BirCodeGenLoop` exposes `codegenMax8`, `codegenFindIndex8`, `codegenMatchReplace8`, `codegenMaxIndexAndMatchReplace`; `neuronxcc::backend::KlirToBirCodegen::codegenMatchReplace8(Ptr<klr::MatchReplace8>)` returns a `bir::InstMaxIndexAndMatchReplace`. NKI kernels using the family: `cascaded_max.py`, `router_topk.py`, `topk_reduce.py`, `rotational_topk_utils.py`, plus compiled `_private_kernels/router_topk.*.so`.
+KLR/Walrus codegen hooks: `BirCodeGenLoop` exposes `codegenMax8`, `codegenFindIndex8`, `codegenMatchReplace8`, `codegenMaxIndexAndMatchReplace`; `neuronxcc::backend::KlirToBirCodegen::codegenMatchReplace8(Ptr<klr::MatchReplace8>)` returns a `bir::InstMaxIndexAndMatchReplace`. NKI kernels using the family: `cascaded_max.py`, `router_topk.py`, `topk_reduce.py`, `rotational_topk_utils.py`, plus compiled `_private_kernels/router_topk.*.so`.
 
-> **NOTE —** the exact DVE-engine integer opcode for each microcode name (`Max-8` / `Find-Index-8` / `Match-Value-Load`) is not byte-pinned (S2-08 §8 open gap). The BIR-Inst(88–91) → DVE-op mapping above is by **name correspondence** (MEDIUM on the precise microcode integers); the BIR enum ordinals and NKI ISA names are CERTAIN. The internal `TopK_*` kernel body (its per-`k`, per-dtype tiling of `max8`/`find_index8`/`match_replace8`) is a compiled `.so` not decoded here.
+> **NOTE — the DVE microcode integers are not pinned.** The BIR enum ordinals and the NKI ISA names above are read directly, but the exact DVE-engine integer opcode behind each microcode name (`Max-8`, `Find-Index-8`, `Match-Value-Load`) is not; that column of the mapping rests on name correspondence alone and remains an open gap. The internal `TopK_*` kernel body — its per-`k`, per-dtype tiling of `max8` / `find_index8` / `match_replace8` — lives in a compiled `.so` that was not decoded here.
 
 End-to-end: **`AwsNeuronTopK` → (legalize-topk) → `TopK_f32/f16/bf16` (+ S64 iota) → (NKI `router_topk`/`topk_reduce`) → `nisa.max8` / `nc_find_index8` / `nc_match_replace8` → (KlirToBirCodegen) → BIR Inst 88 `Max` / 89 `MaxIndex` / 90 `MatchReplace` / 91 `MaxIndexAndMatchReplace` → DVE Max-8 / Find-Index-8 / Match-Value-Load.**
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+- **`AwsNeuronTopK` is consumed here and produced nowhere in this binary.** In `strings.json`, `0x25f115` lists `referenced_by_functions = [LegalizeTopK::Run]` with a single xref from `0x1f01321`; no other function touches it.
+- **The dtype gate admits exactly three types.** `0x1f01358 lea eax,[rcx-0Ah]` with the `jbe` at `0x1f01364` admits `et ∈ {0x0A, 0x0B}`, and `0x1f01366 cmp ecx,10h` admits `0x10` — matching the three `topkNames` keys.
+- **The emitted names decode from inline immediates.** `0x1f01bcf mov rax,3233665F4B706F54h` is `TopK_f32`; `0x1f01bee` is `TopK_f16`; `0x1f01c0d` is `TopK_bf1` plus a trailing `'6'`, giving `TopK_bf16`. These are the payload `mov`s; the key-store sites in the `0x1f01c17` region are a separate set of instructions and decode to nothing meaningful on their own.
+- **`k` is parsed, range-checked, then dropped.** `strtol` @ `0x1f0159c`, the range check against `0x7FFFFFFF` @ `0x1f015c5`/`cf`, and `CreateCustomCall` @ `0x1f01901` preceded by `push 1` (API_VERSION_ORIGINAL) @ `0x1f018e3` — with the opaque argument slot holding the empty string.
+- **The second operand is an S64 iota over the input's minor dimension.** `mov esi,5` (S64) @ `0x1f014c4` feeds `MakeValidatedShape` @ `0x1f014d7`; `PopulateR1<long>` sits @ `0x1f0154b`, the `array_state` minor-dim read @ `0x1f01387`, and `CreateConstant` @ `0x1f01738`.
 
-1. **`AwsNeuronTopK` is consumer-only, single-xref.** `strings.json` `0x25f115` `referenced_by_functions` = `[LegalizeTopK::Run]`, single xref `from:0x1f01321`. Re-checked: no other function references it. **CONFIRMED.**
-2. **Dtype gate = {F16=0x0A, F32=0x0B, BF16=0x10}.** Disasm `0x1f01358 lea eax,[rcx-0Ah]`, `0x1f01364 jbe`, `0x1f01366 cmp ecx,10h`. The `lea`/`jbe` admits `et∈{0x0A,0x0B}`; the `cmp` admits `0x10`. Matches the three `topkNames` keys. **CONFIRMED.**
-3. **Emitted names are `TopK_f32/f16/bf16` from inline immediates.** `0x1f01bcf mov rax,3233665F4B706F54h` = `TopK_f32`; `0x1f01bee` = `TopK_f16`; `0x1f01c0d` = `TopK_bf1`(+`'6'`) = `TopK_bf16`. Little-endian decode verified. **CONFIRMED.** (Immediate addresses pinned to `0x1f01bcf/bee/c0d`; D-B03's `0x1f01c17`-region figures were the key-store sites, not the payload movs.)
-4. **`k` is `strtol(...,10)`-parsed, INT32-checked, then discarded; new op carries empty config.** `strtol` @ `0x1f0159c`; range check vs `0x7FFFFFFF` @ `0x1f015c5/cf`; `CreateCustomCall` @ `0x1f01901` preceded by `push 1` (API_VERSION_ORIGINAL) @ `0x1f018e3` — the opaque arg slot is the empty string. **CONFIRMED.**
-5. **S64 iota of length = input minor dim is the second operand.** `mov esi,5` (S64) @ `0x1f014c4` → `MakeValidatedShape` @ `0x1f014d7`; `PopulateR1<long>` @ `0x1f0154b`; `array_state` minor-dim read @ `0x1f01387`; `CreateConstant` @ `0x1f01738`. **CONFIRMED.** The 0-to-(n-1) value population is INFERRED from `PopulateR1<long>` + `LiteralUtil::CreateR0<long>` semantics (the per-element fill body was not opened) — tagged **INFERRED** for the precise index values, CONFIRMED for the S64 R1 shape and operand position.
+## Limits of this reading
+
+Two details are reconstructed rather than read. The `0`-to-`n−1` *values* the iota is populated with are [INFERRED] from the semantics of `PopulateR1<long>` and `LiteralUtil::CreateR0<long>` — the per-element fill body was never opened — though the S64 R1 shape and the operand position are exact. And the DVE microcode integers behind `Max-8` / `Find-Index-8` / `Match-Value-Load` remain unpinned, as noted in the crosswalk above.
 
 ---
 
@@ -242,6 +244,6 @@ The five strongest claims, re-challenged against the binary:
 
 - [The hlo-opt Pass Registry (the --passes Table)](pass-registry.md) — resolves `legalize-topk` to order 8, vtable `0x40e350`, Run `0x1f01260`
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — sibling custom-call legalizers (ArgMax and the broader family)
-- [NKI Top-K Primitives (6.7.12)](../nki/topk-primitives.md) — `router_topk` / `topk_reduce` kernels and the `max8`/`find_index8`/`match_replace8` ISA surface
-- [GPSIMD Bitonic Top-K (Part 11)](../gpsimd/bitonic-topk.md) — the alternative GPSIMD-engine top-k path
-- [DVE Max8 & Reduce/Index Family (2.16)](../isa/dve-max8.md) — the DVE microcode primitives BIR Inst 88–91 select
+- [Scan / Reduce / Top-K Primitives](../nki/scan-reduce-topk.md) — `router_topk` / `topk_reduce` kernels and the `max8`/`find_index8`/`match_replace8` ISA surface
+- [The Bitonic SORT / TOPK Builtin Algorithm](../custom-ops/bitonic-sort-topk.md) — the alternative GPSIMD-engine top-k path
+- [DVE Search & Datamove Encoding](../isa/dve-search-encoding.md) — the DVE microcode primitives BIR Inst 88–91 select

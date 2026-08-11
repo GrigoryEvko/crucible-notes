@@ -136,7 +136,7 @@ optional<BaseKey> GetAllReduceKey(inst, domain_map, bool include_groups):  // @0
     return optional{key};
 ```
 
-> **NOTE —** `GetAllReduceKey` is opcode-polymorphic: it accepts both `kAllReduce` (0x07) and `kReduceScatter` (0x57), which is why one upstream routine serves both Neuron combiners. The AR combiner feeds it all-reduces; the RS combiner feeds it reduce-scatters. The `include_groups` argument controls whether replica groups are *omitted* from the key (XLA's "combine across groups" mode); the Neuron callers pass `false`, so replica groups **are** part of the key (CERTAIN).
+> **NOTE —** `GetAllReduceKey` is opcode-polymorphic: it accepts both `kAllReduce` (0x07) and `kReduceScatter` (0x57), which is why one upstream routine serves both Neuron combiners. The AR combiner feeds it all-reduces; the RS combiner feeds it reduce-scatters. The `include_groups` argument controls whether replica groups are *omitted* from the key (XLA's "combine across groups" mode); the Neuron callers pass `false`, so replica groups **are** part of the key.
 
 ### All-reduce — `NeuronAllReduceCombineKey` @0x1f8fce0
 
@@ -236,9 +236,9 @@ So the offset → flag → default map is unambiguous:
 | +0xB78 | `collective-combine-by-dim` | 0x228b88 | bool | **1 (TRUE)** | +0x18 (AG/RS) |
 | +0xC30 | `neuron-fsdp` | 0x21cc9e | bool | **0 (FALSE)** | +0x19 (AG/RS) |
 
-> **CORRECTION (D-B10) —** the D-B10 backing report transposed the two threshold *labels*: it tabulated +0x9F8 as `collective-combine-threshold-count` = 1<<30 and +0xAB8 as `…-in-bytes` = 256, and accordingly named the all-gather ctor parameters `(count, bytes)`. The binary refutes the label swap: the `cl::opt` whose argstr is `"…-in-bytes"` (0x1eba724) is the one set to **0x40000000** at +0x9F8, and the argstr `"…-count"` (0x1eba8fe) is set to **0x100** at +0xAB8. The numeric values (1 GiB and 256) were correct in all three reports; only D-B10's flag↔number pairing was reversed. **in-bytes = 1 GiB at +0x9F8; count = 256 at +0xAB8** (CERTAIN). D-B08/D-B09 had the pairing right.
+The flag↔offset pairing is fixed by argstr adjacency: the `cl::opt` whose argstr is `"…-in-bytes"` (set at `0x1eba724`) is the one written with `0x40000000` at +0x9F8, and the argstr `"…-count"` (`0x1eba8fe`) is the one written with `0x100` at +0xAB8. The two thresholds are easy to swap because both are `long` and the values differ wildly; read the argstr, not the order.
 
-> **CORRECTION (D-B08) —** D-B08 reported `combine-by-dim` default = **false**, reading the option-storage flags word at +0xB98. The value byte is at +0xB78, and the binary sets it to **1** (`mov byte [r12+0B78h], 1` @0x1ebab7a). The default is **TRUE** (CERTAIN), matching D-B09 and D-B10. (D-B08 also did not observe the by-dim flag because the all-reduce combiner does not consume it — see the QUIRK below.)
+> **GOTCHA —** `combine-by-dim`'s *value* byte is at +0xB78, not at the option-storage flags word +0xB98. Read +0xB98 and the default looks false; the binary actually writes `mov byte [r12+0B78h], 1`, so the default is **TRUE**. The all-reduce combiner never consumes this flag at all — see the QUIRK below.
 
 ### Factory wiring — reading the flags into the ctor
 
@@ -253,7 +253,7 @@ Each pass's registrar `_M_invoke` lambda reads the four fields out of `*[rsi]` (
 0x1e70754  call  NeuronAllGatherCombiner::NeuronAllGatherCombiner(long,long,bool,bool)
 ```
 
-> **QUIRK —** the factory loads **`r14 = [+0x9F8]` (in-bytes) into `rsi` = ctor arg1**, and **`r15 = [+0xAB8]` (count) into `rdx` = ctor arg2**. Combined with the offset→flag map above, this means the combiner field **+0x08 holds the byte threshold (1 GiB)** and **+0x10 holds the count threshold (256)** — for *all three* combiners (the AR factory @0x1e70617/0x1e7061e does the same two loads). Mangled ctor signatures read `(long,long,bool,bool)` with the args generically named; do not infer "count first" from the parameter order — the binary's load order fixes byte-first. This is the root cause of the D-B10 transposition.
+> **QUIRK —** the factory loads **`r14 = [+0x9F8]` (in-bytes) into `rsi` = ctor arg1**, and **`r15 = [+0xAB8]` (count) into `rdx` = ctor arg2**. Combined with the offset→flag map above, this means the combiner field **+0x08 holds the byte threshold (1 GiB)** and **+0x10 holds the count threshold (256)** — for *all three* combiners (the AR factory @0x1e70617/0x1e7061e does the same two loads). Mangled ctor signatures read `(long,long,bool,bool)` with the args generically named; do not infer "count first" from the parameter order — the binary's load order fixes byte-first.
 
 ### Pass-object layout (all three identical)
 
@@ -363,25 +363,25 @@ Status CombineAllGathers(Span<HloInstruction*> group, bool combine_by_dim):   //
 
 `FindMostFrequentGatherDim` (@0x1f88080) is a histogram-argmax over the group's `all_gather_dimension` values, with a validity clamp: if the winning index is `>= min_rank` (the smallest tensor rank in the group) it resets to 0 (`cmovge` @0x1f881ef). The combined all-gather runs along that one dimension; mismatched members are transposed in (via `PermuteDimensions`+`Bitcast`) and transposed back out of the GTE.
 
-> **QUIRK —** the `RET_CHECK !combine_by_dim || ag->all_gather_dimension() == most_frequent_dim` (@0x295820) fires **only on the `combine_by_dim==true` path**. With the default `combine_by_dim=true`, the key already partitions by dimension, so every member of a group shares `most_frequent_dim` and the check is a tautology guard. The transpose-normalisation branch is reachable only when `--collective-combine-by-dim` is explicitly disabled. (`combine_by_dim` semantics in the rewrite: MED on the exact permutation index math @0x1f8c1de; CERTAIN on the branch structure.)
+> **QUIRK —** the `RET_CHECK !combine_by_dim || ag->all_gather_dimension() == most_frequent_dim` (@0x295820) fires **only on the `combine_by_dim==true` path**. With the default `combine_by_dim=true`, the key already partitions by dimension, so every member of a group shares `most_frequent_dim` and the check is a tautology guard. The transpose-normalisation branch is reachable only when `--collective-combine-by-dim` is explicitly disabled. The branch structure is read off the disassembly; the exact permutation index math at `0x1f8c1de` is **[INFERRED]**.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary:
+The five structural claims and what pins each:
 
-1. **count = 256, bytes = 1 GiB** — CERTAIN. `mov esi, "…-in-bytes"` (0x1eba724) precedes `mov qword [r12+9F8h], 0x40000000` (0x1eba7d5); `mov esi, "…-count"` (0x1eba8fe) precedes `mov qword [r12+0AB8h], 0x100` (0x1eba9af). The argstr-to-immediate adjacency is direct; not inferred.
+1. **count = 256, bytes = 1 GiB.** `mov esi, "…-in-bytes"` (`0x1eba724`) directly precedes `mov qword [r12+9F8h], 0x40000000` (`0x1eba7d5`); `mov esi, "…-count"` (`0x1eba8fe`) directly precedes `mov qword [r12+0AB8h], 0x100` (`0x1eba9af`). Argstr-to-immediate adjacency, nothing between them.
 
-2. **Stock engine / Neuron key split** — CERTAIN. The AR `Run` (@0x1f8f990, 39 bytes) loads only `&NeuronAllReduceCombineKey` into `r8` and tail-calls `xla::AllReduceCombiner::RunWithKeyCombiner` (an `xla::`, not `xla::hilo::`, symbol). The engine source path is `./xla/service/collective_combiner_utils.h`; the combiners' is `hilo/hlo_passes/neuron_*_combiner.cc`. The namespace and source-path split is observable, not assumed.
+2. **Stock engine / Neuron key split.** The AR `Run` (@`0x1f8f990`, 39 bytes) loads only `&NeuronAllReduceCombineKey` into `r8` and tail-calls `xla::AllReduceCombiner::RunWithKeyCombiner` — an `xla::`, not `xla::hilo::`, symbol. The engine's source path is `./xla/service/collective_combiner_utils.h`; the combiners' is `hilo/hlo_passes/neuron_*_combiner.cc`.
 
-3. **The three key tuples** — CERTAIN. AR `KeyT` (demangled from the `call` operand @0x1f8f9a9) ends in `std::string`; AG `KeyT` (from the engine `call` @0x1f8af6f) is the 6-tuple `<PrimitiveType, optional<long>, long, bool, bool, vector<vector<long>>>` with **no** string; RS `KeyT` carries the middle `long` scatter dim. Three distinct demangled types confirm three key functors over one engine template.
+3. **The three key tuples.** AR `KeyT` (demangled from the `call` operand @`0x1f8f9a9`) ends in `std::string`; AG `KeyT` (from the engine `call` @`0x1f8af6f`) is the 6-tuple `<PrimitiveType, optional<long>, long, bool, bool, vector<vector<long>>>` with **no** string; RS `KeyT` carries the middle `long` scatter dim. Three distinct demangled types over one engine template.
 
-4. **`combine_by_dim` default = TRUE** — CERTAIN. `mov byte [r12+0B78h], 1` @0x1ebab7a, after the `"collective-combine-by-dim"` argstr block (0x1ebaae2). This overturns D-B08's "false" reading.
+4. **`combine_by_dim` default = TRUE.** `mov byte [r12+0B78h], 1` @`0x1ebab7a`, immediately after the `"collective-combine-by-dim"` argstr block (`0x1ebaae2`).
 
-5. **field +0x08 = bytes, +0x10 = count (byte-first)** — CERTAIN. Factory loads `r14 = [opts+0x9F8]` (the in-bytes flag) → `rsi` → ctor arg1 → `[this+8]`; `r15 = [opts+0xAB8]` (count) → `rdx` → arg2 → `[this+0x10]` (AG @0x1e70724/0x1e7072b, AR @0x1e70617/0x1e7061e). Cross-checked against the engine `push [rbx+8]` for the byte arg.
+5. **field +0x08 = bytes, +0x10 = count (byte-first).** The factory loads `r14 = [opts+0x9F8]` (the in-bytes flag) → `rsi` → ctor arg1 → `[this+8]`, and `r15 = [opts+0xAB8]` (count) → `rdx` → arg2 → `[this+0x10]` (AG @`0x1e70724`/`0x1e7072b`, AR @`0x1e70617`/`0x1e7061e`), matching the engine's `push [rbx+8]` for the byte arg.
 
-**Tagged INFERRED / not fully traced:** the per-op byte-size accumulator inside the engine is assumed dense `ShapeUtil::ByteSizeOf` (HIGH, not byte-traced); the AG transpose permutation index math @0x1f8c1de (MED); the exact `bool0`/`bool1` identities (`constrain_layout` vs `use_global_device_ids`) in `GetAllReduceKey` (MED — carried opaquely into the key either way); the `PrimitiveType` enum-name set appended after `"dtype="` (HIGH — produced by runtime protobuf reflection, not statically enumerable in this binary); and the stock `combine_fn` operand-concat rewrite for AR/RS (HIGH that it is unmodified upstream `CombineCollectives`; exact address a gap).
+**Limits.** Not byte-traced here — every item below is **[INFERRED]**: the per-op byte-size accumulator inside the engine, taken to be dense `ShapeUtil::ByteSizeOf`; the AG transpose permutation index math @`0x1f8c1de`; the exact `bool0`/`bool1` identities (`constrain_layout` vs `use_global_device_ids`) in `GetAllReduceKey` — they are carried opaquely into the key either way; the `PrimitiveType` enum-name set appended after `"dtype="`, produced by runtime protobuf reflection and so not statically enumerable in this binary; and the stock `combine_fn` operand-concat rewrite for AR/RS, taken to be unmodified upstream `CombineCollectives` (its exact address is a gap).
 
 ---
 
@@ -400,4 +400,4 @@ The five strongest claims, re-checked against the binary:
 
 - [Collectives → CustomCall Lowering](collectives-to-customcall.md) — §4.3, how collectives are lowered after combining; the combined collective is what reaches the lowering
 - [Flip-Collective OpExpander Family](flip-collective-opexpander.md) — §4.6, the flip that enables combining upstream of these passes
-- [Distribution Bucketing](../distribution/bucketing.md) — Part 13, the runtime-side bucket model these byte/count thresholds feed
+- [Distribution Bucketing](../distribution/collective-bucketing-dynamic-est.md) — Part 13, the runtime-side bucket model these byte/count thresholds feed

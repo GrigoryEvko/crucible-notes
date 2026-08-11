@@ -260,15 +260,14 @@ TIE package `xt_sync` (`_TIE_xt_sync_RSR_ATOMCTL` …).
 * **SR number** `99 = 0x63` (decoded as `(0x0363 >> 8) & 0xff` from the encode
   word). Encodings: `RSR.ATOMCTL a3 = 0x036330`, `WSR = 0x136330`, `XSR = 0x616330`.
 * **State field** — the string-table descriptor in `libisa-core.so` reads
-  `9:0:s:ATOMCTL:0` and the carried state table (SX-ISA-05 entry 29) gives
+  `9:0:s:ATOMCTL:0` and the carried state table gives
   `[9:0:s:ATOMCTL:0, 23:9:c]`: a **10-bit state field spanning bits [9:0]** with
   the upper bits **[23:9] a constant**.
 
 > **CORRECTION — the field is bits [9:0] (10 bits), not "9 bits".** Bit range
 > `[9:0]` inclusive is **ten** bits wide. Earlier notes that say "9-bit state
 > field" describe the high bit index, not the width. The accompanying constant
-> field is `[23:9]`. [HIGH/OBSERVED — `libisa-core.so` `9:0:s:ATOMCTL:0` +
-> SX-ISA-05 entry 29.]
+> field is `[23:9]`. [HIGH/OBSERVED — `libisa-core.so` `9:0:s:ATOMCTL:0`.]
 
 * **Privilege.** `RSR.ATOMCTL`'s `stateArgs` are `MS_DISPST`, `PSRING`,
   `InOCDMode` — the privilege-gate trio. Like every B29 SR it raises
@@ -432,7 +431,7 @@ doorbell instead (§6).
 
 ### 5.1 Data-side topology
 
-[HIGH/OBSERVED — `core-isa.h` + DX-HW-03 §5.2.] No D-cache. The data side is:
+[HIGH/OBSERVED — `core-isa.h`.] No D-cache. The data side is:
 
 * **Local DataRAM0** — `VADDR=PADDR 0x00080000`, 64 KB, **4 banks** (`DATARAM0_BANKS=4`),
   512-bit data bus, single-cycle SRAM folded into the pipe (scalar return @5,
@@ -473,7 +472,7 @@ tame.
 
 ### 5.4 The SBUF path
 
-[HIGH/OBSERVED — DX-DMA-06 §5–7.] A GPSIMD load/store to SBUF is an AXI/ACE-Lite
+[HIGH/OBSERVED.] A GPSIMD load/store to SBUF is an AXI/ACE-Lite
 master transaction through the **axi2sram** bridge; on-core the Q7 sees SBUF via a
 pinned NX-local window mapped (per `tpb_idx`) by `aws_hal_stpb_get_axi_offset`,
 aperture size **0x2000000 (32 MiB)**. The Q7 has **no dedicated SBUF compute
@@ -484,7 +483,7 @@ Consequences:
   + AXI round-trip + arbiter stall);
 * it is the access a custom op **most** needs to order against the DMA engine —
   which it does with `MEMW` (§6);
-* **PSUM has no AXI aperture** (no named `psum_*` CSR; DX-DMA-06 §4): the Q7
+* **PSUM has no AXI aperture** (no named `psum_*` CSR): the Q7
   physically cannot touch PSUM. The compiler's "GPSIMD args must be in SBUF" rule
   *is* this absence, not a policy.
 
@@ -551,8 +550,8 @@ tells the SDMA CME engine "go". Without it the engine could latch a tail advance
 and DMA-read a descriptor whose body is still in the write buffer → garbage
 transfer. The doubling is the canonical Tensilica idiom to guarantee the barrier is
 not folded/elided. [HIGH/OBSERVED — read directly from `data_transfer.o`
-@`0x5c7–0x5cf`; the `_dma_ctx_t` layout (`m2s_inc_reg@0`, `s2m_inc_reg@8`,
-tx/rx/comp BD bases, ring tail/gen tag) is SX-ABI-12 §6a.]
+@`0x5c7–0x5cf`; the `_dma_ctx_t` layout is `m2s_inc_reg@0`, `s2m_inc_reg@8`,
+tx/rx/comp BD bases, ring tail/gen tag.]
 
 ### 6.1 The customop sweep — zero atomics, MEMW-only
 
@@ -573,14 +572,13 @@ tx/rx/comp BD bases, ring tail/gen tag) is SX-ABI-12 §6a.]
 **zero** barrier/semaphore/spinlock/CAS symbols (the only "mutex" symbols are
 libc++ single-thread no-op shims). The `data_transfer.o` `memw×17` are all SDMA
 doorbell barriers (the §6 idiom appears at offsets `0x22e, 0x381, 0x3d8, 0x3ec,
-0x420…0x474, 0x4d7, 0x5c7, 0x5ca, 0x5d1`); none cross-core. [HIGH/OBSERVED —
-SX-ABI-13 §8 corroborates.]
+0x420…0x474, 0x4d7, 0x5c7, 0x5ca, 0x5d1`); none cross-core. [HIGH/OBSERVED.]
 
 ---
 
 ## 7. `STRONG_ORDER` — the management-plane ordering enforcement
 
-[HIGH/OBSERVED — carried DX-SEC-01 §4e.] `STRONG_ORDER` is **not** an instruction
+[HIGH/OBSERVED — carried.] `STRONG_ORDER` is **not** an instruction
 and **not** a kernel fence — it is a **host/debugger-armed "surprise"** handled by
 the SEQ management core. The SEQ run-state FSM polls its surprises every iteration
 (`poll-surprises @0x6af4 → sunda_check_surprises @0x6b0c → sunda_handle_surprises
@@ -673,13 +671,13 @@ absent from `libneuroncustomop.a`. [HIGH/OBSERVED.]
 | 7 | `RSR.ATOMCTL` USE@4 / `art`@5; `WSR`/`XSR` DEF@6 (ATOMCTL+XTSYNC+WSRBus) | `libcas-core.so` `RSR_ATOMCTL_inst_stage4` (`my_ATOMCTL_use(4)`), `stage5` (AR def); `WSR_ATOMCTL_inst_stage6` (3 defs @6) | **HIGH/OBSERVED** |
 | 8 | per-memtype `ATOMCTL` 2-bit field split | canonical Xtensa NX `ATOMCTL`; no `ATOMCTL` write in shipped code to bit-decode | **MED/INFERRED** |
 | 9 | LL/SC success/fail-in-AR + granule semantics | opcodes/encodings/operand shape OBSERVED; the monitor contract is canonical NX | **MED/INFERRED** |
-| 10 | `STRONG_ORDER` = surprises bit 9, non-terminal | carried DX-SEC-01 §4e (`sunda_handle_surprises @0x6cf4`) | **HIGH/OBSERVED (carried)** |
+| 10 | `STRONG_ORDER` = surprises bit 9, non-terminal | carried (`sunda_handle_surprises @0x6cf4`) | **HIGH/OBSERVED (carried)** |
 
 ### Corrections and divergences recorded on this page
 
 1. **`ATOMCTL` field width.** It is bits **[9:0] = 10 bits** with `[23:9]`
    constant, not a "9-bit" field (§3, CORRECTION). Grounded in
-   `libisa-core.so` `9:0:s:ATOMCTL:0` + SX-ISA-05 entry 29 `[9:0:s:ATOMCTL:0,
+   `libisa-core.so` `9:0:s:ATOMCTL:0` + `[9:0:s:ATOMCTL:0,
    23:9:c]`.
 2. **`RSR.ATOMCTL` XTSYNC.** The cas-core cycle model serialises the read via the
    **ATOMCTL** pipeline at stage 4, with **no** XTSYNC call on the read path — the

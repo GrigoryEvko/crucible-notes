@@ -30,13 +30,13 @@ metric through the JSON reader is *lossy*: every value is narrowed to the varian
 `float` alternative and the aggregation is reset to the literal `"None"`.
 
 This page documents the container types, the TripleHash key recipe and its hash,
-the 54-entry `BackendMetricType` enum (decoded firsthand from the dispatcher jump
-table — index 42 is `PostSchedEstLatency`), the serialize/deserialize JSON schema,
+the 54-entry `BackendMetricType` enum decoded from the dispatcher jump table
+(index 42 is `PostSchedEstLatency`), the serialize/deserialize JSON schema,
 the four sinks, and the consolidated cost-model constant table that travels with
-the store. The perf-sim *algorithm* that produces metric 42 (the `bir::Hwm`
+the store. The perf-sim *algorithm* that produces metric 42 — the `bir::Hwm`
 per-instruction latency oracle, the `get_overall_end` critical path, the
-`get_modular_flow_runs` multiplier) is a sibling deliverable (8.45
-`perfsim-cost-model`, in-flight) and is referenced — not re-derived — here.
+`get_modular_flow_runs` multiplier — belongs to the perf-sim cost-model page and is
+referenced, not re-derived, here.
 
 For reimplementation, the contract is:
 
@@ -71,7 +71,7 @@ separate store instances.
 
 ### Value type — the variant
 
-The value type is confirmed from the mangled template instantiation in `.dynsym`
+The value type is spelled out by the mangled template instantiation in `.dynsym`
 (`nm -DC`): `std::variant<float, unsigned int, long, unsigned long>`. The
 `addMetric` mangled name encodes it as `St7variantIJfjlmEE` (`f`=float, `j`=uint,
 `l`=long, `m`=ulong), and the four `serialize` visitor lambdas
@@ -88,7 +88,7 @@ the arity is exactly four.
 In the libstdc++ layout the variant is an 8-byte payload plus a 1-byte
 active-alternative index. Inside a TBB bucket node the payload lands at `node+0x70`
 (qword index 14) and the index byte at `node+0x78` (byte 120). The store side of
-`addMetric` (`0x1742020`, sidecar lines 967–968) is exactly:
+`addMetric` (`0x1742020`) is exactly two writes:
 
 ```c
 *((uint64_t*)node + 14) = payload;     // node+0x70 — the 8-byte variant value
@@ -107,8 +107,8 @@ active-alternative index. Inside a TBB bucket node the payload lands at `node+0x
 The key is `std::tuple<std::string, std::string, std::string>`, compared by
 `neuronxcc::metricslibrary::TripleHashCompare` and hashed with
 `llvm::hash_combine<std::string,std::string,std::string>`. The three members and
-the *order in which they are combined* are confirmed from the `addMetric` body
-(`0x1742020`, sidecar): line 229 is
+the *order in which they are combined* come from the `addMetric` body
+(`0x1742020`):
 
 ```c
 hash = llvm::hash_combine<string,string,string>(s1 /*=TYPE*/,
@@ -264,7 +264,7 @@ to one row rather than 18.
 ### The aggregation enum
 
 `MetricAggregationType` is decoded by a `std::string::compare` switch inside
-`addMetric` (sidecar lines 184–204) that emits the agg literal into key slot `#0`:
+`addMetric` that emits the agg literal into key slot `#0`:
 
 | Value | Literal | strVA |
 |---|---|---|
@@ -347,8 +347,7 @@ serialize/merge passes converge to the true mean rather than the last sample.
 
 `MetricStore::readNestedMetricStoreFromFile(std::istream&)` (`0x8586a0`) is a thin
 wrapper: it runs the nlohmann lexer/parser over the stream (the float lexer reads
-`localeconv()->decimal_point`, confirmed in the body) and then calls
-`deserializeNested` (sidecar line 103). Crucially, the `MetricStore*` `this` is
+`localeconv()->decimal_point`) and then calls `deserializeNested`. Crucially, the `MetricStore*` `this` is
 **not** the destination — `deserializeNested` writes straight into the *global*
 singleton. So "read from file" is "merge file contents into the process-global
 store".
@@ -372,7 +371,7 @@ function deserializeNested(json):                      // 0x84eef0
             global_store.upsert(tuple(agg, name, type), variant<float>(v)); // line 1367
 ```
 
-This makes read-back **lossy in two ways**, both confirmed in the body:
+This makes read-back **lossy in two ways**:
 
 1. **Integer narrowing** — `*(float*)slot = v39` (line 999) stores every leaf as
    the variant's `float` alternative regardless of the original alternative, so a
@@ -423,16 +422,15 @@ existence is gated by a `std::filesystem::exists`/`status` probe.
   which `addMetricMetadata` records the static descriptor of metric meanings
   (units/descriptions). This is metric *schema*, not live values.
 
-> **CORRECTION (AD03/K20) —** backing reports D-AD03 §C.4 and D-K20 §0 cite the
-> descriptor filename as `MetricMetadata.json`. That exact filename is **not** a
-> string literal in `libwalrus.so` — `rg -a -o -i metricmetadata` returns only the
-> symbol `addMetricMetadataEv` (×2), not a `.json` path. What *is* confirmed in the
-> binary is the BOM **tag** `metric-metadata` (VA `0x1dd78a0`) and the
-> `NeffFileWriter::addMetricMetadata()` symbol (`0x153fe40`). The on-disk filename
-> the descriptor is written under is **INFERRED** (likely constructed at runtime or
-> living in a sibling module), not directly observable here. The three live JSON
-> filenames (`global_metric_store.json`, `tensorizer_metric_store.json`,
-> `hlo_metrics.json`/`hlo_stats.json`) *are* present as literals and are CONFIRMED.
+The descriptor sink is the one entry in the table whose *filename* is not readable
+from the binary. `libwalrus.so` carries the BOM tag `metric-metadata` (`0x1dd78a0`)
+and the `NeffFileWriter::addMetricMetadata()` symbol (`0x153fe40`), but no `.json`
+path string for it — a case-insensitive scan for `metricmetadata` turns up only the
+mangled symbol, twice. [INFERRED] the descriptor filename is either assembled at
+runtime from parts or lives in a sibling module. The three live JSON filenames
+(`global_metric_store.json`, `tensorizer_metric_store.json`,
+`hlo_metrics.json`/`hlo_stats.json`) are all present as `.rodata` literals and
+carry no such caveat.
 
 ---
 
@@ -497,8 +495,8 @@ re-runs passes → next iteration produces a new PostSchedEstLatency
 The file legs let the loop survive across process and stage boundaries: the parent
 autotuner spawns a child compile, reads metric 42 from the serialized surface as
 the `nc_latency` reward, and recompiles. The reward *arithmetic* (UCT, beam search)
-lives in the PGA-feedback sibling (8.49, planned); the metric plumbing — store, key,
-value, serialize — is CONFIRMED here.
+lives on the PGA-feedback page; the metric plumbing — store, key, value,
+serialize — is what this page pins.
 
 ---
 
@@ -508,32 +506,32 @@ The store is the *quantitative* channel of the backend's observability surface; 
 constants that the cost model (perf-sim and the spill/loop allocators) reads to
 *produce* those metrics are a separate, consolidated reference. They are
 reproduced here as the companion constant table to the store inventory above — the
-metric values in the store are computed from these. All re-verified firsthand
-against the binary; per-mechanism derivations live in the cited siblings.
+metric values in the store are computed from these. Per-mechanism derivations live
+in the cited siblings.
 
 | Constant | Value | Where (addr / sym) | Controls | Confidence |
 |---|---|---|---|---|
-| Spill weight (in-loop) | `getLatency(DRAM=8)` | `find_costs` `0x9e4713` (gated by `isLoopBody` `0x9e45c8`) | DRAM round-trip latency for a use inside a loop body | CONFIRMED |
-| Spill weight (non-loop) | `getLatency(SB=16)` | `find_costs` `0x9e4df9`/`0x9e58d3`/`0x9e616f` | on-chip SBUF spill/reload latency | CONFIRMED |
-| MemoryType selector | DRAM=8, SB=16, PSUM=0x20 | binary `isLoopBody` DenseSet test | loop/non-loop tier — *not* a K^depth power | CONFIRMED |
-| Un-spillable sentinel | `+inf` `0x7FF0000000000000` | qword `0x1DBCEB8` | cost slot when pinned / never-used | CONFIRMED |
-| Finite/inf compare bound | `DBL_MAX` `0x7FEFFFFFFFFFFFFF` | qword `0x1dbce10` | spillability threshold (compare only, never stored) | CONFIRMED |
-| Chaitin metric | `argmin(cost / degree²)` | `WithLoop` simplify `0xab58c0` (`imul edx,edx`) | spill-candidate selection (degree *squared*) | CONFIRMED |
-| Loop-opt distance threshold | 8 | `cl::opt` static-init `0x7cf85d`, cell `0x3dff780` | fusion-candidate window in BB order | CONFIRMED |
-| Loop tile factor | `GCD(partExtent(l1), partExtent(l2))` if >1 | inline GCD `0xb93b08`; `"[LOOP TILING] by N"` `0xb94ebb` | tiling factor — not a fixed const | STRONG |
-| Fusion profit | `2 × Σ_sharedTensors (liveN × elemSize)` | `constructFusionProfitGraph` `0xba1375` (`addss xmm0,xmm0`) | FPG edge weight | CONFIRMED |
-| `loop_opt_sb_size` / `loop_opt_psum_size` | 0 (derive from arch) | `cl::opt` `0x3dffa80` / `0x3dff9c0` | fused working-set budget | CONFIRMED |
-| enable-loop-distribution / -fusion | true / true | bool `0x3dff900` / `0x3dff840` | greedy fusion is default | CONFIRMED |
-| Full-unroll instruction ceiling | `> 24,999,999` (`0x17D783F`) throws | `instruction_limit_check` (full_unroll) | 25M-instruction hard limit | CONFIRMED |
-| `MaxFactor` (split granularity) | 16 (`0x10`) | `getLargestFactorWithThreshold` (full_unroll) | storage/engine split — *distinct* from the GCD tile factor | CONFIRMED |
-| Perf-sim model-cycle unit | 100 | `getLatencyHelper` `0x1853140` | `floor((NEP·mult+base)·100/freq)` divisor numerator | CONFIRMED |
-| Engine freq (Tonga / Gen3 / CoreV4) | 140,112 / 120,96 / 120 | `getEngineFrequency` `0x1851b30`/`0x1858090`/`0x185e910` | throughput divisors (not MHz) | CONFIRMED |
-| Matmult standalone | `(K/2 + 200)·100/freq` | `getLatencyMatmult` `0x1851800` (`0x3e8`=1000) | matmul latency | CONFIRMED |
-| DMA readInit / exec divisor | `1300 + DGE` / Tonga 17, Gen3 23 | `getLatency(InstDMACopy)` `0x1855850` / `getLatencyExec` `0x1856240` | DMA cost | CONFIRMED |
-| dtype-size table | `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]` | `0x1E1B0C0`/`0x1E1B1C0`/`0x1E1B2C0` | per-dtype byte widths | CONFIRMED |
-| PerfSim fixed overhead / bw scale | 500 cycles / `1.0f` (`0x3F800000`) | PerfSim ctor `0x165a7f0` (this+1 / this+44) | pipeline overhead, HBM bw scale | STRONG |
-| `longest_path` depth cap | `999` (`0x3e7`) | `post_scheduler::longest_path` `0xc183e0` | recursion-depth memo | CONFIRMED |
-| `PostSchedEstLatency` formula | `get_modular_flow_runs(mod+420) × get_overall_end` | `PerfSimPass::run` `0x166d380` L802 | the metric-42 value itself | CONFIRMED |
+| Spill weight (in-loop) | `getLatency(DRAM=8)` | `find_costs` `0x9e4713` (gated by `isLoopBody` `0x9e45c8`) | DRAM round-trip latency for a use inside a loop body | CERTAIN |
+| Spill weight (non-loop) | `getLatency(SB=16)` | `find_costs` `0x9e4df9`/`0x9e58d3`/`0x9e616f` | on-chip SBUF spill/reload latency | CERTAIN |
+| MemoryType selector | DRAM=8, SB=16, PSUM=0x20 | binary `isLoopBody` DenseSet test | loop/non-loop tier — *not* a K^depth power | CERTAIN |
+| Un-spillable sentinel | `+inf` `0x7FF0000000000000` | qword `0x1DBCEB8` | cost slot when pinned / never-used | CERTAIN |
+| Finite/inf compare bound | `DBL_MAX` `0x7FEFFFFFFFFFFFFF` | qword `0x1dbce10` | spillability threshold (compare only, never stored) | CERTAIN |
+| Chaitin metric | `argmin(cost / degree²)` | `WithLoop` simplify `0xab58c0` (`imul edx,edx`) | spill-candidate selection (degree *squared*) | CERTAIN |
+| Loop-opt distance threshold | 8 | `cl::opt` static-init `0x7cf85d`, cell `0x3dff780` | fusion-candidate window in BB order | CERTAIN |
+| Loop tile factor | `GCD(partExtent(l1), partExtent(l2))` if >1 | inline GCD `0xb93b08`; `"[LOOP TILING] by N"` `0xb94ebb` | tiling factor — not a fixed const | HIGH |
+| Fusion profit | `2 × Σ_sharedTensors (liveN × elemSize)` | `constructFusionProfitGraph` `0xba1375` (`addss xmm0,xmm0`) | FPG edge weight | CERTAIN |
+| `loop_opt_sb_size` / `loop_opt_psum_size` | 0 (derive from arch) | `cl::opt` `0x3dffa80` / `0x3dff9c0` | fused working-set budget | CERTAIN |
+| enable-loop-distribution / -fusion | true / true | bool `0x3dff900` / `0x3dff840` | greedy fusion is default | CERTAIN |
+| Full-unroll instruction ceiling | `> 24,999,999` (`0x17D783F`) throws | `instruction_limit_check` (full_unroll) | 25M-instruction hard limit | CERTAIN |
+| `MaxFactor` (split granularity) | 16 (`0x10`) | `getLargestFactorWithThreshold` (full_unroll) | storage/engine split — *distinct* from the GCD tile factor | CERTAIN |
+| Perf-sim model-cycle unit | 100 | `getLatencyHelper` `0x1853140` | `floor((NEP·mult+base)·100/freq)` divisor numerator | CERTAIN |
+| Engine freq (Tonga / Gen3 / CoreV4) | 140,112 / 120,96 / 120 | `getEngineFrequency` `0x1851b30`/`0x1858090`/`0x185e910` | throughput divisors (not MHz) | CERTAIN |
+| Matmult standalone | `(K/2 + 200)·100/freq` | `getLatencyMatmult` `0x1851800` (`0x3e8`=1000) | matmul latency | CERTAIN |
+| DMA readInit / exec divisor | `1300 + DGE` / Tonga 17, Gen3 23 | `getLatency(InstDMACopy)` `0x1855850` / `getLatencyExec` `0x1856240` | DMA cost | CERTAIN |
+| dtype-size table | `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]` | `0x1E1B0C0`/`0x1E1B1C0`/`0x1E1B2C0` | per-dtype byte widths | CERTAIN |
+| PerfSim fixed overhead / bw scale | 500 cycles / `1.0f` (`0x3F800000`) | PerfSim ctor `0x165a7f0` (this+1 / this+44) | pipeline overhead, HBM bw scale | HIGH |
+| `longest_path` depth cap | `999` (`0x3e7`) | `post_scheduler::longest_path` `0xc183e0` | recursion-depth memo | CERTAIN |
+| `PostSchedEstLatency` formula | `get_modular_flow_runs(mod+420) × get_overall_end` | `PerfSimPass::run` `0x166d380` L802 | the metric-42 value itself | CERTAIN |
 
 > **NOTE —** the spill weights are `bir::Hwm` *cost-oracle* cycle counts, not
 > allocator-resident float literals — `find_costs` (`0x9e3ff0`–`0x9e6200`) contains
@@ -542,10 +540,10 @@ against the binary; per-mechanism derivations live in the cited siblings.
 > `+inf` sentinel is the *stored* un-spillable value; `DBL_MAX` is only the
 > finite-vs-infinite *compare* bound.
 
-> **CORRECTION (K20) —** the `DagPart` `POracle::addMetric(PMetric&)` (`0xd13070`) /
-> `PMetric` system is a **separate** partition-explorer cost store — it is *not* the
-> `BackendMetricType` `MetricStore`, does *not* feed `-stats`, and must not be
-> conflated with the singleton documented on this page.
+> **GOTCHA — there is a second, unrelated `addMetric`.** The `DagPart`
+> `POracle::addMetric(PMetric&)` (`0xd13070`) belongs to a separate
+> partition-explorer cost store built on `PMetric`. It is not the
+> `BackendMetricType` `MetricStore`, and it does not feed `-stats`.
 
 ---
 
@@ -567,20 +565,21 @@ against the binary; per-mechanism derivations live in the cited siblings.
 - The store is a process-global singleton; in a multi-NeuronCore compile the *name*
   (module name) is what separates per-core metrics within the one shared map.
 
-### Verification ceiling
+### Limits of this reading
 
-Decoded firsthand and CONFIRMED this pass against `libwalrus.so`: the 54-entry
-jump table (`0x1e04ef0`, all 54 index→strVA decoded, index 42 = `backend::PostSchedEstLatency`
-at `0x1c8a094`); the variant arity 4 and `node+0x70`/`node+0x78` store offsets; the
-`hash_combine` order and three tuple members; the three live JSON filenames as
-`.rodata` literals; the agg switch literals; `getGlobalMetricStore` inlining
-(guard/`instance_` only, no out-of-line body). **Not** directly observable, marked
-INFERRED on this page: the descriptor on-disk filename `MetricMetadata.json` (only
-the BOM tag `metric-metadata` and the `addMetricMetadata` symbol are present); the
-exact `get_modular_flow_runs` (mod+420) trip-count formula (logger-heavy body,
-deferred to the perf-sim cost-model sibling); and the per-callsite enum immediate
-for all ~20 ColoringAllocator `addMetric` sites (STRONG from the name↔pass map, not
-individually transcribed).
+Read directly out of `libwalrus.so`: the 54-entry jump table (`0x1e04ef0`, every
+index→strVA decoded, index 42 = `backend::PostSchedEstLatency` at `0x1c8a094`); the
+variant arity 4 and the `node+0x70` / `node+0x78` store offsets; the `hash_combine`
+order and the three tuple members; the three live JSON filenames as `.rodata`
+literals; the agg switch literals; and `getGlobalMetricStore`'s inlining
+(guard and `instance_` survive, no out-of-line body).
+
+Three things are *not* directly observable here. The descriptor's on-disk filename
+is unknown — only the BOM tag `metric-metadata` and the `addMetricMetadata` symbol
+are in the binary. The exact `get_modular_flow_runs` (mod+420) trip-count formula
+sits in a logger-heavy body and is left to the perf-sim cost-model page. And the
+per-callsite enum immediate for the ~20 `ColoringAllocator` `addMetric` sites is
+attributed from the name↔pass map rather than transcribed one site at a time.
 
 ---
 
@@ -597,11 +596,11 @@ individually transcribed).
 ## Cross-References
 
 - [perf_sim Pass Wiring](perf-sim-wiring.md) — the pass that produces metric 42, the orders-88/99/106 slots, and the autotuner-feedback path
-- [DMAMetrics and PerformanceProfiler](dmametrics-profiler.md) — the sibling per-load metrics surface (8.48) feeding the DMA-size block 9..26
+- [DMAMetrics and PerformanceProfiler](dmametrics-profiler.md) — the sibling per-load metrics surface feeding the DMA-size block 9..26
 - [post_sched and the Three Schedulers](post-sched-schedulers.md) — the inline metric-42 writer and the per-engine `Num*Instructions` counts
 - [BackendPass Registry](backendpass-registry.md) — how the producer passes are registered and ordered
 - [VN-Splitter and Shrink-ML](vnsplitter-shrink.md) — producer of split-node counts 2/3/4 and shrink counts 5/6
 - [The DRAM Allocator](dram-allocator.md) — producer of the `Dram*` family 30..36
 - [The PSUM Allocator](psum-allocator.md) — producer of renumber counts 29/37
-- The perf-sim cost-model page (8.45, in-flight) owns the `bir::Hwm` latency oracle and the `PostSchedEstLatency` topo-walk that fills metric 42
-- The PGA-feedback page (8.49, planned) owns the autotuner reward arithmetic that reads `PostSchedEstLatency` back
+- The perf-sim cost-model page owns the `bir::Hwm` latency oracle and the `PostSchedEstLatency` topo-walk that fills metric 42
+- The PGA-feedback page owns the autotuner reward arithmetic that reads `PostSchedEstLatency` back

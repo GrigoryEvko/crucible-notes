@@ -25,7 +25,7 @@ None of the three is the MetricStore (in-flight sibling 8.47); none calls `addMe
 | **`load_profile` consumer** | `LoadCloning::cluster_load_uses()` @0xc821f0 |
 | **aif numerator / denominator** | `LoadCloning::get_arithmetic_ops(Instruction*)` @0xc7d200 / `LoadCloning::get_num_bytes(Instruction*)` @0xc79380 |
 
-All symbols verified present at these exact addresses via `nm -DC libwalrus.so`. **CONFIRMED.**
+All symbols are present at these exact addresses in `nm -DC libwalrus.so`.
 
 ---
 
@@ -36,7 +36,7 @@ All symbols verified present at these exact addresses via `nm -DC libwalrus.so`.
 `DMAMetrics` is a `BackendPass`. Two `run` overloads exist, but only the vector-of-modules form does work:
 
 ```c
-// DMAMetrics::run(vector<unique_ptr<Module>>&) @0x16c7fc0  — CONFIRMED
+// DMAMetrics::run(vector<unique_ptr<Module>>&) @0x16c7fc0
 Status DMAMetrics::run(vector<unique_ptr<Module>> &modules) {
     if (modules.begin() == modules.end())
         return {code: 2, msg: "No modules to analyze!"};   // empty-set guard
@@ -49,18 +49,18 @@ Status DMAMetrics::run(vector<unique_ptr<Module>> &modules) {
 }
 ```
 
-`DMAMetrics::run(bir::Module&)` @0x16c6c90 is a one-line stub returning `{2, ""}` — the single-module overload is never the real metric path. **CONFIRMED.**
+`DMAMetrics::run(bir::Module&)` @0x16c6c90 is a one-line stub returning `{2, ""}` — the single-module overload is never the real metric path.
 
-The third ctor argument `*(ctx+96)+432` is a `const set<DGELevels>&` (the *enabled* DGE-levels config) pulled from the backend `PassOptions`. **The exact `PassOptions` accessor is not pinned — INFERRED** that it is `+432` inside the context object at `ctx+96`; the *type* (`set<DGELevels>&`) is CONFIRMED from the demangled ctor signature.
+The third ctor argument `*(ctx+96)+432` is a `const set<DGELevels>&` (the *enabled* DGE-levels config) pulled from the backend `PassOptions`. The exact `PassOptions` accessor is not pinned: that it is `+432` inside the context object at `ctx+96` is [INFERRED]. The *type* (`set<DGELevels>&`) comes from the demangled ctor signature.
 
 The ctor (read from disasm — Hex-Rays declined this frame) allocates three worklist arenas, zeroes the scalar counters (`this+0xC0`, `this+0xC4`, `this+0xC8`) and the RB-tree headers, stashes `(Logger*, set<DGELevels>*)`, then runs the per-module loop:
 
 ```c
-// DMAMetricsImpl::DMAMetricsImpl body @0x16ccf30..0x16cd3d5 — STRONG (offsets CONFIRMED)
+// DMAMetricsImpl::DMAMetricsImpl body @0x16ccf30..0x16cd3d5 (offsets read from disasm)
 for (Module &m : modules) {
     name = bir::Module::getName(m);                   // 0x16cd20e
     logger.attributes.insert("mod_name", name);       // 0x16cd2cd — tags every record
-    Function *fn = m.getFunctionByName("main");        // 0x16cd35b — "main" string CONFIRMED
+    Function *fn = m.getFunctionByName("main");        // 0x16cd35b — "main" string
     if (fn)
         IRVisitor<DMAMetricsImpl>::visit(fn.bb_begin, fn.bb_end);   // 0x16cd391
     logger.attributes.erase("mod_name");              // 0x16cd3ac
@@ -75,7 +75,7 @@ this->print(this->logger);                            // 0x16cd3d5 — ONCE, aft
 `enterInstruction` runs first for **every** instruction (before the subtype switch). It reads the opcode at `inst+0x58` and maintains the two headline scalars that `print`'s percentage divides:
 
 ```c
-// DMAMetricsImpl::enterInstruction @0x16cacb0 — CONFIRMED
+// DMAMetricsImpl::enterInstruction @0x16cacb0
 void enterInstruction(Instruction &inst) {
     op = inst.opcode;                                  // inst+0x58
     // (1) DMA-FAMILY GATE  — 0x16cacc4
@@ -99,16 +99,18 @@ void enterInstruction(Instruction &inst) {
 }
 ```
 
-The `byte_1E03860` membership `{18,19,22,32,41-46,67}` and the `paddd [rdi+0xC4],{1,1}` are CONFIRMED in disasm; the assertion string and `dma_metrics.cpp:161` source anchor are CONFIRMED in `.rodata`. The `DGELevels` ordinals (`0 spill_reload · 1 scalar_dynamic_offset · 2 vector_dynamic_offsets · 3 dynamic_size · 4 dst_reduce · 5 transpose`) come from sibling D-Z02; the `<= 3` boundary selects the first four (the descriptor-gen DGE flavours) — **STRONG**.
+The `byte_1E03860` membership `{18,19,22,32,41-46,67}` and the `paddd [rdi+0xC4],{1,1}` are in the disassembly; the assertion string and the `dma_metrics.cpp:161` source anchor are in `.rodata`. The `DGELevels` ordinals are `0 spill_reload · 1 scalar_dynamic_offset · 2 vector_dynamic_offsets · 3 dynamic_size · 4 dst_reduce · 5 transpose`, so the `<= 3` boundary selects the first four — the descriptor-gen DGE flavours.
 
-> **CORRECTION (vs. backing report A.5/print).** The report's print section says the *slow* counter is `this+0xC4`. Both `updateCopyCastDMA` (A.3) **and** `enterInstruction` bump `this+0xC4`; the percentage in `print` divides `this+0xC4` by `this+0xC0`. These are the same two scalars from both code paths — there is no separate "slow" field. The `+0xC8` twin set by the `paddd` is **never read** by `print` for `this`; it is a write-only side effect of bumping a packed qword. **RESOLVED — print reads only `+0xC0` and `+0xC4`** (disasm 0x16c9743/0x16c9755, below).
+There are only two scalar counters, and both code paths feed the same pair: `updateCopyCastDMA` (A.3) and `enterInstruction` each bump `this+0xC4`, and `print` divides `this+0xC4` by `this+0xC0` (disasm 0x16c9743/0x16c9755, below).
+
+> **GOTCHA —** the `paddd` bumps a packed qword, so it also writes a twin at `+0xC8`. Nothing ever reads `+0xC8` — it is a write-only side effect, not a third counter, and in particular not a separate "slow" field.
 
 ### A.3 ⭐ `updateCopyCastDMA` — instance bucketing, NOT byte summing
 
 This is the headline quirk. Reached for `InstLoad(19)`, `InstSave(22)`, and the `isCopyOrCastDMA` fall-through. It classifies each copy/cast DMA into a `{Copy|Cast} × {Fast|Slow} × {SR|IO}` bucket and **increments that bucket's count by one** — it never accumulates a byte total:
 
 ```c
-// DMAMetricsImpl::updateCopyCastDMA @0x16cb740 — CONFIRMED
+// DMAMetricsImpl::updateCopyCastDMA @0x16cb740
 void updateCopyCastDMA(InstDMA &inst) {
     bool isCopyDMA = bir::isCopyDMA(&inst);            // call @0x16cb76c
     bool isIODMA   = bir::isIODMA(&inst);              // call @0x16cb778
@@ -148,20 +150,20 @@ void updateCopyCastDMA(InstDMA &inst) {
 - the `std::map<tuple<InstType,ShapeType,MemType>,DMACount>::operator[]` PLT @0x16cb8cd.
 - the three increments are `addl $0x1, ...` — **literal `+1`, on a `DMACount` field, not an `add %reg` of a byte length.**
 
-> **This is the quirk to pin.** `DMAMetrics` answers *"how many Copy-IO-Slow DMA instructions are there"*, **not** *"how many bytes did they move."* There is no byte-accumulator anywhere in this body; `desc_count` is a presence guard, `num_elems` feeds only the Fast/Slow boolean, and every count bump is `+1`. A reimplementer who sums transfer sizes here is reproducing the wrong pass. **CONFIRMED.** (Byte-summing lives in `PerformanceProfiler`, Part B, and `LoadCloning::get_num_bytes`, Part C — both genuinely sum `partitions × bytes_per_partition`.)
+> **This is the quirk to pin.** `DMAMetrics` answers *"how many Copy-IO-Slow DMA instructions are there"*, **not** *"how many bytes did they move."* There is no byte-accumulator anywhere in this body; `desc_count` is a presence guard, `num_elems` feeds only the Fast/Slow boolean, and every count bump is `+1`. A reimplementer who sums transfer sizes here is reproducing the wrong pass. (Byte-summing lives in `PerformanceProfiler`, Part B, and `LoadCloning::get_num_bytes`, Part C — both genuinely sum `partitions × bytes_per_partition`.)
 
-The tuple key memory order is libstdc++-reversed (`[+0]=MemType, [+4]=ShapeType, [+8]=InstType`). Enum values (CONFIRMED from `print`'s label switch strings): `InstType {0 Copy, 1 Cast, 2 Transpose, 3 CCE, 4 Replicate, 5 DstReduce, 6 ReadVarAddr}`, `ShapeType {0 Fast, 1 Slow, 2 N/A}`, `MemType {0 IO, 1 SR, 2 N/A}`. The IRVisitor switch (@0x16ccbc0, 110 cases) routes `Transpose`/`CCE`/`Replicate`/`DstReduce`/`ReadVarAddr` to other bucket keys directly; only the `Copy`/`Cast` path runs the shape-classification above.
+The tuple key memory order is libstdc++-reversed (`[+0]=MemType, [+4]=ShapeType, [+8]=InstType`). Enum values, read from `print`'s label switch strings: `InstType {0 Copy, 1 Cast, 2 Transpose, 3 CCE, 4 Replicate, 5 DstReduce, 6 ReadVarAddr}`, `ShapeType {0 Fast, 1 Slow, 2 N/A}`, `MemType {0 IO, 1 SR, 2 N/A}`. The IRVisitor switch (@0x16ccbc0, 110 cases) routes `Transpose`/`CCE`/`Replicate`/`DstReduce`/`ReadVarAddr` to other bucket keys directly; only the `Copy`/`Cast` path runs the shape-classification above.
 
 ### A.4 `print` — the `libfort` table and the headline percentage
 
-`print` builds a `libfort` table (`ft_create_table` → `ft_set_cell_prop`/`ft_ln`/`ft_add_separator`/`ft_nwrite` → `ft_to_string` → `ft_destroy_table`) and logs the whole grid at severity 20 (INFO), bracketed `"DMA Metrics Start\n"` … `"\nDMA Metrics End"` (both strings CONFIRMED in `.rodata` @0x1c898bf).
+`print` builds a `libfort` table (`ft_create_table` → `ft_set_cell_prop`/`ft_ln`/`ft_add_separator`/`ft_nwrite` → `ft_to_string` → `ft_destroy_table`) and logs the whole grid at severity 20 (INFO), bracketed `"DMA Metrics Start\n"` … `"\nDMA Metrics End"` (both strings in `.rodata` @0x1c898bf).
 
-Six columns (header strings CONFIRMED): `Instruction Type | Shape Type | Memory Type | DGE Instructions (BIR) | Total Instructions (BIR) | Percentage (%)`. Body rows iterate `map@this+0xD0`; a cosmetic relabel rewrites a `"Fast Shape"` cell to `"Good Shape"`/`"Bad Shape"` (strings `Good Shape`/`Slow Shape` @0x1c8980b/0x1c8988d). Consecutive rows with the same `InstType`/`ShapeType` use libfort cell-span so the label prints once per group.
+Six columns (header strings verbatim): `Instruction Type | Shape Type | Memory Type | DGE Instructions (BIR) | Total Instructions (BIR) | Percentage (%)`. Body rows iterate `map@this+0xD0`; a cosmetic relabel rewrites a `"Fast Shape"` cell to `"Good Shape"`/`"Bad Shape"` (strings `Good Shape`/`Slow Shape` @0x1c8980b/0x1c8988d). Consecutive rows with the same `InstType`/`ShapeType` use libfort cell-span so the label prints once per group.
 
 The bottom **`Total`** row carries the one headline number:
 
 ```c
-// print @0x16c9743..0x16c9779 — CONFIRMED in disasm
+// print @0x16c9743..0x16c9779
 denom = this->dge_inst_count;        // mov 0xC0(%rbx),%eax   @0x16c9743
 numer = this->slow_total;            // mov 0xC4(%rbx),%edx   @0x16c9755
 pct   = (float)numer / (float)denom; // cvtsi2ss ×2; divss %xmm1,%xmm0  @0x16c9763..76d
@@ -169,20 +171,20 @@ pct  *= 100.0f;                      // mulss 0x1dd8bfc(=100.0)         @0x16c97
 // => Percentage = 100 * (this+0xC4) / (this+0xC0)
 ```
 
-So the headline metric is **`100 × (this+0xC4) / (this+0xC0)`** — the fraction of DMA-family instructions classified DGE/slow. Verified: `mov 0xc0`/`mov 0xc4`, two `cvtsi2ss`, `divss`, `mulss 0x1dd8bfc`. The constant `0x1dd8bfc` holds `100.0f`. If `dge_inst_count == 0` the cell is `-1.0`. **CONFIRMED.**
+So the headline metric is **`100 × (this+0xC4) / (this+0xC0)`** — the fraction of DMA-family instructions classified DGE/slow. Verified: `mov 0xc0`/`mov 0xc4`, two `cvtsi2ss`, `divss`, `mulss 0x1dd8bfc`. The constant `0x1dd8bfc` holds `100.0f`. If `dge_inst_count == 0` the cell is `-1.0`.
 
-> **OUTPUT SINK.** The grid goes to the `logging::Logger` at INFO — not JSON, not the NEFF. It is purely a human-readable diagnostic; the machine-consumable DMA stats that reach the NEFF come from the separate DMAReport / HBMUsage report passes and the MetricStore (in-flight sibling 8.47), of which this `print` is the operator-facing mirror. **STRONG.**
+> **OUTPUT SINK.** The grid goes to the `logging::Logger` at INFO — not JSON, not the NEFF. It is purely a human-readable diagnostic; the machine-consumable DMA stats that reach the NEFF come from the separate DMAReport / HBMUsage report passes and the MetricStore (in-flight sibling 8.47), of which this `print` is the operator-facing mirror.
 
 ---
 
 ## Part B — `PerformanceProfiler` (the separate coarse memory roofline)
 
-`PerformanceProfiler::run(Module&)` @0xd6d0d0 is the `BackendPass` override (status return) delegating to `runProfile()` @0xd6b080. There is **no `register_generator_*` lambda** for it — it is not a CLI-named pipeline pass; it is invoked from the Tensorizer/CoreGen phase (xrefs surface only PLT thunks; `CoreV2GenImpl::generateDynamicDMA` shares the `0xd6d0d0` thunk region). **STRONG.**
+`PerformanceProfiler::run(Module&)` @0xd6d0d0 is the `BackendPass` override (status return) delegating to `runProfile()` @0xd6b080. There is **no `register_generator_*` lambda** for it — it is not a CLI-named pipeline pass; it is invoked from the Tensorizer/CoreGen phase (xrefs surface only PLT thunks; `CoreV2GenImpl::generateDynamicDMA` shares the `0xd6d0d0` thunk region).
 
-`runProfile` is a *single linear pass* over the module's `main` function — not a timeline simulator. It calls `Module::getDMAProfile(mod)` (PLT @0xd6b0b1, CONFIRMED) and runs two phases:
+`runProfile` is a *single linear pass* over the module's `main` function — not a timeline simulator. It calls `Module::getDMAProfile(mod)` (PLT @0xd6b0b1) and runs two phases:
 
 ```c
-// PerformanceProfiler::runProfile @0xd6b080 — CONFIRMED
+// PerformanceProfiler::runProfile @0xd6b080
 void runProfile() {
     Function *main = this->module->getMain();          // hard precondition; BUG() if null
     DMAProfile *prof = Module::getDMAProfile(module);   // call @0xd6b0b1
@@ -225,21 +227,23 @@ void runProfile() {
 - `divss %xmm1,%xmm0` @0xd6cc63 — the `MemEffcy` ratio.
 - strings `"; DDRTransferBytes = "` @0x1c79ecf and `"DEBUG (PerformanceProfiler) Memory Effcy (Tensorizer Way) = "` @0x1d0f558.
 
-> **The formula to pin: `MemEffcy = DDRTransferBytes / IOTensorBytes`** — DDR (HBM↔SBUF) traffic over total tensor footprint, a roofline data-movement-efficiency ratio. **CONFIRMED.**
+> **The formula to pin: `MemEffcy = DDRTransferBytes / IOTensorBytes`** — DDR (HBM↔SBUF) traffic over total tensor footprint, a roofline data-movement-efficiency ratio.
 
-> **How it differs from PerfSim (in-flight sibling 8.45).** PerfSim is a discrete-event timeline (per-engine, per-DMA-queue, `bir::Hwm` latency oracle) producing a *time* estimate. `PerformanceProfiler` does *one pass over MemoryLocations*, summing two byte totals into a single ratio plus a DDR-bytes Statistic — no timeline, no per-engine model, no Hwm oracle. They share no code; neither calls the other. They are the explicit *distinction* to keep straight: PerfSim measures cycles, this measures HBM traffic efficiency. **STRONG.** `runProfile` reads `getDMAProfile()` and writes `MemEffcy` back onto it (`+112`) — it augments the DMA profile object that later serialization passes read; it is not a standalone report. **STRONG.**
+> **How it differs from PerfSim (in-flight sibling 8.45).** PerfSim is a discrete-event timeline (per-engine, per-DMA-queue, `bir::Hwm` latency oracle) producing a *time* estimate. `PerformanceProfiler` does *one pass over MemoryLocations*, summing two byte totals into a single ratio plus a DDR-bytes Statistic — no timeline, no per-engine model, no Hwm oracle. They share no code; neither calls the other. They are the explicit *distinction* to keep straight: PerfSim measures cycles, this measures HBM traffic efficiency. `runProfile` reads `getDMAProfile()` and writes `MemEffcy` back onto it (`+112`) — it augments the DMA profile object that later serialization passes read; it is not a standalone report.
 
 ---
 
 ## Part C — the per-load `load_profile` map (`LoadCloning`, not the profiler)
 
-### C.0 Ownership correction
+### C.0 Who owns the `load_profile` map
 
-> **CORRECTION (the AD04 ownership note, re-confirmed here).** `DenseMap<bir::Instruction*, load_profile>` is **not** a `PerformanceProfiler` field. It is a `LoadCloning` member at `LoadCloning+0x170` (=368). Producer `LoadCloning::profile_load_aif(Function&)` @0xc7d770; consumer `LoadCloning::cluster_load_uses()` @0xc821f0. Bucket stride = 104 bytes (8-byte `Instruction*` key + 96-byte `load_profile` value). All four symbols CONFIRMED via `nm -DC`. The map keys per-instruction load decisions for the load-clustering / cloning pass that feeds `vn_splitter` ([8.23](vnsplitter-shrink.md)).
+`DenseMap<bir::Instruction*, load_profile>` is a `LoadCloning` member at `LoadCloning+0x170` (=368), not a `PerformanceProfiler` field. Producer `LoadCloning::profile_load_aif(Function&)` @0xc7d770; consumer `LoadCloning::cluster_load_uses()` @0xc821f0. Bucket stride is 104 bytes (8-byte `Instruction*` key + 96-byte `load_profile` value); all four symbols resolve via `nm -DC`. The map keys per-instruction load decisions for the load-clustering / cloning pass that feeds `vn_splitter` ([8.23](vnsplitter-shrink.md)).
+
+> **GOTCHA —** the profile map belongs to `LoadCloning`, not to `PerformanceProfiler`. The two passes both reason about DMA bytes but share no state; looking for `load_profile` on the profiler finds nothing.
 
 ### C.1 The `load_profile` value (96 bytes)
 
-Each value holds (containers CONFIRMED from the producer's insert sites; **field offsets within the 96-byte value are INFERRED** — the three containers are pinned, their byte order is not):
+Each value holds the following. The containers are read from the producer's insert sites; the field offsets within the 96-byte value are [INFERRED] — the three containers are pinned, their byte order is not:
 
 - a nested `DenseMap<MemoryLocation*, long>` — downstream op-count attributed to each input tensor;
 - a `DenseSet<MemoryLocation*>` — the source memlocs this load feeds (cluster-overlap / Jaccard quality);
@@ -248,7 +252,7 @@ Each value holds (containers CONFIRMED from the producer's insert sites; **field
 ### C.2 ⭐ `profile_load_aif` — the `aif = arith_ops / bytes` formula
 
 ```c
-// LoadCloning::profile_load_aif @0xc7d770 — CONFIRMED
+// LoadCloning::profile_load_aif @0xc7d770
 void profile_load_aif(Function &fn) {
     for (Instruction *L : fn) {
         // qualifying load: opcode==19 && !dependentsEmpty && !is_static_weights
@@ -272,12 +276,12 @@ void profile_load_aif(Function &fn) {
 }
 ```
 
-**Verified directly in disasm** (`objdump -d --start-address=0xc7d770`): `get_num_bytes` PLT call @0xc7ddd0, then `cvtsi2ss %rax,%xmm0` (bytes), `cvtsi2ssq 0x20(%rsp),%xmm1` (op total), `divss %xmm0,%xmm1` @0xc7ddef. The operand order is `divss %xmm0(bytes),%xmm1(ops)` ⇒ `xmm1 = ops / bytes` — i.e. **`aif = downstream_arith_ops / bytes_moved`**. The string `"arithmetic intensity = "` is CONFIRMED in `.rodata` @0x1c77b88. **CONFIRMED.**
+Read directly from disasm (`objdump -d --start-address=0xc7d770`): `get_num_bytes` PLT call @0xc7ddd0, then `cvtsi2ss %rax,%xmm0` (bytes), `cvtsi2ssq 0x20(%rsp),%xmm1` (op total), `divss %xmm0,%xmm1` @0xc7ddef. The operand order is `divss %xmm0(bytes),%xmm1(ops)` ⇒ `xmm1 = ops / bytes` — i.e. **`aif = downstream_arith_ops / bytes_moved`**. The string `"arithmetic intensity = "` is in `.rodata` @0x1c77b88.
 
 ### C.3 `get_arithmetic_ops` — the per-op compute / engine model
 
 ```c
-// LoadCloning::get_arithmetic_ops @0xc7d200 — CONFIRMED
+// LoadCloning::get_arithmetic_ops @0xc7d200
 long get_arithmetic_ops(Instruction *U) {
     switch (U.opcode /*+88*/) {
         case 8:  return 2 * get_matmult_macs(U);   // MatMult / PE  (1 MAC = 2 flops)
@@ -291,12 +295,12 @@ long get_arithmetic_ops(Instruction *U) {
 }
 ```
 
-The opcode→engine routing (PE/DVE/Act/Pool) is the per-instruction compute-load model; `aif` pairs that compute estimate against the DMA bytes from C.4. **CONFIRMED.**
+The opcode→engine routing (PE/DVE/Act/Pool) is the per-instruction compute-load model; `aif` pairs that compute estimate against the DMA bytes from C.4.
 
 ### C.4 `get_num_bytes` — the per-load DMA-bytes model
 
 ```c
-// LoadCloning::get_num_bytes @0xc79380 — CONFIRMED
+// LoadCloning::get_num_bytes @0xc79380
 long get_num_bytes(Instruction *L) {
     out = (L.opcode == 22 /*Save*/) ? getArgument(L,0) : getOutput(L,0);
     ml  = cast<MemoryLocation>(out.storage);            // storage_kind +272 == 4
@@ -304,11 +308,11 @@ long get_num_bytes(Instruction *L) {
 }
 ```
 
-This is the *same* `partitions × bytes_per_partition` model `PerformanceProfiler` uses for `IOTensorBytes` (B, Phase 2) — the genuine byte-sum the `DMAMetrics` bucket count (A.3) deliberately does **not** compute. **CONFIRMED.**
+This is the *same* `partitions × bytes_per_partition` model `PerformanceProfiler` uses for `IOTensorBytes` (B, Phase 2) — the genuine byte-sum the `DMAMetrics` bucket count (A.3) deliberately does **not** compute.
 
 ### C.5 How it is consumed
 
-`cluster_load_uses` @0xc821f0 reads the `load_profile` map (LookupBucketFor @0xc8232a), builds `all_clusters` of `a_cluster` nodes, then graph-partition refinement: `get_quality_simple()` (cohesion = memloc overlap) and `remove_max_intra_cluster_edge(i)` (iteratively split the worst edge), reporting `"refine_cluster <id> size:.. min:.. max:.. aif:.."` at DEBUG. Clusters group loads that share source memlocs *and* have similar arithmetic intensity, so a hot load is cloned once per cluster (`clone_load` @0xc81330) rather than globally — minimizing redundant DMA while keeping compute local. The pipeline order (`LoadCloning::run` @0xc83920): `getHWM → index_memlocs → index_instruction → profile_load_aif (BUILD) → cluster_load_uses (CONSUME) → index_instruction → check_live_range → clone_load`. **CONFIRMED.**
+`cluster_load_uses` @0xc821f0 reads the `load_profile` map (LookupBucketFor @0xc8232a), builds `all_clusters` of `a_cluster` nodes, then graph-partition refinement: `get_quality_simple()` (cohesion = memloc overlap) and `remove_max_intra_cluster_edge(i)` (iteratively split the worst edge), reporting `"refine_cluster <id> size:.. min:.. max:.. aif:.."` at DEBUG. Clusters group loads that share source memlocs *and* have similar arithmetic intensity, so a hot load is cloned once per cluster (`clone_load` @0xc81330) rather than globally — minimizing redundant DMA while keeping compute local. The pipeline order (`LoadCloning::run` @0xc83920): `getHWM → index_memlocs → index_instruction → profile_load_aif (BUILD) → cluster_load_uses (CONSUME) → index_instruction → check_live_range → clone_load`.
 
 ---
 
@@ -316,11 +320,11 @@ This is the *same* `partitions × bytes_per_partition` model `PerformanceProfile
 
 None of the three bodies calls `MetricStore::addMetric` directly (their disasm is clean of `addMetric`/`MetricStore`). Their outputs:
 
-1. **`DMAMetricsImpl::print`** → a `libfort` ASCII grid to the Logger at INFO. Purely human-readable; the machine-consumable DMA counters that reach the NEFF live in the separate DMAReport / HBMUsage passes and the MetricStore (in-flight sibling 8.47). `print` is the operator-facing mirror of those buckets. **STRONG.**
-2. **`PerformanceProfiler::runProfile`** → two INFO reload/spill lines, the `DDRTransferBytes` `llvm::TrackingStatistic` (`-stats`), and the `MemEffcy` float written back onto `Module::getDMAProfile()+112` — carried on the DMA-profile object later serialization passes read. **STRONG.**
-3. **`LoadCloning` `load_profile`/`aif`** → not a metric; an internal decision input that drives load cloning + clustering inside the `separate_load_and_compute` family. It mutates the IR (clones loads), which then changes the inst-counts the report passes and PerfSim subsequently measure. **CONFIRMED/STRONG.**
+1. **`DMAMetricsImpl::print`** → a `libfort` ASCII grid to the Logger at INFO. Purely human-readable; the machine-consumable DMA counters that reach the NEFF live in the separate DMAReport / HBMUsage passes and the MetricStore (in-flight sibling 8.47). `print` is the operator-facing mirror of those buckets.
+2. **`PerformanceProfiler::runProfile`** → two INFO reload/spill lines, the `DDRTransferBytes` `llvm::TrackingStatistic` (`-stats`), and the `MemEffcy` float written back onto `Module::getDMAProfile()+112` — carried on the DMA-profile object later serialization passes read.
+3. **`LoadCloning` `load_profile`/`aif`** → not a metric; an internal decision input that drives load cloning + clustering inside the `separate_load_and_compute` family. It mutates the IR (clones loads), which then changes the inst-counts the report passes and PerfSim subsequently measure.
 
-Net loop: `LoadCloning(aif)` shapes the IR → PerfSim + DMAReport + `PerformanceProfiler` measure the result → MetricStore collects the scalars → the PGA autotuner re-tunes. `DMAMetrics::print` and the `PerformanceProfiler` DEBUG records are the human-readable observability layer over that loop. **STRONG.**
+Net loop: `LoadCloning(aif)` shapes the IR → PerfSim + DMAReport + `PerformanceProfiler` measure the result → MetricStore collects the scalars → the PGA autotuner re-tunes. `DMAMetrics::print` and the `PerformanceProfiler` DEBUG records are the human-readable observability layer over that loop.
 
 ---
 

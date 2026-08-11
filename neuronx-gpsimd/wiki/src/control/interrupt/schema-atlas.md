@@ -21,7 +21,7 @@ The two halves:
 
 It does **not** re-derive any source from scratch — every count, offset, and key is
 already byte-grounded on a committed sibling. This page reconciles the eleven tables'
-*shapes* into one atlas and re-verifies each NEW schema-shape claim against the
+*shapes* into one atlas and grounds each NEW schema-shape claim in the
 specific YAML by absolute path. The committed siblings synthesized here:
 [`sdma-triggers.md`](sdma-triggers.md) · [`io-fabric-triggers.md`](io-fabric-triggers.md) ·
 [`pcie-hbm-tpb-d2d-triggers.md`](pcie-hbm-tpb-d2d-triggers.md) ·
@@ -30,8 +30,8 @@ specific YAML by absolute path. The committed siblings synthesized here:
 [`errtrig-fis-routing.md`](errtrig-fis-routing.md) ·
 [`nsm-flow-unified.md`](nsm-flow-unified.md).
 
-> **PROVENANCE.** Every key-set, count, and per-key presence figure below was
-> re-derived this session directly from the shipped, RTL-generated **Cayman**
+> **PROVENANCE.** Every key-set, count, and per-key presence figure below is read
+> directly from the shipped, RTL-generated **Cayman**
 > trigger YAMLs in `…/cayman-arch-regs_tgz/intc/*_triggers.yaml` (`yq` over each
 > file by absolute path, never a directory scan). The Cayman generation is
 > byte-grounded; **v5 / Maverick is header-OBSERVED only** (§8) — every v5-interior
@@ -46,10 +46,10 @@ specific YAML by absolute path. The committed siblings synthesized here:
 
 ---
 
-## 0. The eleven tables at a glance `[HIGH · OBSERVED]`
+## 0. The eleven tables at a glance
 
 Eleven `*_triggers.yaml` ship in the Cayman `intc/` directory. Their counts and
-schema families, every count re-run this session with `yq 'length'` /
+schema families, every count from `yq 'length'` /
 `yq '[.[]|keys[]]|unique'` against the file by absolute path:
 
 | Table | `yq 'length'` | Key-union | Schema family (§1) | edge / level |
@@ -67,17 +67,17 @@ schema families, every count re-run this session with `yq 'length'` /
 Two tables are *not* domain leaves: `peb_intc_triggers.yaml` is the **apex** (rolls
 up all the others), and `io_fabric_triggers.yaml` is the IO-die aggregator. Mariana /
 Mariana+ / Tonga ship **no** trigger-YAML directory at all; only Cayman, Sunda, and
-Maverick do. `[HIGH · OBSERVED]`
+Maverick do.
 
 > **KEYSTONE — six base families, one parser per family.** The eleven tables reduce
 > to **six** distinct base key-set shapes (MINIMAL-5, RICH-9, TPB-9, CC-8, TOPSP-7,
 > APEX-10). A control plane must dispatch its YAML parser by **detecting the family**,
 > not by assuming a shared schema. Three keys — `nmi_mask`, `msix_mask`,
-> `tog2pul_only` — are mutually-exclusive family discriminators (§1.1). `[HIGH · OBSERVED]`
+> `tog2pul_only` — are mutually-exclusive family discriminators (§1.1).
 
 ---
 
-## 1. The SCHEMA ATLAS — the six base families `[HIGH · OBSERVED]`
+## 1. The SCHEMA ATLAS — the six base families
 
 Every per-entry mapping in every table is drawn from a **closed alphabet of 12 keys**.
 No table invents a key outside this set; the families differ only in *which subset* of
@@ -99,10 +99,10 @@ the 12 each entry carries. The 12 keys, with the family that introduces each:
 | `critical` | int(1) | **APEX only** | the SoC-survival fast-path flag ("*not a summary*"). |
 | `source_block` / `source_path` | string | **APEX shape-C only** | names the leaf `nmi_out` wire (only `pcie_m0`/`pcie_a0`). |
 
-### 1.1 The schema-variation matrix — the central insight `[HIGH · OBSERVED]`
+### 1.1 The schema-variation matrix — the central insight
 
-Per-key **presence count** across all eleven tables, every cell re-run this session
-(`yq '[.[]|select(has("KEY"))]|length'` against the file by absolute path). A `—`
+Per-key **presence count** across all eleven tables, every cell from
+`yq '[.[]|select(has("KEY"))]|length'` against the file by absolute path. A `—`
 means the key is absent on **every** entry; a number is the count of entries carrying
 it (out of the table's `length`):
 
@@ -133,11 +133,11 @@ The **three discriminator keys** that pick the family by mere presence:
 
 > **QUIRK — `nmi_mask` and `msix_mask` are mutually exclusive (H-ATLAS-1).** No single
 > entry in any of the eleven tables carries both `nmi_mask` and `msix_mask`
-> (re-verified: every table with `nmi_mask>0` has `msix_mask==—`, and vice-versa).
+> (every table with `nmi_mask>0` has `msix_mask==—`, and vice-versa).
 > The two masks are the **two delivery axes** — `nmi_mask` is the on-die NMI-summary
 > rollup (the AMZN/`no_msix` path), `msix_mask` is the per-leaf MSI-X (the USER/`msix`
 > path). A leaf table is stamped for exactly one. Their presence is the cleanest
-> single-bit family discriminator a parser can key on. `[HIGH · OBSERVED]`
+> single-bit family discriminator a parser can key on.
 
 > **GOTCHA — `needs_cdc` is partial in only two tables (PCIe 212/228, D2D 67/216).**
 > In the other nine tables `needs_cdc` is present on **every** entry; in PCIe it is
@@ -145,9 +145,8 @@ The **three discriminator keys** that pick the family by mere presence:
 > idx 67..215 (the 148 D2D-subsystem sources, whose verbatim comments state "CDC
 > happens at controller/MPCS … so no CDC needed here"). A parser must treat the
 > *absence* of `needs_cdc` as "no per-trigger CDC metadata", not as a parse error.
-> `[HIGH · OBSERVED]`
 
-### 1.2 The six base families — keyset + members `[HIGH · OBSERVED]`
+### 1.2 The six base families — keyset + members
 
 | Family | Keyset (verbatim union) | size | Tables (sources) | discriminator |
 |--------|-------------------------|-----:|------------------|---------------|
@@ -168,22 +167,22 @@ Two structural relationships make the family lattice clean:
 * **RICH-9 and TPB-9 are both 9-key but DISJOINT in their extra-4**: RICH-9 adds
   `{nmi_mask, nmi_msix_mask}` (rollup), TPB-9 adds `{msix_mask, tog2pul_only}`
   (per-leaf MSI-X + edge-detect). Same arity, different shape — the count alone is not
-  the family. `[HIGH · OBSERVED]`
+  the family.
 
 > **CORRECTION — TOP_SP is NOT a sixth one-row mask family; it is MINIMAL-5 with a
 > 2-row ECC variant.** 80 of TOP_SP's 82 entries are pure MINIMAL-5; only the 2
 > ERG-ECC rows (`intr_trig_{uncerr,corerr}`, idx 1–2) drop `needs_cdc` and add
-> `nmi_mask`/`nmi_msix_mask` (both 0) to feed the leaf's nmi-summary. Re-verified:
+> `nmi_mask`/`nmi_msix_mask` (both 0) to feed the leaf's nmi-summary.
 > `yq '[.[]|select(has("nmi_mask"))]|length'` = **2**,
 > `yq '[.[]|select(has("source_clock"))]|length'` = **0**. So TOPSP-7 is a *2-entry
 > local variant inside a MINIMAL-5 table*, **not** the TPB `msix_mask`/`tog2pul_only`
 > variant and not a sixth wholesale family. A parser keying TOP_SP on "MINIMAL-5"
-> must tolerate the 2 nmi-bearing rows. `[HIGH · OBSERVED]`
+> must tolerate the 2 nmi-bearing rows.
 
-### 1.3 The apex's four sub-shapes (APEX-10 decomposed) `[HIGH · OBSERVED]`
+### 1.3 The apex's four sub-shapes (APEX-10 decomposed)
 
 The apex `peb_intc_triggers.yaml` is the only table whose **128 entries span four
-distinct sub-keysets** drawn from the 10-key union. Re-counted this session
+distinct sub-keysets** drawn from the 10-key union
 (`yq` predicates by absolute path):
 
 | Sub-shape | Keyset | Count | members | `yq` predicate |
@@ -196,14 +195,14 @@ distinct sub-keysets** drawn from the 10-key union. Re-counted this session
 Verified arithmetic: `nmi_mask`-bearing = 114 = A(80)+B(32)+C(2); `needs_cdc`-bearing
 = D(14); 114 + 14 = **128**, no overlap. So the apex itself encodes *both* axes:
 shape-D is MINIMAL-5-with-`needs_cdc` (the in-domain FIS telemetry), shapes A/B/C are
-the rollup-summary form. `[HIGH · OBSERVED]`
+the rollup-summary form.
 
 ---
 
-## 2. Edge / level / CDC — the per-table polarity, by family `[HIGH · OBSERVED]`
+## 2. Edge / level / CDC — the per-table polarity, by family
 
 `edge_triggered` and `needs_cdc` are present in every family, but their *distribution*
-is a per-table fingerprint. Re-run this session (`yq '[.[]|select(.edge_triggered==…)]|length'`):
+is a per-table fingerprint (`yq '[.[]|select(.edge_triggered==…)]|length'`):
 
 | Table | family | edge | level | CDC `true` | the level-set character |
 |-------|--------|-----:|------:|-----------:|-------------------------|
@@ -223,7 +222,7 @@ is a per-table fingerprint. Re-run this session (`yq '[.[]|select(.edge_triggere
 > (ECC / temperature / parity), not one-shot pulses. A reimplementation that
 > hard-codes "controller interrupts are edge" (true for PCIe's `intc_triggers_core_out`)
 > mis-programs `int_posedge_grp` for every HBM channel cause. The trigger table is the
-> source-of-truth for `int_posedge_grp` per bit, per domain. `[HIGH · OBSERVED]`
+> source-of-truth for `int_posedge_grp` per bit, per domain.
 
 > **NOTE — SDMA / io-fabric / D2D / TOP_SP declare ZERO `needs_cdc==true`.** All four
 > MINIMAL-5/TOPSP-7 tables do their clock-domain crossing **inside the source block**
@@ -232,7 +231,7 @@ is a per-table fingerprint. Re-run this session (`yq '[.[]|select(.edge_triggere
 > `int_cdc_bypass_grp` whose `no_msix` variant notes "the CDC syncro is still in the
 > path regardless" ([INTC 4-group](../csr/intc-4group.md)) — so a leaf can declare no
 > crossing while the INTC unconditionally resynchronises. **Gate CDC on the
-> `needs_cdc` *value*, not its presence.** `[HIGH · OBSERVED]`
+> `needs_cdc` *value*, not its presence.**
 
 **The `source_clock` ⇔ `needs_cdc==true` co-population invariant.** In every family
 that carries `source_clock` (RICH-9, TPB-9, CC-8) the key set populates *exactly* the
@@ -240,11 +239,11 @@ that carries `source_clock` (RICH-9, TPB-9, CC-8) the key set populates *exactly
 clock the CDC sampler reads into: HBM → `dfi_hdr_clk_occ_out`, PCIe → `intc_core_clk`,
 TPB → `clk_core_gated` (×125) + `clk_mem_top` (×1, the lone `ham_intr`), CC → `clk_1p2`
 (the 1.2 V compute/Q7 domain). The MINIMAL-5 tables omit `source_clock` *because* they
-declare no CDC. `[HIGH · OBSERVED]`
+declare no CDC.
 
 ---
 
-## 3. The schema-parse / normalize algorithm `[structure HIGH · OBSERVED; values OBSERVED]`
+## 3. The schema-parse / normalize algorithm
 
 The one algorithm a control plane needs: ingest any of the eleven tables, detect its
 family, and normalize each entry into a uniform internal record. The family detector
@@ -330,11 +329,11 @@ static void program_intc_bit(IntcUnit *u, unsigned idx, const trig_rec_t *r) {
 > in Cayman so adding at end … to prevent existing interrupt indexes changing";
 > [D2D §5](pcie-hbm-tpb-d2d-triggers.md)) and corroborated for TPB by the 256-bit
 > `intc_bypass` map. A parser that re-orders entries (e.g. by sorting on `name`)
-> destroys the bit mapping. `[HIGH · OBSERVED]`
+> destroys the bit mapping.
 
 ---
 
-## 4. The shared sub-vectors — the FIS shim family across all tables `[HIGH · OBSERVED]`
+## 4. The shared sub-vectors — the FIS shim family across all tables
 
 Cutting *across* the six families is one recurring sub-vocabulary: the **FIS shim**
 (every `FIS_0` container contributes three interrupt vectors), the **NOTIFIC** queue
@@ -357,7 +356,7 @@ hazard; [errtrig §3.1](errtrig-fis-routing.md)):
 > `rg -c '^- trigger: fis_errtrig_intr\['` = **50**. The same doubling inflates every
 > bare `rg -c` over any `*_triggers.yaml`; always head-anchor on `^- trigger:` or use
 > `yq 'length'`. This is why every count on this page is `yq`-derived, never a bare
-> grep. `[HIGH · OBSERVED]`
+> grep.
 
 > **QUIRK — `fis_sprot_intr` is the same 6-cause vector at three different
 > multiplicities.** The *cause* set is invariant (remapper-deny / R>AR delta / tmu-tout
@@ -366,11 +365,11 @@ hazard; [errtrig §3.1](errtrig-fis-routing.md)):
 > reimplementer sizing the sprot vector must read the multiplicity per table, not
 > assume 12. The canonical 6-entry single-index form (with the meaningful descriptions)
 > lives in `top_sp_triggers.yaml`; `pcie_triggers.yaml` carries generic placeholders
-> that are **level**-triggered. `[HIGH · OBSERVED]`
+> that are **level**-triggered.
 
 ---
 
-## 5. The SOURCE MAP — source family → schema → routing leaf → apex → delivery `[HIGH · OBSERVED]`
+## 5. The SOURCE MAP — source family → schema → routing leaf → apex → delivery
 
 The second half of the synthesis: every trigger source threaded end-to-end. The
 **universal routing primitive** is the **errtrig PAIR** — two `intc_4grp` units
@@ -403,7 +402,6 @@ always emits two `intc_4grp`; [physical §3 KEY FINDING](physical-intc-instances
 
 Apex roll-up: **96 summary `nmi_out` wires + 32 direct PEB-local criticals = 128**
 ([apex §1](peb-cc-topsp-triggers.md)). SDMA dominates at **64/128** (half the apex).
-`[HIGH · OBSERVED]`
 
 ### 5.2 The `edge_triggered` → `int_posedge_grp` binding `[HIGH · OBSERVED leaf; CARRIED INTC]`
 
@@ -413,10 +411,10 @@ table is the source-of-truth for how firmware programs `int_posedge_grp` for tha
 domain's bit range — hence the §2 HBM-inversion warning is a *programming* hazard, not
 just a documentation note. `[HIGH/OBSERVED leaf; CARRIED INTC]`
 
-### 5.3 The critical fast-path — which sources earn a dedicated apex bit `[HIGH · OBSERVED]`
+### 5.3 The critical fast-path — which sources earn a dedicated apex bit
 
-Exactly **32 of 128** apex inputs carry `critical:1` (re-verified
-`yq '[.[]|select(.critical==1)]|length'` = 32). The critical flag is the
+Exactly **32 of 128** apex inputs carry `critical:1`
+(`yq '[.[]|select(.critical==1)]|length'` = 32). The critical flag is the
 SoC-survival fast-path — firmware reacts **without decoding a per-domain summary**.
 The 32 (sum verified = 32): HBM thermal (4) + PVT (7) + SPI slave (8) + axi2apb (4) +
 NSM AXI timeout (1, idx 111) + ERG uncorrectable (2) + io_fabric apbblk (1) + APB
@@ -429,7 +427,7 @@ flush (2) + GPIO/I2C/misc_ram (3).
 > carry NO critical** — even an uncorrectable Q7-mem ECC (`cc_seq_mem_uncerr`) or a
 > D2D link-down rides the generic per-tile/combined summary, and firmware must decode
 > the leaf errtrig. A CATTRIP gets a hardware fast-path; a D2D link-down does not — a
-> real, structural difference, not a documentation artifact. `[HIGH · OBSERVED]`
+> real, structural difference, not a documentation artifact.
 
 > **GOTCHA — NSM reaches the core by TWO paths (the SOURCE-MAP keystone).** The NSM
 > AXI-timeout is the one isolation-SM source with a *direct* critical apex bit:
@@ -444,11 +442,11 @@ flush (2) + GPIO/I2C/misc_ram (3).
 
 ---
 
-## 6. The apex bit-reversal + the verbatim-typo ledger `[HIGH · OBSERVED]`
+## 6. The apex bit-reversal + the verbatim-typo ledger
 
 Two cross-table hazards a string-matching consumer must internalize.
 
-### 6.1 The SDMA apex bit-reversal `[HIGH · OBSERVED]`
+### 6.1 The SDMA apex bit-reversal
 
 > **CORRECTION / HAZARD — apex bit index ≠ SDMA queue number.** The apex SDMA trigger
 > **index counts UP** while the NAME's SDMA queue number **counts DOWN**, verified
@@ -457,9 +455,9 @@ Two cross-table hazards a string-matching consumer must internalize.
 > `se0_sdma_nmi[31]` → name `se0_sdma_0_summary` (queue 0). Identical reversal on SE1.
 > So apex bit-position `i` maps to **physical queue `[31 − i_local]`**. A tool reading
 > the apex bit index as the queue number gets the complement. **Trust the NAME string
-> `se{e}_sdma_{q}_summary`, never the bit index.** `[HIGH · OBSERVED]`
+> `se{e}_sdma_{q}_summary`, never the bit index.**
 
-### 6.2 The verbatim-typo ledger (do NOT "fix" when string-matching) `[HIGH · OBSERVED]`
+### 6.2 The verbatim-typo ledger (do NOT "fix" when string-matching)
 
 The RTL-generated tables preserve source typos byte-exact. A consumer matching the
 binary symbol table must reproduce them:
@@ -479,7 +477,6 @@ binary symbol table must reproduce them:
 > `trigger` *path* is correctly spelled while 8 `name` fields carry typos — so the
 > **path** is the reliable D2D identifier and the **name** the reliable TPB one. There
 > is no single "trust X" rule across tables; the atlas's per-table note is required.
-> `[HIGH · OBSERVED]`
 
 ---
 
@@ -549,22 +546,22 @@ Maverick) reshape the tails but keep the family backbone:
 1. **Detect the family before parsing** (3-key decision tree, §3): `critical` ⇒ APEX;
    `tog2pul_only` ⇒ TPB; `msix_mask` (no `tog2pul`) ⇒ CC; `source_clock` ⇒ RICH-9;
    `nmi_mask`-only ⇒ TOP_SP; else MINIMAL-5. `nmi_mask` and `msix_mask` are mutually
-   exclusive. `[HIGH · OBSERVED]`
+   exclusive.
 2. **Array index IS the INTC bit** (`group = idx>>5`, `bit = idx&31`); never re-order
-   entries. `[HIGH · OBSERVED]`
+   entries.
 3. **Program `int_posedge_grp` from `edge_triggered` per bit** — and remember the
-   **HBM inversion** (192 level, 31 edge). `[HIGH · OBSERVED]`
+   **HBM inversion** (192 level, 31 edge).
 4. **Gate CDC on `needs_cdc` VALUE, not presence**; sample the `needs_cdc==true` rows
    into their `source_clock` (HBM→`dfi_hdr_clk_occ_out`, PCIe→`intc_core_clk`,
-   TPB→`clk_core_gated`, CC→`clk_1p2`); MINIMAL-5 tables do CDC internally. `[HIGH · OBSERVED]`
+   TPB→`clk_core_gated`, CC→`clk_1p2`); MINIMAL-5 tables do CDC internally.
 5. **One errtrig PAIR (256-cap) per domain, flavor by privilege** (USER→msix,
    AMZN→no_msix); every domain — even CC(98)/TOP_SP(82) — gets a physical pair.
    `[HIGH · CARRIED]`
 6. **Wire 96 summary `nmi_out` + 32 criticals + 14 shape-D = 128 apex inputs**; hook
    the 32 criticals (HBM-thermal/NSM/PVT/SPI/ERG/…) as direct fast-paths; TPB/D2D/CC/
-   TOP_SP have none. `[HIGH · OBSERVED]`
+   TOP_SP have none.
 7. **Trust NAME for SDMA apex queues** (bit-reversal `31−i`); reproduce the §6.2 typos
-   byte-exact when string-matching. `[HIGH · OBSERVED]`
+   byte-exact when string-matching.
 8. **The apex → Q7/GIC final hop is `[INFERRED]`** — a GIC exists, the vector map is
    firmware-owned. For a v5 target, add the Maverick layers (per-IP INTC,
    `functional_test_required`, `*_vec_q` arrays, 119-entry apex) — header-OBSERVED,
@@ -574,18 +571,20 @@ Maverick) reshape the tails but keep the family backbone:
 
 ## 10. Hazard / anomaly ledger
 
-| # | Hazard | Grade |
-|---|--------|-------|
-| H-ATLAS-1 | **`nmi_mask` ⊕ `msix_mask`**: no entry carries both — the cleanest single-bit family discriminator (NMI-rollup vs MSI-X). | `[HIGH · OBSERVED]` |
-| H-ATLAS-2 | **HBM edge/level inversion**: 192 level / 31 edge — the lone polarity outlier; hard-coding "controller IRQs are edge" mis-programs every HBM channel. | `[HIGH · OBSERVED]` |
-| H-ATLAS-3 | **`fis_errtrig` count hazard**: bare `rg -c 'fis_errtrig_intr'` = 100 (trigger+name lines), not 50; head-anchor `^- trigger:`. | `[HIGH · OBSERVED]` |
-| H-ATLAS-4 | **`fis_sprot` multiplicity varies**: 6-cause vector × {1,2,5} instances → TOP_SP 6 / io-fab·CC·D2D 12 / TPB 30. Don't assume 12. | `[HIGH · OBSERVED]` |
-| H-ATLAS-5 | **TPB-9 ≠ CC-8 by one key**: `tog2pul_only` is the TPB-only fingerprint; same lineage (CC = TPB POOL IP), different schema. | `[HIGH · OBSERVED]` |
-| H-ATLAS-6 | **SDMA apex bit-reversal**: `se{e}_sdma_nmi[i]` → physical queue `31−i`. Trust the NAME, not the index. | `[HIGH · OBSERVED]` |
-| H-ATLAS-7 | **`needs_cdc` partial in PCIe(212)/D2D(67) only**: absence ≠ parse error — it means "no per-trigger CDC metadata". | `[HIGH · OBSERVED]` |
-| H-ATLAS-8 | **Verbatim typos preserved** (§6.2): 7 distinct typo families; name-vs-path authority flips per table. | `[HIGH · OBSERVED]` |
-| H-ATLAS-9 | **APEX-10 spans 4 sub-shapes** (80/32/2/14): `source_path` on only 2, `nmi_mask` on only 114 — not all 128. | `[HIGH · OBSERVED]` |
-| H-ATLAS-10 | **NSM 2-path delivery**: idx-111 direct critical + PCIe-leaf summary — the one isolation-SM source with a dedicated apex bit. | `[HIGH · OBSERVED]` |
+Every row below is `[HIGH · OBSERVED]`.
+
+| # | Hazard |
+|---|--------|
+| H-ATLAS-1 | **`nmi_mask` ⊕ `msix_mask`**: no entry carries both — the cleanest single-bit family discriminator (NMI-rollup vs MSI-X). |
+| H-ATLAS-2 | **HBM edge/level inversion**: 192 level / 31 edge — the lone polarity outlier; hard-coding "controller IRQs are edge" mis-programs every HBM channel. |
+| H-ATLAS-3 | **`fis_errtrig` count hazard**: bare `rg -c 'fis_errtrig_intr'` = 100 (trigger+name lines), not 50; head-anchor `^- trigger:`. |
+| H-ATLAS-4 | **`fis_sprot` multiplicity varies**: 6-cause vector × {1,2,5} instances → TOP_SP 6 / io-fab·CC·D2D 12 / TPB 30. Don't assume 12. |
+| H-ATLAS-5 | **TPB-9 ≠ CC-8 by one key**: `tog2pul_only` is the TPB-only fingerprint; same lineage (CC = TPB POOL IP), different schema. |
+| H-ATLAS-6 | **SDMA apex bit-reversal**: `se{e}_sdma_nmi[i]` → physical queue `31−i`. Trust the NAME, not the index. |
+| H-ATLAS-7 | **`needs_cdc` partial in PCIe(212)/D2D(67) only**: absence ≠ parse error — it means "no per-trigger CDC metadata". |
+| H-ATLAS-8 | **Verbatim typos preserved** (§6.2): 7 distinct typo families; name-vs-path authority flips per table. |
+| H-ATLAS-9 | **APEX-10 spans 4 sub-shapes** (80/32/2/14): `source_path` on only 2, `nmi_mask` on only 114 — not all 128. |
+| H-ATLAS-10 | **NSM 2-path delivery**: idx-111 direct critical + PCIe-leaf summary — the one isolation-SM source with a dedicated apex bit. |
 
 ---
 

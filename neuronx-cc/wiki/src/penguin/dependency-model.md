@@ -33,11 +33,11 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-A `DependencyEdge` is one directed ordering constraint between two operations: "`src` must be ordered before `dst`, for the reason given by `kind`." It is a *first-class object* — a node you can hold a reference to, put in a list, and `serialize` — which is exactly what makes the Penguin representation differ from BIR (where an edge is a packed `EdgePtr` with no standalone identity, see [BIR contrast](#contrast-with-bir-inline-vs-function-level)).
+A `DependencyEdge` is one directed ordering constraint between two operations: "`src` must be ordered before `dst`, for the reason given by `kind`." It is a *first-class object* — a node you can hold a reference to, put in a list, and `serialize` — which is exactly what makes the Penguin representation differ from BIR (where an edge is a packed `EdgePtr` with no standalone identity, see [BIR contrast](#contrast-with-bir--inline-vs-function-level)).
 
 ### Layout
 
-The class is a regular Python class (Cython found no C-level `__pyx_obj_…DependencyEdge` instance struct), so its fields live in `__dict__`; the names below are CONFIRMED present in the module's interned-name pool, with the owner pinned to `DependencyEdge` by the `__init__`/`serialize` method wrappers.
+The class is a regular Python class (Cython found no C-level `__pyx_obj_…DependencyEdge` instance struct), so its fields live in `__dict__`. The names below are present in the module's interned-name pool, with the owner pinned to `DependencyEdge` by the `__init__`/`serialize` method wrappers.
 
 ```c
 // ir/Dependency.py  →  Dependency.cpython-310-…-.so
@@ -46,8 +46,8 @@ class DependencyEdge:                         // __pyx_pw_…DependencyEdge_1__i
     Instruction        dst;                   // the consumer / later op
     Optional[EdgeKind] kind;                  // pool: type-annotation string "Optional[EdgeKind]"
 
-    def __init__(self, src, dst, kind): ...   // DependencyEdge_1__init__   (CONFIRMED pyx symbol)
-    def serialize(self): ...                  // DependencyEdge_3serialize  (CONFIRMED pyx symbol)
+    def __init__(self, src, dst, kind): ...   // pyx symbol DependencyEdge_1__init__
+    def serialize(self): ...                  // pyx symbol DependencyEdge_3serialize
                                               //   → json {kind, src, dst}  — the Penguin→BIR handoff
 ```
 
@@ -55,7 +55,7 @@ class DependencyEdge:                         // __pyx_pw_…DependencyEdge_1__i
 
 ### The Edge Direction
 
-`src → dst` is producer→consumer for a `FLOW` (RAW) edge; for `ANTI`/`OUTPUT`/`ORDERED` it is still "earlier→later" in the required program order. The same `(src, dst)` pair can appear under more than one `EdgeKind` in the Penguin list (the list is *not* MAX-merged the way BIR is) — see the [BIR contrast](#contrast-with-bir-inline-vs-function-level).
+`src → dst` is producer→consumer for a `FLOW` (RAW) edge; for `ANTI`/`OUTPUT`/`ORDERED` it is still "earlier→later" in the required program order. The same `(src, dst)` pair can appear under more than one `EdgeKind` in the Penguin list (the list is *not* MAX-merged the way BIR is) — see the [BIR contrast](#contrast-with-bir--inline-vs-function-level).
 
 ---
 
@@ -67,7 +67,7 @@ class DependencyEdge:                         // __pyx_pw_…DependencyEdge_1__i
 
 ### The Four Members
 
-All four tokens (`FLOW`, `ANTI`, `OUTPUT`, `ORDERED`) and the `EdgeKind` type name are CONFIRMED in `Dependency.so`'s interned-name pool.
+All four tokens (`FLOW`, `ANTI`, `OUTPUT`, `ORDERED`) and the `EdgeKind` type name appear in `Dependency.so`'s interned-name pool.
 
 | Member | Hazard | Meaning |
 |---|---|---|
@@ -83,7 +83,7 @@ All four tokens (`FLOW`, `ANTI`, `OUTPUT`, `ORDERED`) and the `EdgeKind` type na
 Penguin's `EdgeKind` member *set* and *meanings* are identical to BIR's `bir::EdgeKind`. The BIR enum is pinned in Part 7 from `bir::operator<` (@`0x26add0`, ordering `Invalid < Ordered < Anti < Output < Flow`) and the `dependency_edge_kind_t` JSON enum:
 
 ```c
-// BIR side (Part 7 — libBIR, C++):    CONFIRMED ordinals
+// BIR side (Part 7 — libBIR, C++): ordinals read from libBIR
 enum dependency_edge_kind_t {
     INVALID            = 0,   //  ← Penguin OMITS this sentinel
     ORDERED            = 1,   //  ≡ Penguin EdgeKind.ORDERED
@@ -93,9 +93,9 @@ enum dependency_edge_kind_t {
 };
 ```
 
-The four real Penguin kinds map 1:1 onto BIR's non-`Invalid` members (member-set and meaning: CONFIRMED both sides). `DependencyEdge.serialize` emits json `{kind, src, dst}` and is the explicit contract: BirCodeGenLoop reads that and calls `bir::addDependency(target, kind)`.
+The four real Penguin kinds map 1:1 onto BIR's non-`Invalid` members, by member set and by meaning on both sides. `DependencyEdge.serialize` emits json `{kind, src, dst}` and is the explicit contract: BirCodeGenLoop reads that and calls `bir::addDependency(target, kind)`.
 
-> **NOTE (confidence) —** that the *member set* `{FLOW, ANTI, OUTPUT, ORDERED}` is byte-identical to BIR's non-`Invalid` set is CONFIRMED on both sides. The exact *integer ordinal* each Penguin member carries (e.g. that Penguin's `ORDERED`=1, `FLOW`=4) is **INFERRED** to match the BIR ordinals — the Penguin enum is an interned name list with no readable backing integers in the `.so`. The 1:1 mapping is by name and meaning, which is what the `serialize`→`addDependency` handoff actually consumes.
+> **NOTE —** the member set `{FLOW, ANTI, OUTPUT, ORDERED}` matches BIR's non-`Invalid` set on both sides. The exact *integer ordinal* each Penguin member carries (e.g. that Penguin's `ORDERED`=1, `FLOW`=4) is [INFERRED] to match the BIR ordinals — the Penguin enum is an interned name list with no readable backing integers in the `.so`. The 1:1 mapping is by name and meaning, which is what the `serialize`→`addDependency` handoff actually consumes.
 
 ---
 
@@ -107,7 +107,7 @@ Unlike BIR, Penguin does **not** store dependencies on the instruction. The enti
 
 ### The Container API
 
-All seven methods are CONFIRMED in `Function.cpython-310-…-.so` (`__pyx_pw_…Function_*` wrappers; qualnames in the pool):
+All seven methods appear in `Function.cpython-310-…-.so` (`__pyx_pw_…Function_*` wrappers; qualnames in the pool):
 
 | Method | Role |
 |---|---|
@@ -197,15 +197,15 @@ LAYER 2 — DependencyEdge scheduling graph (built by dep passes, per-Function) 
 
 | Symbol | Module | Role | Confidence |
 |---|---|---|---|
-| `DependencyEdge.__init__` | `ir/Dependency.so` | edge ctor `(src, dst, kind)` | CONFIRMED |
-| `DependencyEdge.serialize` | `ir/Dependency.so` | json `{kind, src, dst}` — Penguin→BIR handoff | CONFIRMED |
-| `EdgeKind` (enum) | `ir/Dependency.so` | `{FLOW, ANTI, OUTPUT, ORDERED}` | CONFIRMED (members); ordinals INFERRED from BIR |
-| `Function.dep_edges` | `ir/Function.so` | the edge set | CONFIRMED |
-| `Function.add_dep_edge` / `remove_dep_edge` | `ir/Function.so` | insert / delete | CONFIRMED |
-| `Function.dep_edges_for_inst` | `ir/Function.so` | edges incident on an inst | CONFIRMED |
-| `Function.depending_insts` | `ir/Function.so` | consumers of an inst | CONFIRMED |
-| `Function.replace_inst_in_dependencies` | `ir/Function.so` | inst RAUW at edge level | CONFIRMED |
-| `Function.replace_with_list_in_dependencies` | `ir/Function.so` | inst→list rewrite at edge level | CONFIRMED |
+| `DependencyEdge.__init__` | `ir/Dependency.so` | edge ctor `(src, dst, kind)` | CERTAIN |
+| `DependencyEdge.serialize` | `ir/Dependency.so` | json `{kind, src, dst}` — Penguin→BIR handoff | CERTAIN |
+| `EdgeKind` (enum) | `ir/Dependency.so` | `{FLOW, ANTI, OUTPUT, ORDERED}` | CERTAIN (members); MEDIUM (ordinals, from BIR) |
+| `Function.dep_edges` | `ir/Function.so` | the edge set | CERTAIN |
+| `Function.add_dep_edge` / `remove_dep_edge` | `ir/Function.so` | insert / delete | CERTAIN |
+| `Function.dep_edges_for_inst` | `ir/Function.so` | edges incident on an inst | CERTAIN |
+| `Function.depending_insts` | `ir/Function.so` | consumers of an inst | CERTAIN |
+| `Function.replace_inst_in_dependencies` | `ir/Function.so` | inst RAUW at edge level | CERTAIN |
+| `Function.replace_with_list_in_dependencies` | `ir/Function.so` | inst→list rewrite at edge level | CERTAIN |
 
 ---
 
@@ -215,5 +215,4 @@ LAYER 2 — DependencyEdge scheduling graph (built by dep passes, per-Function) 
 - [5.4 — High-Level Operator Family](tensor-op-family.md) — the `Operator`/`Instruction` nodes that `src`/`dst` point at; macro expansion drives `replace_with_list_in_dependencies`
 - [5.13 — Software Pipeline & Scheduling](scheduling-minreg.md) — the Tonga scheduler / `LoadStoreDependencyAnalysis` / `AliasDependency*` passes that build and consume these edges
 - [4.15 — Control-Dependency Reification (HLO→MLIR→Penguin)](../hlo-opt/control-dep-reification.md) — the upstream control-dep representation that becomes `ORDERED` edges here
-  > **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../hlo-opt/control-dependence.md`, which does not exist; the Part-4.15 page is `hlo-opt/control-dep-reification.md` ("Control-Dependency Reification (HLO→MLIR→Penguin)"). Retargeted; no factual claim changed.
 - [Part 7 — BIR Dependency & Sync Model](../bir/) — the C++ `bir::EdgeKind` `{Invalid0, Ordered1, Anti2, Output3, Flow4}` this enum lowers into, the inline TBB edge sets, and the MAX-merge

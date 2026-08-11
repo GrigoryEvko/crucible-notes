@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 
 ### The CRTP relationship, proven
 
-The self-derivation is not inferred from naming — it is in the `__vmi_class_type_info` base lists. The `Instruction` typeinfo `_ZTIN3bir11InstructionE` @0x8fcd78 is a `__vmi` record whose first base reloc (struct offset 0x8fcd90) points at `_ZTIN3bir11NamedObjectINS_11InstructionENS_10BasicBlockEEE` @0x8fcd40, and whose second base (0x8fcda0) is `_ZTIN7logging9SrcHandleE`. So `Instruction : NamedObject<Instruction, BasicBlock>, logging::SrcHandle`. [CONFIRMED — `readelf -rW` relocs.]
+The self-derivation is not inferred from naming — it is in the `__vmi_class_type_info` base lists. The `Instruction` typeinfo `_ZTIN3bir11InstructionE` @0x8fcd78 is a `__vmi` record whose first base reloc (struct offset 0x8fcd90) points at `_ZTIN3bir11NamedObjectINS_11InstructionENS_10BasicBlockEEE` @0x8fcd40, and whose second base (0x8fcda0) is `_ZTIN7logging9SrcHandleE`. So `Instruction : NamedObject<Instruction, BasicBlock>, logging::SrcHandle`, read from the `readelf -rW` relocation table rather than from any naming convention.
 
 That `NamedObject<Instruction, BasicBlock>` typeinfo @0x8fcd40 is itself a `__vmi` with exactly two bases:
 
@@ -47,7 +47,7 @@ _ZTI NamedObject<Instruction,BasicBlock> @0x8fcd40   (__vmi_class_type_info)
   base @struct+0x18 (0x8fcd58) → _ZTIN4llvm22ilist_node_with_parentI…Instruction…BasicBlock…EE @0x8fcd28   (offset 0x10)
 ```
 
-So `NamedObject<T, Cont> : public NamedObjectBase, public llvm::ilist_node_with_parent<T, Cont>` — and the second base sits at sub-object offset `+0x10`, which means **the `NamedObject` *is* the intrusive list node**. The container's `ilist` threads these node sub-objects directly; there is no separate list-node allocation. The same two-base shape holds for `<DMAQueue,Module>` (_ZTI @0x8fc258), `<Function,FunctionHolder>` (@0x8fc630), `<Storage,Function>` (@0x9000a8), and `<MemoryLocation,MemoryLocationSet>` (@0x8fdb38). [CONFIRMED — identical `__vmi` base relocs.]
+So `NamedObject<T, Cont> : public NamedObjectBase, public llvm::ilist_node_with_parent<T, Cont>` — and the second base sits at sub-object offset `+0x10`, which means **the `NamedObject` *is* the intrusive list node**. The container's `ilist` threads these node sub-objects directly; there is no separate list-node allocation. The same two-base shape holds for `<DMAQueue,Module>` (_ZTI @0x8fc258), `<Function,FunctionHolder>` (@0x8fc630), `<Storage,Function>` (@0x9000a8), and `<MemoryLocation,MemoryLocationSet>` (@0x8fdb38), each with the identical two-base `__vmi` reloc pattern.
 
 > **QUIRK —** `NamedObjectBase` (typeinfo @0x8fc230) is the *only* `NamedObject` node with its own standalone polymorphic identity. `NamedObject<T,Cont>` carries no vptr of its own — the `+0x00` base header is a non-virtual `NamedObjectBase` sub-object, ctor-zeroed. `NamedObjectBase` is where the per-object opt-in machinery lives: `NamedObjectBase::optinPassesFromJson<Instruction*>` @0x2f95c0, `optinPassesFromJson<MemoryLocation*>` @0x3411f0, `optinPassesToJson` @0x3a01d0. The id, by contrast, lives in the templated `NamedObject<T,Cont>` proper — `NamedObjectBase` has no `getUniqueId`.
 
@@ -65,9 +65,9 @@ Offsets are relative to the `NamedObject<T, Cont>` sub-object base. The sub-obje
 | `unique_id` | +0x40 | `int` (`-1` sentinel pre-getId) | object id (getUniqueId fills it) | CERTAIN |
 | owner-container ptr | +0x48 | `Cont*` | back-pointer to owning container | CERTAIN |
 
-The `NamedObjectOrigin` enum and the `optin_passes` key are confirmed as literal strings in the binary (`Unknown NamedObjectOrigin`, the `StringSwitch<bir::NamedObjectOrigin>` symbol, and the `optin_passes`/`origin`/`Penguin` rodata strings). The `-1` id sentinel is confirmed by the leaf ctors pre-setting `unique_id = -1` then calling `getUniqueId`; if the field is *not* `-1` afterward the ctor throws the (mis-spelled) `Id has already been initialzed` — a string that is byte-exact in the binary. [CONFIRMED — `strings -a` hit.]
+The `NamedObjectOrigin` enum and the `optin_passes` key appear as literal strings in the binary (`Unknown NamedObjectOrigin`, the `StringSwitch<bir::NamedObjectOrigin>` symbol, and the `optin_passes`/`origin`/`Penguin` rodata strings). The `-1` id sentinel shows up in the leaf ctors, which pre-set `unique_id = -1` then calling `getUniqueId`; if the field is *not* `-1` afterward the ctor throws the (mis-spelled) `Id has already been initialzed` — a string that is byte-exact in the binary.
 
-> **NOTE —** the `name`, `origin`, `optin_passes_mask`, and `unique_id` are written contiguously by the leaf ctor; whether `name`/`origin` physically belong to `NamedObjectBase` or to `NamedObject<T,Cont>` proper is not separated by a dedicated `NamedObjectBase` ctor disasm. The unified `+0x18` name offset across all instantiations is the basis for treating them as one sub-object (HIGH for the partition, CERTAIN for the offsets).
+> **NOTE —** the `name`, `origin`, `optin_passes_mask`, and `unique_id` are written contiguously by the leaf ctor; whether `name`/`origin` physically belong to `NamedObjectBase` or to `NamedObject<T,Cont>` proper is not separated by a dedicated `NamedObjectBase` ctor disasm. The offsets themselves are read off the disassembly; the *partition* between base and derived is a reconstruction resting on the unified `+0x18` name offset across all instantiations.
 
 ---
 
@@ -119,7 +119,7 @@ function getUniqueId_MemoryLocation(this):
     tailcall getUniqueId_Storage(mls + 0x118);    // MLS's NamedObject<Storage,Function> sub-object @MLS+0x118
 ```
 
-Every leaf therefore reaches the same `Module+0x98` counter by a chain of `+0x48` owner-dereferences. The fixed deltas — `+0x48` (Instruction→BB's NamedObject), `+0xA0` (Storage→Function's NamedObject), `+0x118` (MemoryLocation→MLS's `NamedObject<Storage,Function>`) — are byte-exact `add` constants in the disassembly and independently pin the absolute position of each owner's sub-object. [CONFIRMED — all six disasm bodies read this pass.]
+Every leaf therefore reaches the same `Module+0x98` counter by a chain of `+0x48` owner-dereferences. The fixed deltas — `+0x48` (Instruction→BB's NamedObject), `+0xA0` (Storage→Function's NamedObject), `+0x118` (MemoryLocation→MLS's `NamedObject<Storage,Function>`) — are byte-exact `add` constants in the disassembly and independently pin the absolute position of each owner's sub-object.
 
 > **GOTCHA —** the Function cascade has a null-check the others lack (`@0x26c9c0` tests `[h+0x48]` and tail-calls a fatal `sub_26B060` on null). A `Function` whose `FunctionHolder` has no `Module` owner — a detached/orphaned function — will hard-fault on id assignment rather than silently producing id 0. A reimplementation that lets functions exist outside a Module will diverge here.
 
@@ -127,12 +127,12 @@ Every leaf therefore reaches the same `Module+0x98` counter by a chain of `+0x48
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `NamedObject<DMAQueue,Module>::getUniqueId` | 0x256b40 | base case: `[Module+0x98]++` | CONFIRMED |
-| `NamedObject<Function,FunctionHolder>::getUniqueId` | 0x26c9c0 | holder→Module, null-throw | CONFIRMED |
-| `NamedObject<Instruction,BasicBlock>::getUniqueId` | 0x2d5be0 | →BB+0x48 | CONFIRMED |
-| `NamedObject<BasicBlock,BasicBlockHolder>::getUniqueId` | 0x23c220 | →BBHolder::getUniqueId | CONFIRMED |
-| `NamedObject<Storage,Function>::getUniqueId` | 0x3ca030 | →Function+0xA0 | CONFIRMED |
-| `NamedObject<MemoryLocation,MemoryLocationSet>::getUniqueId` | 0x32dab0 | →MLS+0x118 | CONFIRMED |
+| `NamedObject<DMAQueue,Module>::getUniqueId` | 0x256b40 | base case: `[Module+0x98]++` | CERTAIN |
+| `NamedObject<Function,FunctionHolder>::getUniqueId` | 0x26c9c0 | holder→Module, null-throw | CERTAIN |
+| `NamedObject<Instruction,BasicBlock>::getUniqueId` | 0x2d5be0 | →BB+0x48 | CERTAIN |
+| `NamedObject<BasicBlock,BasicBlockHolder>::getUniqueId` | 0x23c220 | →BBHolder::getUniqueId | CERTAIN |
+| `NamedObject<Storage,Function>::getUniqueId` | 0x3ca030 | →Function+0xA0 | CERTAIN |
+| `NamedObject<MemoryLocation,MemoryLocationSet>::getUniqueId` | 0x32dab0 | →MLS+0x118 | CERTAIN |
 | `BasicBlockHolder::getUniqueId` | 0x24b4a0 | getFunction() then Function::getUniqueId | HIGH |
 
 ---
@@ -160,7 +160,7 @@ Offsets relative to the container base, anchored to `FunctionHolder::FunctionHol
 | inline `bucket[0]` | +0x40 | `T*` | single-bucket SSO storage | HIGH |
 | owner back-pointer | +0x48 | `Cont*` | the owning object (e.g. `Module*`) | CERTAIN |
 
-The ctor anchor is byte-exact: `FunctionHolder::FunctionHolder(Module*)` @0x290250 writes the sentinel as `this` (empty list), sets `[+0x10]=this+0x40` (buckets point at the inline slot), `[+0x18]=1`, `[+0x20]=0`, `[+0x30]=0x3f800000`, and `[+0x48]=` the `Module*` argument. The `buckets→+0x40` inline-init is the libstdc++ small-map optimization: a fresh map has one bucket living inside the container itself. [CONFIRMED — ctor disasm.]
+The ctor anchor is byte-exact: `FunctionHolder::FunctionHolder(Module*)` @0x290250 writes the sentinel as `this` (empty list), sets `[+0x10]=this+0x40` (buckets point at the inline slot), `[+0x18]=1`, `[+0x20]=0`, `[+0x30]=0x3f800000`, and `[+0x48]=` the `Module*` argument. The `buckets→+0x40` inline-init is the libstdc++ small-map optimization: a fresh map has one bucket living inside the container itself.
 
 ### Name lookup
 
@@ -179,13 +179,13 @@ function getElementByName(this, const string& name):       // @0x282030
     return nullptr;
 ```
 
-The hashtable node is `new(0x38)` = 56 bytes: `{ next@+0x00, key.data@+0x08, key.size@+0x10, key.sso@+0x18, value(T*)@+0x28, cached_hash@+0x30 }`. The node is minted by `insertIntoSymboltable` @0x24d9a0, which stores the key string at `+0x08` and the `T*` at `+0x28`. [CONFIRMED — seed and offsets read from disasm this pass.]
+The hashtable node is `new(0x38)` = 56 bytes: `{ next@+0x00, key.data@+0x08, key.size@+0x10, key.sso@+0x18, value(T*)@+0x28, cached_hash@+0x30 }`. The node is minted by `insertIntoSymboltable` @0x24d9a0, which stores the key string at `+0x08` and the `T*` at `+0x28`.
 
 ### Element insertion and name uniquing
 
-`insertElement<X>(ilist_iterator pos, name, …)` inlines the symtab probe, then on a free name does `new X`, calls `X`'s ctor with the name and the owner, links the node into the ilist, and registers it via `insertIntoSymboltable`. On a **name collision** it does not fail — it appends an ASCII decimal suffix and retries until the name is free, so two objects can never share a name within one container. The retry is a `std::to_string`-style digit-width selector tree (the `jbe` cascade at 0x24df08..); the exact format string (`"_N"` vs bare digits) was not isolated. [STRONG — collision-branch confirmed at `insertElement<BasicBlock>` @0x24de30, suffix-format INFERRED.]
+`insertElement<X>(ilist_iterator pos, name, …)` inlines the symtab probe, then on a free name does `new X`, calls `X`'s ctor with the name and the owner, links the node into the ilist, and registers it via `insertIntoSymboltable`. On a **name collision** it does not fail — it appends an ASCII decimal suffix and retries until the name is free, so two objects can never share a name within one container. The retry is a `std::to_string`-style digit-width selector tree (the `jbe` cascade at 0x24df08..); the exact format string (`"_N"` vs bare digits) is **[INFERRED]** — it was not isolated. *Anchor: the collision branch in `insertElement<BasicBlock>` @0x24de30.*
 
-> **QUIRK —** the `<BasicBlock, Instruction>` container has a *distinct* `insertElement<InstX>` weak symbol for every BIR opcode — `insertElement<InstMatmult>`, `<InstActivation>`, `<InstTensorTensor>`, `<InstReturn>`, `<InstQuantizeMx>`, … The exact-mangled count under `NamedObjectContainer<BasicBlock,Instruction>::insertElement` is **110** (one per opcode leaf). This is the per-opcode minting funnel: each `Inst` leaf is created through its own template stamp, not a single generic `insertElement<Instruction>`. A reimplementation can collapse these to one polymorphic insert; the binary monomorphizes them. [CONFIRMED — `nm`/native-exports count = 110.]
+> **QUIRK —** the `<BasicBlock, Instruction>` container has a *distinct* `insertElement<InstX>` weak symbol for every BIR opcode — `insertElement<InstMatmult>`, `<InstActivation>`, `<InstTensorTensor>`, `<InstReturn>`, `<InstQuantizeMx>`, … The exact-mangled count under `NamedObjectContainer<BasicBlock,Instruction>::insertElement` is **110** (one per opcode leaf). This is the per-opcode minting funnel: each `Inst` leaf is created through its own template stamp, not a single generic `insertElement<Instruction>`. A reimplementation can collapse these to one polymorphic insert; the binary monomorphizes them.
 
 ---
 
@@ -227,7 +227,7 @@ The two side-trees:
 
 ### DMAQueue nests a block region
 
-The `DMAQueue` typeinfo (`_ZTI` @0x8fc290) is a `__vmi` with two bases: `BasicBlockHolder` *and* `NamedObject<DMAQueue,Module>`. So a `DMAQueue` is not a flat queue — it IS-A `BasicBlockHolder` and therefore nests its own `BasicBlock` list (the DMA-descriptor block region), reusing the exact same container machinery as a top-level Function. The `ilist_node_with_parent<DMAQueue,Module>` typeinfo chain (@0x782a40 region) confirms the intrusive-node parent is the `Module`. [CONFIRMED — `__vmi` base list.]
+The `DMAQueue` typeinfo (`_ZTI` @0x8fc290) is a `__vmi` with two bases: `BasicBlockHolder` *and* `NamedObject<DMAQueue,Module>`. So a `DMAQueue` is not a flat queue — it IS-A `BasicBlockHolder` and therefore nests its own `BasicBlock` list (the DMA-descriptor block region), reusing the exact same container machinery as a top-level Function. The `ilist_node_with_parent<DMAQueue,Module>` typeinfo chain (@0x782a40 region) names the intrusive-node parent as the `Module`.
 
 > **QUIRK —** the same `BasicBlockHolder` base that makes a `Function` a top-level block container also lets structured-control constructs nest regions. `BasicBlockHolder::getFunction` @0x24b190 reads a `kind` discriminant at `holder+0x50`: `kind==0` means the holder *is* the Function; `kind 3..6` means it is owned by a structured-control `Instruction` (the instruction sits at `holder+0x88`) and the walk climbs through that instruction's parent BB. This is how a nested loop-body region finds its enclosing Function — the container template is reused for both top-level and nested CFGs.
 
@@ -255,21 +255,23 @@ A pass that walks a container in program order iterates the `ilist` (the `+0x00/
 
 ### Where the mints come from
 
-The containers are populated by the two-pass JSON loader. Five of the six containers carry an `adl_serializer::from_json` that drives the per-element mint: `<BasicBlock,Instruction>`, `<BasicBlockHolder,BasicBlock>`, `<FunctionHolder,Function>`, `<MemoryLocationSet,MemoryLocation>`, and `<Module,DMAQueue>`. The sixth — `<Function,Storage>` — has only a `to_json`; storages are loaded *inline* by `Function::createFromJson` rather than by a generic container deserializer. The full pass1-creates / pass2-resolves model, and how forward by-name references (phi incoming values, cross-function memloc bindings) are deferred to pass 2, is documented on the [BIR JSON Loader](json-loader.md) page. [CONFIRMED — `from_json` symbol presence per container.]
+The containers are populated by the two-pass JSON loader. Five of the six containers carry an `adl_serializer::from_json` that drives the per-element mint: `<BasicBlock,Instruction>`, `<BasicBlockHolder,BasicBlock>`, `<FunctionHolder,Function>`, `<MemoryLocationSet,MemoryLocation>`, and `<Module,DMAQueue>`. The sixth — `<Function,Storage>` — has only a `to_json`; storages are loaded *inline* by `Function::createFromJson` rather than by a generic container deserializer. The full pass1-creates / pass2-resolves model, and how forward by-name references (phi incoming values, cross-function memloc bindings) are deferred to pass 2, is documented on the [BIR JSON Loader](json-loader.md) page.
 
 ---
 
-## Self-Verification
+## Evidence summary
 
-The five strongest claims on this page were re-challenged against the binary this pass:
+- **The CRTP self-derivation** (`T : NamedObject<T,Cont> : {NamedObjectBase, ilist_node_with_parent}`) comes from `readelf -rW`: `Instruction _ZTI` @0x8fcd78's base reloc points at `NamedObject<Instruction,BasicBlock>` @0x8fcd40, whose two `__vmi` bases are `NamedObjectBase` @0x8fc230 (offset 0) and `ilist_node_with_parent<Instruction,BasicBlock>` @0x8fcd28 (offset 0x10).
+- **The `+0x48` universal owner slot and the id cascade** come from all six `getUniqueId` bodies: each opens with `mov …,[rdi+0x48]`; DMAQueue does `[+0x98]++` directly; Storage adds `+0xA0`, MemoryLocation adds `+0x118`, Instruction adds `+0x48` before tail-jumping.
+- **The single `Module+0x98` global counter** is the only counter post-increment anywhere in the cascade — it appears in the DMAQueue and Function bodies, and every other body routes to one of those.
+- **The fixed hash seed `0xC70F6907`** is `mov edx, 0C70F6907h` immediately before `call _Hash_bytes` in `getElementByName` @0x282030.
+- **The 110 per-opcode `insertElement<InstX>` count** is an exact-mangled symbol count over native exports. A looser grep returns 111 by also matching the generic `insertElementI` stem; the exact figure is 110.
 
-1. **The CRTP self-derivation** (`T : NamedObject<T,Cont> : {NamedObjectBase, ilist_node_with_parent}`). RE-VERIFIED via `readelf -rW`: `Instruction _ZTI` @0x8fcd78 base reloc → `NamedObject<Instruction,BasicBlock>` @0x8fcd40; that node's two `__vmi` bases are `NamedObjectBase` @0x8fc230 (offset 0) and `ilist_node_with_parent<Instruction,BasicBlock>` @0x8fcd28 (offset 0x10). Holds. **CONFIRMED.**
-2. **The `+0x48` universal owner slot and the id cascade.** RE-VERIFIED: all six `getUniqueId` bodies disassembled this pass; each opens with `mov …,[rdi+0x48]`; DMAQueue does `[+0x98]++` directly; Storage adds `+0xA0`, MemoryLocation adds `+0x118`, Instruction adds `+0x48` before tail-jumping. Byte-exact. **CONFIRMED.**
-3. **The single `Module+0x98` global counter.** RE-VERIFIED: the only counter post-increment in the cascade is `[m+0x98]` in the DMAQueue and Function bodies; every other body routes to one of those. **CONFIRMED.**
-4. **The fixed hash seed `0xC70F6907`.** RE-VERIFIED: `getElementByName` @0x282030 disasm shows `mov edx, 0C70F6907h` immediately before `call _Hash_bytes`. **CONFIRMED.**
-5. **The 110 per-opcode `insertElement<InstX>` count.** RE-VERIFIED: an exact-mangled count of `NamedObjectContainer<BasicBlock,Instruction>::insertElement<…>` symbols in native-exports = 110. (A looser grep returns 111 by matching the generic `insertElementI` stem; the exact figure is 110.) **CONFIRMED.**
+## Limits of this reading
 
-Honest ceiling: the **field-partition** between `NamedObjectBase` and `NamedObject<T,Cont>` (does `name`/`origin` live in the base or the derived template?) is HIGH, not CERTAIN — no standalone `NamedObjectBase` ctor was disassembled, so the partition is inferred from the unified `+0x18` name offset. The collision-rename **suffix format** is INFERRED (the int-to-chars loop is present; the exact format string was not isolated). The `optin_passes` mask **default `0xF`** and the `symtab.before_begin`/`rehash_thresh` zero-inits are HIGH (read from ctor self-init writes, not a dedicated getter). Everything in the at-a-glance table and the cascade is CONFIRMED at the byte level.
+- The **field partition** between `NamedObjectBase` and `NamedObject<T,Cont>` — whether `name` and `origin` live in the base or the derived template — is **[INFERRED]** from the unified `+0x18` name offset; no standalone `NamedObjectBase` ctor was disassembled.
+- The collision-rename **suffix format** is **[INFERRED]**: the int-to-chars loop is present, but the format string was not isolated.
+- The `optin_passes` mask default `0xF` and the `symtab.before_begin` / `rehash_thresh` zero-inits are read from ctor self-init writes rather than a dedicated getter, so their *semantics* rest on the libstdc++ layout rather than on a BIR-side accessor.
 
 ---
 

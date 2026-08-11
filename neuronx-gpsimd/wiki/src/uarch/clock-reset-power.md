@@ -17,7 +17,7 @@ run-stall / power *sequencing* that brings the eight Q7 cores up lives in **SoC 
 **outside** this single-core (`numOfCores = 1`) config — see §5.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/define read from a shipped artifact this session; `INFERRED` =
+`OBSERVED` = a byte/string/define read from a shipped artifact; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed
 with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
@@ -28,8 +28,8 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (or
 > decodable `XCHAL_*` header, the authoritative *capability* record. (2) **`core.xparm`**
 > (`…/ncore2gp/config/core.xparm`, 193,946 B) — the instantiated component hashes with **inline
 > hex values** as XML attributes (e.g. `clockPeriod="0xa"`). (3) **`ncore2gp-params` /
-> `default-params`** (`…/ncore2gp/config/`, 15,443 B, **byte-identical** — `diff` clean this
-> session) — the human-readable **decimal** source. Where a value appears in more than one form
+> `default-params`** (`…/ncore2gp/config/`, 15,443 B, **byte-identical** — `diff`
+> clean) — the human-readable **decimal** source. Where a value appears in more than one form
 > they **agree** (hex↔dec verified: `clockPeriod 0xa = 10`, `ImplTargetSpeed 0x457 = 1111`,
 > `ImplTargetPower 0x4b = 75`, `ImplTargetSize 0x12a6bd = 1222333`, `buildXTBoardFreq 0x1e = 30`).
 > The ISS *behaviour* is cross-checked against the simulator binaries themselves —
@@ -37,7 +37,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (or
 > with demangled C++ class names). `[HIGH/OBSERVED]`
 
 > **GOTCHA — the `.data` VMA delta on these config DLLs is `0x200000`, not libtpu's
-> `0x400000`.** `readelf -SW libcas-core.so` this session: `.text`/`.rodata` are
+> `0x400000`.** `readelf -SW libcas-core.so`: `.text`/`.rodata` are
 > VMA==file-offset, but `.data.rel.ro` (VMA `0x2070900`, file `0x1e70900`) and `.data` (VMA
 > `0x2280ed8`, file `0x2080ed8`) both carry a **`0x200000`** VMA−file delta. Subtract it before
 > any `xxd`/`objdump` on a `.data`-resident struct. (This page reads only `.text` symbols and
@@ -48,7 +48,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (or
 
 ## 0. The verdict table — every clock / reset / power knob, with source
 
-The whole page in one grid. Every row is read directly this session.
+The whole page in one grid. Every row is read directly from the source in its last column.
 
 | Domain | Field (as named) | Value | Source `file:line` | Conf |
 |---|---|---|---|---|
@@ -142,7 +142,7 @@ The config gives the simulator a **nominal** clock, not a real frequency (`core.
 exists so the cycle-accurate ISS can turn an **edge count into a "time"**; `10` is the
 canonical default. There is **no** frequency in Hz/MHz/GHz anywhere in `core.xparm` or the
 `.params` (exhaustive `rg -i 'mhz|ghz|hz|nanosec|picosec|corefreq|systemclock|frequency'`
-returned nothing this session). **The model abstracts all real clocking to integer cycle
+returned nothing). **The model abstracts all real clocking to integer cycle
 counts; a "cycle" has no wall-clock meaning in this config.** `[HIGH/OBSERVED]`
 
 This is not just a text-config statement — it is what the **simulator binary does**. In
@@ -280,7 +280,7 @@ core.xparm:3581 <vectors numOfVectors="0" relocatableVectorOption="1"
 The simulator implements reset as a **method call that clears architectural state**, with no
 timed sequence. `libcas-core.so` exports `dll_reset_states` (`0x17b5810`); `libsimxtcore.so`
 carries a `reset()` (or `tap_reset()` / `reset_DIR()`) method on every stateful unit —
-demangled `.dynsym` this session shows `XTCORE_HOST::reset()`, `IntrControl::reset()`,
+demangled `.dynsym` shows `XTCORE_HOST::reset()`, `IntrControl::reset()`,
 `NXPrefetch::reset()`, `SG_Request::reset()`, `XTCORE_OCD::tap_reset()`,
 `XTCORE_OCD::reset_DIR()`, `XTCORE_TRAP::reset_mstatus()`, among others. **None** of these
 takes a latency argument; reset is architectural, not temporal.
@@ -319,7 +319,7 @@ registers, ZERO UPF/CPF intent.** There is no "always-on" vs "switchable" partit
 model. A reimplementer gets **no power-domain map from this config because there isn't one.**
 This is independently confirmed in the simulator binaries: a symbol/string sweep of
 `libcas-core.so`, `libsimxtcore.so`, and `libisa-core.so` for
-`pso|lowpower|retention|powerdomain|powergat` returned **nothing** this session — the ISS has no
+`pso|lowpower|retention|powerdomain|powergat` returned **nothing** — the ISS has no
 power-domain object at all. `[HIGH/OBSERVED]`
 
 ### 3.2 Clock-gating — a synthesis *capability*, not a simulated behaviour
@@ -391,8 +391,7 @@ config — it is SoC-level (§5). Corroborating "no inter-core fabric modeled he
 > (the JTAG/APB debug module, §1.1), **not** a power state. The `WAITI` hooks model
 > wait-for-interrupt as an idle-**cycle-accounting** skip (`XCHAL_HAVE_INTERRUPTS 1`,
 > `core-isa.h:453`), **not** a low-power retention state. Capability present in the binary ≠ this
-> config exercising it. `[HIGH/OBSERVED — symbols present + config gate values read this
-> session.]`
+> config exercising it. `[HIGH/OBSERVED — symbols present + config gate values read.]`
 
 ---
 
@@ -414,7 +413,7 @@ This per-engine run-stall mask **is** the GPSIMD power/clock **sequencing** laye
 behaviour **once it is clocked and un-stalled**; the **SoC decides when that happens**. A
 reimplementer needs **both** — this page (+ boot-reset.md) for the core, and the SoC-CSR pages
 for the bring-up sequencing. `[HIGH/CARRIED — the CSR offsets/constants are consolidated from
-the host-image cross-pages, not re-derived in this config.]`
+the host-image cross-pages, not derived in this config.]`
 
 The SoC-side ownership is detailed in two **forward** Parts:
 
@@ -511,8 +510,7 @@ the domain-separation claim is the standard consequence, not measured here.]`
 
 ## 9. Adversarial self-verification ledger
 
-The five strongest claims of this page, each re-challenged against the actual config
-symbols/fields this session:
+The five strongest claims of this page, against the actual config symbols/fields:
 
 | # | Claim | Re-challenge | Verdict |
 |---|---|---|---|

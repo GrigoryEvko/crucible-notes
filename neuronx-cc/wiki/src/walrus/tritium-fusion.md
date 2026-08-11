@@ -52,7 +52,7 @@ Tritium models a single tensor contract as the Einsum the class docstring spells
     - `*_wos`: Intersection of `*_wosl` and `*_wosr` (avoids splitting either)
 ```
 
-**[CONFIRMED]** Every quoted line is present in the strings sidecar; the floats `0.01` and `0.25` sit adjacent at `.rodata` file-offset `0x1b150` (`7b14ae47e17a843f 0000000000d03f`), the IEEE-754 little-endian encodings of `0.01` and `0.25`.
+Every quoted line is present in the strings sidecar; the floats `0.01` and `0.25` sit adjacent at `.rodata` file-offset `0x1b150` (`7b14ae47e17a843f 0000000000d03f`), the IEEE-754 little-endian encodings of `0.01` and `0.25`.
 
 ### The four axes and the three free bits
 
@@ -64,11 +64,11 @@ Tritium models a single tensor contract as the Einsum the class docstring spells
 | fuse-rhs? | `rhs_free_axes(j)` | the RHS-unique loop is brought inside the matmul nest |
 | fuse-contract? | `contract_axes(k)` | the reduction loop is fused (split into the accumulation group) |
 
-Three bits ⇒ 2³ = 8 plans. **[CONFIRMED docstring + per-plan census, §1.1.]**
+Three bits ⇒ 2³ = 8 plans, corroborated by the per-plan census in §1.1.
 
 ### Why exactly +2
 
-When *both* `lhs` and `rhs` are fused, there are two producers in the nest, and a second decision appears: which producer is **stationary (on top, read once)** and which is **reloaded (on bottom, re-read once per top iteration)**. The docstring illustrates the cost with a 3×3 nest where the bottom operand is reloaded; the `lhs_on_top` boolean carries the choice. This decision *only exists* when both operands are fused, so precisely the two cube corners with (fuse-lhs ∧ fuse-rhs) get a second plan — hence **+2, not +4 or +8**. **[CONFIRMED]** `FusionPlan.rhs_on_top` (`0x167aa0`) has body `return not self.lhs_on_top`, the exact complement.
+When *both* `lhs` and `rhs` are fused, there are two producers in the nest, and a second decision appears: which producer is **stationary (on top, read once)** and which is **reloaded (on bottom, re-read once per top iteration)**. The docstring illustrates the cost with a 3×3 nest where the bottom operand is reloaded; the `lhs_on_top` boolean carries the choice. This decision *only exists* when both operands are fused, so precisely the two cube corners with (fuse-lhs ∧ fuse-rhs) get a second plan — hence **+2, not +4 or +8**. `FusionPlan.rhs_on_top` (`0x167aa0`) has body `return not self.lhs_on_top`, the exact complement.
 
 ### 1.1 The plan↔corner map (byte-grounded)
 
@@ -88,13 +88,13 @@ Each `planN()` calls `FusionPlan.build(id, n, batch_axes=…, lhs_free_axes=…,
 | `plan10` | `0xfb240` | ✓ | ∅ | ∅ | ∅ | (0,0,0) batch-only | batch×19, **6×empty_set** |
 | `noop_plan` | `0xb8e90` | ∅ | ∅ | ∅ | ∅ | *not in the cube* | all empty — no fusion at all |
 
-**[CONFIRMED]** the four pivotal census facts are read directly from the decompiled bodies: `plan1` and `plan2` carry a **byte-identical** axis-getter census (batch×2, contract×2, lhs×19, rhs×19, one `build`), so the *only* difference between the pair is the `lhs_on_top` literal — the reload twin. `plan3`/`plan4` likewise share a census (lhs×19, rhs×19, contract = 2×`empty_set`). `plan5` shows lhs+contract real with rhs = 2×`empty_set`. `plan10` shows batch×19 + 6×`empty_set`. **[STRONG]** the exact `True`/`False` byte of `lhs_on_top` inside plan2/plan4 is obscured by Cython tuple-packing (plan bodies reference both `Py_True` and `Py_False` const objects), but the symmetric body structure + docstring fix the semantics unambiguously: the twin flips `lhs_on_top`.
+The four pivotal census facts are read directly from the decompiled bodies: `plan1` and `plan2` carry a **byte-identical** axis-getter census (batch×2, contract×2, lhs×19, rhs×19, one `build`), so the *only* difference between the pair is the `lhs_on_top` literal — the reload twin. `plan3`/`plan4` likewise share a census (lhs×19, rhs×19, contract = 2×`empty_set`). `plan5` shows lhs+contract real with rhs = 2×`empty_set`. `plan10` shows batch×19 + 6×`empty_set`. The exact `True`/`False` byte of `lhs_on_top` inside plan2/plan4 is obscured by Cython tuple-packing — the plan bodies reference both `Py_True` and `Py_False` const objects — so that literal is **[INFERRED]** rather than byte-firm. The symmetric body structure plus the docstring fix the semantics unambiguously: the twin flips `lhs_on_top`.
 
 > Count check: 8 cube corners (`plan1,3,5,6,7,8,9,10`) + 2 reload twins (`plan2`, `plan4`) = **10**. `noop_plan` is the 11th, separate "don't fuse the producer at all" baseline — it is *not* part of the 2³+2 lattice (`is_noop` @ `0x92ea0` = all four fused sets empty).
 
 ### 1.2 The `*_wos`/`*_wosl`/`*_wosr` filtered axis views
 
-Each axis set has three filtered variants the generator precomputes once: `*_wosl` ("**w**ith**o**ut **s**plitting **l**hs"), `*_wosr` (rhs), `*_wos` (the intersection — splits neither). They are produced by the getters `batch_axes_wos/wosl/wosr` (`0xbdfc0`/`0xbe830`/`0xbe350`) and siblings, which call `filter_split_axes` (`0x15dc50`) / `is_split_axis` (`0x132ac0`). **[CONFIRMED]** the qualified names `FusionPlanGenerator.{batch,contract,lhs_free,rhs_free}_axes_{wos,wosl,wosr}` are all present in the string table, and the docstring lines describing them are verbatim. These let a chosen fusion *avoid splitting an axis that would break a matmul accumulation group* — selected by the `dont_split_acc_grp` flag (§2).
+Each axis set has three filtered variants the generator precomputes once: `*_wosl` ("**w**ith**o**ut **s**plitting **l**hs"), `*_wosr` (rhs), `*_wos` (the intersection — splits neither). They are produced by the getters `batch_axes_wos/wosl/wosr` (`0xbdfc0`/`0xbe830`/`0xbe350`) and siblings, which call `filter_split_axes` (`0x15dc50`) / `is_split_axis` (`0x132ac0`). The qualified names `FusionPlanGenerator.{batch,contract,lhs_free,rhs_free}_axes_{wos,wosl,wosr}` are all present in the string table, and the docstring lines describing them are verbatim. These let a chosen fusion *avoid splitting an axis that would break a matmul accumulation group* — selected by the `dont_split_acc_grp` flag (§2).
 
 ---
 
@@ -102,7 +102,7 @@ Each axis set has three filtered variants the generator precomputes once: `*_wos
 
 ```c
 // FusionPlanGenerator.enumerate_fusion_plans(self, dont_split_acc_grp)  @0x161240
-// CONFIRMED: pyargnames {self, dont_split_acc_grp}; 31 in-body refs to dont_split_acc_grp.
+// pyargnames {self, dont_split_acc_grp}; 31 in-body refs to dont_split_acc_grp.
 // add_plan inner closure @0x81fb0 / 0x825d0 ; generate_tuple @0x107e50.
 static PyObject *enumerate_fusion_plans(Self *self, PyObject *dont_split_acc_grp) {
     // 1. Precompute the filtered axis variants once (GetAttr sequence):
@@ -110,18 +110,18 @@ static PyObject *enumerate_fusion_plans(Self *self, PyObject *dont_split_acc_grp
     OrderedSet *result = OrderedSet_New();
 
     // 2. add_plan: dedup by the plan's canonical fusion-set identity tuple.
-    //    CONFIRMED: add_plan body references exactly {generate_tuple, add};
+    //    add_plan body references exactly {generate_tuple, add};
     //    generate_tuple references {axis_contract_factor, get_fusion_set_id}.
     void add_plan(FusionPlan *p) {
         PyObject *key = FusionPlan_generate_tuple(p);  // (get_fusion_set_id, axis_contract_factor)
         OrderedSet_add(result, p);                     // OrderedSet drops duplicate fusion-set ids
     }
 
-    add_plan(noop_plan(self));                         // baseline first  (CONFIRMED: noop_plan x1)
+    add_plan(noop_plan(self));                         // baseline first  (noop_plan x1)
 
-    // 3. Attempt each of the 10 plans. CONFIRMED census: plan1..plan10 each appear TWICE
+    // 3. Attempt each of the 10 plans. Census: plan1..plan10 each appear TWICE
     //    in this body — once over the unfiltered axis set, once over a _wos-filtered
-    //    variant; dont_split_acc_grp selects which path (STRONG: dual GetAttr per plan).
+    //    variant; dont_split_acc_grp selects which path (dual GetAttr per plan).
     add_plan(plan1(self,  ..., dont_split_acc_grp));   // (1,1,1)  lhs_on_top=True
     add_plan(plan2(self,  ..., dont_split_acc_grp));   // (1,1,1)  reload twin
     add_plan(plan3(self,  ..., dont_split_acc_grp));   // (1,1,0)  lhs_on_top=True
@@ -137,9 +137,9 @@ static PyObject *enumerate_fusion_plans(Self *self, PyObject *dont_split_acc_grp
 }
 ```
 
-**Net effect.** Degenerate matmuls collapse several corners to the same fusion-set id (e.g. no contract axes makes the fuse-contract bit a no-op), so the `OrderedSet` may hold **fewer than 10** distinct plans — the generator over-enumerates and the dedup prunes. **[CONFIRMED]** the enumerate census shows `noop_plan`×1, each `plan1`..`plan10`×2, `generate_tuple`×1, `dont_split_acc_grp`×31.
+**Net effect.** Degenerate matmuls collapse several corners to the same fusion-set id (e.g. no contract axes makes the fuse-contract bit a no-op), so the `OrderedSet` may hold **fewer than 10** distinct plans — the generator over-enumerates and the dedup prunes. The enumerate census shows `noop_plan`×1, each `plan1`..`plan10`×2, `generate_tuple`×1, `dont_split_acc_grp`×31.
 
-`dont_split_acc_grp` is the bool that, when true, routes plan construction through the `*_wos*` filtered axis sets so a chosen fusion never splits an axis that would break a matmul accumulation group; when false the unfiltered sets are used. **[STRONG]** — flag name + dual GetAttr paths per plan; the precise branch test is one Cython `if` on the kwarg.
+`dont_split_acc_grp` is the bool that, when true, routes plan construction through the `*_wos*` filtered axis sets so a chosen fusion never splits an axis that would break a matmul accumulation group; when false the unfiltered sets are used. The flag name and the dual GetAttr paths per plan carry this; the precise branch test is one Cython `if` on the kwarg, so the routing is **[INFERRED]** rather than read line-for-line.
 
 ### Pipeline placement
 
@@ -150,9 +150,9 @@ build()  ->  fusion_plan_search_preprocessing  (0x181910)
          ->  beam_search_best_plan -> beam_search_min          [§3-4]
 ```
 
-`generate_fusion_plans_for_search` (`0x188a00`) is the wrapper that calls preprocessing then `enumerate_fusion_plans`; `best_fusion_plan` (`0x123960`) is the top entry that chains generation → search. The subclass `AutotuneFusionPlanGenerator` (in the sibling `TritiumFusion.so`, **[CONFIRMED]** imports `TritiumFusionBase`) adds trip-count-multiplied variants on top of the 10 — `generate_fusion_plans_for_search_more_trip`, `try_more_tripcounts`, `try_smart_tripcounts`, `force_tripcount` — gated by the `cl::opt` string `internal-autotune-tritium-use-more-tripcounts` ("use more tritium" …). **[CONFIRMED]** all five identifiers and the cl::opt string are present in the subclass string table.
+`generate_fusion_plans_for_search` (`0x188a00`) is the wrapper that calls preprocessing then `enumerate_fusion_plans`; `best_fusion_plan` (`0x123960`) is the top entry that chains generation → search. The subclass `AutotuneFusionPlanGenerator` (in the sibling `TritiumFusion.so`, which imports `TritiumFusionBase`) adds trip-count-multiplied variants on top of the 10 — `generate_fusion_plans_for_search_more_trip`, `try_more_tripcounts`, `try_smart_tripcounts`, `force_tripcount` — gated by the `cl::opt` string `internal-autotune-tritium-use-more-tripcounts` ("use more tritium" …). All five identifiers and the `cl::opt` string are present in the subclass string table.
 
-> **CORRECTION (vs an earlier naming pass).** The identifiers `enumerate_basic_fusion_plans` and `compute_bound_plans` exist only as **interned strings**, not as compiled `__pyx_pf` functions. The sole `.text` consumer of `enumerate_basic_fusion_plans` is the diagnostic `dump_plans` (`0xb3730`); `compute_bound_plans` has *no* `.text` consumer at all. The live enumeration method is `enumerate_fusion_plans` (singular, "basic" dropped); compute/memory-bound tagging is the per-plan predicate pair (§4). **[CONFIRMED via xref scan.]**
+> **GOTCHA — `enumerate_basic_fusion_plans` and `compute_bound_plans` are strings, not functions.** Both appear in the string table but neither is a compiled `__pyx_pf` body. The sole `.text` consumer of `enumerate_basic_fusion_plans` is the diagnostic `dump_plans` (`0xb3730`); `compute_bound_plans` has no `.text` consumer at all. The live enumeration method is `enumerate_fusion_plans` — singular, "basic" dropped — and compute/memory-bound tagging is the per-plan predicate pair (§4).
 
 ---
 
@@ -163,7 +163,7 @@ build()  ->  fusion_plan_search_preprocessing  (0x181910)
 static PyObject *best_fusion_plan_search(Self *self, PyObject *plans) {
     // Drop SB-overflow plans: keep p iff NOT p.overflow_sb.
     // overflow_sb (0x95980): p.memory_pressure >= matmult.sb_par_size_in_bytes  (Py_GE @0x95ada)
-    PyObject *feasible = filter(plans, lambda p: !p->overflow_sb);   // CONFIRMED GetAttr "overflow_sb"
+    PyObject *feasible = filter(plans, lambda p: !p->overflow_sb);   // GetAttr "overflow_sb"
     if (PyObject_Size(feasible))                                     // any feasible plan?
         return beam_search_best_plan(self, feasible);               // §4
     else
@@ -171,7 +171,7 @@ static PyObject *best_fusion_plan_search(Self *self, PyObject *plans) {
 }
 ```
 
-So the "full search" path is: filter the plans that fit in SBUF, then run the 3-stage roofline beam; if **nothing** fits on-chip, fall back to `noop_plan`. **[STRONG]** — line table + control flow; the `overflow_sb` GetAttr and the size short-circuit are byte-confirmed.
+So the "full search" path is: filter the plans that fit in SBUF, then run the 3-stage roofline beam; if **nothing** fits on-chip, fall back to `noop_plan`. The `overflow_sb` GetAttr and the size short-circuit are byte-pinned; the surrounding control flow is **[INFERRED]** — reconstructed from the line table.
 
 ---
 
@@ -181,24 +181,24 @@ So the "full search" path is: filter the plans that fit in SBUF, then run the 3-
 
 ```c
 // FusionPlanGenerator.beam_search_min(self, plans, metric_func, rtol, max_metric=0)
-//   @0x1403b0  (src 1164-1168).  CONFIRMED arg-parse: {self, plans, metric_func, rtol, max_metric};
+//   @0x1403b0  (src 1164-1168).  arg-parse: {self, plans, metric_func, rtol, max_metric};
 //   max_metric default = __pyx_int_0 (0).
 static PyObject *beam_search_min(Self *self, PyObject *plans,
                                  PyObject *metric_func, PyObject *rtol, PyObject *max_metric) {
     // 1165  metrics = [(p, metric_func(p)) for p in plans]
     // 1166  best   = min(metrics, key=itemgetter(1))     // itemgetter(1) -> the METRIC (2nd elt)
-    //                                                     // CONFIRMED: _pyx_builtin_min + itemgetter
+    //                                                     // _pyx_builtin_min + itemgetter
     // 1167  thresh = best_metric * (1.0 + rtol)          // PyNumber_Multiply  (the band)
     // 1168  return [p for (p, m) in metrics if m < thresh]   // Py_LT filter
     ...
 }
 ```
 
-**[CONFIRMED]** the decompiled body of `0x1403b0` references the `rtol` argument, builds the `(plan, metric)` list, calls the builtin `min` with `operator.itemgetter`, executes a `PyNumber_Multiply` (the `(1.0 + rtol)` band) and a `PyObject_RichCompare` (the `m < thresh` filter), under source line 1164. The `1.0` operand is the module's `__pyx_float_1_0`.
+The decompiled body of `0x1403b0` references the `rtol` argument, builds the `(plan, metric)` list, calls the builtin `min` with `operator.itemgetter`, executes a `PyNumber_Multiply` (the `(1.0 + rtol)` band) and a `PyObject_RichCompare` (the `m < thresh` filter), under source line 1164. The `1.0` operand is the module's `__pyx_float_1_0`.
 
-**The beam "width" is a relative-tolerance band, not an integer k.** `beam_search_min` returns *every* plan whose metric is strictly within `(1 + rtol)` of the stage minimum — the effective width is data-dependent (1..N), bounded only by how many plans tie within the tolerance. **[CONFIRMED]** an exhaustive sweep of the module symbol + string tables finds **zero** hits for `beam_width`, `nsmallest`, `heapq`, `top_k`, or `argsort` — there is no top-k anywhere. `rtol = 0.01` (1%) is the IEEE-754 double `3f847ae147ae147b` at `.rodata` file-offset `0x1b150` (`__pyx_float_0_01`).
+**The beam "width" is a relative-tolerance band, not an integer k.** `beam_search_min` returns *every* plan whose metric is strictly within `(1 + rtol)` of the stage minimum — the effective width is data-dependent (1..N), bounded only by how many plans tie within the tolerance. An exhaustive sweep of the module symbol and string tables finds **zero** hits for `beam_width`, `nsmallest`, `heapq`, `top_k`, or `argsort` — there is no top-k anywhere. `rtol = 0.01` (1%) is the IEEE-754 double `3f847ae147ae147b` at `.rodata` file-offset `0x1b150` (`__pyx_float_0_01`).
 
-> **CORRECTION (vs an earlier paraphrase).** An earlier description had `beam_search_min` "keep top-k by `memory_pressure`". Both halves are wrong: there is no k (it is the rtol band), and the metric is **not** `memory_pressure` — it is, in priority order, `additional_spill_size_in_bytes` → `max_total_kernel_ii` → `normalized_kernel_dma_ii` (§4.2). `memory_pressure` feeds the *separate* `has_low_memory_pressure` gate (§5).
+> **GOTCHA — this is not "keep top-k by `memory_pressure`".** Both halves of that reading fail: there is no *k* (the survivor set is the rtol band), and the metric is not `memory_pressure`. The metrics are, in priority order, `additional_spill_size_in_bytes` → `max_total_kernel_ii` → `normalized_kernel_dma_ii` (§4.2). `memory_pressure` feeds a *separate* gate, `has_low_memory_pressure` (§5).
 
 ### 4.2 `beam_search_best_plan` — the 3-stage lexicographic roofline beam
 
@@ -230,9 +230,9 @@ static PyObject *beam_search_best_plan(Self *self, PyObject *plans) {
 }
 ```
 
-**[CONFIRMED]** the three `attrgetter` const tuples are byte-located in modinit: `tuple__101` → `"additional_spill_size_in_bytes"`, `tuple__102` → `"max_total_kernel_ii"`, `tuple__103` → `"normalized_kernel_dma_ii"`; both stage-2 and stage-3 load `__pyx_float_0_01` as the `rtol`. The two `CyFunction` lambdas (`lambda19` @ `0x158770` → `x.max_cc_buffer_store_dma_stride`; `lambda20` @ `0x81ac0` → `x.fuse_as_top_access`) are constructed in the attention-score sub-branch as alternative metric funcs.
+The three `attrgetter` const tuples are byte-located in modinit: `tuple__101` → `"additional_spill_size_in_bytes"`, `tuple__102` → `"max_total_kernel_ii"`, `tuple__103` → `"normalized_kernel_dma_ii"`; both stage-2 and stage-3 load `__pyx_float_0_01` as the `rtol`. The two `CyFunction` lambdas (`lambda19` @ `0x158770` → `x.max_cc_buffer_store_dma_stride`; `lambda20` @ `0x81ac0` → `x.fuse_as_top_access`) are constructed in the attention-score sub-branch as alternative metric funcs.
 
-**Roofline interpretation.** The beam is a strict **priority order**: avoid spill ≫ minimise compute II ≫ minimise DMA II. Each later stage only re-orders the survivors of the earlier one. The 1% rtol band keeps near-ties alive between stages, so a plan that is marginally worse on compute but much better on DMA can still win — the classic roofline tie-handling. **[STRONG]** placement of the lambda sub-ordering relative to the main stage keys is obscured by Cython scope-var aliasing.
+**Roofline interpretation.** The beam is a strict **priority order**: avoid spill ≫ minimise compute II ≫ minimise DMA II. Each later stage only re-orders the survivors of the earlier one. The 1% rtol band keeps near-ties alive between stages, so a plan that is marginally worse on compute but much better on DMA can still win — the classic roofline tie-handling. Cython scope-var aliasing obscures where the lambda sub-ordering sits relative to the main stage keys, so that placement is **[INFERRED]**.
 
 ### 4.3 `best_fusion_plan_heuristics` — the closed-form tie-break
 
@@ -246,7 +246,7 @@ static PyObject *best_fusion_plan_heuristics(Self *self, PyObject *plans) {
 }
 ```
 
-Not a beam — a single `argmax` by a precomputed "how good" roofline-goodness score, branched on whether *any* surviving plan is compute-bound. **[CONFIRMED]** `tuple__117` → `"how_good_compute_bound"`, `tuple__118` → `"how_good_memory_bound"`, both with `_pyx_builtin_max`. `how_good_compute_bound` (`0xe8940`) returns a min-sort tuple `(generate_spill_lists?, len(batch_axes), len(lhs_free_axes), len(rhs_free_axes), len(contract_axes), -tensortensor_accumulation_flops, -memory_pressure, -total_dma_traffic_in_bytes_with_efficiency, -total_dma_traffic_in_bytes)` — the 6 negations prefer *more* fusion / *more* flops / *less* traffic / *less* pressure. `how_good_memory_bound` (`0xe7780`) has the same components, reordered to put DMA traffic first. **[CONFIRMED method bodies.]** The phrase `how_good_cost_tuple=` is present in `.rodata` as a diagnostic prefix.
+Not a beam — a single `argmax` by a precomputed "how good" roofline-goodness score, branched on whether *any* surviving plan is compute-bound. `tuple__117` → `"how_good_compute_bound"`, `tuple__118` → `"how_good_memory_bound"`, both with `_pyx_builtin_max`. `how_good_compute_bound` (`0xe8940`) returns a min-sort tuple `(generate_spill_lists?, len(batch_axes), len(lhs_free_axes), len(rhs_free_axes), len(contract_axes), -tensortensor_accumulation_flops, -memory_pressure, -total_dma_traffic_in_bytes_with_efficiency, -total_dma_traffic_in_bytes)` — the 6 negations prefer *more* fusion / *more* flops / *less* traffic / *less* pressure. `how_good_memory_bound` (`0xe7780`) has the same components, reordered to put DMA traffic first. The phrase `how_good_cost_tuple=` is present in `.rodata` as a diagnostic prefix.
 
 ---
 
@@ -254,7 +254,7 @@ Not a beam — a single `argmax` by a precomputed "how good" roofline-goodness s
 
 ### 5.1 The headline: no coefficients in the module
 
-**[CONFIRMED]** The Tritium roofline carries **no** hard-coded peak-FLOPs, bandwidth, or capacity magic numbers. The module's *entire* module-global double-precision constant pool is three floats plus two helpers, all dumped byte-exact from `.rodata`:
+The Tritium roofline carries **no** hard-coded peak-FLOPs, bandwidth, or capacity magic numbers. The module's *entire* module-global double-precision constant pool is three floats plus two helpers, all dumped byte-exact from `.rodata`:
 
 | `.rodata` off | IEEE-754 | value | role |
 |---|---|---|---|
@@ -264,9 +264,9 @@ Not a beam — a single `argmax` by a precomputed "how good" roofline-goodness s
 | (pool) | `bff0000000000000` | `-1.0` | int8 stride sentinel in `MemAccess.tile_int8_copy` |
 | (pool) | `3f50000000000000` | `1/1024` | inside a generic `TrueDivide` helper — **not** cost |
 
-\* the `0.01`/`0.25` pair was located byte-exact at file-offset `0x1b150`; the `1.0` sits in the same pool (the report's VMA labels `0x1ac138/150/158` and the rodata.bin file-offset `0x1b150` are the same constants under the two address frames). These were the only operands of the three module-init `PyFloat_FromDouble` calls. **Every** FLOPs, byte-throughput, cycle, and capacity figure is sourced at runtime from the hardware `target` descriptor and from tensor/loopnest geometry — `0.01` and `0.25` are the *only* tunable dimensionless scalars in the whole cost model.
+\* the `0.01`/`0.25` pair sits byte-exact at file-offset `0x1b150`, with the `1.0` in the same pool. The VMA labels `0x1ac138`/`150`/`158` and the `rodata.bin` file-offset `0x1b150` name the same constants under two different address frames. These are the only operands of the three module-init `PyFloat_FromDouble` calls. **Every** FLOPs, byte-throughput, cycle, and capacity figure is sourced at runtime from the hardware `target` descriptor and from tensor/loopnest geometry — `0.01` and `0.25` are the *only* tunable dimensionless scalars in the whole cost model.
 
-This makes the roofline a thin Python wrapper over the **same** per-arch latency oracle the backend PerfSim consumes — see [`perfsim-cost-model`](perfsim-cost-model.md). Where the backend cycle model calls the C++ `bir::Hwm` (`getLatency*`), Tritium calls `target.get_{matmult,memset,copy,dma}_latency(...)`, each returning a sub-object with `.get_pipeline_ii` / `.get_pipeline_latency` / `.get_latency`. Coefficients are therefore **shared via the oracle**, never duplicated; only the roofline *aggregation* is Tritium-specific. **[STRONG cross-check]** the preserved typo `get_tenortensor_sp_latency` (interned `__pyx_n_s_get_tenortensor_sp_latency`) is a firm fingerprint of the shared oracle call surface.
+This makes the roofline a thin Python wrapper over the **same** per-arch latency oracle the backend PerfSim consumes — see [`perfsim-cost-model`](perfsim-cost-model.md). Where the backend cycle model calls the C++ `bir::Hwm` (`getLatency*`), Tritium calls `target.get_{matmult,memset,copy,dma}_latency(...)`, each returning a sub-object with `.get_pipeline_ii` / `.get_pipeline_latency` / `.get_latency`. Coefficients are therefore **shared via the oracle**, never duplicated; only the roofline *aggregation* is Tritium-specific. The preserved typo `get_tenortensor_sp_latency` (interned as `__pyx_n_s_get_tenortensor_sp_latency`) is a firm fingerprint of that shared oracle call surface.
 
 ### 5.2 Arithmetic intensity (the roofline x-coordinate)
 
@@ -280,7 +280,7 @@ static PyObject *arithmetic_intensity(FusionPlan *self) {
 }
 ```
 
-⇒ `arithmetic_intensity = matmult.total_flops / total_dma_traffic_in_bytes`. **[CONFIRMED]** op sequence: GetAttr `n→matmult→total_flops`, GetAttr `total_dma_traffic_in_bytes`, RichCompare vs `0`, `PyNumber_TrueDivide`. The `_with_efficiency` variant (`0xa4dd0`) divides the same numerator by the **efficiency-weighted** traffic (`total_dma_traffic_in_bytes_with_efficiency`), so a less-efficient DMA inflates the effective byte count and *lowers* intensity — the efficiency lives entirely in the denominator. Note: there is no hard-coded peak-intensity *ridge* constant — the ridge is the engine-II crossover (§5.3), itself oracle-derived.
+⇒ `arithmetic_intensity = matmult.total_flops / total_dma_traffic_in_bytes`. The op sequence is GetAttr `n→matmult→total_flops`, GetAttr `total_dma_traffic_in_bytes`, RichCompare vs `0`, `PyNumber_TrueDivide`. The `_with_efficiency` variant (`0xa4dd0`) divides the same numerator by the **efficiency-weighted** traffic (`total_dma_traffic_in_bytes_with_efficiency`), so a less-efficient DMA inflates the effective byte count and *lowers* intensity — the efficiency lives entirely in the denominator. Note: there is no hard-coded peak-intensity *ridge* constant — the ridge is the engine-II crossover (§5.3), itself oracle-derived.
 
 ### 5.3 The roofline core: the kernel II tuple
 
@@ -295,7 +295,7 @@ The actual compute-bound/memory-bound crossover is a **tuple of per-engine initi
 //   memset_II  = memset_pipeline_ii = target.get_memset_latency(...).get_pipeline_ii(...)
 //   dma_II     = SUM over read accesses of (dma_bytes * reload_mult) // (contract / axes_contract_factor)
 // FusionPlan.normalized_kernel_ii_tuple  @0x9c8a0   = total tuple element-wise / 4 throughput divisors
-//                                                     (exactly 4 x PyNumber_TrueDivide). CONFIRMED.
+//                                                     (exactly 4 x PyNumber_TrueDivide)
 
 // FusionPlan.is_compute_bound(self)  @0x94b20  (src 2829)
 static PyObject *is_compute_bound(FusionPlan *self) {
@@ -306,18 +306,18 @@ static PyObject *is_compute_bound(FusionPlan *self) {
 }
 ```
 
-⇒ a plan is **compute-bound** iff the matmult/PE II dominates the memory engines' II — the engine-balance "ridge point" test, all numbers oracle-derived. **[CONFIRMED]** `is_compute_bound`/`is_memory_bound` reference *exactly* `{normalized_kernel_ii_tuple}` and execute the byte-confirmed `Py_GT`/`Py_EQ` tuple compare; `max_total_kernel_ii` (`0x9e020`) and `normalized_kernel_dma_ii` (`0x9c0b0`) are the scalar reductions the beam stages 2/3 key on.
+⇒ a plan is **compute-bound** iff the matmult/PE II dominates the memory engines' II — the engine-balance "ridge point" test, all numbers oracle-derived. `is_compute_bound`/`is_memory_bound` reference *exactly* `{normalized_kernel_ii_tuple}` and execute the byte-confirmed `Py_GT`/`Py_EQ` tuple compare; `max_total_kernel_ii` (`0x9e020`) and `normalized_kernel_dma_ii` (`0x9c0b0`) are the scalar reductions the beam stages 2/3 key on.
 
 ### 5.4 Memory pressure, DMA latency, capacity gates
 
 `memory_pressure` (`0x15c6f0`) = `read_memory_pressure + write_memory_pressure + matmult_group.approx_memory_pressure`. The two capacity gates are byte-confirmed RichCompare predicates against **target attributes** (no module literals):
 
-- `overflow_sb` (`0x95980`): `memory_pressure >= matmult.sb_par_size_in_bytes` (`Py_GE`) — the SBUF per-partition byte budget. **[CONFIRMED predicate, INFERRED numeric]** — value lives on the target/arch node.
-- `has_low_memory_pressure` (`0x95de0`): `memory_pressure <= matmult.low_memory_pressure_threshold` (`Py_LE`). **[CONFIRMED]** — the threshold is a *per-matmult attribute* `self.n.matmult.low_memory_pressure_threshold`, **not** a module constant; the literal `low_memory_pressure_threshold` appears as a config-key string and a local var, consistent with it being read from settings and stamped on the matmult node upstream.
+- `overflow_sb` (`0x95980`): `memory_pressure >= matmult.sb_par_size_in_bytes` (`Py_GE`) — the SBUF per-partition byte budget. The predicate is pinned; the numeric value lives on the target/arch node, not here.
+- `has_low_memory_pressure` (`0x95de0`): `memory_pressure <= matmult.low_memory_pressure_threshold` (`Py_LE`). The threshold is a *per-matmult attribute* `self.n.matmult.low_memory_pressure_threshold`, **not** a module constant; the literal `low_memory_pressure_threshold` appears as a config-key string and a local var, consistent with it being read from settings and stamped on the matmult node upstream.
 
-`dma_latency` (`0x186150`) = `target.get_dma_latency(...).get_pipeline_latency(...)` scaled by the per-tensor reload multiplier, plus a transpose term, with two interchangeable models selected by the `use_profile_based_dma_latency` flag (analytical vs `profile_based_dma_latency_model`). `dma_efficiencies` (`0x118ae0`) builds a `{length : efficiency}` dict where each bandwidth is computed per `(length, npartitions)` from `target.get_dma_latency(...)` and normalized to the peak (cap `1.0`) — there is **no static bandwidth table**, the only literal is the `1.0` normalization cap. **[CONFIRMED]**
+`dma_latency` (`0x186150`) = `target.get_dma_latency(...).get_pipeline_latency(...)` scaled by the per-tensor reload multiplier, plus a transpose term, with two interchangeable models selected by the `use_profile_based_dma_latency` flag (analytical vs `profile_based_dma_latency_model`). `dma_efficiencies` (`0x118ae0`) builds a `{length : efficiency}` dict where each bandwidth is computed per `(length, npartitions)` from `target.get_dma_latency(...)` and normalized to the peak (cap `1.0`) — there is **no static bandwidth table**, and the only literal is the `1.0` normalization cap.
 
-The symbolic estimation toggle `enable-symbolic-memory-pressure-estimation-tf` (CLI; `_enable_symbolic_memory_pressure_estimation_tf` interned) gates the *expensive* symbolic memory-pressure path inside `read_memory_pressure` (and `MemAccess.producer_memory_pressure`); when off, the cheap `read_memory_pressure_simple` is used. **[CONFIRMED]** — it selects *how* pressure is estimated, not whether a plan is accepted (acceptance is `overflow_sb` + `has_low_memory_pressure`).
+The symbolic estimation toggle `enable-symbolic-memory-pressure-estimation-tf` (CLI; `_enable_symbolic_memory_pressure_estimation_tf` interned) gates the *expensive* symbolic memory-pressure path inside `read_memory_pressure` (and `MemAccess.producer_memory_pressure`); when off, the cheap `read_memory_pressure_simple` is used. It selects *how* pressure is estimated, not whether a plan is accepted (acceptance is `overflow_sb` + `has_low_memory_pressure`).
 
 ---
 
@@ -330,7 +330,7 @@ A distinct, tiny Cython module renders the **outer** MCTS layout-search tree (no
 ### 6.1 `get_color` — reward → HSV gradient
 
 ```c
-// get_color(x, M, m)  @0x8790  (.py lines 8-10).  CONFIRMED pyargnames {x, M, m}.
+// get_color(x, M, m)  @0x8790  (.py lines 8-10).  pyargnames {x, M, m}.
 static PyObject *get_color(PyObject *x, PyObject *M, PyObject *m) {
     // return f"{(x - m) / (M - m) / 4.0} 1.0 1.0"
     //   PyNumber_Subtract (x-m), PyNumber_Subtract (M-m), TrueDivide (ratio in [0,1]),
@@ -338,7 +338,7 @@ static PyObject *get_color(PyObject *x, PyObject *M, PyObject *m) {
 }
 ```
 
-**[CONFIRMED]** the leading-space literal `" 1.0 1.0"` is byte-located at `.rodata` `0xfe30`; the float `4.0` and the `0.25` fast-path constant are in the pool. A Graphviz "H S V" triple (all 0–1) is accepted as a colour; here `S = V = 1.0` (fully saturated, full brightness) and `H = normalized_reward / 4`, confining hue to `[0.0, 0.25]`. On the Graphviz hue wheel `0.0 = RED`, `0.25 = GREEN`, so the **worst-reward** node (`x = m`) is RED and the **best-reward** node (`x = M`) is GREEN — a monotone red→green gradient that makes the winning lineage visually obvious. `x` is fed `child.best_reward`, so the gradient tracks each node's *best* observed reward, not its mean.
+The leading-space literal `" 1.0 1.0"` is byte-located at `.rodata` `0xfe30`; the float `4.0` and the `0.25` fast-path constant are in the pool. A Graphviz "H S V" triple (all 0–1) is accepted as a colour; here `S = V = 1.0` (fully saturated, full brightness) and `H = normalized_reward / 4`, confining hue to `[0.0, 0.25]`. On the Graphviz hue wheel `0.0 = RED`, `0.25 = GREEN`, so the **worst-reward** node (`x = m`) is RED and the **best-reward** node (`x = M`) is GREEN — a monotone red→green gradient that makes the winning lineage visually obvious. `x` is fed `child.best_reward`, so the gradient tracks each node's *best* observed reward, not its mean.
 
 ### 6.2 `writeGraph` — iterative DFS → `.dot`
 
@@ -365,9 +365,9 @@ static PyObject *writeGraph(PyObject *file_name, MCTSNode *root,
 }
 ```
 
-**[CONFIRMED]** the literals `"TreeVis_"` (`0xfe18`), `".dot"`, `graphviz`, `Digraph`, `render`, `graph_label`, `best_reward`, `_children`, `min_reward`, `max_reward`, `relative_perf`, `get_color` are all present in the visualizer string table. The DFS is an **explicit `stack` list**, not recursion — robust to deep MCTS trees with no Python recursion-limit risk. Node identity in the DOT is a monotonically increasing integer (`parent_id`/`child_id`), **not** Python `id()`, so dumps are deterministic and diffable across runs. The artifact path is `TreeVis_<file_name>.dot`; `graph.render()` writes the `.dot` source and (library behaviour) shells out to the Graphviz `dot` binary to produce a rendered image. **[STRONG]** the `dot`-subprocess is graphviz-library behaviour, not an explicit subprocess in this `.so`.
+The literals `"TreeVis_"` (`0xfe18`), `".dot"`, `graphviz`, `Digraph`, `render`, `graph_label`, `best_reward`, `_children`, `min_reward`, `max_reward`, `relative_perf`, `get_color` are all present in the visualizer string table. The DFS is an **explicit `stack` list**, not recursion — robust to deep MCTS trees with no Python recursion-limit risk. Node identity in the DOT is a monotonically increasing integer (`parent_id`/`child_id`), **not** Python `id()`, so dumps are deterministic and diffable across runs. The artifact path is `TreeVis_<file_name>.dot`; `graph.render()` writes the `.dot` source and (library behaviour) shells out to the Graphviz `dot` binary to produce a rendered image. That subprocess is graphviz-library behaviour rather than an explicit call in this `.so`, so it is **[INFERRED]**.
 
-> **CORRECTION (vs the task premise for the visualizer).** The per-node box shows **only** `best_reward` + `num_visits` (the L02 `graph_label`) — *not* total reward, mean reward, UCT score, or the design/plan_id list. The plan_id appears only on the **edge** as `str(action)`. There is **no** visit-count → node-size encoding; visits are text only, and the sole visual encoding is the red→green reward colour. **[CONFIRMED]** by the `graph_label` body and the absence of any size attribute in the node call.
+> **GOTCHA — the node box carries less than it looks like it should.** It shows *only* `best_reward` and `num_visits` (the `graph_label`) — not total reward, mean reward, UCT score, or any design/plan_id list. The plan_id appears on the **edge**, as `str(action)`. There is no visit-count → node-size encoding either: visits are text, and the sole visual channel is the red→green reward colour. The `graph_label` body and the absence of any size attribute in the node call are what pin this.
 
 ---
 
@@ -393,10 +393,10 @@ The cost attributes the beam keys on (`additional_spill_size_in_bytes`, `max_tot
 
 ## 8. Confidence ledger
 
-**CONFIRMED** — the `2^3 + 2 = 10 plans in total` docstring verbatim + `0.01`/`0.25` floats byte-located at `.rodata` `0x1b150`; the 4-axis taxonomy; the 3 free bits + the `+2` reload origin (`rhs_on_top = not lhs_on_top`); all 10 `planN` addresses + `noop_plan`; the per-plan axis-getter census (plan1≡plan2, plan3≡plan4, plan5 lhs+contract, plan10 batch-only); `enumerate_fusion_plans(self, dont_split_acc_grp)` signature + the noop-first/×2-per-plan/`generate_tuple`-dedup census; `beam_search_min(self, plans, metric_func, rtol, max_metric=0)` with `rtol=0.01`, `itemgetter`, `min`, the `(1.0+rtol)` multiply and `Py_LT` filter; the 3-stage `attrgetter` tuples (`additional_spill_size_in_bytes` → `max_total_kernel_ii` → `normalized_kernel_dma_ii`); **no** `beam_width`/`heapq`/`nsmallest`/`top_k` anywhere; the coefficient-free pool `{1.0,0.01,0.25,-1.0,1/1024}`; `arithmetic_intensity = total_flops / total_dma_traffic_in_bytes`; `is_compute_bound`/`is_memory_bound` = `Py_GT`/`Py_EQ` over `normalized_kernel_ii_tuple`; `overflow_sb` (`Py_GE`) / `has_low_memory_pressure` (`Py_LE`) gates; `AutotuneFusionPlanGenerator` + `internal-autotune-tritium-use-more-tripcounts`; the visualizer `get_color`/`writeGraph` bodies + `" 1.0 1.0"`/`TreeVis_` literals.
+Read directly off the binary: the `2^3 + 2 = 10 plans in total` docstring verbatim + `0.01`/`0.25` floats byte-located at `.rodata` `0x1b150`; the 4-axis taxonomy; the 3 free bits + the `+2` reload origin (`rhs_on_top = not lhs_on_top`); all 10 `planN` addresses + `noop_plan`; the per-plan axis-getter census (plan1≡plan2, plan3≡plan4, plan5 lhs+contract, plan10 batch-only); `enumerate_fusion_plans(self, dont_split_acc_grp)` signature + the noop-first/×2-per-plan/`generate_tuple`-dedup census; `beam_search_min(self, plans, metric_func, rtol, max_metric=0)` with `rtol=0.01`, `itemgetter`, `min`, the `(1.0+rtol)` multiply and `Py_LT` filter; the 3-stage `attrgetter` tuples (`additional_spill_size_in_bytes` → `max_total_kernel_ii` → `normalized_kernel_dma_ii`); **no** `beam_width`/`heapq`/`nsmallest`/`top_k` anywhere; the coefficient-free pool `{1.0,0.01,0.25,-1.0,1/1024}`; `arithmetic_intensity = total_flops / total_dma_traffic_in_bytes`; `is_compute_bound`/`is_memory_bound` = `Py_GT`/`Py_EQ` over `normalized_kernel_ii_tuple`; `overflow_sb` (`Py_GE`) / `has_low_memory_pressure` (`Py_LE`) gates; `AutotuneFusionPlanGenerator` + `internal-autotune-tritium-use-more-tripcounts`; the visualizer `get_color`/`writeGraph` bodies + `" 1.0 1.0"`/`TreeVis_` literals.
 
-**STRONG** — the exact `lhs_on_top` `True`/`False` byte in plan2/plan4 (semantics fixed by docstring + symmetric census); `dont_split_acc_grp` `*_wos` routing; the roofline compute>memory engine-II direction; the lambda19/20 attention sub-ordering placement; the `target`-oracle ↔ `bir::Hwm` shared-coefficient cross-check; the visualizer's `dot`-subprocess (graphviz-library behaviour).
+**[INFERRED]** — the exact `lhs_on_top` `True`/`False` byte in plan2/plan4 (semantics fixed by docstring + symmetric census); `dont_split_acc_grp` `*_wos` routing; the roofline compute>memory engine-II direction; the lambda19/20 attention sub-ordering placement; the `target`-oracle ↔ `bir::Hwm` shared-coefficient cross-check; the visualizer's `dot`-subprocess (graphviz-library behaviour).
 
-**INFERRED** — numeric values of `sb_par_size_in_bytes` and `low_memory_pressure_threshold` (per-arch/target attributes, not in this module); the `0.25` (`__pyx_float_0_25`) consumer mapping (a `how_good_*` weight or low-pressure margin — reached by global-name, not a body-local `movsd`); the visualizer's `relative_perf` exact expression (L25 local).
+Also **[INFERRED]**, and weaker still — numeric values of `sb_par_size_in_bytes` and `low_memory_pressure_threshold` (per-arch/target attributes, not in this module); the `0.25` (`__pyx_float_0_25`) consumer mapping (a `how_good_*` weight or low-pressure margin — reached by global-name, not a body-local `movsd`); the visualizer's `relative_perf` exact expression (L25 local).
 
-**Re-verify ceiling.** The plan/beam/cost *structure* is reimplementation-grade and binary-grounded. What this static pass *cannot* pin without the arch descriptor: the absolute numeric of the two capacity thresholds and the precise call-site of the `0.25` scalar. The reload-twin `lhs_on_top` byte and the attention-lambda placement are STRONG, not byte-firm, because Cython tuple-packing/scope-aliasing blurs the literal positions — but the docstring + the byte-identical plan1≡plan2 census make the *semantics* unambiguous.
+**What static analysis cannot reach.** The plan/beam/cost *structure* is reimplementation-grade. Without the arch descriptor, two things stay open: the absolute numeric of the two capacity thresholds, and the precise call-site of the `0.25` scalar. The reload-twin `lhs_on_top` byte and the attention-lambda placement are **[INFERRED]** rather than byte-firm because Cython tuple-packing and scope-aliasing blur the literal positions — but the docstring plus the byte-identical plan1 ≡ plan2 census make the *semantics* unambiguous.

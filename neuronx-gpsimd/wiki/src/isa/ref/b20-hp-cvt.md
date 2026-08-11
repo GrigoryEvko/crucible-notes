@@ -5,7 +5,7 @@ Vision-Q7 *Cairo* (`ncore2gp`) ISA: every opcode that produces an **fp16** resul
 an integer or by rounding an fp16 to an integral fp16 value. It is the fp16-axis mirror of the
 fp32-side [B13 sp-cvt](b13-sp-cvt.md): the binary itself names the semantic group **`ivpep_sem_hp_cvt`**
 (the literal `opnd_ivpep_sem_hp_cvt_*` operand strings live in `libisa-core.so` — `strings -a | rg
-sem_hp_cvt`, this pass — and are where the page title comes from). The group splits into exactly two
+sem_hp_cvt` — and are where the page title comes from). The group splits into exactly two
 converter directions over one multiplexed datapath: **`int16 → fp16`** with a 4-bit Q-format scale
 (`float16`/`ufloat16`), and the five **fp16 round-to-integral** ops that keep the result in fp16
 (`fitrunc`/`ficeil`/`fifloor`/`firint`/`firound`). It owns **21 shipped mnemonics**, summing to **126
@@ -29,15 +29,15 @@ throughout where a value fact is stated, per the [confidence model](../../refere
 
 > **NOTE — the two binaries and the address arithmetic this page uses.** Encoding side:
 > `libisa-core.so` (sha256 `8fe68bf462ce76ee17dfbe2167ff8443d473a66385ed115364e9677bf143e451`,
-> 9,690,712 B, not stripped; re-confirmed this pass). `.text` (`0x312c10`) and `.rodata`
+> 9,690,712 B, not stripped). `.text` (`0x312c10`) and `.rodata`
 > (`0x3b6e40`) are **VMA == file-offset**; `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) and
 > `.data` (VMA `0x764040` ↔ file `0x564040`) carry a **`0x200000`** per-binary delta
-> (`readelf -SW`, re-read this pass — *not* libtpu's `0x400000`), so every iclass `args`/`stateArgs`
+> (`readelf -SW` — *not* libtpu's `0x400000`), so every iclass `args`/`stateArgs`
 > table read below subtracts `0x200000` from its symbol VMA. Value side: `libfiss-base.so`
 > (sha256 `260b110cd59c76b090cbdeb4d5d90f5245be34792618c023ab963ce108d3cc94`, 12,330,016 B); its
 > `module__xdref_*` leaves are `.text`, VMA == file. Timing side: `libcas-core.so`
 > (sha256 `7f1d…041a`, 45,878,080 B), the generated cycle-accurate ISS. All three are in
-> `extracted/` (gitignored; reach with an absolute path or `fd --no-ignore`). `[HIGH/OBSERVED]`
+> `extracted/` (gitignored; reach with an absolute path or `fd --no-ignore`).
 
 ---
 
@@ -46,9 +46,9 @@ throughout where a value fact is stated, per the [confidence model](../../refere
 Every fp16-convert op reads/writes the **`vec`** file (idx 2, 512 b × 32; fp16 occupies the full
 **32 lanes** of 16 b, 1-5-10 bias 15) and is placed in the **`S3_ALU`** slot — the *same* slot family
 the [B13 fp32 converts](b13-sp-cvt.md) and the fp Vector-ALU slice use. `nm` shows every placement at
-`Slot_{f0,f1,f2,f3,f7}_s3_alu` + `Slot_n0_s3_alu` (this pass). The `T` (predicated) forms add a
+`Slot_{f0,f1,f2,f3,f7}_s3_alu` + `Slot_n0_s3_alu`. The `T` (predicated) forms add a
 third input from the **`vbool`** file (idx 3, 64 b × 16) and `OperandSem_opnd_sem_vbool_{encode,decode}`
-bind that operand class directly (this pass). The round-honoring forms thread the FCR `RoundMode` and
+bind that operand class directly. The round-honoring forms thread the FCR `RoundMode` and
 post the FSR sticky flags; the operand and state model is read from the iclass `args`/`stateArgs`
 tables (§3.1, §4).
 
@@ -72,11 +72,11 @@ tables (§3.1, §4).
 > (1) the classifier key is the **mnemonic root, first-match-wins** — `float16`/`ficeilnxf16`
 > (root says *produce fp16*) are B20; their fp32 cousins `floatn_2x32`/`ficeiln_2xf32` are
 > [B13](b13-sp-cvt.md). (2) `trunc16nxf16`/`utrunc16nxf16` (fp16→**int**) *do* exist in
-> `libisa-core.so` (`nm` shows them this pass) but they are **not** in this batch's 21 — fp→int trunc
+> `libisa-core.so` (`nm` shows them) but they are **not** in this batch's 21 — fp→int trunc
 > is grouped with the lookup family (`ivpep_sem_hp_lookup`), discards the fractional bits
 > unconditionally (always round-toward-zero, ignoring the FCR), and is owned by
 > [B14 hp-lookup](b14-hp-lookup.md). B20 is exactly the **int→fp16** and **fp16-round-to-integral**
-> half. `[HIGH/OBSERVED]`
+> half.
 
 ---
 
@@ -84,7 +84,7 @@ tables (§3.1, §4).
 
 Every fp16-convert mnemonic this batch owns, with its encoding read at the **canonical `F1_S3_ALU`
 slot** (the `movl` immediate in the `Opcode_<mnem>_Slot_f1_s3_alu_encode` thunk — body
-`movl $imm,(%rdi); ret`, byte-exact this pass) and its operand model read from the iclass
+`movl $imm,(%rdi); ret`, byte-exact) and its operand model read from the iclass
 `args`/`stateArgs` tables. The `t` mnemonics are the **predicated** forms (a separate iclass, `*T`,
 with a `vbr:vbool` guard input); their `word0` is a *different* selector, not a bit-flip of the base
 form. The 21 = **7 base families** (`fitrunc`, `ficeil`, `fifloor`, `firint`, `firound`, `float16`,
@@ -96,7 +96,7 @@ form. The 21 = **7 base families** (`fitrunc`, `ficeil`, `fifloor`, `firint`, `f
 > canonical slot so the selectors are comparable; a reimplementer's assembler reads the placement it
 > actually targets from `Opcode_<mnem>_Slot_<that-slot>_encode`. The §6 worked examples are read at the
 > default **`N0_S3_ALU`** narrow slot (the 8-byte bundle the device emits), whose selectors differ
-> again — both are reproduced and reconciled by XOR-diff (§6.2). `[HIGH/OBSERVED]`
+> again — both are reproduced and reconciled by XOR-diff (§6.2).
 
 ### 2.1 int16 → fp16 with a Q-format scale (`float16`/`ufloat16`)
 
@@ -111,7 +111,7 @@ form. The 21 = **7 base families** (`fitrunc`, `ficeil`, `fifloor`, `firint`, `f
 
 The signed/unsigned split is the **bit20** (`+0x100000`) difference in the encode word
 (`float16nx16` `0x2f000401` vs `ufloat16nx16` `0x2f100400`), exactly the convention
-[B13 §2](b13-sp-cvt.md#2-the-roster) and SX-ISA-39 record for the fp32 `float`/`ufloat` pair. `[HIGH/OBSERVED]`
+[B13 §2](b13-sp-cvt.md#2-the-roster) records for the fp32 `float`/`ufloat` pair.
 
 > **GOTCHA — the scalar/vector bit0 polarity is *swapped* between `float16` and `ufloat16`.** Read
 > from the `F1_S3_ALU` encode words: `float16` has `.H = …400` / `NX = …401` (bit0 = 1 means vector),
@@ -119,7 +119,7 @@ The signed/unsigned split is the **bit20** (`+0x100000`) difference in the encod
 > scalar/vector discriminator is *inverted* between the two selectors. This is harmless to a correct
 > assembler (each mnemonic owns its own thunk) but a reimplementer that hard-codes "bit0 = vector"
 > across the whole `int→fp16` pair mis-decodes one of the two. The N0-bundle worked diffs (§6.3)
-> isolate this to bundle **bit35**. `[HIGH/OBSERVED]`
+> isolate this to bundle **bit35**.
 
 ### 2.2 fp16 round-to-integral (result stays fp16)
 
@@ -144,7 +144,7 @@ The signed/unsigned split is the **bit20** (`+0x100000`) difference in the encod
 Within the FI family the encode words cluster: `ficeil`/`fifloor` share a selector base differing in
 the `[7:4]` sub-nibble, `firint`/`firound` likewise, with the predicated `T` forms collapsing the
 selector to a common base (`0x27005xxx`) and moving the rounding member entirely into the `[7:4]`
-field — the worked XOR-diffs (§6.2) pin those bits. `[HIGH/OBSERVED]`
+field — the worked XOR-diffs (§6.2) pin those bits.
 
 ---
 
@@ -153,8 +153,7 @@ field — the worked XOR-diffs (§6.2) pin those bits. `[HIGH/OBSERVED]`
 ### 3.1 The operand model — a **4-bit** scale exponent, not a round mode
 
 `Iclass_FLOAT16_H_args` (VMA `0x84f040`, file `0x64f040` after the `0x200000` delta) lists **three**
-operands, the 8-byte string pointer + 1-byte mode (`o`=`0x6f` out, `i`=`0x69` in) read verbatim this
-pass:
+operands, the 8-byte string pointer + 1-byte mode (`o`=`0x6f` out, `i`=`0x69` in) read verbatim:
 
 ```
 operand[0]  mode='o'  opnd_ivpep_sem_hp_cvt_vt     -> vec destination (fp16)
@@ -167,7 +166,7 @@ the `_get` thunk, never by subtracting offsets. `Field_fld_ivpep_sem_hp_cvt_i_im
 (`@0x3357a0`) is `mov (%rdi),%eax; shl $0x18,%eax; shr $0x1c,%eax; ret` — `shl 24` drops the top 24
 bits, `shr 28` keeps the next 4 → **`imm4 = word0[7:4]`**, a contiguous 4-bit field. (Compare B13's
 fp32 side, where the same scale is a **5-bit** `i_imm5` read by a *scattered* `word0[0] | word0[4:1]`
-field — the half-precision side carries one fewer scale bit and a *contiguous* window.) `[HIGH/OBSERVED]`
+field — the half-precision side carries one fewer scale bit and a *contiguous* window.)
 
 > **CORRECTION — the fp16 convert scale is `i_imm4` (4-bit, range 0..15), *not* the `i_imm5` (5-bit,
 > 0..31) of the fp32 [B13](b13-sp-cvt.md#31-the-operand-model--a-5-bit-scale-exponent-not-a-round-mode)
@@ -177,7 +176,7 @@ field — the half-precision side carries one fewer scale bit and a *contiguous*
 > that shares one scale-field decoder across both width families is wrong by one bit on the fp16
 > side: an `imm4` field cannot express scales 16..31. The architectural reason is field budget — the
 > fp16 op packs the same `[7:4]` window that the FI forms use as a rounding sub-selector (§6.2), so it
-> tops out at 4 bits. `[HIGH/OBSERVED]`
+> tops out at 4 bits.
 
 ### 3.2 Annotated value model — `int16 → fp16 · 2^(−imm4)`
 
@@ -185,7 +184,7 @@ The value leaves are `module__xdref_float16_1_16f_16_32_2` (`@0x522070`, signed)
 `module__xdref_ufloat16_1_1_16f_16_32_2` (`@0x522380`, unsigned) — integer-only soft-float (no
 hardware-FP x86 insn). The signed leaf opens `mov %esi,%r10d; and $0x8000,%r10d; … neg %r11d`
 (the sign-extract prologue); the unsigned leaf omits it (the `int16/uint16` distinction is exactly
-that prologue, the same shape B13 / SX-ISS-07 read for the fp32 `float`/`ufloat` pair). The ABI,
+that prologue, the same shape B13 reads for the fp32 `float`/`ufloat` pair). The ABI,
 recovered by disassembly + execution:
 
 ```c
@@ -239,7 +238,7 @@ directed-round-overflow rule of §6.4) and raises Overflow. This is precisely wh
 Common to all 21: `STATE_IN = CPENABLE` (the vector-coprocessor enable; the op raises
 `Coprocessor1Exception` and is squashed *before* any datapath effect iff cp1 is disabled). The IEEE
 side-effects are per-op `stateArgs`, read here directly from the iclass tables (each entry = 8-byte
-`.rodata` string pointer + mode byte, table at VMA − `0x200000`). Resolved string pointers this pass:
+`.rodata` string pointer + mode byte, table at VMA − `0x200000`). Resolved string pointers:
 
 | iclass (`.H`) | `stateArgs` (mode) | meaning |
 |---|---|---|
@@ -256,10 +255,10 @@ side-effects are per-op `stateArgs`, read here directly from the iclass tables (
 > `RoundMode`). `firint` *does* list `RoundMode` and reads the dynamic FCR mode; `float16`/`ufloat16`
 > also list `RoundMode` (the int-mantissa-into-significand rounding). A reimplementer that threads the
 > FCR mode into `ficeil`/`fifloor`/`fitrunc`/`firound` is over-modeling — those four are
-> mode-independent. `[HIGH/OBSERVED]`
+> mode-independent.
 
 The FCR state register layout itself is read from the `libisa-core.so` state descriptor strings
-(`strings -a | rg RoundMode`, this pass), in the `<width>:<bitpos>:s:<name>:<reset>` form:
+(`strings -a | rg RoundMode`), in the `<width>:<bitpos>:s:<name>:<reset>` form:
 
 ```
 2:8:s:RoundMode:0        -> RoundMode field, reset value 0 (= RNE)
@@ -270,7 +269,7 @@ The FCR state register layout itself is read from the `libisa-core.so` state des
 
 So the architectural **FCR reset RoundMode = 0 = RNE** (round-to-nearest-even), and the three enable
 bits reset to 0 (masked). The matching `InvalidFlag`/`InexactFlag`/`OverflowFlag` are the FSR sticky
-status bits (`SHARED_OR`), posted as late DEFs (§9.1). `[HIGH/OBSERVED]`
+status bits (`SHARED_OR`), posted as late DEFs (§9.1).
 
 > **GOTCHA — TWO rounding defaults are in play, and convert ops are exactly where it bites.** The
 > *architectural* FCR reset is **RNE** (the `2:8:s:RoundMode:0` descriptor above), so a hardware
@@ -343,7 +342,7 @@ value leaves are `module__xdref_{ficeil,fifloor,firound,fitrunc}_1_16f_16f`
 > `away` arm reads the `R` (round) bit and at the *exact* narrow half does **not** increment — it matches
 > RTZ — because the half-quantum sits below the bit the core treats as `R`. So drive `away` from FIROUND,
 > not from a narrow exact-half. Consistent with [Formal Semantics II](../semantics/group-semantics-ii.md) §2
-> (narrow exact-half correction) and [B13 sp-cvt](b13-sp-cvt.md) §5.2. `[HIGH/OBSERVED]`
+> (narrow exact-half correction) and [B13 sp-cvt](b13-sp-cvt.md) §5.2.
 
 ### 5.3 Special values (proven by execution)
 
@@ -461,13 +460,13 @@ hub: bf16 = the top 16 bits of fp32 (a shift + RNE round in the firmware Cast ke
 exponent rebias + mantissa truncate/round + saturating-clamp (nibble-unpack → `ufloat16`/`ufloat` →
 scale-MAC → `bmin`/`bmax` clamp). The IVP datapath exposes `fp16↔fp32` + `int↔fp` + saturating pack;
 everything else rides those primitives. The stochastic round used elsewhere in the device is the
-PE-array PSUM `fp32→bf16` round, a *separate* hardware datapath — **not** an IVP convert mode. `[HIGH/OBSERVED]`
+PE-array PSUM `fp32→bf16` round, a *separate* hardware datapath — **not** an IVP convert mode.
 
 ---
 
 ## 7. Batch tally — every fp16-convert mnemonic vs `nm`
 
-The 21 mnemonics and their placement counts, re-counted this pass with
+The 21 mnemonics and their placement counts, counted with
 `nm libisa-core.so | rg -c 'Opcode_<mnem>_Slot_.*_encode'` (the only legitimate count method, per
 [coverage tally](../core/coverage-tally.md)):
 
@@ -480,7 +479,7 @@ The 21 mnemonics and their placement counts, re-counted this pass with
 BATCH TOTAL : 21 mnemonics, 126 placements  (= 21 × 6, every convert is 5 wide F-slots + 1 N0)
 ```
 
-Re-counted directly: `nm | rg -c` over the 21-mnemonic alternation = **126** (this pass). Each base
+Counted directly: `nm | rg -c` over the 21-mnemonic alternation = **126**. Each base
 family resolves to a `module__xdref_` leaf driven live above: `float16`/`ufloat16`
 (`@0x522070`/`@0x522380`), `ficeil`/`fifloor`/`firound`/`fitrunc`
 (`@0x524430`/`@0x524570`/`@0x5246a0`/`@0x524820`), `firint` (`@0x524900`), plus the hub widen/narrow
@@ -503,7 +502,7 @@ functions**, comfortably inside the `864` value-leaf denominator. `[HIGH/OBSERVE
 ## 8. Worked bit-pattern examples — device-oracle round-tripped
 
 Assembled with `xtensa-elf-as` (`XTENSA_CORE=ncore2gp`,
-`XTENSA_SYSTEM=…/ncore2gp/config`) and disassembled with `xtensa-elf-objdump` (this pass). Each op
+`XTENSA_SYSTEM=…/ncore2gp/config`) and disassembled with `xtensa-elf-objdump`. Each op
 emits an 8-byte **`N0_S3_ALU`** FLIX bundle `{ nop; nop; nop; <op> }` (the op in slot S3); objdump
 prints the bundle as one 64-bit big-endian numeral.
 
@@ -522,7 +521,7 @@ fitrunc.h         v1, v2       -> 32505418e042452f
 ficeil.h          v1, v2       -> 32505218e042452f
 ```
 
-### 8.1 Discriminator bits, isolated by XOR-diff (this pass)
+### 8.1 Discriminator bits, isolated by XOR-diff
 
 ```
 ceil ^ floor                = 0x20000000     -> bit 29 ONLY   (the [7:4] 0x6<->0x7 pair-member bit, scattered)
@@ -538,26 +537,26 @@ The single-bit diffs confirm the §2/§6 encoding model directly from real assem
 rounding-member is one scattered bit (29 for the pair-member, 41 for the selector low nibble), the
 scalar/vector flag is bundle bit 35 (with the `ufloat16` polarity swap visible as the *same* bit but
 opposite sense), and the predicated `T` form differs in the cluster `{29,31,37,41,46}` (the
-selector-narrowing plus the `vbr:vbool` predicate-select field). `[HIGH/OBSERVED]`
+selector-narrowing plus the `vbr:vbool` predicate-select field).
 
 ### 8.2 The fp16 narrow bundle for completeness
 
 The fp16↔fp32 **narrow** (B20's name-root home, §6) round-trips the same way; the worked widen→narrow
 bit-exact certificate over 2009 fp16 values is held by [B13 §6.2](b13-sp-cvt.md#62-the-fp16--fp32-round-trip--exact-inverse-over-2009-values).
 The widen lands on the fp32 side and is rostered there; this page proves only the int→fp16 and
-fp16-round bundles above. `[HIGH/OBSERVED]`
+fp16-round bundles above.
 
 ---
 
-## 9. Adversarial self-verification — the five strongest claims, re-challenged
+## 9. Adversarial self-verification — the five strongest claims
 
-Each headline claim re-tested against the binary this pass; a claim survives only if a *second*
+Each headline claim is re-tested against the binary; a claim survives only if a *second*
 independent witness agrees.
 
 1. **The convert scale is `i_imm4` (4-bit), distinct from B13's `i_imm5` (5-bit).** *Challenge:* did
    I read the wrong field thunk, or is `imm4` just `imm5` with the top bit always 0? *Re-test:* the
-   field name in the iclass `args` table is literally `opnd_ivpep_sem_hp_cvt_i_imm4` (string pointer
-   resolved this pass), and the `_get` thunk for `F1_S3_ALU` is `shl $0x18; shr $0x1c` = a **4-bit**
+   field name in the iclass `args` table is literally `opnd_ivpep_sem_hp_cvt_i_imm4`, and the `_get`
+   thunk for `F1_S3_ALU` is `shl $0x18; shr $0x1c` = a **4-bit**
    window `word0[7:4]` (drop top 24, keep next 4) — structurally cannot express 16..31. Cross-witness:
    B13's fp32 field is named `i_imm5` with a *5-bit scattered* `word0[0] | word0[4:1]` window. Two
    witnesses (the named `imm4` operand string + the 4-bit `_get` shift pattern) agree, and they
@@ -597,20 +596,16 @@ independent witness agrees.
    (`ivpep_sem_hp_lookup`), have no FCR round decode (always round-toward-zero), and are owned by
    [B14](b14-hp-lookup.md) — not in this batch's 21. The 21 are the **int→fp16** (`float16`/`ufloat16`)
    and **fp16-round-to-integral** (`fitrunc`/`ficeil`/`fifloor`/`firint`/`firound`) families × 3 forms;
-   `21 × 6 = 126` re-counted via `nm` this pass. The two families share neither semantic group nor
+   `21 × 6 = 126` counted via `nm`. The two families share neither semantic group nor
    round-mode model. **Survives.** `[HIGH/OBSERVED]`
-
-No claim on this page rests on a raw dump, an unnamed symbol, or a single uncorroborated witness;
-every value fact carries a differential-execution certificate against the shipped leaf, and every
-boundary is pinned by slot + leaf + dtype.
 
 ### 9.1 Convert writeback latency — OBSERVED from the ISS
 
 The cycle model lives in **`libcas-core.so`**, the generated cycle-accurate ISS, as per-op
 `F<fmt>_F<fmt>_S3_ALU_<n>_inst_IVP_<MNEMONIC>_issue` symbols — keyed by FLIX format + issue slot, not
 a global opcode index. Each `_issue` function sets a per-port pipeline stage in `%esi` (`mov $0xN,%esi`)
-before each register-file port call; the final stage is the writeback commit. Decoded this pass
-(neither binary has DWARF — `readelf -S` shows only `.symtab`; this is ISS disassembly):
+before each register-file port call; the final stage is the writeback commit. Decoded from ISS
+disassembly (neither binary has DWARF — `readelf -S` shows only `.symtab`):
 
 | op (issue fn @addr) | structural ports | vec source read | vbool read | dest writeback |
 |---|---|---|---|---|
@@ -634,7 +629,7 @@ before each register-file port call; the final stage is the writeback commit. De
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED (by execution)** — driven live against `libfiss-base.so` this pass:
+**HIGH / OBSERVED (by execution)** — driven live against `libfiss-base.so`:
 
 * The Q-format scale semantics of `float16`/`ufloat16` (`d = int · 2^(−imm4)`, the halving sweep), the
   signed-vs-unsigned high-bit (`ufloat16(0xFFFF)` positive), the precision-loss rounding
@@ -645,7 +640,7 @@ before each register-file port call; the final stage is the writeback commit. De
 * **No FTZ/DAZ**: every fp16 subnormal widens to finite fp32, `-0` widens to `-0`; NaN payload carried
   (shift by 13), sNaN→qNaN with the quiet bit set and Invalid raised.
 
-**HIGH / OBSERVED** — read from `libisa-core.so` immediates / disassembly + `libcas-core.so` ISS this pass:
+**HIGH / OBSERVED** — read from `libisa-core.so` immediates / disassembly + the `libcas-core.so` ISS:
 
 * The 21-mnemonic roster, the `F1_S3_ALU` opcode-selector immediates (incl. the `+0x100000` unsigned
   bit20 and the swapped scalar/vector bit0 polarity), the `S3_ALU` placement (5 wide + 1 narrow), the

@@ -198,7 +198,7 @@ Three security-relevant facts fall out of this spine:
 
 ---
 
-## 3. Armed-not-default-secure — the perimeter ring `[HIGH · OBSERVED]`
+## 3. Armed-not-default-secure — the perimeter ring
 
 The second defining property: every fabric-level enforcement block **boots permissive** and
 must be armed by privileged software. This is the deliberate consequence of an *integrity*
@@ -233,7 +233,7 @@ AxPROT**) is the [remapper](../csr/remapper.md)'s; `qos_prot` does **not** emit 
 
 ---
 
-## 4. The exhaustive fault taxonomy — fails-stop `[HIGH · OBSERVED]`
+## 4. The exhaustive fault taxonomy — fails-stop
 
 The third defining property: when an enforcement boundary fires, it **terminates** — a
 transaction is poisoned-and-erred, or the engine spins forever. Recovery is the rare
@@ -259,7 +259,7 @@ its own delivery model:
   +--------------+----------------------------+-----------------------+--------------+
 ```
 
-### 4a. Layer A — fabric-integrity faults (HW, terminate-the-transaction) `[HIGH · OBSERVED]`
+### 4a. Layer A — fabric-integrity faults (HW, terminate-the-transaction)
 
 A transaction that violates the sprot firewall, hits no target slave, or is malformed on the
 AXI protocol is **terminated locally**: the responder manufactures an AXI error response and,
@@ -289,7 +289,7 @@ on reads, poisons the payload. The detector *decides*; the NTS responder *respon
 > but the second hit is that register's own Description text ("default=deadbeef"),
 > not a second register. The "same wire bytes, different CSR materialization"
 > framing is unchanged. See [`nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md)
-> §9 and [`soc-fabric-perimeter.md`](./soc-fabric-perimeter.md). `[HIGH · OBSERVED]`
+> §9 and [`soc-fabric-perimeter.md`](./soc-fabric-perimeter.md).
 > `[HIGH · OBSERVED — reset values CARRIED from [nsm §4b](../csr/nsm.md) / [qos-prot](../csr/qos-prot.md).]`
 
 ### 4b. Layer B — RAS / abort faults (HW, freeze-the-block) `[HIGH · OBSERVED · CARRIED]`
@@ -308,7 +308,7 @@ routing front-end: [`../interrupt/errtrig-fis-routing.md`](../interrupt/errtrig-
 | Freeze bundle | `Sunda` @ `0x300`, `BundleSizeInBytes 0xf0`, `HalExists = NON_EX_ONLY` | privileged-only; firmware does **not** drive it |
 | Freeze actions | scan-dump / clock-stop / SRAM-write-protect / block-level-logic, each an 8-bit per-target bitmap, split local vs remote | remote = cross-die via D2D |
 | Trigger | Abort = Wire-OR of `int_cause & !int_abort_msk_grp` (`@0x30`, rst `0xffffffff` = all masked) | per-source abort policy is instantiation-time |
-| errtrig fabric scale (Cayman) | **962** generator PAIRs; `intc_4grp` = 4×32 = **128** inputs/unit | `[HIGH · OBSERVED]` |
+| errtrig fabric scale (Cayman) | **962** generator PAIRs; `intc_4grp` = 4×32 = **128** inputs/unit | |
 | Apex (`peb_intc`) | **128** inputs, **32** critical (the SoC fatal/survival set), 24 edge | NSM critical at apex idx 111 (LEVEL) |
 | Recovery | no abort-clear register — **recovery = reset + clock un-gate + W0C cause clear** | reset, not resume |
 | Per-core capture | `FAULTINFOLO @0x302c` (`PFatalError[31]` sticky), `FAULTINFOHI @0x3030` (17 ECC fields) | read over OCD post-mortem |
@@ -320,7 +320,7 @@ routing front-end: [`../interrupt/errtrig-fis-routing.md`](../interrupt/errtrig-
 > Q7 that lives in the block. The Q7's *own* fault response (Layer C/D) is independent of the
 > fabric freeze. `[HIGH · OBSERVED · CARRIED · [abort §4a](../interrupt/abort-scandump-clockstop.md).]`
 
-### 4c. Layer C — XEA3 synchronous exceptions (core HW, vector→FATAL) `[HIGH · OBSERVED]`
+### 4c. Layer C — XEA3 synchronous exceptions (core HW, vector→FATAL)
 
 The Vision-Q7 core implements **XEA3** (Exception Architecture 3): `XCHAL_HAVE_XEA3 = 1`,
 `XCHAL_HAVE_XEA2 = 0`, `XCHAL_HAVE_NMI = 0`, single-dispatch, no leveled-interrupt registers
@@ -561,7 +561,7 @@ When a fault fires (any FATAL or the recoverable FP), the SEQ firmware publishes
 
 ---
 
-## 8. Adversarial self-verification of the five strongest claims `[HIGH]`
+## 8. Adversarial self-verification of the five strongest claims
 
 The five claims this page rests on, each checked against the specific artifact that would
 falsify it:
@@ -573,14 +573,14 @@ falsify it:
    the exception roster has `PrivilegedException` + `ExternalRegisterPrivilegeException` but
    **no `SecureException`**; `master_prot` emits `AxPROT = 0x2` (non-secure). *Result:*
    **holds** — comprehensive null result; the one positive privilege primitive is a kernel/user
-   ring (`PS_RING`), not a secure world. `[HIGH · OBSERVED]`
+   ring (`PS_RING`), not a secure world.
 
 2. **"Armed-not-default-secure (lax out of reset)."** *Falsifier:* any fabric gate that boots
    in its secure/closed state. *Check:* `user_remapper.pass_on_miss = 0x1` (fail-OPEN),
    `nsm.control.bypass.enable = 0x1` (bypassed), `qos_prot.csr.control.chicken = 0x1`
    (transparent), MPU `MPUENB = 0` at reset. *Result:* **holds** — every guest-facing gate
    boots permissive; only the *privileged* `amzn_remapper` (`0x0`) boots closed. The property
-   is real and is specifically guest-directional. `[HIGH · OBSERVED]`
+   is real and is specifically guest-directional.
 
 3. **"Fails-stop."** *Falsifier:* a fault disposition that masks-and-continues. *Check:* the
    18-row policy table (§5) — 16 of 18 terminate (poison / freeze / spin); the two exceptions
@@ -594,7 +594,7 @@ falsify it:
    accessor bounds-checks `≤ 8`; the structured `corebits-xea3.h` roster refines the 9 nibbles
    into the full 12-bit `EXC_TYPE_*` table (§4c); the FW side has exactly 6 entry points + 2
    emitters. *Result:* **holds** — the 9-cause vector, the FULLTYPE sub-causes, and the 6-entry
-   FW subsystem are all byte-pinned. `[HIGH · OBSERVED]`
+   FW subsystem are all byte-pinned.
 
 5. **"Recovery = reset, not resume."** *Falsifier:* an in-place abort-clear / resume-from-fault
    register. *Check:* `raise_FATAL @0x13e00` ends in an infinite `j 0x13e14` with no exit edge;
@@ -616,12 +616,12 @@ v5 *interior* firmware was carved — every v5-interior reading above is `[INFER
 > non-returning `secmon_illegal_mpu_entry_trap()`). A naive reader who finds these headers in
 > the gpsimd-tools tree would conclude GPSIMD boots a locked, verified, secure-monitor — a
 > key-rooted model. It does not: the carved `CAYMAN_NX_POOL_DEBUG` compute firmware has **zero**
-> `secmon`/`nonsecure`/`xtsm` strings (verified this pass), and its `_ResetHandler` programs the
+> `secmon`/`nonsecure`/`xtsm` strings, and its `_ResetHandler` programs the
 > MPU **inline** with **no** lock-and-verify pass. The secure-monitor was available and was
 > **not linked**. This is the page's load against a key-rooted reading: the model is
 > integrity-only *by deliberate omission of the secure monitor the toolchain offered*, which is
 > stronger evidence for the keystone than mere absence of crypto strings. `[HIGH · OBSERVED —
-> `secmon` headers/sources read from the LSP; absence in the carved compute image re-verified
+> `secmon` headers/sources read from the LSP; absence in the carved compute image confirmed
 > by `rg -c` over the extracted DRAM/IRAM `.c.o`.]`
 
 ---

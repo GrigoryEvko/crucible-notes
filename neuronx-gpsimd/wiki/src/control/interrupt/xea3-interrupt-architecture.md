@@ -38,14 +38,15 @@ Related pages (cross-linked, not duplicated):
 [PEB apex / CC / TOP_SP sources](./peb-cc-topsp-triggers.md) ·
 [Physical INTC instances](./physical-intc-instances.md).
 
-**Confidence legend.** `HIGH` = byte-exact from the ISA config / CSR schema / firmware
-disasm or re-verified here. `MED` = strong inference from naming + cross-file. `LOW` =
+**Confidence legend.** The page default is `HIGH · OBSERVED`; claims that depart from it
+carry an explicit tag. `HIGH` = byte-exact from the ISA config / CSR schema / firmware
+disasm. `MED` = strong inference from naming + cross-file. `LOW` =
 plausible, flagged. `OBSERVED` = read from a shipped artifact. `INFERRED` = reasoned.
 `CARRIED` = consolidated from a named sibling report/page, not re-derived here.
 
 ---
 
-## 0. Provenance — what was read `[HIGH · OBSERVED]`
+## 0. Provenance — what was read
 
 Every architectural fact below derives **solely** from static analysis of shipped
 artifacts, under lawful interoperability RE (DMCA 17 U.S.C. 1201(f)). No vendor source
@@ -79,7 +80,7 @@ snapshot was consulted.
 
 ---
 
-## 1. XEA3, not XEA2 — the register-file proof `[HIGH · OBSERVED]`
+## 1. XEA3, not XEA2 — the register-file proof
 
 The decisive evidence is the **architectural register file itself**, read byte-exact from
 the `ncore2gp` ISA config (`libisa-core.so`: 81 states, 34 structured sysregs, and the
@@ -154,17 +155,17 @@ opcode roster; SR ids cross-checked byte-exact against the encode templates.]`
 > are **not** touched by the SEQ/compute images (the firmware sets up the interrupt stack
 > via `ISB`/`ISL` but never programs the indirect vector `IEVEC` or the kernel-stack limit
 > `KSL` — consistent with a polled firmware that never installs a dispatch handler).
-> Re-verified firmware sites: `wsr.ms` @`0x01a4` (NX) / `0x01c8` (Q7) — encoding `00e513`,
+> Firmware sites: `wsr.ms` @`0x01a4` (NX) / `0x01c8` (Q7) — encoding `00e513`,
 > SR `0xe5`; `wsr.isb` @`0x00a4` (both, `const16 a4,0x4ec0 ; wsr.isb a4`) — `40ec13`, SR
 > `0xec`; `wsr.isl` @`0x1935` + `rsr.isl` @`0x1c0b4` (NX) — `30f813`, SR `0xf8`. Even
 > `EPC` itself is **not** read/written as an operand in either image — the firmware never
-> takes a dispatch, so it never restores `EPC`. `[HIGH/OBSERVED — re-verified this session
-> against the shipped `ncore2gp` disasm; the ISA-table existence of `IEVEC`/`KSL`/`EPC` is
-> the architecture, the firmware non-use is the polled-model corollary.]`
+> takes a dispatch, so it never restores `EPC`. `[HIGH/OBSERVED — the ISA-table existence
+> of `IEVEC`/`KSL`/`EPC` is the architecture, the firmware non-use is the polled-model
+> corollary.]`
 
 ---
 
-## 2. The architectural exception/dispatch state `[HIGH · OBSERVED]`
+## 2. The architectural exception/dispatch state
 
 The exception machinery is decomposed into named **states** (the architectural storage)
 that the **sysregs** map onto via bit-field `contents[]` descriptors. Reading the state
@@ -214,7 +215,7 @@ state names + widths — there is no firmware that exercises it, see §6.]`
 
 ---
 
-## 3. The vector base and the vector table `[HIGH · OBSERVED]`
+## 3. The vector base and the vector table
 
 XEA3 keeps the relocatable **`VECBASE`** mechanism: all dispatch vectors live at a
 `VECBASE`-relative page (`VECBASE` is `[31:6]`, so vectors are 64-byte-aligned within the
@@ -342,7 +343,7 @@ void xea3_dispatch_handler(void) {            /* the single software dispatch ro
 
 ---
 
-## 5. How the shipped firmware actually uses the model — it polls `[HIGH · OBSERVED]`
+## 5. How the shipped firmware actually uses the model — it polls
 
 The architecture in §4 is what the silicon *can* do. The shipped GPSIMD firmware
 deliberately does **not** use the dispatch vector for async SoC events. This is the
@@ -357,7 +358,7 @@ core-side summary:
   run-loop path; `wsr.vecbase` once per image (boot). A core that took leveled interrupts
   would *need* `rsil` to mask and `rfi` to return — their total absence means the firmware
   never enters or returns from any async vector. `[HIGH/OBSERVED — see
-  [surprises-irq §1](../../firmware/seq/surprises-irq.md), re-verified this session.]`
+  [surprises-irq §1](../../firmware/seq/surprises-irq.md).]`
 
 - **Three async surfaces, all polled or read at a boundary, never vectored:**
   (1) the firmware-owned **"surprises" word**, polled at FSM step 1 every iteration
@@ -526,7 +527,7 @@ breakpoint CSRs or with the XEA3 dispatch SRs.]`
   beyond the identical packaged JSON is **INFERRED**.
 - The **on-die `intr_ctrl`/`intr_info` CSR bundle** is part of `tpb_xt_local_reg`, dated
   2022-12-14 (the Cayman baseline); the "4 sources/core" + 8-core `intr_info` layout is the
-  Cayman model. Cross-gen delta of this bundle is not separately re-verified here — **MED**
+  Cayman model. Cross-gen delta of this bundle is not separately verified — **MED**
   that it is gen-stable.
 - The **SoC INTC fabric** diverges at Maverick (decentralized per-IP-block INTCs +
   `iofic_x8_msix` security IOFIC + per-die apex), but that is the SoC-side fabric feeding
@@ -578,7 +579,7 @@ To build a Vision-Q7-compatible exception unit, implement the **XEA3** model, no
   `MS`/`ISB`/`ISL` are additionally **observed as live `wsr`/`rsr` operands in the
   firmware** (`wsr.ms` @`0x01a4`, `wsr.isb` @`0x00a4`, `wsr.isl` @`0x1935`); `IEVEC`/`KSL`
   are ISA-present but firmware-unused; `EPC` itself is not an operand in either image (no
-  dispatch is ever taken). Re-verified this session against the `ncore2gp` disasm.
+  dispatch is ever taken).
 - The `xt_exception_dispatch` package membership (24 rsr/wsr/xsr opcodes over 8 SRs;
   `opcodes[0..2]` = `excw`/`syscall`/`halt`) and the SR ids cross-checked against the
   encode templates (`rsr.ievec` = `0x00037400`, etc.).

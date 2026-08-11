@@ -41,7 +41,7 @@ feeds is [The Reimplementation Verdict & Open-Questions Map](../orientation/verd
 
 ---
 
-## 0. The binary under test — re-grounded this pass `[HIGH/OBSERVED]`
+## 0. The binary under test
 
 Every count on this page was re-read from the **one** binary with `nm -D <abs> | rg -c`, never
 the 884k-file decompile, never a folder-wide scan. Absolute path (gitignored under
@@ -67,14 +67,14 @@ except for the one wall (§4, `recipqli`), whose value is reachable only there.
 
 > **GOTCHA — recount, never re-quote.** A "symbol hit count" grepped from the decompile is
 > inflated 2–12× against the binary's true `nm` table. Every leaf-count cell below is the
-> `nm -D <abs> | rg -c` figure this pass; where a family page's headline used a different axis
+> `nm -D <abs> | rg -c` figure; where a family page's headline used a different axis
 > (mnemonic vs value-leaf vs placement), §1.1 reconciles them explicitly. `[HIGH/OBSERVED]`
 
 ---
 
 ## 1. The complete per-family pass/fail matrix `[HIGH/OBSERVED·exec]`
 
-One row per VAL family. **Representative leaves** are the leaves driven LIVE this pass to
+One row per VAL family. **Representative leaves** are the leaves driven LIVE to
 spot-confirm the row (the full family is validated on the cited page). **Leaf count** is the
 nm-grounded `module__xdref_*` tally for that family root (the value-leaf axis; see §1.1 for the
 mnemonic-vs-leaf caveat). **Comparisons** is the differential corpus size the family page
@@ -114,7 +114,7 @@ not of the value semantics.
 ### 1.2 My own live spot-confirmation of the 0-mismatch column `[HIGH/OBSERVED·exec]`
 
 To certify the matrix is not a transcription of sibling claims, **one representative leaf per
-family was `dlopen`'d from the shipped `libfiss-base.so` and called this pass** — the vendor
+family was `dlopen`'d from the shipped `libfiss-base.so` and called** — the vendor
 binary computing every value — with the per-leaf ABI confirmed by the store register
 (binary out-ptr `%rcx` 4-arg / unary `%rdx` 3-arg / firint `%r9` / ordered-fp-compare `%r8`
 5-arg). All 18 returned the byte the family page predicts; **0 mismatches**:
@@ -146,7 +146,7 @@ The first wave validated the nine ALU/MAC/convert/reduce/gather/predicate/fp/see
 edge-and-corner behaviours that a thin draft leaves open. Each closure states **what it was**,
 **how it closed** (host-composed lift, bare-constituent LIVE drive, or OBSERVED-only read),
 and its **confidence**. Where a closure can only be CARRIED or INFERRED — not reproduced by
-execution this pass — it is said so explicitly.
+execution — it is said so explicitly.
 
 ### 2.1 Bit-trick edge cases — host-composed + bare-constituent LIVE `[HIGH/OBSERVED·exec]`
 
@@ -202,7 +202,7 @@ against `libfiss-base.so` returns **0** matches: the cluster is a DVE-engine pri
 per-lane FISS reference. Its value semantics are therefore **OBSERVED-only** — read from the
 reduce-family argmax/argmin (`rbmax`/`rbmin`@0x859f00/0x8594f0, the union-tie-mask) and the
 select/replace crossbar (`sel`/`dsel`), which are the closest in-oracle analogues — but **not
-reproduced by a dedicated LIVE leaf this pass**. The `MAX8` 8-way reduction is structurally the
+reproduced by a dedicated LIVE leaf**. The `MAX8` 8-way reduction is structurally the
 `rbmax` union-fold restricted to 8 lanes; `MatchReplace8` is structurally the `sel`/`bitkillt`
 predicated-merge. Flagged `[MED/INFERRED]`: the analogue is OBSERVED, the *named DVE op* is
 carried, not executed. A reimplementer wanting the exact DVE search semantics drives the
@@ -323,7 +323,7 @@ LIVE drive across the fp family ([fp-soft-float §6](fp-soft-float.md),
 > (expects `0x7fe00000`). The quieting path is a single `or $0x400000`; the canonical-generation
 > path is `and 0x3fffff / or 0x7fc00000`. `[HIGH/OBSERVED·exec]`
 
-### 2.9 The real-NKI-source dispatch replay — reproducing "every divergence was the model" `[HIGH/OBSERVED]`
+### 2.9 The real-NKI-source dispatch replay — reproducing "every divergence was the model"
 
 The capstone's central evidentiary claim — *every divergence was the reference/model/harness,
 never the firmware* — was stress-tested by **replaying the real nki dispatch** against the LIVE
@@ -358,7 +358,7 @@ caught **reimplementer traps** and **harness bugs** — never a firmware value d
 
 ---
 
-## 3. The meta-finding — every divergence was the model, never the firmware `[HIGH/OBSERVED]`
+## 3. The meta-finding — every divergence was the model, never the firmware
 
 The single most important result of the whole VAL lane, front and centre: **across nine
 families and ~2.09M comparisons, the firmware value oracle had ZERO value defects. Every one of
@@ -413,7 +413,7 @@ execution* or of the *recovered closed-form*, named and bounded.
 ### 4.1 The `recipqli` soft-float-dispatch wall — the one structural wall `[HIGH/OBSERVED·exec]`
 
 The single-pass QLI reciprocal refine is the **only** value leaf in the whole 864-leaf oracle
-that is not bare-leaf drivable. Three leaves, nm-confirmed this pass:
+that is not bare-leaf drivable. Three leaves, nm-confirmed:
 
 ```
 module__xdref_recipqli_1_1_1_1_1_32f_32f         @0x87df20   (fp32)
@@ -473,7 +473,7 @@ the validated arbiter at both boundaries — the LIVE leaf and the ROM agree; it
 *analyst's recovered closed-form* (INFERRED) that misses by one ULP. `[HIGH/OBSERVED·exec —
 narrowing; CARRIED — 2 entries + lineage]`
 
-### 4.3 OBSERVED-only leaves — disassembled, not LIVE-driven this pass `[HIGH-struct]`
+### 4.3 OBSERVED-only leaves — disassembled, not LIVE-driven `[HIGH-struct]`
 
 Three classes are OBSERVED-only — their semantic was read from the disassembly but not driven
 LIVE (because the live drive is on a sibling page, or because the op is structurally a memcpy
@@ -489,7 +489,7 @@ with no value freedom):
   leaves in this oracle; OBSERVED via their in-oracle analogues, carried as named ops.
 
 > **NOTE — "OBSERVED-only" is a *provenance* distinction, not a confidence cliff.** Every
-> OBSERVED-only leaf was disassembled this pass and its value semantic read from the bytes; the
+> OBSERVED-only leaf was disassembled and its value semantic read from the bytes; the
 > only thing not done is the live ctypes call (done on a sibling page, or trivially structural).
 > A memcpy cannot have a value bug. `[HIGH]`
 
@@ -499,7 +499,7 @@ with no value freedom):
 
 The lane's evidentiary state, leaf-address-grounded against the 864-leaf binary.
 
-### 5.1 PROVEN-BY-EXECUTION (leaf `dlopen`'d and **called** this pass or on a committed sibling)
+### 5.1 PROVEN-BY-EXECUTION (leaf `dlopen`'d and **called** or on a committed sibling)
 
 The full datapath is execution-validated. Representative leaf addresses (the rest are in the §1
 matrix and §2 closures): ALU `add_16_16_16`@0x858480 / `adds`@0x85aa10 / `min`@0x8584b0 /
@@ -514,7 +514,7 @@ RED/SH `radd`@0x858690 / `radds`@0x814970 / `rbmax`@0x859f00 / `nsau`@0x8585a0 /
 `cvt24u_24_32`@0x5ba870 / `movscfv`@0x5b76c0. These all carry `[HIGH/OBSERVED·exec]` — the vendor
 binary computed each value in-process.
 
-### 5.2 OBSERVED-only (disassembled this pass, value semantic read, not LIVE-driven here)
+### 5.2 OBSERVED-only (disassembled, value semantic read, not LIVE-driven here)
 
 ```
 mov_512_512 @0x857fd0   mov_1536w_1536w @0x5e93a0 (movww)   — SSE block copy, structurally trivial
@@ -566,7 +566,7 @@ arch_id 36 INFERRED ; ct37 OBSERVED                        — gen-axis carries 
 > sweeps but do not reduce to a single headline number) **multiplied by the LIVE 4-way leg
 > fan-out** (each op × corpus × {SEM, FISS-lift, nki, LIVE}). The ~2.09M is therefore a **SCOPE
 > aggregate**, dominated by the fp/MAC sweeps and the 4-leg multiplier; the ≈ 1.49M remainder is
-> flagged **CARRIED** — summed from the per-family runs, not re-counted leaf-by-leaf this pass.
+> flagged **CARRIED** — summed from the per-family runs, not re-counted leaf-by-leaf.
 > The honest statement is: **≈ 0.60M comparisons are bottom-up summable from headline figures;
 > the full ~2.09M is reconciled as that 0.60M plus the fp/MAC/4-leg remainder, carried.** What is
 > NOT carried — the part that matters — is the mismatch count: **0 firmware-value mismatches**,
@@ -592,7 +592,7 @@ CARRIED.
 **~95% execution-validated.** The overwhelming majority of leaves — the entire ALU, MAC, convert,
 reduce, shift, shuffle, gather-marshal, predicate, classify, mask, FS-bank, bit-plane, seed, and
 bridge datapaths — were **driven LIVE** and reproduced bit-exact. The ~5% not
-execution-validated this pass is the OBSERVED-only set (§5.2: structurally-trivial block copies,
+execution-validated is the OBSERVED-only set (§5.2: structurally-trivial block copies,
 sibling-proven widens, and the DVE/CCE *named ops* that are not value leaves in this oracle) plus
 the one walled `recipqli` value — every one of which is either structurally trivial, proven on a
 sibling, or reachable only via the heavy leg.
@@ -621,7 +621,7 @@ order-sensitive on ±0; ordered relationals that signal on any NaN) are named an
 
 2. **"0 firmware-value mismatches across all nine families."** *Challenge:* could a transcription
    error hide a mismatch? *Resolved:* re-confirmed independently — 18 representative leaves
-   (one+ per family) `dlopen`'d and called this pass (§1.2), each returning the predicted byte,
+   (one+ per family) `dlopen`'d and called (§1.2), each returning the predicted byte,
    0 mismatches; and every committed sibling page reports 0 on its own corpus. The separating
    cells (`min` vs `minu`, `lt` vs `ltu`, `radds` vs `radd`, propagated vs generated NaN) prove
    the legs distinguish meaning, not copy. **Survives.** `[HIGH/OBSERVED·exec]`
@@ -644,7 +644,7 @@ order-sensitive on ±0; ordered relationals that signal on any NaN) are named an
 
 5. **"The leaf-count axes are mnemonic vs value-leaf vs placement, and the matrix uses
    value-leaf."** *Challenge:* are the matrix counts consistent? *Resolved:* re-grounded via
-   `nm -D <abs> | rg -c` this pass — 864 total value leaves; per-family tallies (16 ALU-i16,
+   `nm -D <abs> | rg -c` — 864 total value leaves; per-family tallies (16 ALU-i16,
    173 fp, 230 MAC-mul-grid, 102+10 convert, 123 reduce/shift/shuffle, 62 predicate+classify,
    15 seed, 26+5+19+56+13 bridge). The matrix's leaf column is the value-leaf axis; §1.1 carries
    the CORRECTION that the 27/21 mnemonic and 44/28 value/placement figures are different axes.

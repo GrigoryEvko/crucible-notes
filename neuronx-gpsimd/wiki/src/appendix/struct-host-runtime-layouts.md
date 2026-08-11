@@ -66,7 +66,7 @@ structs. Each section cross-links the page that recovers it:
 > that ELF's `*_structures.json` DWARF sidecar. Where the sibling pages already
 > reproduce a full layout (`kbin_mem_ref`, `MetaTensor`/`MetaNeff`/`ModelConfig`,
 > the `tdrv_ctx → mla → tpb → model` tree, `dmem_t`, the nrtucode objects), this
-> page reproduces it **field-exact** and re-verifies the arithmetic. Where only
+> page reproduces it **field-exact** and verifies the arithmetic. Where only
 > the **type and total size** are observable — `aws_hal_stpb` (1104 B),
 > `dma_queue_info_t` (360 B), the `aws_hal_ens`/`ens_nq` mirror, the
 > `dma_queue_bundle` instance, the `ngc` global, `kmd_context` — the interior is
@@ -924,8 +924,8 @@ NX_POOL (NX seq engine):     2=SUNDA  9=CAYMAN 17=MARIANA 25=MARIANA_PLUS 32=MAV
 
 ## 15. Adversarial self-verification
 
-The five strongest offset/size claims, re-challenged against the binary-derived
-artifacts this session:
+The five strongest offset/size claims, checked against the binary-derived
+artifacts:
 
 1. **`kbin_mem_ref = 152 (0x98)`** — field offsets `{mr_type@0, name@8, size@0x10,
    alignment@0x18, var_id@0x20, dtype[16]@0x24, shape[8]@0x38, dtensor_md@0x78,

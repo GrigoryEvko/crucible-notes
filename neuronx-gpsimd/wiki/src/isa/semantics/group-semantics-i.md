@@ -30,7 +30,8 @@ Three binary tiers are read against each other so no claim rests on a single art
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `OBSERVED` = a byte / immediate / symbol / **executed** value read from the shipped binary;
 `INFERRED` = reasoned over OBSERVED; `CARRIED` = re-used at a cited page's confidence; crossed with
-`HIGH`/`MED`/`LOW`. Counts are grounded with `nm | rg -c` against the `.symtab`, never a decompile
+`HIGH`/`MED`/`LOW`. The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an
+explicit tag. Counts are grounded with `nm | rg -c` against the `.symtab`, never a decompile
 grep; the `extracted/` tree is gitignored (reach it with `fd --no-ignore` or an absolute path). All
 prose is binary / static-analysis derived only.
 
@@ -39,7 +40,7 @@ prose is binary / static-analysis derived only.
 > **48-bit-per-lane** `wvec` accumulator; the msem `xt_load_semantic`/`xt_store_semantic` funnel
 > pair; and the `ivp_sem_vec_scatter_gather` index plane + `xdsem_tiesel_5_32` permute crossbar.
 > Each opcode is a *parameterization* of its group's one datapath by decode-group selector bits —
-> never a private function. `[HIGH/OBSERVED]`
+> never a private function.
 
 ---
 
@@ -63,7 +64,7 @@ first integer argument:
 | 4-operand accumulate (`mula`) | *ignored* | acc ptr | B | C | result ptr |
 | wide funnel (`wideldshift`) | *ignored* | line ptr (512 b) | shamt | result ptr | — |
 
-The dead `%rdi` is why the SX survey reported "A in `%esi`, B in `%edx`": in System-V x86-64 those
+The dead `%rdi` is why an earlier survey reported "A in `%esi`, B in `%edx`": in System-V x86-64 those
 are args 2 and 3. The C signature for a 3-operand leaf is therefore
 `void f(uint64_t /*unused*/, uint32_t a, uint32_t b, uint32_t *res)`. Every live value below was
 produced with that ABI; the driver is reproducible from the disassembly alone.
@@ -71,7 +72,7 @@ produced with that ABI; the driver is reproducible from the disassembly alone.
 > **NOTE — `.text` is one-to-one, `.data` is not.** For `libfiss-base.so` the `.text` VMA equals
 > the file offset (verified), so the `objdump --start-address=<VMA>` anchors below are exact. For
 > the TIE/msem blobs the payload is `.data`-resident, so subtract `0x200000` from the VMA to reach
-> the file offset. Mixing these up was a real prior false-positive. `[HIGH/OBSERVED]`
+> the file offset. Mixing these up was a real prior false-positive.
 
 ---
 
@@ -156,19 +157,19 @@ The `T` (predicated) variants take a `vboolN d` and a `/*inout*/ a`, computing p
 ### 1.3 Key invariants
 
 * **SUB is `a + ~b + 1`.** There is no subtract primitive; the `<ADD>` core gets `b` XOR-ed with
-  `op_GRP_A1_SUB` and a carry-in of 1. `NEG = 0 + ~a + 1`. `[HIGH/OBSERVED]`
+  `op_GRP_A1_SUB` and a carry-in of 1. `NEG = 0 + ~a + 1`.
 * **Integer add/sub/min/max/avg WRAP** mod `2^w`, because `propagate_mask` breaks the carry chain
   at each 8/16/32-bit lane edge. Saturation is a *separate* clamp gated only by `op_GRP_SAT` (the
   `*S` opcodes); it clamps to `±(2^(w−1))` with the literal constants `{1,15{1}}` = `0x7FFF` and
-  `{0,15{0}}` = `0x8000`. `[HIGH/OBSERVED]`
+  `{0,15{0}}` = `0x8000`.
 * **Signedness is operand-extension, not a runtime flag.** `ctrl_unsign_adder` (= `op_GRP_UNSIGN`)
   selects sign-extend vs zero-extend of each lane's guard bit before the add; the signed and
-  unsigned opcodes are *separate intrinsics* feeding the same datapath. `[HIGH/OBSERVED]`
+  unsigned opcodes are *separate intrinsics* feeding the same datapath.
 * **`AVGR` rounds half-up:** the `+1` enters through the same `arith_cin1` carry-in *before* the
-  `>>1`, so `AVGR(a,b) = (a+b+1)>>1` and `AVG(a,b) = (a+b)>>1`. `[HIGH/OBSERVED]`
+  `>>1`, so `AVGR(a,b) = (a+b+1)>>1` and `AVG(a,b) = (a+b)>>1`.
 * **MIN/MAX vs MINNUM/MAXNUM (fp) differ on NaN:** plain min/max use the raw ordered compare
   (operand-order NaN propagation); `MINNUM`/`MAXNUM` use the `f*_minnum_sel_a`/`maxnum_sel_a`
-  NaN-suppress selectors (IEEE-754 `minNum`/`maxNum`: NaN → the other operand). `[HIGH/OBSERVED]`
+  NaN-suppress selectors (IEEE-754 `minNum`/`maxNum`: NaN → the other operand).
 
 ### 1.4 Live-driven representative value
 
@@ -272,13 +273,13 @@ reduce-register `pr<N>` — the matmul weight bus. Representative bindings:
 * **The i16 MAC accumulator is exactly 48 bits per lane.** The `[47:0]` accum wires give 32 guard
   bits over the 16-bit input — ~`2^32` MACs before overflow. The `wvec` register is
   `1536 b = 16 slices × 96 b = 32 lanes × 48 b` (regfile idx 5, 4 entries; matches the
-  [B22 geometry](../ref/b22-unpack-wvec-mov.md)). `[HIGH/OBSERVED]`
+  [B22 geometry](../ref/b22-unpack-wvec-mov.md)).
 * **The integer accumulate WRAPS — no saturation, no rounding inside the MAC.** Saturation is a
   *post-op*: the `PACKL`/`PACKP`/`PACKQ` suffixes narrow the wide accumulator back to a `vec` lane
-  with a signed clamp. `[HIGH/OBSERVED]`
+  with a signed clamp.
 * **Signedness is the partial-product extension** (`sign_a`/`unsign_a`/`unsign_b`), giving the
   `s*s` / `u*u` / `s*u` / `u*s` quad as *separate opcodes*, not a mode. The `XR` forms add the
-  packed-reduce-register factor. `[HIGH/OBSERVED]`
+  packed-reduce-register factor.
 * **The fp FMA is a genuine single-rounding fused multiply-add** in two separate blocks:
   `fp_sem_hp_fma` (fp16 `NXF16`) and `ivp_sem_spfma` (fp32 `N_2XF32`). The product is kept
   full-width before the add+round (one rounding, not two). Form decode: `op_madd` (`a·b+c`),
@@ -395,12 +396,12 @@ unaligned front-end built on the same reference with `RotateAmount` = the held r
   element width, fetches the aligned line, and extracts via the funnel shift `shiftsel = addrsel·8`.
   Straddling accesses fetch a second line at `aligned_vaddr + issue_bytes` and merge
   `(lv0 >> shiftsel) | (lv1 << (issue_bits − shiftsel))` for little-endian (big-endian is the
-  mirror with the shift arms swapped). When `addrsel == 0` only `lv0` is used. `[HIGH/OBSERVED]`
+  mirror with the shift arms swapped). When `addrsel == 0` only `lv0` is used.
 * **Signed load = sign-splash; unsigned load = zero-fill.** `extended_val = (val | (sign_splash &
   sign_mask)) & zero_mask`. For a signed dtype `SignExtendFrom` is present and the bytes above the
-  natural width get the sign bit; for unsigned, `sign_mask = 0` so they stay 0. `[HIGH/OBSERVED]`
+  natural width get the sign bit; for unsigned, `sign_mask = 0` so they stay 0.
 * **Store truncates.** `mem_data = (MemDataOut >> nx_store_shift) & ~zero_mask` drops the bytes
-  above `issue_bytes` — a positional truncate, no numeric cast. `[HIGH/OBSERVED]`
+  above `issue_bytes` — a positional truncate, no numeric cast.
 * **Dual LSU.** Both reference functions instantiate two pipes (`loaded_value0/1`,
   `store_val0/1`); the ISA declares one `funcUnit XT_LOADSTORE_UNIT` with `num_copies=2`; a normal
   access uses one pipe (the second materializes only for an unaligned tail), while the 5 `L2A*`/
@@ -409,7 +410,7 @@ unaligned front-end built on the same reference with `RotateAmount` = the held r
 * **`xtms_aligned_load` is the uninterpreted memory seam.** It does not model RAM contents — it is
   the named hook (`byte_width[6:0]` up to 64 bytes; `MemDataOut[1023:0]` padded for the split
   write) the simulator replaces with a real 64-byte line fetch. The interesting math is the
-  surrounding wrapper. `[HIGH/OBSERVED]`
+  surrounding wrapper.
 
 ### 3.4 Live-driven representative value — the alignment funnel
 
@@ -520,7 +521,6 @@ per-lane vbool kill.
 * **Gather address = base + per-lane 32-bit offset, `elem_sz`-scaled.** `VAddrBase = ars`,
   `GSVAddrOffset` = the 16×32-bit `Voff` vector; the host computes
   `addr = base + Voff[lane] * elem_size` with `elem_size ∈ {1, 2, 4}` bytes from `elem_sz_fld`.
-  `[HIGH/OBSERVED]`
 * **The OOB sentinel `0xffffffff` is host-applied, not in the TIE block.** The reference emits only
   `GSEnable` (the per-lane predicate); the *host* applies the miss policy
   (`IMMEDIATE_WRITE`/`SKIP_WRITE`) to lanes where `GSEnable = 0`, filling them with the
@@ -528,10 +528,10 @@ per-lane vbool kill.
   caller builds `vbr`; the gather op only *consumes* it. `[HIGH that the TIE stops at the port;
   the sentinel/bound are CARRIED]`
 * **Scatter-add is the histogram primitive.** `op_scatterinc` carries a `16'b1` increment lane so
-  `table[base+Voff] += val` runs in place (the `DGE_COMPUTE_OP ADD` reduce). `[HIGH/OBSERVED]`
+  `table[base+Voff] += val` runs in place (the `DGE_COMPUTE_OP ADD` reduce).
 * **Permute is a mux net, not arithmetic.** The `scatter_gather`/`select` blocks have no `<ADD>` or
   `<MUL>`; the index×stride arithmetic is the host's, and the lane routing is the `tiesel` +
-  `bitkill` MODULEs. `[HIGH/OBSERVED]`
+  `bitkill` MODULEs.
 
 ### 4.4 Live-driven representative value — the predicate / enable mask
 
@@ -575,7 +575,7 @@ verdict recorded; failures were corrected against the oracle (not the other way 
 > live `wideldshift_16_512_6` leaf proves the funnel for an element-width access resolves at
 > **element (halfword) granularity** — `shamt = 0` and `shamt = 1` both return halfword 0. The page
 > body (§3.4 QUIRK) reflects the corrected, oracle-verified semantics: a 16-bit-element load never
-> returns an unaligned byte slice. No other claim required correction. `[HIGH/OBSERVED]`
+> returns an unaligned byte slice. No other claim required correction.
 
 ---
 
@@ -584,8 +584,8 @@ verdict recorded; failures were corrected against the oracle (not the other way 
 * **Operand-naming layer (load/store).** The cas/fiss internal mnemonics are `LSNX16`/`SSNX16`; the
   TIE-DB / IVP intrinsic names are `IVP_LVNX16`/`IVP_SVNX16`. This is an intrinsic-vs-internal
   naming difference (the folded runtime renames), **not** a semantic divergence — the operand
-  decode and the reference compute match. `[HIGH]`
-* **The `iss/cas-*.md` cross-links are forward references** to the planned Part-14 ISS pages
+  decode and the reference compute match.
+* **The `iss/cas-*.md` cross-links point at the Part-14 ISS pages**
   ([SUMMARY](../../SUMMARY.md) Part 14). They are the cas/fiss companions to this TIE-source page;
   this page is the *reference math*, those are the *executable-model* views of the same ops.
 * **Where this page stops.** It does not model `table[addr]` (the host memory plane), the fp

@@ -238,7 +238,9 @@ function replaceOperandWithCopy(builder, returnOp, v, i, ctx):
     returnOp.setOperand(i, copy)                       // ilist splice via returnOp+0x48
 ```
 
-> **CORRECTION (D-C10) —** `neuron.actual_shape` is **not** attached by the MHLO inline copies. The string `neuron.actual_shape` (`0x24a5f0`) is referenced only by `replaceOperandWithCopy`, `legalizeZeroSizedTensors`, and the printer's `StableHLOToPythonPrinter::collectTensorAttributes` — all StableHLO-side. The MHLO `duplicateLoadedOutputs` references no shape string in its constant/param copy paths; it relies on `renameAsOutputImpl` alone. A reimplementer should treat `neuron.actual_shape` as a StableHLO-path annotation, consumed by `collectTensorAttributes`. (MEDIUM on whether MHLO ever attaches it — not observed.)
+`neuron.actual_shape` is a StableHLO-path annotation. The string (`0x24a5f0`) is referenced by exactly three functions — `replaceOperandWithCopy`, `legalizeZeroSizedTensors`, and the printer's `StableHLOToPythonPrinter::collectTensorAttributes` — all on the StableHLO side, and `collectTensorAttributes` is its only consumer.
+
+> **GOTCHA — the MHLO inline copies carry no `neuron.actual_shape`.** MHLO's `duplicateLoadedOutputs` references no shape string anywhere in its constant or parameter copy paths; it relies on `renameAsOutputImpl` alone. Assuming the annotation is present on both paths will mislead any backend that tries to recover pre-legalization geometry from an MHLO-produced copy.
 
 ---
 
@@ -315,7 +317,7 @@ function getOutputNames(func) -> vector<string>:
 | Large-constant splat legalization | ABSENT | INLINED (splat const → scalar + `broadcast_in_dim`) |
 | Zero-sized-tensor legalization | ABSENT | `legalizeZeroSizedTensors` `0x2146a90` → `AwsNeuronZeroSizedOp` custom call |
 | Copy insertion | INLINE `OpBuilder::create<mhlo::CopyOp>` | `replaceOperandWithCopy` `0x21462d0` |
-| `neuron.actual_shape` on copy | omitted on inline copies (MEDIUM) | stamped (CERTAIN — string x-ref confirmed) |
+| `neuron.actual_shape` on copy | omitted on inline copies | stamped (string x-ref present) |
 | Fusion-region output naming | `mhlo::FusionOp` + `FusionKind=="ScheduleFusion"` → `Block::getTerminator` (`0x21975f0`) | `stablehlo::CompositeOp` + `CompositeKind` → `getCompositeReturnOp` (decomposition func return) |
 | Public `renameAsOutput` wrapper | NONE (callers use `…Impl` directly) | `renameAsOutput` `0x2145c90` (composite-aware) |
 | `getDependentDialects` | not specialized | `0x2145490` (registers `mhlo` + `stablehlo` + `func`) |

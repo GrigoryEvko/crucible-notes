@@ -13,25 +13,26 @@ INTC interrupt physically reaches this firmware. This is **the SEQ engine's own
 firmware** — windowed-ABI Xtensa on the `ncore2gp` "Cairo" core — *not* the microcode it
 interprets.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The anchor image
+Everything below is **byte-pinned to a shipped artifact**. The anchor image
 is the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from `libnrtucode.a`
 (member `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code,
 `…_DRAM_contents.c.o` for strings), disassembled with the native `xtensa-elf-objdump`
 (`XTENSA_CORE=ncore2gp`, Cairo µarch, Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`)
 that ships inside the gpsimd-tools package. The carve reproduces the sibling anchor
 exactly: `nx_iram.bin` = **116,768 B** sha256 `8e4412b9…`, `nx_dram.bin` = **28,448 B**
-sha256 `7bdf6ed7…`, disassembly **45,901 lines, exit 0**. The DEBUG build **keeps** the
+sha256 `7bdf6ed7…`. The DEBUG build **keeps** the
 `'S:'` log strings the recovery hinges on; the PERF build strips them and re-lays-out
 code, so PERF offsets do *not* map 1:1 onto the addresses here. Where a sibling note or
 the prompt-level report disagrees with the disassembly, **the binary wins**, and an
 in-place **CORRECTION** says so.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string/JSON-field read from a shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string/JSON-field read from a shipped image; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor;
 crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading),
-**NOTE** (orientation).
+**NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag.
 
 > **NOTE — addressing convention.** All code addresses are **IRAM-image offsets == device
 > IRAM VA** (`ResetVectorOffset=0`, InstRAM base `0x0`). DRAM string offsets are the low-16
@@ -81,7 +82,7 @@ queues (§5.2); the handler touches **no** interrupt CSR.
 
 ---
 
-## 1. Carve + disasm provenance (re-verified this session)
+## 1. Carve + disasm provenance
 
 `[HIGH/OBSERVED]` The exact carve and hash that every sibling SEQ page shares:
 
@@ -168,7 +169,7 @@ the [main loop](main-loop.md) describes at its STEP 1.
 > **CORRECTION — `0x6b0c` is `sunda_check_surprises`, not `pending_redirect`/`sunda_fetch`.**
 > Sibling pages ([main-loop.md](main-loop.md) §4, [fetch-pc-redirect.md](fetch-pc-redirect.md),
 > [run-state.md](run-state.md) §11) label the `0x6b0c` call as a *"pending-redirect /
-> sunda_fetch"* helper. Re-disassembled this session, `0x6b0c` logs DRAM `0x819cc` =
+> sunda_fetch"* helper. `0x6b0c` logs DRAM `0x819cc` =
 > `"S: sunda_check_surprises: any=%d, surprises=0x%x"`, computes the surprise word, and tail-calls
 > the bit-mask handler `0x6ce0` — it **is** the surprise check, in `surprises.hpp`, not a fetch
 > redirect. The `0x2d9a` Sunda STEP-2 call is the surprise check; the fetch/PC-redirect work
@@ -488,12 +489,10 @@ firmware — has a concrete answer that this page frames and forward-links:
 - The full physical binding (which SoC INTC lines map to the Q7, the apex/leaf interrupt-source
   taxonomy, and the latch wiring) is documented separately:
 
-> **NOTE — forward-link (planned).** The SoC-INTC → Q7-firmware binding lives at
+> **NOTE — forward-link.** The SoC-INTC → Q7-firmware binding lives at
 > [`../../control/interrupt/q7-surprises-binding.md`](../../control/interrupt/q7-surprises-binding.md)
-> (Part 13, *"INTC → Q7 Firmware Surprises Binding"*). That target is **not yet authored** —
-> it is listed in the wiki table of contents as a planned page. The path is given so the link
-> resolves once the page lands. From the surprises side, the binding point is the
-> `intr_info(0x0400001C)` latch (§5.2); a surprise bit is *not* a SoC-INTC bit (§6).
+> (Part 13, *"INTC → Q7 Firmware Surprises Binding"*). From the surprises side, the binding
+> point is the `intr_info(0x0400001C)` latch (§5.2); a surprise bit is *not* a SoC-INTC bit (§6).
 
 ---
 
@@ -536,12 +535,12 @@ SUNDA check function as well (§9). The slot decode that would expose the per-bi
 
 `[HIGH/OBSERVED]` Method: carve the `NX_POOL_DEBUG` IRAM `.rodata` for each generation and
 byte-search the handler's bit-test instruction signatures (the `l8ui`+`bbci` pairs are
-aperture-independent, so they survive relocation). Image sizes this session: **SUNDA 59,600 /
+aperture-independent, so they survive relocation). Image sizes: **SUNDA 59,600 /
 CAYMAN 116,768 / MARIANA 114,816 / MARIANA_PLUS 119,616 B**.
 
 **CAYMAN family (CAYMAN / MARIANA / MARIANA_PLUS) — byte-identical, relocated only.** The
 handler-prologue signature `36610029210c1222410c` (`entry ; s32i.n [a1+8] ; movi.n a2,1 ;
-s8i [a1+12]`) was located in each carved image this session:
+s8i [a1+12]`) was located in each carved image:
 
 | signature | CAYMAN | MARIANA | MARIANA_PLUS |
 |---|---|---|---|
@@ -600,7 +599,7 @@ To rebuild a Vision-Q7-compatible surprises subsystem:
 
 ## 11. Verification ledger
 
-| # | claim | how grounded this session | verdict |
+| # | claim | how grounded | verdict |
 |---|---|---|---|
 | 1 | carve `8e4412b9…`(IRAM 116768) / `7bdf6ed7…`(DRAM 28448); disasm 45,901 lines exit 0 | `objcopy`+`sha256sum`+`xtensa-elf-objdump` | **HIGH/OBSERVED** |
 | 2 | `poll_surprises @0x6af4` reads running-flag `0x85644` bit0; 2 call sites (`0x2d81` Sunda, `0x31c0` HW-decode) | resync disasm; `const16 8/0x55e0 + addi 100`; both call sites byte-shown | **HIGH/OBSERVED** |
@@ -644,7 +643,7 @@ To rebuild a Vision-Q7-compatible surprises subsystem:
   via the ATOMCTL pipeline (the `XTSYNC@4` tag is a scheduler annotation, not a real barrier),
   consistent with §7.1 here.
 - [INTC → Q7 Firmware "Surprises" Binding](../../control/interrupt/q7-surprises-binding.md)
-  *(Part 13, forward-link — target not yet authored)* — the physical SoC-INTC → `intr_info`
+  *(Part 13, forward-link)* — the physical SoC-INTC → `intr_info`
   binding referenced in §7.2.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the `OBSERVED` /
   `INFERRED` / `CARRIED` × `HIGH` / `MED` / `LOW` tags used throughout.

@@ -35,8 +35,7 @@ the SEC synthesis [`security-synthesis.md`](security-synthesis.md).
 > (`csrs/sprot/*.json`, `csrs/tpb/tpb_xt_local_reg.json`), the flat address map
 > (`address_map_flat.yaml`), the customop LSP scripts (`elf32xtensa.x`), the ISA
 > config (`libisa-core.so`), and the SEQ boot firmware (`img_SUNDA_NX_POOL_*` in
-> `libnrtucode.a`, disassembled with the shipped Cadence `ncore2gp` objdump). The
-> MPU-and-PRID bring-up sequence in §4 was **re-disassembled this session**. v5 /
+> `libnrtucode.a`, disassembled with the shipped Cadence `ncore2gp` objdump). v5 /
 > MAVERICK is **header-OBSERVED only**; any v5-interior behaviour is flagged
 > INFERRED.
 
@@ -97,7 +96,7 @@ formed. `[HIGH · OBSERVED]` for every region/route unless tagged.
 
 ### 2.1 The 32-bit NX-local map — the whole reachable-by-pointer space
 
-`HIGH/OBSERVED` — from [`../address/soc-q7-translation-windows.md`](../address/soc-q7-translation-windows.md) §2
+From [`../address/soc-q7-translation-windows.md`](../address/soc-q7-translation-windows.md) §2
 and the customop LSP. A Q7 core dereferences a **32-bit `void*`**. Two structural
 classes: **direct** NX regions (the pointer *is* the address) and **windowed**
 regions (an NX slice is a movable view of a 58-bit SoC address).
@@ -121,9 +120,9 @@ regions (an NX slice is a movable view of a 58-bit SoC address).
 
 ### 2.2 The `neuron_translate` 5-region software TLB (the reach engine)
 
-`HIGH/OBSERVED` — full machinery in
+Full machinery in
 [`../address/soc-q7-translation-windows.md`](../address/soc-q7-translation-windows.md) §4
-(re-disassembled byte-exact from `translation.o`). The reachability-relevant
+(byte-exact from `translation.o`). The reachability-relevant
 contract: a **5-entry** software TLB (3 dynamic 16-MiB slots `%3` round-robin + 2
 pinned 64-MiB slots), where a miss **reprograms the HW window register** and a 4th
 distinct 16-MiB region **evicts** a slot (the transient-reference hazard). The
@@ -134,7 +133,7 @@ pointer — and the place a reimplementer most often gets the masks wrong:
 /* neuron_translate(ctx, soc_ptr) -> NX 32-bit pointer.
  * 5-region software TLB; records 0..2 dynamic (16 MiB), 3..4 pinned (64 MiB).
  * Disasm @ translation.o 0x120. The SEARCH scans all 5; only 0..2 recycle.
- * [HIGH · OBSERVED, re-verified in the address keystone]                       */
+ * [HIGH · OBSERVED — see the address keystone]                                 */
 typedef struct {
     uint64_t          ptr;      /* +0x00 matched SoC base (tag), full 64-bit    */
     uint32_t          window;   /* +0x08 NX base (0x07000000 / 0x80000000 / …)  */
@@ -173,11 +172,11 @@ static uint32_t neuron_translate(xlate_ctx_t *ctx, uint64_t soc_ptr)
 > guard is **off-core**: the SoC tag's high dword (with `DIE`/`CAYMAN_ID`) is what
 > the **fabric remapper** (§3) then validates. A custom op cannot reach a forbidden
 > SoC region *because the remapper denies the resulting AXI txn*, not because
-> `neuron_translate` refused to form the pointer. `[HIGH · OBSERVED]`
+> `neuron_translate` refused to form the pointer.
 
 ### 2.3 The SBUF 32-MiB AXI aperture (pinned 64-MiB window)
 
-`HIGH/OBSERVED` — [`../address/tpb-pool.md`](../address/tpb-pool.md) §1,
+See [`../address/tpb-pool.md`](../address/tpb-pool.md) §1,
 [`../address/unified-soc-memory-map.md`](../address/unified-soc-memory-map.md) §1.
 SBUF (`TPB_0_STATE_BUF`) is **32 MiB** of on-chip state buffer at SoC
 `0x2000000000`, organised **128 partitions × 256 KiB** (`STATE_BUF_SZ 0x2000000`;
@@ -193,17 +192,17 @@ and never thrashes the 3-deep dynamic set.
 > ([`../address/tpb-pool.md`](../address/tpb-pool.md): `0x2002000000`, 32 MiB pad).
 > So an SBUF access through NX `[0x80000000, 0x82000000)` is live; NX
 > `[0x82000000, 0x84000000)` lands in pad. The reachable SBUF *byte range* is
-> 32 MiB, not the full 64-MiB window. `[HIGH · OBSERVED]`
+> 32 MiB, not the full 64-MiB window.
 
 > **NOTE — "AXI aperture" vs "NX window" are two coordinate systems for one buffer.**
 > The 32-MiB figure is the SoC-side **AXI decode aperture** (`STATE_BUF`); the
 > 64-MiB figure is the NX-side **translation window** that fronts it. The custom op
 > sees the NX window; the fabric sees the AXI aperture; `neuron_translate` is the
-> bridge. Do not conflate the two granules. `[HIGH · OBSERVED]`
+> bridge. Do not conflate the two granules.
 
 ### 2.4 The per-core DRAM window — PRID-rebased `[0x80000, 0x90000)`
 
-`HIGH/OBSERVED`. Each Q7 core has a private **on-core dataram** seen at NX
+Each Q7 core has a private **on-core dataram** seen at NX
 `[0x80000, 0x90000)` (64 KiB,
 [`../address/soc-q7-translation-windows.md`](../address/soc-q7-translation-windows.md) §2);
 the customop runtime carves its dataram + libc `xmem` heaps here. On the SoC side
@@ -217,7 +216,7 @@ TPB_0_POOL_Q7_CORE{i}_IRAM = 0x2803100000 + i*0x100000   (128 KiB each)
 
 The same NX pointer `[0x80000, 0x90000)` on **every** core resolves to **that
 core's own** physical DRAM bank — the core's **PRID** selects the bank. Two
-distinct PRID decodes (both `HIGH/OBSERVED`):
+distinct PRID decodes:
 
 - **Direct deref** uses no rebase arithmetic — the per-core dataram is hardware-
   private; a core simply cannot name a sibling's bank by NX pointer.
@@ -236,11 +235,11 @@ view is rebased by hardware identity (PRID), not by an address the op controls.
 > The 64 KiB is the slice the customop's direct-deref / SDMA-staging path uses; the
 > larger SoC leaf is the full decode footprint. (`TPB_0_POOL_NX_DRAM` at
 > `0x2803040000` is the *SEQ/NX* core's 64-KiB DRAM, a separate leaf from the 8
-> compute cores'.) `[HIGH · OBSERVED]`
+> compute cores'.)
 
 ### 2.5 The PSUM exclusion — no AXI path
 
-`HIGH/OBSERVED`. **PSUM** (`TPB_0_PSUM_BUF`, SoC `0x2802000000`, **4 MiB**, 128
+**PSUM** (`TPB_0_PSUM_BUF`, SoC `0x2802000000`, **4 MiB**, 128
 part × 16 bank × 1 KiB, `PSUM_BUF_SZ 0x400000`; `PSUM_BUF_OFFSET 0x02000000`,
 per-partition 32 KiB / 16 KiB active) is the **PE-array's private accumulator
 buffer** ([`../address/tpb-pool.md`](../address/tpb-pool.md) §1 — *"PE-array PSUM
@@ -268,13 +267,13 @@ PSUM — PSUM has no AXI aperture and no NX window** (keystone-fact #600).
 > regardless of the window the op programs. The `[HIGH·OBSERVED]` keystone is about
 > the **AXI/compute datapath**; the dynamic-window note is a `[MED]` *address*-reach
 > that does not terminate on a PSUM slave. Treat PSUM as **NONE via AXI** in the
-> capability table; the PE array is the only writer. `[HIGH · OBSERVED]`
+> capability table; the PE array is the only writer.
 
 ---
 
 ## 3. The CSR / BAR0 surface gated by the fabric remapper
 
-`HIGH/OBSERVED` — full byte-exact register reference in
+Full byte-exact register reference in
 [`../csr/remapper.md`](../csr/remapper.md); perimeter framing in
 [`soc-fabric-perimeter.md`](soc-fabric-perimeter.md). Below `neuron_translate`,
 every AXI transaction a Q7 core issues crosses the **FIS `sprot` remapper** — a
@@ -298,7 +297,6 @@ variants **is** the compute-vs-management isolation primitive:
 > variant has no `master_prot` register) — it physically cannot claim
 > privileged/secure attributes on the fabric. So even with an arbitrary
 > `neuron_translate` window, a custom op reaches only what the remapper admits.
-> `[HIGH · OBSERVED]`
 
 > **CORRECTION (carried) — the gate is address-region + 10-bit AXI master-ID, NOT
 > VMID.** A full-file scan of both schemas for `vmid|secure|privileged|domain`
@@ -306,7 +304,7 @@ variants **is** the compute-vs-management isolation primitive:
 > (`udma_gen_ex` VMPR/VMADDR, per queue) before a transaction reaches the fabric
 > edge. The two are disjoint, complementary virtualization layers — VMID = which
 > guest VM owns the buffer; AXI master-ID = which hardware master issued the bus
-> cycle. A reimplementer must keep them distinct. `[HIGH · OBSERVED]`
+> cycle. A reimplementer must keep them distinct.
 
 A denied transaction is *decided* by the remapper (latched into
 `addr_denied_{lo,hi}`, counted, raises `fis_sprot_intr[0]`) and *answered* by the
@@ -317,7 +315,7 @@ that reaches past its allowed surface gets a poisoned read, not silent success.
 
 ## 4. MPU-enforced on-core code/data boundaries
 
-`HIGH/OBSERVED` — **re-disassembled this session** from the SEQ boot image
+Disassembled from the SEQ boot image
 (`img_SUNDA_NX_POOL_DEBUG_IRAM` in `libnrtucode.a`, shipped `ncore2gp`
 `xtensa-elf-objdump`). The Vision-Q7 core is **XEA3** with **no MMU/TLB**
 (`XCHAL_HAVE_TLBS = 0`, `XCHAL_HAVE_PTP_MMU = 0`) but a real Xtensa **MPU**
@@ -438,11 +436,11 @@ lookup. The boundaries it draws
 > legal *at a 32-bit NX address on this core*; the remapper enforces *whether the
 > resulting 58-bit AXI transaction is admitted to the fabric*. A reimplementer must
 > build **both** — the MPU does not see SoC addresses, the remapper does not see NX
-> class. `[HIGH · OBSERVED — two distinct enforcement points re-verified.]`
+> class.
 
 ### 4.3 PRID — the per-core identity the SPMD model rides on
 
-`HIGH/OBSERVED`. Core identity is **PRID** (`PRID = SR 235 = 0xEB`), with the
+Core identity is **PRID** (`PRID = SR 235 = 0xEB`), with the
 core-id field `PRID_ID_MASK = 0xF` / shift 0 / 4 bits (`PRID[3:0]`; 8 cores use 3
 of the 4 field bits). Two observed read sites:
 
@@ -490,7 +488,7 @@ op boundary in the disassembled path.]`
 
 ### 5.2 Between the 8 SPMD cores — **PRID-rebased private state**
 
-`HIGH/OBSERVED`. The eight Q7 cores run the **same SPMD image** but are isolated by
+The eight Q7 cores run the **same SPMD image** but are isolated by
 construction at the address level:
 
 - **Private IRAM**: each `CORE{i}_IRAM` is a distinct SoC leaf (`0x2803100000 +
@@ -516,7 +514,7 @@ construction at the address level:
 > 1-MiB-pitch per-core IRAM/DRAM gives each core a private execution context; the
 > windows give all cores a *common* view of SBUF/HBM for cooperative compute. There
 > is no MPU/remapper wall *between* the 8 cores' shared-tensor accesses — the
-> isolation is the private banks, not the shared windows. `[HIGH · OBSERVED]`
+> isolation is the private banks, not the shared windows.
 
 ### 5.3 Between co-tenant fractional-NeuronCore workloads — **VMID + remapper**
 
@@ -544,14 +542,11 @@ here.]`
 
 ## 6. Self-verification — the five strongest reachability claims
 
-Re-challenged this session against the named artifacts (single-file, never a
-folder grep). All five pass.
-
 | # | claim | check against | result |
 | :-- | :--- | :--- | :--- |
 | 1 | PSUM has no pinned window; the two pins are SBUF + hbm_scratch only | `neuron_translate` rec3/rec4 tags (`../address/soc-q7-translation-windows.md` §4a); `tpb-pool.md` §1 PSUM = "PE-array accumulator" | ✅ no PSUM pin; PSUM is PE-private |
-| 2 | The MPU is real (16 fg + 2 bg) and programmed at boot (`wsr.mpuenb` + `wptlb` loop) | `core-isa.h` `XCHAL_MPU_ENTRIES=16`; `img_SUNDA_NX_POOL_DEBUG_IRAM` disasm `@0x100/0x113…` (this session) | ✅ `wsr.mpuenb a9` @0x100, `wptlb` loop @0x110–0x118; 16+2 |
-| 3 | Per-core dataram is PRID-rebased; core id = `PRID[3:0]` (`PRID = SR 0xEB`) | firmware `rsr.prid a5; extui a5,a5,0,4` @0x1bb1 (this session); `PRID_ID_MASK 0xF`; `tpb-pool.md` §3 per-core DRAM leaves | ✅ 4-bit core id; 8 private DRAM leaves |
+| 2 | The MPU is real (16 fg + 2 bg) and programmed at boot (`wsr.mpuenb` + `wptlb` loop) | `core-isa.h` `XCHAL_MPU_ENTRIES=16`; `img_SUNDA_NX_POOL_DEBUG_IRAM` disasm `@0x100/0x113…` | ✅ `wsr.mpuenb a9` @0x100, `wptlb` loop @0x110–0x118; 16+2 |
+| 3 | Per-core dataram is PRID-rebased; core id = `PRID[3:0]` (`PRID = SR 0xEB`) | firmware `rsr.prid a5; extui a5,a5,0,4` @0x1bb1; `PRID_ID_MASK 0xF`; `tpb-pool.md` §3 per-core DRAM leaves | ✅ 4-bit core id; 8 private DRAM leaves |
 | 4 | Compute Q7 is guest-domain: cannot forge `AxPROT`, denied in `amzn` region | `remapper.md` §4.2 (`user` has no `master_prot`); `soc-fabric-perimeter.md` §1 | ✅ guest has no AxPROT; `amzn` fail-CLOSED |
 | 5 | `neuron_translate` has no on-core bounds/null guard | `soc-q7-translation-windows.md` §10; the disasm (no compare in MISS) | ✅ guard is the off-core remapper |
 

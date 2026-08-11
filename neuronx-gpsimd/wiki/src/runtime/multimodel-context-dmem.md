@@ -13,10 +13,11 @@
 > read from the shipped, DWARF-bearing host ELF — its structs, enums,
 > disassembly, and `.rodata` bytes.
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this
-> session from the ELF: DWARF struct/enum, `objdump` disassembly, `.rodata`
-> bytes, `nm`), `INFERRED` (an ABI/control-flow rule applied to an observed
-> fact), `CARRIED` (taken from a backing static-analysis pass, re-grounded here).
+> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read from
+> the ELF: DWARF struct/enum, `objdump` disassembly, `.rodata` bytes, `nm`),
+> `INFERRED` (an ABI/control-flow rule applied to an observed fact), `CARRIED`
+> (taken from a cited sibling page). The page default is `[HIGH × OBSERVED]`;
+> claims that depart from it carry an explicit tag.
 
 > **NOTE — artifact & tooling.** All facts derive **solely from static
 > analysis** of `aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64`, file
@@ -39,7 +40,7 @@ Cross-references: the execution-state struct census in
 [the libnrt runtime synthesis](runtime-synthesis.md) (the surrounding spine),
 [host concurrency primitives](concurrency-primitives.md) (the locks named here),
 and [version + ext-isa getters](version-extisa-getters.md) (the `ulib` getters
-behind §6). Those targets may be thin stubs; the links resolve.
+behind §6).
 
 ---
 
@@ -95,7 +96,7 @@ of that heap.
 ## 1. The process-global context tree: `tdrv_ctx → mla[32] → tpb[8]`
 
 There is exactly one `tdrv_ctx_t`, stored in the file-scope pointer
-`tdrv_ctx_0`. Three accessors gate it: `[HIGH × OBSERVED]`
+`tdrv_ctx_0`. Three accessors gate it:
 
 | accessor | addr | role |
 |---|---|---|
@@ -103,7 +104,7 @@ There is exactly one `tdrv_ctx_t`, stored in the file-scope pointer
 | `db_tdrv_ctx_init` | `0x226ca0` | set-once (asserts "tdrv_ctx already set") |
 | `db_tdrv_ctx_clear` | `0x226fa0` | teardown — `tdrv_ctx_0 = 0` |
 
-`tdrv_ctx_t` (DWARF size **18 884 656 B**): `[HIGH × OBSERVED]`
+`tdrv_ctx_t` (DWARF size **18 884 656 B**):
 
 | off | type | field | note |
 |---|---|---|---|
@@ -129,13 +130,13 @@ The `mla[32]` count is read straight from the DWARF array bound
 > on this page.** `al_hal_tpb_arch_type_t` (DWARF enum, size 4):
 > `INVALID=0`, `INVALID_1=1`, **`SUNDA=2`**, **`CAYMAN=3`**, **`MARIANA=4`**,
 > `NUM=5`. Every `arch_type == N` comparison below resolves through *this*
-> table; getting the name wrong inverts the device class. `[HIGH × OBSERVED]`
+> table; getting the name wrong inverts the device class.
 
 ### 1.1 The physical-core resolver — every alloc/model/tensor path begins here
 
 `db_physical_core_get_mla_and_tpb(pcore, &mla, &tpb)` @ `0x2272a0` turns a
 `(device_id, device_tpb_idx)` coordinate into the two tree pointers, using pure
-pointer arithmetic into the static tree — **no locking**. `[HIGH × OBSERVED]`
+pointer arithmetic into the static tree — **no locking**.
 Disassembly pins the two structure strides:
 
 ```asm
@@ -146,7 +147,7 @@ Disassembly pins the two structure strides:
 ```
 
 ```c
-// db_physical_core_get_mla_and_tpb @0x2272a0  [HIGH × OBSERVED]
+// db_physical_core_get_mla_and_tpb @0x2272a0
 static int db_physical_core_get_mla_and_tpb(const physical_core_t *pc,
                                             mla_t **out_mla, tpb_t **out_tpb) {
     tdrv_ctx_t *ctx = db_tdrv_ctx_get();             // tdrv_ctx_0
@@ -160,7 +161,7 @@ static int db_physical_core_get_mla_and_tpb(const physical_core_t *pc,
 ```
 
 `physical_core_t` (DWARF size **24 B**) is the leaf the caller carries; it
-back-points to its owning LNC: `[HIGH × OBSERVED]`
+back-points to its owning LNC:
 
 | off | type | field |
 |---|---|---|
@@ -169,7 +170,7 @@ back-points to its owning LNC: `[HIGH × OBSERVED]`
 | `+8` | `const virtual_core_t*` | `vcore` |
 | `+16` | `uint8` | `fixes_gcc_bug` (1 B tail pad) |
 
-`mla_t` (DWARF size **590 008 B**, one per attached device): `[HIGH × OBSERVED]`
+`mla_t` (DWARF size **590 008 B**, one per attached device):
 
 | off | type | field | note |
 |---|---|---|---|
@@ -190,12 +191,12 @@ back-points to its owning LNC: `[HIGH × OBSERVED]`
 | `+578376` | `xt_cc_t` | `xt_cc` (200) | |
 | `+578576` | `aws_hal_intc_t` | `intc` (11432) | |
 
-> **CORRECTION — `top_sps[16]` belongs in the `mla_t` map.** A backing pass
+> **CORRECTION — `top_sps[16]` belongs in the `mla_t` map.** An earlier reading
 > elided the `top_sp_t[16] top_sps` block at `+314672` (262 016 B) and jumped
 > straight from `_tpbs[8]` to `bdf @ +576688`. The DWARF places `top_sps` between
 > them; the offsets above are the field-exact layout
 > (`jq … select(.name=="mla_t")`). The `_tpbs[8]` count and `dmem_logger @
-> +576768` are unaffected. `[HIGH × OBSERVED]`
+> +576768` are unaffected.
 
 `db_tdrv_ctx_init` also builds the host-device-id → routing-id map via the
 driver IOCTL (`tdrv_get_host_device_id_rid_map`); if unimplemented it falls back
@@ -209,7 +210,7 @@ within one device. `[MED × INFERRED]`
 
 `tpb_t` holds everything shared by all models resident on a single physical
 NeuronCore. The DWARF layout (24 members; size **39 320 B == 0x9998**), members
-material to this page: `[HIGH × OBSERVED]`
+material to this page:
 
 | off | type | field | note |
 |---|---|---|---|
@@ -242,7 +243,7 @@ The two members every loaded model touches are `tpb_allocator` (`+17024`) and
 `model_db` (`+20032`); both are created once per core at `tdrv_init` (§5).
 `pooling_q7_nrtucode_core[8]` has its **8** count read from the DWARF array
 bound — these are the host-side pointers to the eight on-device Q7 GPSIMD cores
-(`NUM_POOL_CORES = 8`, carried from the bring-up pass and re-grounded here).
+(`NUM_POOL_CORES = 8`, carried from [nrtucode bring-up](nrtucode-bringup.md)).
 `h_running_model` is the single "active" handle; the runtime serialises exec on
 a core, so only one model executes at a time per core even though many may be
 resident in `model_db`. `[HIGH × OBSERVED]` / `[MED × CARRIED]`
@@ -254,7 +255,7 @@ resident in `model_db`. `[HIGH × OBSERVED]` / `[MED × CARRIED]`
 ### 3.1 Allocator + node structs
 
 `dmem_allocator_t` (DWARF size **512 B**), built by `dmem_allocator_create`
-@ `0x2284c0` via `calloc(1, 0x200)`: `[HIGH × OBSERVED]`
+@ `0x2284c0` via `calloc(1, 0x200)`:
 
 | off | type | field | note |
 |---|---|---|---|
@@ -271,7 +272,7 @@ resident in `model_db`. `[HIGH × OBSERVED]` / `[MED × CARRIED]`
 `dummy_tail.prev=head`, and `pthread_mutex_init`s the list lock.
 
 `dmem_t` (DWARF size **192 B == 0xC0**), built by `calloc(0xC0, 1)` in
-`dmem_alloc_internal`: `[HIGH × OBSERVED]`
+`dmem_alloc_internal`:
 
 | off | type | field | note |
 |---|---|---|---|
@@ -298,14 +299,13 @@ owning them**.
 
 `dma_mem_location_t` (DWARF enum): `DMA_MEM_LOC_INVALID=0`, `HOST_DRAM=1`,
 `TONGA_DRAM=2`. **`TONGA_DRAM`(2) is on-package HBM; `HOST_DRAM`(1) is host pinned
-DRAM** — the two physical pools the one heap spans. `[HIGH × OBSERVED]`
+DRAM** — the two physical pools the one heap spans.
 
 ### 3.2 The allocation path — `dmem_alloc(_aligned) → dmem_alloc_internal`
 
 `dmem_alloc_aligned` @ `0x228f20` and the thin `align=0` wrapper `dmem_alloc`
 @ `0x228ed0` front the core `dmem_alloc_internal` @ `0x228640`. Disassembly of
 the internal pins the category-table lookup and the driver portal:
-`[HIGH × OBSERVED]`
 
 ```asm
 228723:  lea  0x790f36(%rip),%rdx   # 9b9660 <dmem_usage_type_to_device_category>
@@ -319,7 +319,7 @@ the internal pins the category-table lookup and the driver portal:
 ```
 
 ```c
-// dmem_alloc_internal @0x228640  [HIGH × OBSERVED]
+// dmem_alloc_internal @0x228640
 static int dmem_alloc_internal(dmem_allocator_t *al, dmem_t **out, size_t size,
         size_t align, dma_mem_location_t loc, uint32_t hbm_idx,
         dmem_list_t *ref_list, dma_mem_usage_type_t usage, const char *hint) {
@@ -366,27 +366,26 @@ static int dmem_alloc_internal(dmem_allocator_t *al, dmem_t **out, size_t size,
 IOCTL (`ndl_supports_align_12` latches 0 after a one-shot WARN), it over-allocates
 `size + alignment` with `align=0`, then sets
 `align_offset = ((pa + alignment) & -alignment) - pa` to satisfy alignment by
-offsetting inside the over-allocation. `[HIGH × OBSERVED]`
+offsetting inside the over-allocation.
 
 > **GOTCHA — `errno==12` (`ENOMEM`) has *two* distinct outcomes by location.** A
 > device (`TONGA_DRAM`) OOM returns `NRT_RESOURCE` and triggers a driver dump
 > (plus a "running out of alignment boundaries" hint when `align != 0`); a
 > `HOST_DRAM` OOM returns the *different* code `NRT_FAIL_HOST_MEM_ALLOC`. A
 > reimplementation that collapses these to one error code will mis-route the
-> caller's recovery. `[HIGH × OBSERVED]`
+> caller's recovery.
 
 **FREE** `dmem_free` @ `0x2293a0`: atomically decrement `ref_count`; on reaching
 0 → `ndl_memory_unmap` (if `_va`) → `ndl_memory_free(mem_handle)` → `free(hint)`
 → `dml_add_entry(DMEM_ACTION_FREE)` → `tdrv_nds_register_mem_free` → unlink from
 the allocator list under `allocator->lock` → `free(dmem_t)`.
 **ACQUIRE** `dmem_acquire_reference` @ `0x229390`: atomic `ref_count++` (a shared
-`dmem`, e.g. a scratchpad page referenced by several models). `[HIGH × OBSERVED]`
+`dmem`, e.g. a scratchpad page referenced by several models).
 
 ### 3.3 The 23 usage categories + the location→category byte tables
 
 `dma_mem_usage_type_t` is a DWARF enum with **exactly 23 members (0..22)**,
 read straight from the enum (`jq … select(.name=="dma_mem_usage_type_t")`):
-`[HIGH × OBSERVED]`
 
 | | | | | |
 |---|---|---|---|---|
@@ -402,7 +401,6 @@ read straight from the enum (`jq … select(.name=="dma_mem_usage_type_t")`):
 
 Three `.rodata` byte tables (index == usage type), read byte-exact at the
 `nm`-resolved addresses (`.rodata` VMA == fileoff, no delta):
-`[HIGH × OBSERVED]`
 
 | table | addr | 23 bytes |
 |---|---|---|
@@ -424,11 +422,11 @@ for the per-tensor-class roll-up surfaced in `nrt_get_*_memory_stats`.
 > 20 by coincidence: the host table happens to tag the dma-ring family with the
 > reserved category byte `0x14`. Reading `cmp $0x14` as "compare against the
 > `DMA_RING_IO` usage type" is wrong — the compare is against the *table output*,
-> after the `movzbl (%rdx,%rax,1)`. `[HIGH × OBSERVED]`
+> after the `movzbl (%rdx,%rax,1)`.
 
 ### 3.4 The per-device usage ledger — `dma_mem_log_t` (1600 B)
 
-`mla.dmem_logger` (DWARF size **1600 B**): `[HIGH × OBSERVED]`
+`mla.dmem_logger` (DWARF size **1600 B**):
 
 | off | type | field | note |
 |---|---|---|---|
@@ -448,7 +446,7 @@ for the per-tensor-class roll-up surfaced in `nrt_get_*_memory_stats`.
 `memory_usage_nc[nc][usage]` and the aggregates; `[nc][22]` (`MAX`) is the
 per-core grand total reported as "used" against `aws_hal_get_hbm_size()`
 ("cap"). This ledger is the OOM forensic trail dumped (`dml_dump` /
-`dml_driver_dump` / `dml_log_dev_mem`) on an `ENOMEM`. `[HIGH × OBSERVED]`
+`dml_driver_dump` / `dml_log_dev_mem`) on an `ENOMEM`.
 
 ---
 
@@ -462,7 +460,7 @@ Each `tpb_t` owns one `model_db` (`ht_t*`, `+20032`) under `model_db_lock`
 (DWARF size **48 B**): `key(uint64) @ +0`, `<val union> @ +8`, `buf_size @ +16`,
 `bucket @ +24`, `key_type @ +32`, `next @ +40`. The key is `H_MODEL.id` (a
 `uint32` in a 4-byte `H_MODEL` struct), so all models loaded onto a core coexist
-in one table. `[HIGH × OBSERVED]`
+in one table.
 
 ### 4.2 Handle minting — `tdrv_get_unique_h_model` @ `0x3053f0`
 
@@ -476,12 +474,12 @@ in one table. `[HIGH × OBSERVED]`
 `H_MODEL = ++(atomic last_model_handle_50)`; if the increment yields 0 it bumps
 again, because **handle 0 is reserved/invalid**. The counter at `0xc09180` is
 process-global and monotonic — handles are unique across all cores and models in
-the process. `[HIGH × OBSERVED]`
+the process.
 
 ### 4.3 Insert — `add_model` @ `0x2275f0`
 
 ```c
-// add_model @0x2275f0  [HIGH × OBSERVED]
+// add_model @0x2275f0
 resolve mla/tpb;  pthread_mutex_lock(&tpb->model_db_lock);
 if (ht_find(model_db, h.id) != 0)            // ht_find returns 0 on FOUND, nonzero on absent
     ht_insert(model_db, h.id, &m->ht_node);  // link via the EMBEDDED node (model_t+7496)
@@ -497,12 +495,12 @@ The model is linked into the table via its **embedded** `ht_node` (`model_t +
 > Here `ht_find(...) != 0` is the **"not present, safe to insert"** branch; a
 > return of `0` means **found**. A reimplementer who assumes `0 == not-found`
 > (the C idiom) will invert the duplicate-handle guard and silently double-insert.
-> `[HIGH × OBSERVED]`
+>
 
 ### 4.4 Lookup + ref — `get_model_ref_count` @ `0x2274c0`
 
 ```c
-// get_model_ref_count @0x2274c0  [HIGH × OBSERVED]  — the read side
+// get_model_ref_count @0x2274c0 — the read side
 pthread_mutex_lock(&tpb->model_db_lock);
 ht_node_t *node; ht_find(model_db, h.id, &node);
 model_t *m = (model_t*)((char*)node - 7496);   // container_of: ht_node @ model_t+7496
@@ -515,7 +513,7 @@ The `container_of` math is verified arithmetically against the decompiler's
 pointer expressions: `&node[-157].next == node - 157·48 + 40 == node - 7496`
 (the `ht_node` offset), and `&node[-21] == node - 21·48 == node - 1008`, i.e.
 `7496 - 1008 == 6488 == model_t.ref_count`. An executing thread bumps the
-model's ref so an in-flight unload cannot free it. `[HIGH × OBSERVED]`
+model's ref so an in-flight unload cannot free it.
 
 ### 4.5 Remove + drain — `remove_model` @ `0x227750`
 
@@ -529,7 +527,7 @@ model's ref so an in-flight unload cannot free it. `[HIGH × OBSERVED]`
 ```
 
 ```c
-// remove_model @0x227750  [HIGH × OBSERVED]
+// remove_model @0x227750
 lock;  ht_find;  ht_remove(model_db, h.id);  unlock;            // no new exec can acquire it now
 while (atomic_load(&m->ref_count) != 0) _mm_pause();            // drain in-flight execs
 return m;                                                       // orphaned model_t* → model_free
@@ -538,7 +536,6 @@ return m;                                                       // orphaned mode
 The unload removes the model from the lookup **first** (so no new exec can
 acquire it), then **busy-waits** until every outstanding exec has dropped its
 ref. This is the host-side serialisation seam between exec and unload.
-`[HIGH × OBSERVED]`
 
 ### 4.6 Why this is the "sharing" model
 
@@ -572,7 +569,7 @@ also draw from `tpb_allocator` (§7). `[HIGH × OBSERVED]` / `[MED × CARRIED]`
 
 Per Logical NeuronCore the runtime builds `num_kbins` shared "mr_set" slots (one
 per NEFF subgraph/kbin staged onto the LNC). `vtpb_info_shared_mr_set_t`
-(DWARF size **32 B**): `[HIGH × OBSERVED]`
+(DWARF size **32 B**):
 
 | off | type | field |
 |---|---|---|
@@ -593,7 +590,6 @@ mass-releases them.
 ### 5.3 Ownership transfer at model add — `kbl_model_add` @ `0x3058e0`
 
 `model_t` is `calloc(0x1E40 == 7744 B)`. The relevant DWARF fields:
-`[HIGH × OBSERVED]`
 
 | off | type | field |
 |---|---|---|
@@ -626,10 +622,10 @@ loaded model takes ownership of its own MODEL allocator. After the move it:
   `add_model` (§4.3) → `model_db`.
 
 It logs "Added model: H on (nd*D*:nc*C*) mem_usage before/after" by pulling the
-§3.4 ledger counters around the load. `[HIGH × OBSERVED]`
+§3.4 ledger counters around the load.
 
-> **CORRECTION — the arch-type *names* are inverted in a backing pass; the
-> numeric gates are correct.** A backing pass labelled the `ucode_stage_libs`
+> **CORRECTION — the arch-type *names* are inverted in an earlier reading; the
+> numeric gates are correct.** An earlier reading labelled the `ucode_stage_libs`
 > gate "`arch_type==2` (the Cayman/GPSIMD-class device)" and the EVTACCEL/host
 > branches "`arch_type==3` (Sunda/Inf1-class)". The DWARF enum
 > `al_hal_tpb_arch_type_t` says the **opposite**: `SUNDA=2`, `CAYMAN=3`,
@@ -640,7 +636,7 @@ It logs "Added model: H on (nd*D*:nc*C*) mem_usage before/after" by pulling the
 > host-tensor reject, §7) is gated on `cmp $0x3` = **`CAYMAN(3)`**, not Sunda.
 > The numeric comparisons (`==2`, `==3`) are right; the device *names* attached
 > to them were swapped. Use `SUNDA=2 / CAYMAN=3 / MARIANA=4` throughout.
-> `[HIGH × OBSERVED]`
+>
 
 ### 5.4 Free — `model_free` @ `0x3055f0`
 
@@ -652,14 +648,14 @@ entire device-memory footprint — then `free(model_t)`.
 `dmem_allocator_destroy` @ `0x228550`: for each node head..tail, set
 `node.allocator = 0`, zero its links, `mutex_destroy`, `free`. The `dmem_t`s
 themselves are released through `dmem_free`/driver teardown.
-(The symbol ships as `model_free.part.0` @ `0x3055f0`.) `[HIGH × OBSERVED]`
+(The symbol ships as `model_free.part.0` @ `0x3055f0`.)
 
 ---
 
 ## 6. ext-isa `ulib` sharing under `ulib_staging_lock` (the GPSIMD cache)
 
 The anon `sunda` union inside `tpb_t` (`+17032`, 2960 B) resolves to (add 17032
-for absolute `tpb_t` offset): `[HIGH × OBSERVED]`
+for absolute `tpb_t` offset):
 
 | union off | abs `tpb_t` off | type | field |
 |---|---|---|---|
@@ -682,7 +678,7 @@ arch `==2`). Disassembly pins the cap and the single-lib branch:
 ```
 
 ```c
-// ucode_stage_libs @0x310ea0  [HIGH × OBSERVED]
+// ucode_stage_libs @0x310ea0
 if (ulib_set->num_libs > 9) return NRT_FAILURE;               // cap = 9 GPSIMD libs
 
 if (ulib_set->num_libs == 1) {                                // the common GPSIMD ext-isa case
@@ -707,7 +703,7 @@ NeuronCore and shared by every model on that core** (cached in
 `tpb->sunda.ulib_set_info_extisa_only`, the staging serialised by
 `ulib_staging_lock`, drawn from the **GLOBAL** `tpb_allocator`); custom-op
 multi-lib sets (2..9) are staged **per-model** from the **model's own**
-allocator. `[HIGH × OBSERVED]`
+allocator.
 
 `ucode_lib_set_info_t` (DWARF size **48 B**, 6 members): `scratch_space(dmem*)`,
 `ucode_table(dmem*)`, `extram(dmem*)`, `num_libs(int)`, `libs(ucode_lib_info_t*)`,
@@ -717,7 +713,7 @@ allocator. `[HIGH × OBSERVED]`
 running offset and records `address = pa + align + offset`; `HIBYTE(cpu_id)==1`
 counts single-core-custom-op libs. The on-device library table
 `SUNDA_UCODE_LIB_LIBRARY_TABLE_ENTRY` (DWARF size **280 B** per entry; the array
-is `[97]`) is the device-side mirror this stages into. `[HIGH × OBSERVED]`
+is `[97]`) is the device-side mirror this stages into.
 
 > **NOTE — the `sunda`-named union, KaenaHal, and the arch name.** The union is
 > DWARF-tagged `sunda`, and `libnrt` ships per-arch HAL source paths as
@@ -745,12 +741,12 @@ a `tensor_op_cv_lock`/`cv` async-completion condvar, `pending_exec_count_read`,
 `pending_exec_count_write`, `vtpb_idx`. A device tensor's storage wraps a
 `dmem_t`; the `pending_exec_count_*` + condvar implement
 `nrt_tensor_check_output_completion` — a tensor cannot be read until the DMA
-writing it has completed. `[HIGH × OBSERVED]`
+writing it has completed.
 
 ### 7.2 `nrt_tensor_allocate` @ `0xbc320` → `tensor_allocate` @ `0x30e8a0`
 
 The public wrapper's gates (args `a1`=mem-loc kind, `a2`=logical-core,
-`a3`=size, `a4`=name, `a5`=out): `[HIGH × OBSERVED]`
+`a3`=size, `a4`=name, `a5`=out):
 
 - **State gate**: must be `NRT_STATE_INIT`, else CLOSED/UNINITIALIZED/incompatible.
 - **Range gate**: `a2 < |nrt_config.visible_virtual_cores|`, else "Cannot
@@ -764,7 +760,7 @@ The public wrapper's gates (args `a1`=mem-loc kind, `a2`=logical-core,
   (device); `a1==2` → host malloc tensor; else `HOST_DRAM`.
 
 ```c
-// tensor_allocate @0x30e8a0 — DMA (device) path  [HIGH × OBSERVED]
+// tensor_allocate @0x30e8a0 — DMA (device) path
 db_physical_core_get_mla_and_tpb(&vcore->tpbs[0], &mla, &tpb);
 uint32_t hbm_idx = vtpb_get_default_hbm_idx(vcore);          // = get_default_hbm_index(tpb->idx)
 dmem_t *mem;
@@ -781,12 +777,12 @@ staging). So **user device tensors** (the IO buffers bound to NEFF var slots) ar
 drawn from the per-core **GLOBAL** `tpb_allocator` under usage category
 `TENSOR`, on the LNC's **default HBM channel** — they are **not** part of any
 model's MODEL allocator, so they outlive any single model load and are bound at
-execute. `[HIGH × OBSERVED]`
+execute.
 
 > **GOTCHA — the host-on-`CAYMAN` reject inverts the device-class name.** The
-> reject fires on `arch_type == 3 == CAYMAN`, not "Sunda/Inf1" as a backing pass
+> reject fires on `arch_type == 3 == CAYMAN`, not "Sunda/Inf1" as an earlier reading
 > labelled it. The numeric gate (`cmp $0x3`) is correct; the device name was
-> swapped. (Same root cause as the §5.3 CORRECTION.) `[HIGH × OBSERVED]`
+> swapped. (Same root cause as the §5.3 CORRECTION.)
 
 ### 7.3 `nrt_allocate_tensor_set` @ `0xbeae0`
 
@@ -794,7 +790,6 @@ After the state gate, a tensor SET is `kbl_init_feature_map_set(&fmap)` — the 
 **is** a `kbl_feature_map_set_t` (the feature-map set object the kelf loader and
 metaneff bind against). The companion `nrt_tensor_list_t` (DWARF size **16 B**:
 `tensors**`, `num_tensors`) is the flat-array form used by batched execute.
-`[HIGH × OBSERVED]`
 
 ### 7.4 Memory stats — `nrt_get_vnc_memory_stats` / `dmem_get_memory_stats`
 
@@ -802,7 +797,7 @@ metaneff bind against). The companion `nrt_tensor_list_t` (DWARF size **16 B**:
 `mla.dmem_logger.memory_usage_nc[device_tpb_idx][22]` (the per-core aggregate)
 over **all physical cores in the LNC** → `stats[0] = used`;
 `stats[1] = aws_hal_get_hbm_size()` = `cap`. An LNC's reported HBM usage is the
-**union of its 1–2 physical cores'** ledgers. `[HIGH × OBSERVED]`
+**union of its 1–2 physical cores'** ledgers.
 
 ---
 
@@ -814,7 +809,6 @@ The host dmem heap (§3) is HBM/DRAM only. The on-chip 128-partition SBUF is
 enum): `INVALID=0`, `KBIN_SB_CARVEOUT_TYPE_EVTACCEL=1` — the only carveout type
 present. `kbl_model_add` (arch `== 3` = `CAYMAN`) scans for the EVTACCEL
 carveout and asserts the device geometry. Disassembly @ `0x306070`+:
-`[HIGH × OBSERVED]`
 
 ```asm
 3060a0:  cmpl $0x1,(%rdx)        ; carveout type == KBIN_SB_CARVEOUT_TYPE_EVTACCEL(1) ?
@@ -830,7 +824,7 @@ So the EVTACCEL carveout is a **static per-model reservation** checked against
 the device geometry (START==0, COUNT==128, offset==`0x37ff8`, size==8), setting
 `model.reset_evt_accel` / `program_fp8_cfg` flags; absence logs "model … has no
 evtaccel reservation on SBUF". There is **no per-byte host allocator for SBUF —
-the device engines own it**. `[HIGH × OBSERVED]`
+the device engines own it**.
 
 **The per-core DRAM scratchpad** `tdrv_scratchpad_t` (DWARF size **16 440 B**,
 `tpb_t+22200`): `lock`, `page_size @ +40`, `num_pages @ +48`,
@@ -843,14 +837,13 @@ the device engines own it**. `[HIGH × OBSERVED]`
 GLOBAL-allocator-backed and **ref-counted** (`dmem_acquire_reference`), so
 several resident models can share a page; the per-model
 `scratchpad_cleanup_info` handed at load tracks the model's claim.
-`[HIGH × OBSERVED]`
 
 ---
 
 ## 9. The fractional / co-location (LNC) model
 
 The runtime exposes Logical NeuronCores, not physical TPBs, to a process.
-`virtual_core_t` (DWARF size **64 B**): `[HIGH × OBSERVED]`
+`virtual_core_t` (DWARF size **64 B**):
 
 | off | type | field |
 |---|---|---|
@@ -864,7 +857,7 @@ The process-global slice is `owned_vcores[num_owned_vcores]`;
 `vtpb_get_virtual_core(idx)` bounds-checks against `num_owned_vcores`;
 `vtpb_get_virtual_core_by_id` / `_from_nec_dev_id` give alternate keys.
 
-**LNC sizing — `parse_vnc_config` @ `0x83b40`:** `[HIGH × OBSERVED]`
+**LNC sizing — `parse_vnc_config` @ `0x83b40`:**
 
 ```asm
 83b67:  call nrt_get_dev_info         ; → (nd_count, nc_per_device, arch_type @ 0xc(%rsp))
@@ -876,7 +869,7 @@ The process-global slice is `owned_vcores[num_owned_vcores]`;
 ```
 
 ```c
-// parse_vnc_config @0x83b40  [HIGH × OBSERVED]
+// parse_vnc_config @0x83b40
 nrt_get_dev_info(&nd_count, &nc_per_device, &arch_type, ...);
 if (arch_type == AL_HAL_TPB_ARCH_TYPE_SUNDA /* ==2 */) lnc_size = 1;   // SUNDA forces 1
 else {
@@ -891,16 +884,16 @@ A device's `nc_per_device` physical cores are partitioned into LNCs of size ∈
 {1,2,4,…}; each LNC presents as one core to the model. Within an LNC of 2,
 `db_physical_core_get_mla_and_tpb` resolves each physical core independently;
 model staging builds `num_kbins` mr_sets per LNC (one subgraph per physical core)
-and the model spans both via `vtpb_info->vtpb_rel_sg_id`. `[HIGH × OBSERVED]`
+and the model spans both via `vtpb_info->vtpb_rel_sg_id`.
 
 > **CORRECTION — `SUNDA(2)` is what forces LNC size 1, and the env gate carries a
-> stronger instance restriction than a backing pass noted.** A backing pass wrote
+> stronger instance restriction than an earlier reading noted.** An earlier reading wrote
 > "arch==SUNDA → LNC size forced to 1" (correct *outcome*) but elsewhere mislabels
 > arch 2/3; the binary's `cmpl $0x2,0xc(%rsp)` at `0x83b76` confirms the forced-1
-> case is **arch 2 == SUNDA**. Additionally, the ELF carries a string the pass
+> case is **arch 2 == SUNDA**. Additionally, the ELF carries a string the earlier reading
 > omitted — "**Only LNC Size of 2 is supported at this moment on this instance
 > type**" — so on some SKUs the *only* legal non-1 size is 2, narrower than the
-> general "power-of-two" gate. `[HIGH × OBSERVED]`
+> general "power-of-two" gate.
 
 **Co-location (the generate/upscale fractional pattern):** at the runtime level
 there is **no single-process fraction**; co-location is achieved by **separate
@@ -930,7 +923,7 @@ a flat heap through `ndl_memory_alloc`. What lands where, by allocator tier:
 `cap = aws_hal_get_hbm_size()`. The channel is chosen by `tdram_channel`
 (tensors use `vtpb_get_default_hbm_idx`; collectives spread).
 
-**Ownership / GC summary:** `[HIGH × OBSERVED]`
+**Ownership / GC summary:**
 
 - `dmem_t` — freed when its last `ref_count` drops (`dmem_free`, driver unmap).
 - GLOBAL allocator — its intrusive list is freed at `tdrv_destroy` (the inverse
@@ -946,36 +939,36 @@ a flat heap through `ndl_memory_alloc`. What lands where, by allocator tier:
 
 ## 11. Adversarial self-verification
 
-The five strongest structural claims, re-challenged against the binary:
+The five strongest structural claims, checked against the binary:
 
 1. **`mla[32]` / `tpb[8]` / 23 categories are real array bounds, not prose.**
    DWARF: `tdrv_ctx_t.mla` is `mla_t[32]` (byte-size `18 880 256 = 32×590 008`);
    `mla_t._tpbs` is `tpb_t[8]` (`314 560 = 8×39 320`); `dma_mem_usage_type_t` has
    **23** enum members (0..22) **and** `dma_mem_log_t.memory_usage_nc` is
    `size_t[8][23]` (`1472 = 8×23×8`). The resolver's `imul $0x900b8`/`imul
-   $0x9998` confirm the strides 590 008 / 39 320. **PASS.** `[HIGH × OBSERVED]`
+   $0x9998` confirm the strides 590 008 / 39 320. **PASS.**
 
 2. **The three category byte tables are exact.** `objdump -s -j .rodata` at the
    `nm`-resolved addresses returns the 23-byte strings in §3.3 verbatim
    (`.rodata` VMA == fileoff, no delta). The host table's `0x14` at idx 18..21 is
-   the §3.2 reject sentinel. **PASS.** `[HIGH × OBSERVED]`
+   the §3.2 reject sentinel. **PASS.**
 
-3. **The arch-type gates are `SUNDA=2 / CAYMAN=3`, the *opposite* of a backing
-   pass's names.** `kbl_model_add` @ `0x305d25`: `call al_hal_tpb_get_arch_type;
+3. **The arch-type gates are `SUNDA=2 / CAYMAN=3`, the *opposite* of an earlier
+   reading's names.** `kbl_model_add` @ `0x305d25`: `call al_hal_tpb_get_arch_type;
    cmp $0x2,%eax; je` → `ucode_stage_libs`; the EVTACCEL/host branches compare
-   `$0x3`. The DWARF enum confirms `SUNDA=2, CAYMAN=3, MARIANA=4`. **Backing pass
-   FAILED on names; corrected in §1.1/§5.3/§7.2.** `[HIGH × OBSERVED]`
+   `$0x3`. The DWARF enum confirms `SUNDA=2, CAYMAN=3, MARIANA=4`. **The earlier
+   reading was wrong on names; corrected in §1.1/§5.3/§7.2.**
 
 4. **`container_of` from `ht_node` to `model_t` is byte-exact.** `ht_node @
    model_t+7496`, `ref_count @ +6488`; the decompiler's `node[-157].next` =
    `node − 7496` and `node[-21]` = `node − 1008` (⇒ `7496 − 1008 = 6488`)
-   reproduce these from `ht_node_t` size 48. **PASS.** `[HIGH × OBSERVED]`
+   reproduce these from `ht_node_t` size 48. **PASS.**
 
 5. **Handle minting reserves 0; remove-then-drain is the exec/unload seam.**
    `tdrv_get_unique_h_model` @ `0x3053f0`: `lock xadd … last_model_handle.50;
    add $1; je <re-bump>` (0 skipped). `remove_model` @ `0x227750`:
    `ht_remove` (unlink) **before** the `lock cmpxchg` ref_count spin-drain.
-   **PASS.** `[HIGH × OBSERVED]`
+   **PASS.**
 
 > **NOTE — what stays `INFERRED`.** §9's cross-process co-location arbitration is
 > below libnrt's visibility (the multi-process partitioning is the driver's), so

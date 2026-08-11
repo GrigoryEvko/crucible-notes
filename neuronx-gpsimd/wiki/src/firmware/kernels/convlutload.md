@@ -28,9 +28,9 @@ and reserved-zero constraints; (5) the **dtype matrix** binding legacy ↔
 presence**, including a gen-dependent `valid_nc` refinement that makes the
 legacy leg ISA-legal at NC-v4 even though there is no POOL body for it.
 
-Everything below is re-grounded this pass. The dispatch census and the
+The dispatch census and the
 dispatcher prologue are carved out of `libnrtucode_internal.so` (host sha256
-`b7c67e89…`, re-hashed MATCH) by `dd` identity-map and read with the shipped
+`b7c67e89…`) by `dd` identity-map and read with the shipped
 device-native `xtensa-elf-objdump`/`readelf` (`XTENSA_CORE=ncore2gp`, FLIX/VLIW);
 the operand struct, the `is_cptc`/`valid_nc` predicates, and the dtype enum are
 read byte-for-byte (and `gcc`-compile-verified) from the in-package `arch-isa`
@@ -55,11 +55,11 @@ reasoned over OBSERVED (often across a FLIX/literal-pool desync);
 ## 1. The branch split — `is_cptc` on `lut_dtype@47`
 
 The discriminator is the ISA header's own validity function, read byte-for-byte
-from `aws_neuron_isa_tpb_s2_convlut.h` (cayman; "ISA header for NC-v3") and
-re-confirmed this pass: [HIGH/OBSERVED]
+from `aws_neuron_isa_tpb_s2_convlut.h` (cayman; "ISA header for NC-v3"):
+[HIGH/OBSERVED]
 
 ```c
-/* aws_neuron_isa_tpb_s2_convlut.h — verbatim (header validity fns, read this pass). */
+/* aws_neuron_isa_tpb_s2_convlut.h — verbatim (header validity fns). */
 bool s2_convlut_is_cptc(Inst i) {
     return i.s2_convlut.lut_dtype != Dtype::Invalid    /* Invalid == 0x0 */
         && i.s2_convlut.lut_dtype != Dtype::FP32;      /* FP32    == 0xA */
@@ -67,9 +67,9 @@ bool s2_convlut_is_cptc(Inst i) {
 ```
 
 The enum values are compile-grounded from `aws_neuron_isa_tpb_common.h`
-(cayman, read this pass): `NEURON_ISA_TPB_DTYPE_INVALID = 0x0`,
+(cayman): `NEURON_ISA_TPB_DTYPE_INVALID = 0x0`,
 `NEURON_ISA_TPB_DTYPE_FP32 = 0xA`, `NEURON_ISA_TPB_DTYPE_UINT16 = 0x5`,
-`NEURON_ISA_TPB_DTYPE_UINT32 = 0x9`. Therefore: [HIGH/OBSERVED]
+`NEURON_ISA_TPB_DTYPE_UINT32 = 0x9`. Therefore:
 
 * **LEGACY leg** ⟺ `lut_dtype ∈ {Invalid(0x0), FP32(0xA)}` — the
   `is_cptc == false` half. *This page.*
@@ -97,16 +97,16 @@ CPTC is the *explicitly-coded* opt-in. The two-value sentinel set
 The header does not stop at the `lut_dtype` sentinel: it cross-binds each leg to
 a specific `in_dtype` and source element count, so the two legs are
 **type-and-shape disjoint**. From `s2_convlut_check_dtype` and
-`has_conv_lut_load_src_element_cnt` (both read verbatim this pass): [HIGH/OBSERVED]
+`has_conv_lut_load_src_element_cnt` (both verbatim):
 
 ```c
-/* s2_convlut_check_dtype — verbatim (header, read this pass). */
+/* s2_convlut_check_dtype — verbatim (header). */
 bool s2_convlut_check_dtype(Inst i) {
     return (( !s2_convlut_is_cptc(i) && i.in_dtype == Dtype::UINT16)   /* LEGACY: UINT16 */
          || (  s2_convlut_is_cptc(i) && i.in_dtype == Dtype::UINT32))  /* CPTC:   UINT32 */
         && is_valid_dtype(i.in_dtype, /*DtypeAllowFP32R=*/false);
 }
-/* has_conv_lut_load_src_element_cnt — verbatim (header, read this pass). */
+/* has_conv_lut_load_src_element_cnt — verbatim (header). */
 /*   LEGACY : num_elem[0]==16 && num_elem[1]==1   (the 16-entry table; transpose [1]==16 also legal) */
 /*   CPTC   : num_elem[0]== 4 && num_elem[1]==1   (a 4-unit compressed block)                         */
 ```
@@ -115,13 +115,13 @@ So the firmware (and any reimplementation) does not even need to read
 `lut_dtype` to know which leg it is on once the operand is validated: legacy is
 `(UINT16, 16-element)` and CPTC is `(UINT32, 4-element)`. The `lut_dtype@47`
 byte is the **routing** discriminator; the `(in_dtype, num_elem)` pair is the
-**validation** binding that the assertions enforce on each arm. [HIGH/OBSERVED]
+**validation** binding that the assertions enforce on each arm.
 
 The legacy arm additionally requires the **repurposed** operand bytes to read
-zero — the bytes that carry CPTC scale/block parameters otherwise: [HIGH/OBSERVED]
+zero — the bytes that carry CPTC scale/block parameters otherwise:
 
 ```c
-/* s2_convlut_legacy_reserved_zero — verbatim (header, read this pass). */
+/* s2_convlut_legacy_reserved_zero — verbatim (header). */
 bool s2_convlut_legacy_reserved_zero(Inst i) {
     return s2_convlut_is_cptc(i)                          /* CPTC leg: unconstrained here */
         || (i.multiplicative_const[0] == 0               /* LEGACY: @40 must be 0 */
@@ -134,7 +134,7 @@ i.e. in the legacy arm, operand bytes `@40`, `@42`, and `@46` **must be zero**
 (they are the CPTC `multiplicative_const`/`block_size` fields, meaningless to the
 legacy load). This is the byte-exact expression of "the legacy load uses only
 header/events/src/in_dtype/rows/cols/row_grp/col_grp; everything CPTC-specific is
-reserved-zero." [HIGH/OBSERVED]
+reserved-zero."
 
 ---
 
@@ -144,14 +144,14 @@ The central FW-43 finding is established not by tracing a legacy body (there is
 none) but by a **kernel-info-table census** across both POOL libraries. The host
 resolver stages, per POOL coretype, either the **base** library `EXTISA_0`
 (lib UID 0, default) or the **CPTC superset** `EXTISA_3` (lib UID 3) when the
-env-gate is set (§6). We carved and re-decoded both this pass.
+env-gate is set (§6).
 
 ### 2.1 `EXTISA_0` (base POOL lib) — 17 entries, NO `0xe4`
 
 Carved `CAYMAN_EXTISA_0` (host file off `0x2ef7e0`, size `0xa260`, sha256
 `910d41c3…`). Its `kernel_info_table` at **VMA `0x02000380` / file `0x7400`**
-has 17 records `{b0=0, b1=0, spec, opcode, funcVA(LE,4)}`, decoded byte-exact
-this pass: [HIGH/OBSERVED]
+has 17 records `{b0=0, b1=0, spec, opcode, funcVA(LE,4)}`, decoded byte-exact:
+[HIGH/OBSERVED]
 
 | idx | opcode/spec | idx | opcode/spec | idx | opcode/spec |
 |----:|:-----------:|----:|:-----------:|----:|:-----------:|
@@ -168,7 +168,7 @@ spec-7 is absent.** The base POOL library cannot dispatch `ConvLutLoad` at
 all — neither leg. [HIGH/OBSERVED bytes]
 
 ```
-EXTISA_0 kernel_info @ file 0x7400 (xxd, this pass):
+EXTISA_0 kernel_info @ file 0x7400 (xxd):
   7400: 0000 007e 8000 0001  0000 007c f803 0001   ; idx0 0x7e, idx1 0x7c
   ...
   7430: 0000 00f0 7033 0001  0000 01f0 8033 0001   ; idx6 0xf0/0, idx7 0xf0/1
@@ -181,8 +181,7 @@ EXTISA_0 kernel_info @ file 0x7400 (xxd, this pass):
 
 Carved `CAYMAN_EXTISA_3` (host file off `0x2fbf00`, size `0x6974`, sha256
 `052ac31c…`, == the [CPTC codec](cptc-codec.md) anchor). Its 9-entry
-`kernel_info_table` at **VMA `0x020008c8` / file `0x4748`** decoded byte-exact
-this pass: [HIGH/OBSERVED]
+`kernel_info_table` at **VMA `0x020008c8` / file `0x4748`** decoded byte-exact:
 
 | idx | opcode | spec | funcVA | role |
 |----:|:------:|:----:|--------|------|
@@ -191,14 +190,14 @@ this pass: [HIGH/OBSERVED]
 | **8** | **`0xf0`** | **7** | **`0x01003b64`** | **`ExtendedInstCptcDecode` = the ext-inst bridge** |
 
 ```
-EXTISA_3 kernel_info @ file 0x4748 (xxd, this pass):
+EXTISA_3 kernel_info @ file 0x4748 (xxd):
   4778: 0000 007b 6419 0001  0000 00e4 5822 0001   ; idx6 0x7b@0x1964, idx7 0xe4@0x01002258
   4788: 0000 07f0 643b 0001                         ; idx8 0xf0/7@0x01003b64
   ⇒ idx7 = {b0=0,b1=0,spec=0,opcode=0xe4, fv=0x01002258}  = pool_conv_lut_load
 ```
 
 The `funcVA 0x01002258` resolves to the `.xt.prop` symbol `pool_conv_lut_load`
-(name present in the carved blob's string table this pass). MARIANA's table is
+(name present in the carved blob's string table). MARIANA's table is
 structurally identical with `idx7` relocated `+0x8` (`0x01002260`) and `idx8`
 `+0x10` (`0x01003b74`). [HIGH/OBSERVED CAYMAN; MARIANA CARRIED [CPTC codec](cptc-codec.md)]
 
@@ -208,13 +207,13 @@ structurally identical with `idx7` relocated `+0x8` (`0x01002260`) and `idx8`
 > `cptc_decode_impl<1..6>`. There is **no second body** for the legacy leg
 > between the operand read and the two `retw.n` exits (`0x01002388` /
 > `0x0100239a`). The legacy operand, if it ever reached this POOL handler, has no
-> legacy load path here. [HIGH the prologue/exits/census; MED the exact in-body
-> legacy-reject vs fall-through — the body is FLIX-desynced, §7]
+> legacy load path here. [HIGH the prologue/exits/census; MED the in-body legacy
+> handling — the body is FLIX-desynced, §7]
 
 ### 2.3 The dispatcher prologue (byte-exact)
 
 The `0xe4` body's prologue is scalar and resyncs cleanly. At VMA `0x01002258`
-(carved-blob file `0x2358` = `0x100 + (0x01002258 − 0x01000000)`): [HIGH/OBSERVED]
+(carved-blob file `0x2358` = `0x100 + (0x01002258 − 0x01000000)`):
 
 ```
 01002258: 36 41 00   entry  a1, 32        ; minimal frame — a thin router
@@ -227,7 +226,7 @@ The `0xe4` body's prologue is scalar and resyncs cleanly. At VMA `0x01002258`
 Raw bytes at file `0x2358`: `36 41 00 8f 42 20 03 …`. The `entry a1,32` + the
 `l32i a4,a0,12` operand-ptr read are the all-phases-agree clean anchors; the
 `8f` at `0x0100225b` is the first FLIX wide-bundle selector that desyncs stock
-objdump's linear sweep — see §7 for the desync honesty flag. [HIGH/OBSERVED]
+objdump's linear sweep — see §7 for the desync honesty flag.
 
 > **NOTE — VMA == file offset only inside `.text`/`.rodata`.** In the carved
 > `EXTISA_3` blob, `.text` VMA `0x01000000` maps to file `0x100`, so the file
@@ -235,7 +234,7 @@ objdump's linear sweep — see §7 for the desync honesty flag. [HIGH/OBSERVED]
 > `ncore2gp` config-DLL `.data` delta (`0x200000`) here — this is a `.text`
 > address, where VMA==fileoff in-section after the `0x100` ELF-header skew. The
 > `kernel_info_table` at VMA `0x020008c8` lives in `.rodata` (file `0x4748`),
-> also VMA==fileoff in-section. [HIGH/OBSERVED]
+> also VMA==fileoff in-section.
 
 ---
 
@@ -243,7 +242,7 @@ objdump's linear sweep — see §7 for the desync honesty flag. [HIGH/OBSERVED]
 
 The legacy ConvLutLoad LUT is **not** an activation table, **not** a dequant
 codebook, and **not** a POOL/GPSIMD object. The ISA header is the authoritative
-description, read verbatim this pass: [HIGH/OBSERVED]
+description, read verbatim: [HIGH/OBSERVED]
 
 * **Purpose** (header lines 27–29): *"This instruction is used to set the LUT
   data converter tables for 4-bit conversion. Currently this functionality
@@ -268,7 +267,7 @@ data-converter table**, stored `UINT16`-wide in SBUF. It is the table the PE
 array uses to map a packed **4-bit input code** to its converted MAC operand
 value — a low-bit weight/activation converter. It is a **convolution/matmul**
 input-conversion LUT — the *"Conv"* in *ConvLutLoad* — consumed during
-weight/input loading by the PE MAC. [HIGH/OBSERVED]
+weight/input loading by the PE MAC.
 
 ### 3.1 Rule-outs against the named siblings
 
@@ -295,7 +294,7 @@ registers. Different engines, different load mechanisms, different consumers.
 
 Source: `aws_neuron_isa_tpb_s2_convlut.h` (cayman), bound by
 `instruction_mapping.json` to `NEURON_ISA_TPB_OPCODE_CONV_LUT_LOAD = 0xe4`
-(common.h line 294, `// Y` opcode-present marker). **Compile-verified this pass**
+(common.h line 294, `// Y` opcode-present marker). **Compile-verified**
 (`gcc -std=c11`): `sizeof == 64`; `offsetof` gives `src_mem_pattern=16`,
 `in_dtype=32`, `num_active_rows=38`, `num_active_cols=39`,
 `multiplicative_const=40`, `row_grp=44`, `col_grp=45`, `block_size=46`,
@@ -327,7 +326,7 @@ So the **legacy load consumes exactly**: `header`, `events`, `src_mem_pattern`
 `multiplicative_const` or `block_size` (both reserved-zero in the legacy arm),
 and `lut_dtype` serves **only** as the discriminator (`Invalid`/`FP32`). There is
 no index/stride beyond the `Tensor2d`'s own `MemPattern2d`
-(`num_elem[0]==16`, `num_elem[1]==1`, the 16-entry shape). [HIGH/OBSERVED]
+(`num_elem[0]==16`, `num_elem[1]==1`, the 16-entry shape).
 
 > **CORRECTION — bytes `40..47` were repurposed; the older field-doc table is
 > pre-CPTC.** The header's prose field-doc comment block (lines 104–107) calls
@@ -338,24 +337,24 @@ no index/stride beyond the `Tensor2d`'s own `MemPattern2d`
 > (`sizeof==64`, `ISA_STATIC_ASSERT`) and `offsetof` are the witnesses. In the
 > **legacy** arm the repurposed bytes `40/42/46` must read zero (so the
 > instruction is wire-compatible with the pre-CPTC layout), and `lut_dtype@47` is
-> the `{0x0,0xA}` sentinel. [HIGH/OBSERVED]
+> the `{0x0,0xA}` sentinel.
 
 > **CORRECTION — `reserved4` is 16 bytes, not 18.** The `typedef` annotates
 > `reserved4[16]` with a stale comment `// 18 (48 - 63)`. `48..63` is **16**
 > bytes, and 16 is exactly what brings the struct to the asserted 64 B (the
 > `s2_convlut_reserved_zero` predicate also enumerates exactly
 > `reserved4[0..15]`). The width annotation is a header typo carried from the
-> pre-CPTC `reserved4[18]`; the field is 16 B. [HIGH/OBSERVED]
+> pre-CPTC `reserved4[18]`; the field is 16 B.
 
 ### 4.1 Cross-gen struct stability
 
 The 64 B layout is **byte-identical** across cayman (NC-v3), mariana (NC-v4), and
-maverick (NC-v5) headers — diffing the three `s2_convlut.h` files this pass shows
+maverick (NC-v5) headers — diffing the three `s2_convlut.h` files shows
 only (a) the doc-comment NC-version string, (b) a `Tensor2d` typedef rename
 (`NEURON_ISA_TPB_TENSOR2D` → `NEURON_ISA_TPB_MEM_PATTERN2D`, a same-size
 wrapper), and (c) the predicate-body texts (the `valid_nc` refinement, §6.2).
 **No field offset moves**, so a reimplementation can use one 64 B struct across
-all gens. [HIGH/OBSERVED]
+all gens.
 
 ---
 
@@ -365,7 +364,8 @@ all gens. [HIGH/OBSERVED]
 firmware never executes the legacy LUT load (§2). The load lands in the **PE
 array's per-row converter-table registers**, programmed by the PE engine when it
 executes ConvLutLoad as a PE micro-op (the PE engine and its converter-table SRAM
-are **out of this corpus**). What the *contract* specifies about the load: [HIGH the contract; the PE-side microarchitecture INFERRED/out-of-corpus]
+are **out of this corpus**). What the *contract* specifies about the load:
+[HIGH the contract; INFERRED the PE-side microarchitecture]
 
 * **Source layout**: a `Tensor2d` of **exactly 16 `UINT16`-wide elements**
   (16-entry table), non-indirect, SBUF-resident
@@ -427,7 +427,7 @@ independent OBSERVED signals pin this: [HIGH/OBSERVED grouping; MED the exact in
 1. **The header** (verbatim): the converter LUT *"functionality is only
    supported in the PE array."*
 2. **The SEQ-side handler grouping**: in the host lib's DEBUG self-naming
-   strings (read this pass), `"S: ConvLutLoad"` sits **immediately adjacent** to
+   strings, `"S: ConvLutLoad"` sits **immediately adjacent** to
    the PE micro-op handler block:
 
    ```
@@ -471,17 +471,17 @@ the operand-validation contract (`s2_convlut_valid_nc`). [HIGH/OBSERVED]
 > s2_convlut_is_cptc(i) && nc >= V3` — so on V3 a *non-CPTC* (legacy)
 > ConvLutLoad is **rejected** by validation. But the mariana/maverick (NC-v4)
 > header *adds an arm*: `valid_nc = (nc == V4) || (is_cptc && nc >= V3)`, read
-> verbatim this pass. The `(nc==V4)` disjunct admits the legacy leg unconditionally
+> verbatim. The `(nc==V4)` disjunct admits the legacy leg unconditionally
 > at V4. This is the ISA contract growing the legacy converter LUT into a legal
 > NC-v4 instruction — but it is a **PE-engine** instruction; the POOL `EXTISA_3`
 > body remains a pure CPTC dispatcher (§2). So "legacy is ISA-legal at v4" and
 > "legacy has no POOL body" are both true and not in tension: the legality is for
-> the PE engine. [HIGH/OBSERVED — both header texts read this pass]
+> the PE engine. [HIGH/OBSERVED — both header texts]
 
 > **GOTCHA — the codec slot is CAYMAN+ but the CPTC dtype enum is MARIANA+.**
 > CAYMAN silicon ships the `EXTISA_3` `0xe4` dispatcher (the CPTC decode body),
 > but the cayman `aws_neuron_isa_tpb_common.h` has **zero** `CPTC1..7` enumerants
-> (re-confirmed: 0 CPTC hits this pass), while the mariana header defines
+> (0 CPTC hits), while the mariana header defines
 > `CPTC1..7 = 0x19..0x1F`. So on CAYMAN the decode machinery exists but the v3 ISA
 > cannot legally *name* a CPTC `lut_dtype` to it; CPTC becomes a usable surface at
 > **MARIANA**. This mirrors the split the [datatype model](dtype-model.md)
@@ -492,10 +492,10 @@ the operand-validation contract (`s2_convlut_valid_nc`). [HIGH/OBSERVED]
 The POOL `0xe4` slot is **never reachable by default**. The host resolver stages
 the `EXTISA_3` library (lib UID 3) **only** when
 `getenv("NRT_UCODE_UNSTABLE_LIBRARY_FLAG_CPTC_DECODE")` is set (string read in
-the host lib this pass), on a PERF coretype; otherwise lib UID 0 (`EXTISA_0`, no
+the host lib), on a PERF coretype; otherwise lib UID 0 (`EXTISA_0`, no
 `0xe4`) is staged. So there is **no env/lib state** in which POOL dispatches a
 *legacy* ConvLutLoad: the only POOL `0xe4` is the env-gated CPTC dispatcher.
-[HIGH/OBSERVED string; CARRIED RT-10 for the staging logic]
+[HIGH/OBSERVED string; CARRIED the staging logic]
 
 ### 6.4 The dtype matrix
 

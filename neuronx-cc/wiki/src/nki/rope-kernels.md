@@ -53,7 +53,7 @@ out[:d/2] = x1*cos[:d/2] - x2*sin[:d/2];    // rope.py:185 "out[even]=x[even]*co
 out[d/2:] = x2*cos[d/2:] + x1*sin[d/2:];    // rope.py:186 "out[odd]=x[odd]*cos + x[even]*sin"
 ```
 
-cos and sin satisfy `cos = cat(freqs, freqs)` and `sin = cat(freqs, freqs)` — the two halves are **identical** (the per-position frequency vector, repeated). Only half of cos/sin is therefore unique, which several sites exploit to carry half-width tables (see [cos/sin Provenance](#cossin-provenance-precomputed-vs-on-device)).
+cos and sin satisfy `cos = cat(freqs, freqs)` and `sin = cat(freqs, freqs)` — the two halves are **identical** (the per-position frequency vector, repeated). Only half of cos/sin is therefore unique, which several sites exploit to carry half-width tables (see [cos/sin Provenance](#cossin-provenance--precomputed-vs-on-device)).
 
 > **GOTCHA —** the `rope.py` docstring (`rope.py:185-186`) names the halves "even" and "odd". This is *not* the GPT-J even/odd-index interleaving. "even" means the **first half** `x[:d/2]`, "odd" the **second half** `x[d/2:]`; the code rotates `x_in_sb[:half_d]` against `x_in_sb[half_d:]` (`rope.py:226-252`). Reading "even/odd" as element interleaving is the single easiest way to reimplement the wrong rotation.
 
@@ -69,7 +69,7 @@ Verbatim formula evidence across all four sites — all the same rotation:
 | `_gen_rope_coeff`/`_apply_rope` torch ref | `attention_tkg_torch.py:289-303` same `_rotate_half` | CERTAIN |
 | CTE fused | `qkv.py` / `qkv_cte.py` "RoPE([X1,X2])=[X1,X2]·cos+[-X2·sin, X1·sin]" | CERTAIN |
 
-> **CORRECTION (RoPE-1) —** earlier framing (and any "interleaved vs split, which one does `rope.py` use?" premise) treated `rope.py` and `rope_hf.py` as *different rotation conventions*. They are not. Both compute split-half. `rope.py`'s `contiguous_layout` flag selects a memory **layout**, not a rotation. There is no interleaved-adjacent-pair (GPT-J) rotation kernel in the shipped tree; the literal `rotate_half([x0,x1],[x2,x3])`-style pair rotation does not appear in any path. (CONFIRMED — verbatim across all five sites above.)
+> **GOTCHA — `rope.py` and `rope_hf.py` are not two rotation conventions.** Both compute split-half, verbatim, across all five sites above. `rope.py`'s `contiguous_layout` flag selects a memory **layout**, not a rotation. There is no interleaved-adjacent-pair (GPT-J) rotation kernel anywhere in the shipped tree — the literal `rotate_half([x0,x1],[x2,x3])`-style pair rotation appears in no path.
 
 ---
 
@@ -192,9 +192,9 @@ _convert_from_interleaved(x, P): for each fmax tile  x_psum = nc_matmul(P,  x_fl
 _convert_to_interleaved(x, P):   Pt = nc_transpose(P); for each fmax tile  nc_matmul(Pt, x_flat)    // P@X,   rope.py:337
 ```
 
-> **QUIRK —** `_convert_to_interleaved` (`rope.py:337-371`) pre-transposes `P` with `nc_transpose` (`rope.py:360`) before the `nc_matmul`. This **cancels the matmul's own implicit transpose**, so the net effect is `P@X`, not `Pᵀ@X`. A reimplementer who feeds `P` straight into `nc_matmul` gets the inverse permutation. (CONFIRMED — `rope.py:357-361`.)
+> **QUIRK —** `_convert_to_interleaved` (`rope.py:337-371`) pre-transposes `P` with `nc_transpose` (`rope.py:360`) before the `nc_matmul`. This **cancels the matmul's own implicit transpose**, so the net effect is `P@X`, not `Pᵀ@X`. A reimplementer who feeds `P` straight into `nc_matmul` gets the inverse permutation. (`rope.py:357-361`.)
 
-> **NOTE —** the torch reference `rope_torch.py` (`_rope_single_head`, `:47-72`) re-expresses the same result through interleaving: under `contiguous_layout` it permutes split→interleaved (`new_x[:,::2]=x[:,:d/2]`), rotates as adjacent pairs via `xri.reshape(...,-1,2)` (`:61-67`), then permutes back (`cat(x_out[:,0::2], x_out[:,1::2])`). The round-trip cancels to exactly the split-half rotation on the contiguous tensor. The torch ref is a pair-wise re-expression of the same answer — the kernel itself never interleaves on the default path. (STRONG.)
+> **NOTE —** the torch reference `rope_torch.py` (`_rope_single_head`, `:47-72`) re-expresses the same result through interleaving: under `contiguous_layout` it permutes split→interleaved (`new_x[:,::2]=x[:,:d/2]`), rotates as adjacent pairs via `xri.reshape(...,-1,2)` (`:61-67`), then permutes back (`cat(x_out[:,0::2], x_out[:,1::2])`). The round-trip cancels to exactly the split-half rotation on the contiguous tensor. The torch ref is a pair-wise re-expression of the same answer — the kernel itself never interleaves on the default path.
 
 ---
 
@@ -240,7 +240,7 @@ function _apply_rope_single(x, cos, sin, backward):           // rope_hf.py:269;
 
 The gradient is the transpose of an orthogonal rotation — rotation by `−θ`. The torch ref (`rope_hf_torch.py:28-31, 70-72`) folds sin into the operand: `dx = q*cos + rotate_half_backward(q*sin)` with `rotate_half_backward([a1,a2]) = cat(a2, -a1)`. The kernel's two sign flips relative to forward realize exactly this.
 
-> **QUIRK —** forward and backward read **different sin halves**. Forward subtracts `x2·sin[:h]` and adds `x1·sin[h:]`; backward adds `x2·sin[h:]` and subtracts `x1·sin[:h]`. Because `sin = cat(freqs, freqs)` the two halves are numerically equal, so the swap is observationally a no-op on a correct cache — but a reimplementer who hardcodes one half will silently break on any cache where the halves are *not* duplicated. (CONFIRMED — `rope_hf.py:303-345`.)
+> **QUIRK —** forward and backward read **different sin halves**. Forward subtracts `x2·sin[:h]` and adds `x1·sin[h:]`; backward adds `x2·sin[h:]` and subtracts `x1·sin[:h]`. Because `sin = cat(freqs, freqs)` the two halves are numerically equal, so the swap is observationally a no-op on a correct cache — but a reimplementer who hardcodes one half will silently break on any cache where the halves are *not* duplicated. (`rope_hf.py:303-345`.)
 
 ### Considerations
 
@@ -301,7 +301,7 @@ function _rope(inv_freqs, pos_ids, bs, s_a, d_head, sbm):   // attention_tkg.py:
     return cos, sin
 ```
 
-> **QUIRK —** the **cos output is produced by the Sine activation** (`nl.sin`, `attention_tkg.py:3238`), not a cosine op. The Activation engine has no hardware Cosine, so the kernel adds `1.5·π` (= `π/2 + π`) to the angle and runs `nl.sin`: the `π/2` is the `cos(θ)=sin(θ+π/2)` identity, and the extra `+π` (then `−π` after modulo) is the range-reduction wrapper shared with the sin path. The in-source comment confirms it verbatim: *"This is to reduce emb to [-π, π] which is the legal restriction for Act Sine (and we dont have Act Cosine)."* (`attention_tkg.py:3225`). (CONFIRMED.)
+> **QUIRK —** the **cos output is produced by the Sine activation** (`nl.sin`, `attention_tkg.py:3238`), not a cosine op. The Activation engine has no hardware Cosine, so the kernel adds `1.5·π` (= `π/2 + π`) to the angle and runs `nl.sin`: the `π/2` is the `cos(θ)=sin(θ+π/2)` identity, and the extra `+π` (then `−π` after modulo) is the range-reduction wrapper shared with the sin path. The in-source comment confirms it verbatim: *"This is to reduce emb to [-π, π] which is the legal restriction for Act Sine (and we dont have Act Cosine)."* (`attention_tkg.py:3225`).
 
 > **NOTE —** the comment at `attention_tkg.py:3224` writes the cos offset as `(emb + π/2 + π)`, and the code adds the single fused constant `1.5*math.pi` (`attention_tkg.py:3227`). These are the same value; the offset is applied as one `tensor_scalar` add, not two. The sin and cos paths are otherwise byte-identical except for this constant.
 
@@ -317,7 +317,7 @@ function _modulo(x, y, out, sbm):    // attention_tkg.py:3248 ; computes x mod y
     return out
 ```
 
-> **GOTCHA —** `_modulo` accumulates float32 error as the angle grows. `_perform_rope` guards it: `cfg.curr_sprior <= _MAX_S_PRIOR_ACCURATE_ROPE` where `_MAX_S_PRIOR_ACCURATE_ROPE = 2**17` (131072) (`attention_tkg.py:51,1518-1521`). Above that prior-sequence length the on-device modulo is declared *inaccurate due to float32 error build-up* and the kernel asserts out. A reimplementer must either keep the prior length under 2^17 or compute cos/sin in higher precision. (CONFIRMED.)
+> **GOTCHA —** `_modulo` accumulates float32 error as the angle grows. `_perform_rope` guards it: `cfg.curr_sprior <= _MAX_S_PRIOR_ACCURATE_ROPE` where `_MAX_S_PRIOR_ACCURATE_ROPE = 2**17` (131072) (`attention_tkg.py:51,1518-1521`). Above that prior-sequence length the on-device modulo is declared *inaccurate due to float32 error build-up* and the kernel asserts out. A reimplementer must either keep the prior length under 2^17 or compute cos/sin in higher precision.
 
 ### Where theta and rope-scaling live
 
@@ -328,7 +328,7 @@ rope_scaling (NTK / YaRN / LongRoPE / linear / dynamic / mscale): ABSENT from ev
             Any scaling variant is absorbed into the precomputed cos/sin table or the supplied inv_freq.
 ```
 
-> **NOTE —** a word-boundary search of the readable RoPE and attention kernels returns **zero** `rope_scaling` / NTK / YaRN / LongRoPE / linear / dynamic / `mscale` logic, and the literal base `10000` appears in **no** kernel. The only "LLaMA3" token in the tree is an MLP-tiling heuristic, unrelated to RoPE. This is a negative finding, deliberately stated: the kernels are scaling-agnostic by construction. (CONFIRMED — negative result.)
+> **NOTE —** a word-boundary search of the readable RoPE and attention kernels returns **zero** `rope_scaling` / NTK / YaRN / LongRoPE / linear / dynamic / `mscale` logic, and the literal base `10000` appears in **no** kernel. The only "LLaMA3" token in the tree is an MLP-tiling heuristic, unrelated to RoPE. This is a negative finding, deliberately stated: the kernels are scaling-agnostic by construction.
 
 ---
 
@@ -354,7 +354,7 @@ out = X*cos + [-X2*sin, X1*sin]  (tensor_tensor add)                            
 
 `cfg.fused_rope` requires `cos_cache`, `sin_cache`, `num_q_heads`, `num_kv_heads`, and asserts the passed caches are `(B, S, d_head)` (`qkv_cte_utils.py:458-469`).
 
-> **GOTCHA —** the half-sin economy here is **on-chip only**. The HBM input caches `cos_cache`/`sin_cache` are both full `(B, S, d_head)` (`qkv_cte_utils.py:467-469`); the kernel allocates a **full-width** `cos_buffer_sb` (`d_head`, `qkv_cte.py:826`) but a **half-width** `sin_buffer_sb` (`d_head//2`, `qkv_cte.py:836`) and DMAs only half the sin into SBUF — because `sin = cat(freqs, freqs)` makes the two halves equal (`qkv_cte.py:821`). A reimplementer must keep full cos in the buffer (cos multiplies both halves) but may halve the sin SBUF footprint. (CONFIRMED.)
+> **GOTCHA —** the half-sin economy here is **on-chip only**. The HBM input caches `cos_cache`/`sin_cache` are both full `(B, S, d_head)` (`qkv_cte_utils.py:467-469`); the kernel allocates a **full-width** `cos_buffer_sb` (`d_head`, `qkv_cte.py:826`) but a **half-width** `sin_buffer_sb` (`d_head//2`, `qkv_cte.py:836`) and DMAs only half the sin into SBUF — because `sin = cat(freqs, freqs)` makes the two halves equal (`qkv_cte.py:821`). A reimplementer must keep full cos in the buffer (cos multiplies both halves) but may halve the sin SBUF footprint.
 
 See [Projection Kernels](projection-kernels.md) *(planned, 6.7.9)* for the full CTE QKV fusion that hosts this copy, and [CTE Attention](attention-cte.md) for the `QKᵀ` consumer.
 
@@ -365,7 +365,7 @@ See [Projection Kernels](projection-kernels.md) *(planned, 6.7.9)* for the full 
 - **Fused** (`cfg.fuse_rope`): `_perform_rope` (`attention_tkg.py:1506`) calls `_rope` to generate cos/sin on-device (the [cos-via-sin](#the-on-device-generator-_rope) path), then `_apply_rope` (`attention_tkg.py:3089`) loads+transposes x (`BNSd→BNdS`, `nc_transpose`), multiplies by cos, builds `rotate_half(x)` via `tensor_copy` + `tensor_scalar(×−1)`, multiplies by sin, and adds. **Only the last NeuronCore rotates K_active** (`attention_tkg.py:1554`); K is written to `k_out` post-RoPE. Q is additionally scaled by `1/sqrt(d_head)` — folded directly into this kernel via `activation(..., scale=1/sqrt(d_head))` (`attention_tkg.py:1567`). See [TKG Attention](attention-tkg.md).
 - **Deferred** (experimental `attention_block_tkg.py:905`): calls the standalone `RoPE_sbuf` with precomputed cos/sin, sandwiched between pre- and post-RoPE Q/K RMSNorm; `cos=None` ⇒ skip RoPE.
 
-> **NOTE —** the Q-side `1/sqrt(d_head)` scaling is applied **only** when `cfg.fuse_rope` is set (`attention_tkg.py:91` docstring: *"Q is scaled with 1/sqrt(d_head) iff. cfg.fuse_rope"*). A reimplementer wiring the deferred path must apply that scale elsewhere. (CONFIRMED.)
+> **NOTE —** the Q-side `1/sqrt(d_head)` scaling is applied **only** when `cfg.fuse_rope` is set (`attention_tkg.py:91` docstring: *"Q is scaled with 1/sqrt(d_head) iff. cfg.fuse_rope"*). A reimplementer wiring the deferred path must apply that scale elsewhere.
 
 ### Function Map
 
@@ -380,21 +380,17 @@ See [Projection Kernels](projection-kernels.md) *(planned, 6.7.9)* for the full 
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the wheel source:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| All sites use split-half; no GPT-J interleaved rotation | the verbatim formula at `rope.py:185-186`, `rope_hf.py:288`, `attention_tkg.py:3100-3106`, `attention_tkg_torch.py:289-303`, and the qkv docstrings (`qkv_cte.py:160-161,818-820,3196`; `qkv.py:123-125`) is `cat(-x2, x1)` block-split in every case. The only `reshape(...,-1,2)` pair rotation is in the *torch reference* `rope_torch.py`, where the surrounding permute-in/permute-out cancels to split-half. The compiled `RoPE.so` corroborates independently: its docstring names "even and odd embeddings" and states it implements them *"without interleaving"* as `result[:N/2] = X[:N/2]*cos - X[N/2:]*sin` / `result[N/2:] = X[N/2:]*cos + X[:N/2]*sin` | CERTAIN |
+| cos is computed by the Sine engine; there is no hardware cosine | `attention_tkg.py:3236-3238` reads `nisa.activation(cos, op=nl.sin, data=emb4cos)` with `emb4cos = emb + 1.5π` reduced mod 2π; the comment at `:3225` says *"we dont have Act Cosine"*. The code applies the shift as one fused `+1.5*math.pi` add; the underlying identity is `cos(θ)=sin(θ+π/2)`, with the extra `+π` being the shared range-reduction wrapper | CERTAIN |
+| Interleaving is a layout, undone before rotation | `rope.py:114-137` (strategy selection + stride-2 DMA) and `_compute_convert_to_interleaved_mat` / `_convert_from_interleaved` (`rope.py:261-334`): the compute layout fed to `RoPE_sbuf` is always `[first_half \| second_half]`, and interleaving is a pure memory permutation on `d_head` | CERTAIN |
+| `rope_hf` is the only backward site, and backward is two sign flips | `rope_hf.py:322-345` flips exactly the two `subtract`/`add` ops relative to forward (`:308-321`), matching `rotate_half_backward([a1,a2])=[a2,-a1]` in the torch ref; no `backward` parameter exists in `rope.py`, `qkv_cte`, or `attention_tkg` RoPE | CERTAIN |
+| No theta / RoPE-scaling logic in any kernel | negative search over `nkilib/core/embeddings/`, `attention_tkg.py`, `qkv_cte.py`: zero `rope_scaling` / NTK / YaRN / LongRoPE / `mscale` / `10000` / `theta` hits in the rotation kernels; `inv_freq` is always an input arg | CERTAIN |
 
-1. **"All sites use split-half, no GPT-J interleaved rotation."** Re-checked the verbatim formula in all five sites: `rope.py:185-186`, `rope_hf.py:288`, `attention_tkg.py:3100-3106`, `attention_tkg_torch.py:289-303`, and the qkv_cte/qkv docstrings (`qkv_cte.py:160-161,818-820,3196`; `qkv.py:123-125`). Every one is `cat(-x2, x1)` block-split. No `reshape(...,-1,2)`-pair rotation exists in any **kernel** — the only pair reshape is inside the *torch reference* `rope_torch.py`, where the surrounding permute-in/permute-out provably cancels to split-half. **Independent binary corroboration:** the compiled `RoPE.so` embeds a docstring that names the convention as "even and odd embeddings" and then states it implements them *"without interleaving"* as `result[:N/2] = X[:N/2]*cos - X[N/2:]*sin` / `result[N/2:] = X[N/2:]*cos + X[:N/2]*sin` — the same split-half algebra, reached from the binary side. **Holds (CONFIRMED).**
-
-2. **"cos is computed by the Sine engine, no hardware cosine."** Re-read `attention_tkg.py:3236-3238` byte-for-byte: the cos output is `nisa.activation(cos, op=nl.sin, data=emb4cos)` — literally `nl.sin`, with `emb4cos = emb + 1.5π` reduced mod 2π. The in-source comment at `:3225` states *"we dont have Act Cosine"*. **Holds (CONFIRMED).** The earlier-report phrasing "cos via sin(θ+3π/2)" is *arithmetically* the same as `1.5π` but the code applies it as one fused `+1.5*math.pi` add, and the conceptual identity is `cos(θ)=sin(θ+π/2)` with `+π` being the shared range-reduction wrapper — corrected in-page.
-
-3. **"Interleaved = layout, de-interleaved before rotation."** Re-traced `rope.py:114-137` (strategy selection + stride-2 DMA) and `_compute_convert_to_interleaved_mat`/`_convert_from_interleaved` (`rope.py:261-334`). The compute layout fed to `RoPE_sbuf` is always `[first_half | second_half]`; interleaving is a pure memory permutation on `d_head`. **Holds (CONFIRMED).**
-
-4. **"rope_hf is the only backward site; backward = two sign flips."** `rope_hf.py:322-345` flips exactly the two `subtract`/`add` ops relative to forward (`:308-321`), matching `rotate_half_backward([a1,a2])=[a2,-a1]` in the torch ref. No `backward` parameter exists in `rope.py`, `qkv_cte`, or `attention_tkg` RoPE. **Holds (CONFIRMED).**
-
-5. **"No theta/rope-scaling in any kernel."** Negative search over `nkilib/core/embeddings/`, `attention_tkg.py`, `qkv_cte.py`: zero `rope_scaling`/NTK/YaRN/LongRoPE/`mscale`/`10000`/`theta` hits in the rotation kernels. `inv_freq` is always an input arg. **Holds (CONFIRMED — negative result).**
-
-**Re-verification ceiling.** All Python-level claims are CERTAIN against the readable nkilib `.py` (themselves wheel artifacts) — the qkv_cte fused-RoPE claims were re-verified to exact line numbers (`qkv_cte.py:3140-3322`). The compiled `RoPE.so` (676,376 bytes; no readable `RoPE.py` ships alongside it) was confirmed via `strings` to embed the **same split-half algebra** in a **differently-worded** even/odd docstring — a sibling implementation, not a byte-identical docstring copy; it was not instruction-traced. The `nl.sin`→hardware-Sine-engine mapping is taken from the op name and the in-source "Act Sine"/"Act Cosine" comments — an `nl.sin`-to-microcode trace was not performed (INFERRED at the ISA level, CONFIRMED at the NKI-op level).
+Two limits on the above. The compiled `RoPE.so` (676,376 bytes; no readable `RoPE.py` ships alongside it) was read via `strings` only — it embeds the same split-half algebra in a differently-worded even/odd docstring, making it a sibling implementation rather than a copy, and it was not instruction-traced. And the `nl.sin`→hardware-Sine-engine mapping is taken from the op name and the in-source "Act Sine"/"Act Cosine" comments; the mapping is **[INFERRED]** at the ISA level, though certain at the NKI-op level.
 
 ## Related Components
 

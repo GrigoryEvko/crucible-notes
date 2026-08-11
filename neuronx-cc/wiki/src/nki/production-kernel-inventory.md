@@ -1,6 +1,6 @@
 # Production Kernel Inventory: the Three-Tree Story
 
-> *All file paths, symbols, and sizes on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, canonical; cp311/cp312 are byte-parity for the `.so` roster). Other versions will differ. Provenance: backing report **D-O30**, re-verified against the extracted wheel filesystem and the IDA strings corpus.*
+> *All file paths, symbols, and sizes on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, canonical; cp311/cp312 are byte-parity for the `.so` roster). Other versions will differ. Every count and path below is read from the extracted wheel filesystem and the IDA strings corpus.*
 
 ## Abstract
 
@@ -12,7 +12,7 @@ The three trees, in increasing order of source-protection:
 - **`neuronxcc/nki/_pre_prod_kernels/`** — 103 readable `.py` files carrying an "Authors do not provide any warranty" banner. These are the **live orchestration layer**: real, imported-at-runtime modules that fuse norm → route → expert → projection and that, at the leaf, `import` the compiled `.so` from the third tree. They also host pre-production / experimental / training variants with no twin elsewhere (backward blockwise-MM, grouped-matmul, TRN1 attention).
 - **`neuronxcc/nki/_private_kernels/`** — **34 compiled Cython `.so` files, zero `.py`**, source withheld. These are the **production compute leaves** — the bytes that run. Each began life as `<name>.py → <name>.c → <name>.so`; the `.c` and `.py` filenames survive as strings inside the binary, but only the `.so` ships.
 
-The production path is an import edge: a `_pre_prod_kernels` orchestrator (readable) imports a `_private_kernels` leaf (compiled), and that compiled leaf is what executes. A second, deeper path bypasses the orchestrator entirely: when the Penguin middle-end lowers a registered op macro, `BirCodeGenLoop` looks the kernel up in a compiled-only `_INTERNAL_KERNEL_REGISTRY` and traces the `.so` directly. Both paths terminate in the same 34-file compiled tree; `nkilib` is never on either critical path for the registered families. This page enumerates all three trees, the exact 34-`.so` roster (correcting two miscounts in the backing report), the import edges, and — honestly — the leaves whose algorithm bodies are **not recoverable** from this corpus.
+The production path is an import edge: a `_pre_prod_kernels` orchestrator (readable) imports a `_private_kernels` leaf (compiled), and that compiled leaf is what executes. A second, deeper path bypasses the orchestrator entirely: when the Penguin middle-end lowers a registered op macro, `BirCodeGenLoop` looks the kernel up in a compiled-only `_INTERNAL_KERNEL_REGISTRY` and traces the `.so` directly. Both paths terminate in the same 34-file compiled tree; `nkilib` is never on either critical path for the registered families. This page enumerates all three trees, the exact 34-`.so` roster, the import edges, and — honestly — the leaves whose algorithm bodies are **not recoverable** from this corpus.
 
 For reimplementation, the contract is:
 
@@ -26,11 +26,11 @@ For reimplementation, the contract is:
 | **Tree A (reference)** | `nkilib/` — 172 `.py`, Apache-2.0, readable, no compiled twin |
 | **Tree B (orchestration)** | `neuronxcc/nki/_pre_prod_kernels/` — 103 `.py`, readable, "no warranty", imports tree C |
 | **Tree C (production)** | `neuronxcc/nki/_private_kernels/` — **34 `.so`, 0 `.py`**, compiled, source withheld |
-| **`.so` partition** | 19 top-level + 12 `topk/` + 3 `legacy/` = 34 (CONFIRMED) |
-| **Wheel parity** | cp310 = cp311 = cp312 = 34 `.so` each (CONFIRMED) |
+| **`.so` partition** | 19 top-level + 12 `topk/` + 3 `legacy/` = 34 |
+| **Wheel parity** | cp310 = cp311 = cp312 = 34 `.so` each |
 | **Registry** | `_INTERNAL_KERNEL_REGISTRY` — global inside `BirCodeGenLoop.cpython-310-…so`, **not** in any `nki/*.py` |
 | **Frontend selector** | `NKI_FRONTEND ∈ {beta2 (KLIR, default), beta3 (BIR)}` |
-| **Provenance** | D-O30; re-verified `fd -uu`, `rg -uu`, `strings`, `nm -D` |
+| **How it was read** | `fd -uu`, `rg -uu`, `strings`, `nm -D` over the extracted wheel |
 
 ---
 
@@ -54,15 +54,13 @@ _private_kernels/ (34 .so, source withheld) ── compiled PRODUCTION COMPUTE �
 
 ### What Lives Where, and Why
 
-The same kernel family appears in two or three trees with different roles. `moe_tkg`, for example, has a readable reference body under `nkilib/core/moe/moe_tkg/`, a readable orchestrator under `_pre_prod_kernels/mlp_tkg/`, and a compiled compute leaf in `_private_kernels/expert_mlps.cpython-310-…so`. The three are not redundant copies of identical bytes: `nkilib` is the documentation-canonical (often refactored) source, `_pre_prod` is the newer-API "klir_*"-flavored live glue, and `_private` is the HW-tuned compiled production leaf. (The cross-tree refactor splits were catalogued across Strand-O reports O08/O09/O24.)
+The same kernel family appears in two or three trees with different roles. `moe_tkg`, for example, has a readable reference body under `nkilib/core/moe/moe_tkg/`, a readable orchestrator under `_pre_prod_kernels/mlp_tkg/`, and a compiled compute leaf in `_private_kernels/expert_mlps.cpython-310-…so`. The three are not redundant copies of identical bytes: `nkilib` is the documentation-canonical (often refactored) source, `_pre_prod` is the newer-API "klir_*"-flavored live glue, and `_private` is the HW-tuned compiled production leaf.
 
 > **QUIRK —** the three `attention*` files mislead a naïve grep. `nkilib/.../attention.py` is reference math; `_pre_prod_kernels/attn_fwd.py` (91 KB) is a readable legacy CTE orchestrator; `_private_kernels/attention.cpython-310-…so` (4.9 MB) is the master compiled attention leaf hosting `attention_isa_kernel`, `attention_tkg_fwd_isa_kernel`, `backward_attention_isa_kernel`, and more. Only the `.so` is on the production path for the registered attention family. A reimplementer who reads only the readable twin reimplements the *reference*, not the *shipping* kernel.
 
 ### The `_pre_prod` Enum Fork
 
-The orchestration tree carries its own reduced copy of the shared enums. `_pre_prod_kernels/__init__.py` re-exports six enums from `_pre_prod_kernels.common_types`: `NormType`, `QKVOutputLayout`, `ActFnType`, `RouterActFnType`, `ExpertAffinityScaleMode`, `QuantizationType`. This `QuantizationType` is a **reduced fork** — `NONE / STATIC / ROW` only, with no MX members — distinct from the **six-member** `nkilib` enum (O24; the two `common_types` modules differ by md5). The full `nkilib/core/utils/common_types.py` (96 lines, md5 `0c2cff02…`) defines `NONE=0, STATIC=1, ROW=2, MX=3, STATIC_MX=4, ROW_MX=5` plus `QKVWeightLayout`; the truncated `_pre_prod_kernels`/`private_nkl` twin (44 lines, md5 `9721a6bb…`) stops at `ROW=2`. A reimplementer copying enum integer values across trees will silently mis-map MX quantization modes.
-
-> **CORRECTION —** an earlier revision of this paragraph called the `nkilib` enum "eight-member." It has **six** members (`NONE=0 … ROW_MX=5`), verified against `nkilib/core/utils/common_types.py:56-62`. Corrected in place.
+The orchestration tree carries its own reduced copy of the shared enums. `_pre_prod_kernels/__init__.py` re-exports six enums from `_pre_prod_kernels.common_types`: `NormType`, `QKVOutputLayout`, `ActFnType`, `RouterActFnType`, `ExpertAffinityScaleMode`, `QuantizationType`. This `QuantizationType` is a **reduced fork** — `NONE / STATIC / ROW` only, with no MX members — distinct from the **six-member** `nkilib` enum (the two `common_types` modules differ by md5). The full `nkilib/core/utils/common_types.py` (96 lines, md5 `0c2cff02…`) defines `NONE=0, STATIC=1, ROW=2, MX=3, STATIC_MX=4, ROW_MX=5` plus `QKVWeightLayout`; the truncated `_pre_prod_kernels`/`private_nkl` twin (44 lines, md5 `9721a6bb…`) stops at `ROW=2`. A reimplementer copying enum integer values across trees will silently mis-map MX quantization modes.
 
 > **NOTE —** "no warranty" is a literal banner string in the `_pre_prod` files, not editorial colour. It marks these as live-but-experimental glue: imported at runtime, but not the documented stable surface. Treat them as the *current* orchestration, subject to change between releases.
 
@@ -76,7 +74,9 @@ This is the inventory that matters most, because these are the bytes that run. E
 
 ### The 19 + 12 + 3 Partition
 
-> **CORRECTION (D-O30) —** the backing report's headline ("34 `.so`") is **correct in total** but its §2 prose under-specifies the partition. Direct enumeration (`fd -uu -t f` over `_private_kernels/`) gives exactly **34 files = 19 top-level + 12 in `topk/` + 3 in `legacy/`**, identical across cp310/cp311/cp312. The 34 also includes **two package `__init__.cpython-310-…so` stubs** (one in `topk/`, one in `legacy/`) that carry *no kernel* — they are Cython-compiled `__init__.py`. So the count of *kernel-bearing* modules is **32**, not 34. The "34" is the file count, not the kernel count; state which you mean.
+Direct enumeration over `_private_kernels/` gives exactly **34 files = 19 top-level + 12 in `topk/` + 3 in `legacy/`**, identical across cp310/cp311/cp312.
+
+> **GOTCHA — 34 is the file count, not the kernel count.** Two of the 34 are package `__init__.cpython-310-…so` stubs (one in `topk/`, one in `legacy/`) that carry no kernel at all — they are Cython-compiled `__init__.py`. The count of *kernel-bearing* modules is therefore **32**. Say which number you mean.
 
 ```text
 _private_kernels/                      19 top-level .so
@@ -139,22 +139,22 @@ The following are the mined top-level kernel symbols. This is a *roster*, not a 
 
 | Module (`.so`) | Size | Top-level kernel symbols (mined) | Readable twin? | Conf |
 |---|---|---|---|---|
-| `attention` | 4.9 MB | `attention_isa_kernel`, `attention_isa_kernel_context_parallel`, `attention_tkg_fwd_isa_kernel`, `attention_isa_kernel_cache`, `backward_attention_isa_kernel`, `fused_self_attn{,_fwd_cache_softmax,_bwd}`, **`mamba_prefix_scan_kernel`**, `get_global_ring_order`, `_sharded_nisa_attention_impl{,_context_parallel}` | nkilib + `_pre_prod` (partial) | CONFIRMED |
-| `attention_cte` | 3.2 MB | `llama3_nki_attention_block_cte_kernel` (+ nested rmsnorm/qkv/mm1/softmax/mm2/out_proj/store_and_exchange_v) | `_pre_prod/attn_fwd.py` (O13) | CONFIRMED |
-| `qkv` | 1.4 MB | `rmsnorm_qkv_isa_kernel`, `rmsnorm_qkv_isa_fused_add_kernel`, `qkv_projection_isa_kernel`, `_shard_nisa_qkv_impl` | nkilib `qkv/` (O17) | CONFIRMED |
-| `mlp` | 2.5 MB | `mlp_isa_kernel`, `mlp_fused_add_isa_kernel`, `quant_mlp_isa_kernel`, `fused_mlp_isa_kernel`, `shared_expert_isa_kernel`, `_shard_nisa_mlp_impl`; exports const `TKG_BS_SEQLEN_THRESHOLD` | nkilib `mlp/` (O18) | CONFIRMED |
-| `expert_mlps` | 1.0 MB | `expert_mlps_isa_inline_kernel`, `all_expert_mlps_isa_inline_kernel`, `expert_mlps_isa_kernel`, `all_expert_mlps_isa_kernel`, `_sharded_nisa_expert_mlp_impl` | nkilib `moe` (O07) | CONFIRMED |
-| `router_topk` | 2.8 MB | `router_topk_isa_kernel`, `router_topk_kernel_nki`, `compute_activation`, `_sharded_nisa_router_topk_impl` | nkilib `router_topk` (O10) | CONFIRMED |
-| `rmsnorm` | 411 KB | `rmsnorm_quant_isa_kernel`, `_shard_nisa_rmsnorm_quant_impl` | nkilib (O11) | CONFIRMED |
-| `RoPE` | 676 KB | `RoPE`, `RoPE_sbuf` | nkilib (O20) | CONFIRMED |
-| `cumsum` | 427 KB | `cumsum` | nkilib (O21) | CONFIRMED |
-| `transpose` | 2.2 MB | `transpose_to_last_dim{,_kernel}`, `tiled_dve_transpose_{10,210}`, `tiled_pf_transpose`, `_perform_pf_transpose` | nkilib utils (partial) | CONFIRMED |
-| `conv` | 6.0 MB | `conv2d`, `conv1d_depthwise_*`, `conv2d_depthwise_f01b_o01i_bf01`, `conv2d_pbp_*_experimental_1`, `conv2d_column_packing{,_io10,_1}` | **none** (nkilib has only exp conv1d ref) | CONFIRMED |
-| `_internal` | 474 KB | `resize_nearest_kernel`, `resize_nearest_fixed_dma_kernel` (registered, §registry) | **none** | CONFIRMED |
-| `collective_matmul` | 1.9 MB | `collective_matmul`, `run_matmul{,_sb_to_sb,_hbm_to_hbm}`, `launch_collective_permutes`, `generate_replica_groups` | **none** | CONFIRMED |
-| `fused_linear` | 1.2 MB | `fused_rms_norm_qkv`, `allocated_fused_rms_norm_qkv` | **none** | CONFIRMED |
-| `hw_ubench` | 407 KB | `packed_cayman_pe_tp_isa_kernel`, `row_tiled_matmul_isa_kernel`, `column_tiled_matmul_isa_kernel` | **none** | CONFIRMED |
-| `shard_common` | 220 KB | `get_seqlen_tile_size` | **none** (infra) | CONFIRMED |
+| `attention` | 4.9 MB | `attention_isa_kernel`, `attention_isa_kernel_context_parallel`, `attention_tkg_fwd_isa_kernel`, `attention_isa_kernel_cache`, `backward_attention_isa_kernel`, `fused_self_attn{,_fwd_cache_softmax,_bwd}`, **`mamba_prefix_scan_kernel`**, `get_global_ring_order`, `_sharded_nisa_attention_impl{,_context_parallel}` | nkilib + `_pre_prod` (partial) | CERTAIN |
+| `attention_cte` | 3.2 MB | `llama3_nki_attention_block_cte_kernel` (+ nested rmsnorm/qkv/mm1/softmax/mm2/out_proj/store_and_exchange_v) | `_pre_prod/attn_fwd.py` | CERTAIN |
+| `qkv` | 1.4 MB | `rmsnorm_qkv_isa_kernel`, `rmsnorm_qkv_isa_fused_add_kernel`, `qkv_projection_isa_kernel`, `_shard_nisa_qkv_impl` | nkilib `qkv/` | CERTAIN |
+| `mlp` | 2.5 MB | `mlp_isa_kernel`, `mlp_fused_add_isa_kernel`, `quant_mlp_isa_kernel`, `fused_mlp_isa_kernel`, `shared_expert_isa_kernel`, `_shard_nisa_mlp_impl`; exports const `TKG_BS_SEQLEN_THRESHOLD` | nkilib `mlp/` | CERTAIN |
+| `expert_mlps` | 1.0 MB | `expert_mlps_isa_inline_kernel`, `all_expert_mlps_isa_inline_kernel`, `expert_mlps_isa_kernel`, `all_expert_mlps_isa_kernel`, `_sharded_nisa_expert_mlp_impl` | nkilib `moe` | CERTAIN |
+| `router_topk` | 2.8 MB | `router_topk_isa_kernel`, `router_topk_kernel_nki`, `compute_activation`, `_sharded_nisa_router_topk_impl` | nkilib `router_topk` | CERTAIN |
+| `rmsnorm` | 411 KB | `rmsnorm_quant_isa_kernel`, `_shard_nisa_rmsnorm_quant_impl` | nkilib | CERTAIN |
+| `RoPE` | 676 KB | `RoPE`, `RoPE_sbuf` | nkilib | CERTAIN |
+| `cumsum` | 427 KB | `cumsum` | nkilib | CERTAIN |
+| `transpose` | 2.2 MB | `transpose_to_last_dim{,_kernel}`, `tiled_dve_transpose_{10,210}`, `tiled_pf_transpose`, `_perform_pf_transpose` | nkilib utils (partial) | CERTAIN |
+| `conv` | 6.0 MB | `conv2d`, `conv1d_depthwise_*`, `conv2d_depthwise_f01b_o01i_bf01`, `conv2d_pbp_*_experimental_1`, `conv2d_column_packing{,_io10,_1}` | **none** (nkilib has only exp conv1d ref) | CERTAIN |
+| `_internal` | 474 KB | `resize_nearest_kernel`, `resize_nearest_fixed_dma_kernel` (registered, §registry) | **none** | CERTAIN |
+| `collective_matmul` | 1.9 MB | `collective_matmul`, `run_matmul{,_sb_to_sb,_hbm_to_hbm}`, `launch_collective_permutes`, `generate_replica_groups` | **none** | CERTAIN |
+| `fused_linear` | 1.2 MB | `fused_rms_norm_qkv`, `allocated_fused_rms_norm_qkv` | **none** | CERTAIN |
+| `hw_ubench` | 407 KB | `packed_cayman_pe_tp_isa_kernel`, `row_tiled_matmul_isa_kernel`, `column_tiled_matmul_isa_kernel` | **none** | CERTAIN |
+| `shard_common` | 220 KB | `get_seqlen_tile_size` | **none** (infra) | CERTAIN |
 
 > **GOTCHA —** `hw_ubench.so` is *not* a model kernel. Its symbols (`packed_cayman_pe_tp_isa_kernel`, the row/column-tiled matmul probes) are HW microbenchmarks that exercise the PE-array tensor-processing path. "Cayman" is a uarch/HW codename, not a layer name. A reimplementer who treats these as production compute will reimplement a benchmark harness.
 
@@ -227,13 +227,15 @@ _pre_prod_kernels/ (103 .py)
 
 ### Purpose
 
-The import-edge path (tree B → tree C) is the explicit one. There is a second, implicit path that a reimplementer will miss: when the Penguin middle-end lowers a *registered* op macro, `BirCodeGenLoop` resolves the kernel from a compiled-only registry and traces the `.so` directly, without any `_pre_prod` orchestrator in the loop. This is the mechanism behind O01's "NxD uses the compiled `_private_kernels.blockwise_mm`, not the readable `moe_cte`" — now generalized to the whole registered family set.
+The import-edge path (tree B → tree C) is the explicit one. There is a second, implicit path that a reimplementer will miss: when the Penguin middle-end lowers a *registered* op macro, `BirCodeGenLoop` resolves the kernel from a compiled-only registry and traces the `.so` directly, without any `_pre_prod` orchestrator in the loop. This is the mechanism by which NxD ends up running the compiled `_private_kernels.blockwise_mm` rather than the readable `moe_cte`, and it generalizes to the whole registered family set.
 
-> **CORRECTION (D-O30) —** the registry is **not** a Python literal anywhere in `neuronxcc/nki/*.py`. `rg -uu '_INTERNAL_KERNEL_REGISTRY'` over the entire `nki/` tree returns **zero** hits. It is a module-level global compiled into `neuronxcc/starfish/penguin/targets/codegen/BirCodeGenLoop.cpython-310-…so`. Any tip to "grep the nki tree" yields nothing; the registry must be mined from the binary. The full registry mechanism is the subject of [the internal kernel registry page](internal-kernel-registry.md) (6.6.2); this page grounds only its *inventory* half — which compiled leaves it points at.
+> **GOTCHA — the registry is not a Python literal; grepping the `nki/` tree finds nothing.** `_INTERNAL_KERNEL_REGISTRY` appears **zero** times across `neuronxcc/nki/*.py`. It is a module-level global compiled into `neuronxcc/starfish/penguin/targets/codegen/BirCodeGenLoop.cpython-310-…so` and must be mined from that binary.
+
+The full registry mechanism is the subject of [the internal kernel registry page](internal-kernel-registry.md) (6.6.2); this page grounds only its *inventory* half — which compiled leaves it points at.
 
 ### Verbatim Registry Symbols
 
-Mined from `BirCodeGenLoop.cpython-310-…so_strings.json` (all CONFIRMED):
+Mined from `BirCodeGenLoop.cpython-310-…so_strings.json`:
 
 ```text
 _INTERNAL_KERNEL_REGISTRY            ── the global dict
@@ -279,7 +281,7 @@ This is why the compiled `_private_kernels` `.so` is the production path for the
 
 ### The Second, Smaller Registry
 
-`_private_kernels/topk/topk_method_mapping.so` is a *kernel-local* dispatch registry — docstring "Mapping of topk method name to implementation for autodispatching topk kernel" (CONFIRMED in strings). It keys `NAIVE_SCANNING / CASCADED / ROTATIONAL` → `naive_scanning_topk / cascaded_2_stage_topk / rotational_topk`, picked by K-size / cost. It is parallel in spirit to the macro registry but local to the top-k family.
+`_private_kernels/topk/topk_method_mapping.so` is a *kernel-local* dispatch registry — docstring "Mapping of topk method name to implementation for autodispatching topk kernel". It keys `NAIVE_SCANNING / CASCADED / ROTATIONAL` → `naive_scanning_topk / cascaded_2_stage_topk / rotational_topk`, picked by K-size / cost. It is parallel in spirit to the macro registry but local to the top-k family.
 
 ---
 
@@ -299,7 +301,7 @@ These leaves are full compiled implementations with **no readable twin in `nkili
 | Compiled-only leaf | What it is | Readable twin |
 |---|---|---|
 | `mamba_prefix_scan_kernel` (in `attention.so`) | SSM / Mamba selective-scan support | **none** — no readable Mamba kernel anywhere |
-| `prefix_caching_attention.so` (ISA leaf) | vLLM-style prefix-cache flash-attention compute (`attention_prefix_caching_fwd_kernel`, `prefix_caching_attention_fwd_isa_kernel`) | **partial** (see CORRECTION below) |
+| `prefix_caching_attention.so` (ISA leaf) | vLLM-style prefix-cache flash-attention compute (`attention_prefix_caching_fwd_kernel`, `prefix_caching_attention_fwd_isa_kernel`) | **partial** (see note below) |
 | `collective_matmul.so` | in-kernel TP collective GEMM (all-gather/permute fused into the matmul) | **none** |
 | `fused_linear.so` | fused RMSNorm(hidden) @ wQKV ("Allocated kernel: RMSNorm @ wQKV") | **none** |
 | `hw_ubench.so` | PE-array TP microbenchmarks ("Cayman" probes) | **none** |
@@ -307,9 +309,9 @@ These leaves are full compiled implementations with **no readable twin in `nkili
 | `shard_common.so` | `get_seqlen_tile_size` sharding infra | **none** |
 | `topk_method_mapping.so` | top-k auto-dispatch registry | **none** |
 
-> **CORRECTION (this page, vs D-O30 §4) —** the report tags `prefix_caching_attention` as a *total* unique-to-private gap. That over-states it. `_pre_prod_kernels/attn_fwd.py` contains a **readable prefix-caching attention path**: an `is_prefix_caching` flag threads through the entire CTE attention body (lines 155–1844, e.g. `is_prefix_caching = k_prior is not None`, branching the K/V load and softmax tiling). So the *concept and the CTE-side implementation are readable*. What is compiled-only is the **dedicated `prefix_caching_attention.so` ISA leaf** with its own `attention_prefix_caching_fwd_isa_kernel` / `_sharded_nisa_prefix_caching_attention_impl` symbols — a separate, HW-tuned kernel from the readable `attn_fwd.py` path. The gap is the ISA leaf, not the whole family.
+> **NOTE — prefix caching is only *partly* compiled-only.** `_pre_prod_kernels/attn_fwd.py` carries a readable prefix-caching path: an `is_prefix_caching` flag threads through the whole CTE attention body (lines 155–1844, e.g. `is_prefix_caching = k_prior is not None`, branching the K/V load and the softmax tiling). So the concept and the CTE-side implementation are readable. What is compiled-only is the **dedicated `prefix_caching_attention.so` ISA leaf** with its own `attention_prefix_caching_fwd_isa_kernel` / `_sharded_nisa_prefix_caching_attention_impl` symbols — a separate, HW-tuned kernel from the `attn_fwd.py` path. The gap is that ISA leaf, not the family.
 
-> **GOTCHA —** the `mamba_prefix_scan_kernel` lives *inside* `attention.so` (entry strings `mamba_prefix_scan_kernel`, `mamba_prefix_scan_kernel_scan_op` confirmed via `strings`), not in its own module. A reimplementer enumerating modules by filename will miss the only SSM/Mamba support in the wheel — it is a symbol, not a file.
+> **GOTCHA —** the `mamba_prefix_scan_kernel` lives *inside* `attention.so` (entry strings `mamba_prefix_scan_kernel`, `mamba_prefix_scan_kernel_scan_op`), not in its own module. A reimplementer enumerating modules by filename will miss the only SSM/Mamba support in the wheel — it is a symbol, not a file.
 
 The full recoverability gaps ledger for the compiler lives in [the Confidence Ledger appendix](../appendix/confidence-ledger.md) (Part 14). The `conv2d_*` layout-tag taxonomy (`f01b`/`o01i`/`fb01`/`pbp`/`column_packing`) and the Cayman PE-TP ubench semantics are `.so`-internal and flagged there for a future conv/ubench deep dive; the production conv leaves are catalogued in 6.8.x.
 
@@ -319,11 +321,11 @@ The full recoverability gaps ledger for the compiler lives in [the Confidence Le
 
 ```text
 RUNS IN PRODUCTION (compiled .so):
-  MoE decode    → expert_mlps.so + router_topk.so   (imported by moe_token_gen.py; O07)
-  MoE prefill   → blockwise_mm   (registered; O01 — NxD uses compiled, not readable moe_cte)
-  Attention     → attention.so / attention_cte.so / prefix_caching_attention.so (O14)
+  MoE decode    → expert_mlps.so + router_topk.so   (imported by moe_token_gen.py)
+  MoE prefill   → blockwise_mm   (registered; NxD uses compiled, not readable moe_cte)
+  Attention     → attention.so / attention_cte.so / prefix_caching_attention.so
   QKV/MLP/Norm  → qkv.so / mlp.so / rmsnorm.so       (registered or .so-imported)
-  RoPE/cumsum   → RoPE.so / cumsum.so                (O20/O21)
+  RoPE/cumsum   → RoPE.so / cumsum.so
   conv/resize   → conv.so / _internal.so             (registered → traced by BirCodeGenLoop)
 
 REFERENCE / READABLE (nkilib .py): same MATH, documentation-grade, NOT the running bytes

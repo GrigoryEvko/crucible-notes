@@ -20,9 +20,9 @@ which run vector math on the NX core's IVP datapath.
 
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
-**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve re-derived this
-session from `libnrtucode_internal.so` and disassembled with the native `ncore2gp`
-`xtensa-elf-objdump`. The findings below were all reproduced against the binary in-task.
+**OBSERVED/INFERRED/CARRIED**. The page default is `[HIGH/OBSERVED]`; claims that depart
+from it carry an explicit tag. Every device fact is byte-pinned to a carve from
+`libnrtucode_internal.so`, disassembled with the native `ncore2gp` `xtensa-elf-objdump`.
 
 > **NOTE — provenance.** Every fact derives **solely** from static analysis of the shipped
 > binaries with stock binutils (`nm`/`objdump`/`readelf`/`ar`/`objcopy`/`dd`/`xxd`/
@@ -49,7 +49,6 @@ ELF64 x86-64 DYN, **not stripped**. The first `R` `LOAD` segment is **identity-m
 (`readelf -lW`: `LOAD off 0x000000 vaddr 0x0 filesz 0x9af194`), so every `<NAME>.data`
 `.rodata` VA is **simultaneously the file offset** of its blob — the carve rule is a plain
 `dd`. All 14 DVE blob VAs (`0x6f600`..`0x3050a0`) fall inside this `R` `LOAD`.
-`[HIGH/OBSERVED — `readelf -lW` confirmed identity map; LOAD R filesz `0x9af194`]`
 
 **The getters.** Each image is exposed by a 4-instruction `(ptr, size)` accessor stub in
 `.text`:
@@ -79,29 +78,28 @@ cursors**:
 | PROF | CAM | `0x304ca0` | `0x00400` | REAL (HW-decode CAM) |
 | PROF | TABLE | `0x3050a0` | `0x02000` | REAL (profile table) |
 
-`[HIGH/OBSERVED — all 14 `nm`-resolved; VAs/sizes re-read this pass; the getter-body
-`movq` sizes agree 14/14]`
+`[HIGH/OBSERVED — all 14 `nm`-resolved; the getter-body `movq` sizes agree 14/14]`
 
 > **NOTE — the 6 SRAM/EXTRAM getters are boundary cursors, not images.** All six return
 > `(ptr, 0)`: their `movq` is `$0x0`, and their `.data` symbol **aliases the start of the
 > next engine's IRAM blob** (the contiguous-layout cursor — `nm` resolves the PERF cursor
 > `0x881e0`, DEBUG `0x192080`, TEST `0x1048e0` onto the CAYMAN **NX_PE** IRAM symbol).
 > **DVE runs entirely out of IRAM (code) + DRAM (data); SRAM/EXTRAM are unused on CAYMAN.**
-> A reimplementer must not carve at these cursors — they belong to PE. `[HIGH/OBSERVED]`
+> A reimplementer must not carve at these cursors — they belong to PE.
 
 > **GOTCHA — CAYMAN has no RELEASE flavor; the release axis is DEBUG-vs-PERF.** Unlike the
 > SUNDA generation (which ships a `*_RELEASE_*` DVE variant), CAYMAN's three DVE flavors
 > are **DEBUG / PERF / TEST**. **PERF is the production/release flavor** (the default when
 > no `NEURON_UCODE_FLAVOR` override is set). Throughout this page "DEBUG-vs-RELEASE" means
-> **DEBUG-vs-PERF**. `[HIGH/OBSERVED — the getter set has no `RELEASE` member; PERF-as-default
-> CARRIED from the image catalog]`
+> **DEBUG-vs-PERF**. `[HIGH/OBSERVED — the getter set has no `RELEASE` member;
+> PERF-as-default CARRIED from the image catalog]`
 
 ---
 
 ## 2. Carve + 3-source byte-identity reconciliation
 
 Carving the 8 real blobs with the identity-map rule (`dd if=$SO bs=1 skip=<VA> count=<SIZE>`)
-reproduces these shas this session — **8/8 exact**:
+reproduces these shas — **8/8 exact**:
 
 | IMAGE | file off | size | sha256 (first 16) |
 |---|---:|---:|---|
@@ -113,8 +111,6 @@ reproduces these shas this session — **8/8 exact**:
 | `DVE_TEST_DRAM` | `0x101620` | `0x032c0` | `5efcb3eb31907683` |
 | `DVE_PROF_CAM` | `0x304ca0` | `0x00400` | `8fd7e422bd07881a` |
 | `DVE_PROF_TABLE` | `0x3050a0` | `0x02000` | `ce761f81d075658e` |
-
-`[HIGH/OBSERVED — all 8 shas re-computed this pass from the carve]`
 
 **3-source reconciliation.** The shipped static archive
 `…/custom_op/c10/lib/libnrtucode.a` carries exactly **14 `CAYMAN_NX_DVE` members** (12
@@ -135,9 +131,8 @@ binary --only-section=.rodata <member.o>` followed by `sha256sum` matches the ca
 | `hwdecode_CAYMAN_NX_DVE_PROF_CAM_contents.c.o` | PROF_CAM | `8fd7e422…` ✓ |
 | `hwdecode_CAYMAN_NX_DVE_PROF_TABLE_contents.c.o` | PROF_TABLE | `ce761f81…` ✓ |
 
-The blob and its accessor are two views of the same compiled object. `[HIGH/OBSERVED — `ar
-t`/`ar x` + `objcopy --only-section=.rodata` + `sha256`, 8/8 this pass; `ar t` shows clean
-unmangled member names]`
+The blob and its accessor are two views of the same compiled object.
+`[HIGH/OBSERVED — `ar x` + `objcopy --only-section=.rodata` + `sha256`, 8/8]`
 
 > **NOTE — none of the 8 carves is an ELF.** Head bytes are `06 76 …` (IRAM), `34 cb 99
 > 60 …` (DRAM), `01 00 …` (PROF_CAM), `01 02 …` (PROF_TABLE) — never `\x7fELF`. These are
@@ -146,7 +141,7 @@ unmangled member names]`
 > [extisa inventory](extisa-inventory.md), which *are* EM_XTENSA ELFs.) For DVE, the
 > "ELF confirmation" is the **flat-image geometry** confirmation: reset vector at byte 0,
 > DRAM tables at `0x814`/`0xabc`, and the `ncore2gp` disassembler decoding the IRAM to
-> real windowed-ABI + FLIX-VLIW code. `[HIGH/OBSERVED — head-byte check on all 8]`
+> real windowed-ABI + FLIX-VLIW code.
 
 ---
 
@@ -173,8 +168,7 @@ Decoded boot path (DVE DEBUG IRAM, `ncore2gp` objdump):
 This `j 0x1dc` (`06 76 00 00`) is **byte-identical to the SEQ engine reset vector and to
 ACT / PE / POOL / SP** — all five engines' first 12 bytes are `0676 0000 0000 8677 0000
 0000`. The boot bodies *past* byte 6 are engine-specific (different literal pools /
-`enter_run` targets). `[HIGH/OBSERVED — reset vector read on all 3 DVE variants + verified
-identical across all 5 engines]`
+`enter_run` targets).
 
 > **NOTE — the same flat binary loads on any engine slot; `engine_idx` is computed at
 > boot.** The DRAM carries the format string
@@ -185,12 +179,11 @@ identical across all 5 engines]`
 > path. `[string HIGH/OBSERVED; runtime compute INFERRED-HIGH]`
 
 **Disassembly proof.** `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0` decodes
-the DEBUG IRAM to **44,989 lines, exit 0, empty stderr** — real Q7/NX windowed-ABI
+the DEBUG IRAM to **44,989 lines** — real Q7/NX windowed-ABI
 (`entry a1,N` ×615, `retw` ×829) plus dense Cadence Vision IVP TIE vector ops. The DVE NX
 core carries a **full vector compute datapath** — the data/vector math runs on it. Distinct
 IVP mnemonics per IRAM: **PERF 317 / TEST 319** (cleaner schedules); DEBUG's linear sweep
 recovers fewer (167 distinct) because the FLIX/literal-pool desync loses more bundle sync.
-`[HIGH/OBSERVED — disasm exit-0; entry/retw + IVP counts re-derived this pass]`
 
 > **NOTE — the IVP vocabulary names the exact data/vector datapath primitives.** A scan of
 > the PERF/TEST IRAM confirms the op families a reimplementer needs: **uint→float casts**
@@ -199,16 +192,15 @@ recovers fewer (167 distinct) because the FLIX/literal-pool desync loses more bu
 > `…ole…` — the predicate writers behind the predicated ops), **select / dual-select**
 > (`ivp_seln_2x32t`, `ivp_dselnx16t`, `ivp_sel2nx8t` — the masked input-vs-other lane
 > select), plus abs/add/avg integer-vector ops across `nx16`/`2nx8`/`n_2x32` width classes.
-> The compare→select pair is exactly the predicated-op datapath. `[HIGH/OBSERVED — the IVP
-> *vocabulary* in the PERF/TEST histogram; per-op operand binding is per the committed
-> kernel pages]`
+> The compare→select pair is exactly the predicated-op datapath. `[vocabulary
+> HIGH/OBSERVED; per-op operand binding CARRIED from the committed kernel pages]`
 
 ---
 
 ## 4. The DVE dispatch loop
 
 DVE uses the SEQ dispatch model: per-fetch opcode-byte normalization (`opcode − 0x41`) into
-a **direct-indexed DRAM jump table** at `0x80814`. Decoded instruction-exact this pass at
+a **direct-indexed DRAM jump table** at `0x80814`. Decoded instruction-exact at
 **two parallel sites** — one per NX mode:
 
 ```c
@@ -235,8 +227,7 @@ Byte-exact at **SITE A** (HW-Decode, `0x2f5a`): `const16 a10,8 ; const16 a10,0xd
 0x18010` (log) ; `l32i.n a2,[a1+8]` ; `addi a2,a2,-65` ; `movi a3,169` ; `bgeu a3,a2,0x2f71`
 ; `j 0x3207` (default) ; `const16 a3,8 ; const16 a3,0x814` ; `addx4 a2,a2,a3` ; `l32i.n
 a2,[a2]` ; `jx a2`. **SITE B** (Sunda, `0x3739`) is identical except `const16 a3,0xabc`
-(the **second** table) and `j 0x39e6` (the Sunda default arm). `[HIGH/OBSERVED — both sites
-disassembled instruction-exact]`
+(the **second** table) and `j 0x39e6` (the Sunda default arm).
 
 The decisive distinctions from the SEQ/ACT baseline:
 
@@ -249,25 +240,21 @@ The decisive distinctions from the SEQ/ACT baseline:
 | lookup | direct-indexed `jx` (O(1)) | direct-indexed `jx` |
 | miss policy | `ErrorHandler : Bad Opcode` | `ErrorHandler : Bad Opcode` |
 
-`[HIGH/OBSERVED]`
-
 > **QUIRK — DVE's opcode space is 170 (`movi a3,169`), not the SEQ/ACT 178.** A grep of the
 > DEBUG IRAM finds **zero** `movi a3,177` and **two** `movi a3,169` (the two dispatch
 > sites). DVE's valid opcode range is therefore `0x41..0xea` (170 indices), distinct from
 > the 178-entry SEQ/ACT table. A reimplementer's dispatch bound check must use **169**.
-> `[HIGH/OBSERVED — grep-verified: 0× `movi a3,177`, 2× `movi a3,169`]`
 
 > **NOTE — the dual-mode dispatch is a generic SEQ feature, not DVE-specific.** The DRAM
 > names both modes — `S: NX in HW Decode mode` and `S: NX in Sunda mode: HW decode
 > disabled` — and both modes ship in **all five** engines. DVE carries two parallel
 > 170-entry tables (`0x80814` for HW-Decode, `0x80abc` for Sunda) so the per-opcode
-> trampoline differs by mode. `[HIGH/OBSERVED]`
+> trampoline differs by mode.
 
 **Error / fault path (same as SEQ, all variants).** The DRAM carries the ErrorHandler
 arms `S: ErrorHandler : Bad Opcode(0x%x)`, `… Illegal Instruction(0x%x)`, `… FP
 Error(%d)`, `… Int Div Zero Error`, plus `S: Assertion failure! %s(%s:%u)`. The assertion
 source paths name the engine tree: `…/cayman/seq/src/handlers/exception_handler.hpp`.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -283,7 +270,7 @@ DEBUG DRAM (0x6d60):
   0xd64..        'S:' log/format-string pool  (from ~0xde0) + assertion source-paths
 ```
 
-Both tables decoded this pass (170 LE words each):
+Both tables decoded (170 LE words each):
 
 | table | base | default arm | real entries | default entries |
 |---|---|---|---:|---:|
@@ -292,15 +279,14 @@ Both tables decoded this pass (170 LE words each):
 
 The two tables are **parallel**: each populated opcode's table1 / table2 trampolines are
 offset by a constant **`+0x7df`** (opcode `'A'`/idx 0 → `0x31e6` in table1, `0x39c5` in
-table2; `0x39c5 − 0x31e6 = 0x7df`). `[HIGH/OBSERVED — both tables read + the +0x7df constant
-re-derived this pass]`
+table2; `0x39c5 − 0x31e6 = 0x7df`).
 
 > **NOTE — DVE carries NO resident LUT/coefficient table in the firmware image.** Unlike
 > ACT (which ships an activation/coefficient LUT), DVE's DRAM holds only the header, the
 > two dispatch tables, and the string pool. The data DVE consumes — batch-norm params
 > (γ/β/running stats), match keys, indices — is **loaded at runtime** by the
 > `BatchNormalizeParamLoad` / `MatchValueLoad` / `DveReadIndices` opcodes (host/DMA-supplied),
-> not baked into DRAM. `[HIGH geometry / INFERRED-HIGH the "no resident LUT" reading from
+> not baked into DRAM. `[HIGH geometry; the "no resident LUT" reading INFERRED-HIGH from
 > the handler set + the DRAM-content scan]`
 
 > **GOTCHA — the tiny PERF DRAM overlaps its table tail with the string pool.** PERF DRAM
@@ -319,11 +305,11 @@ re-derived this pass]`
 single-token `S: <OpName>` handler-entry log from each engine's DEBUG DRAM (regex `^S:
 [A-Za-z][\w/-]*$`), then set-diff against ACT / PE / POOL / SP. Per-engine distinct
 handler-name counts: **DVE 53 \| POOL 41 \| ACT 26 \| PE 24 \| SP 18** — **DVE carries the
-largest set**. `[HIGH/OBSERVED — 53 re-counted this pass]`
+largest set**.
 
 Each DVE-specific handler was verified to be a **real** handler: its `S:` string DRAM
 offset is loaded by a `const16 a10,<off>` in the IRAM and a real `entry`-prologue handler
-logs it. Spot-checked instruction-exact this pass:
+logs it. Spot-checked instruction-exact:
 
 ```asm
 ; DveReadAccumulator handler @ IRAM 0xcb28 ; logs S: at DRAM 0x828c0 (file 0x28c0)
@@ -335,7 +321,7 @@ cb37:  call8   0x18010            ; the log helper
 
 Other verified `const16 ↔ DRAM-offset` xrefs: `BatchNormalize` `const16 a10,0x2261`
 @`0xb4fc`; `Dropout` `0x1ee7` @`0x96c5`; `Stream-Transpose` `0x1ed2` @`0x95f5`; the
-per-fetch `S: Dispatch opcode` `0xde0` @`0x2f5d`. `[HIGH/OBSERVED]`
+per-fetch `S: Dispatch opcode` `0xde0` @`0x2f5d`.
 
 ### 6a. Shared SEQ control/move core (identical across all 5 engines, 18 handlers)
 
@@ -346,7 +332,7 @@ STRONG_ORDER  TensorLoad  TensorStore  WRITE
 ```
 
 This is the SEQ control/move/notify family — byte-for-handler-name identical in
-ACT/PE/POOL/SP/DVE. `[HIGH/OBSERVED]`
+ACT/PE/POOL/SP/DVE.
 
 ### 6b. Shared basic-compute core (DVE shares with POOL)
 
@@ -354,7 +340,7 @@ ACT/PE/POOL/SP/DVE. `[HIGH/OBSERVED]`
 EngineNop   MEMSET/RNG   Pool   Tensor-Reduce   Tensor-Scalar   Tensor-Scalar-PTR   Tensor-Tensor
 ```
 
-DVE includes the basic tensor-compute primitives POOL also has. `[HIGH/OBSERVED]`
+DVE includes the basic tensor-compute primitives POOL also has.
 
 ### 6c. The 28 DVE-only handlers (in DVE, absent from ACT/PE/POOL/SP)
 
@@ -367,16 +353,14 @@ DVE includes the basic tensor-compute primitives POOL also has. `[HIGH/OBSERVED]
 | **Scan/transpose/shuffle (4)** | `TensorTensorScan`, `Tensor-Cumulative/Copy/Cast/Stream-Shuffle`, `Stream-Transpose`, `Scalar-Tensor-Tensor` | tensor-tensor prefix scan / fused cumulative-copy-cast-shuffle / streaming transpose / scalar-tensor-tensor fused | [tensorcumulative](../firmware/kernels/tensorcumulative.md), [stream-transpose](../firmware/kernels/stream-transpose.md) |
 | **Cached / immediate tensor-scalar (6)** | `TensorScalarCacheCumulative`, `TensorScalarCacheReduce`, `TensorScalarImmLdArith`, `TensorScalarImmLdBitvec`, `TensorScalarPtrMultiArith`, `TensorScalarPtrMultiBitvec` | cached cumulative/reduce + immediate-load and pointer-multi arith/bitvec variants | [ts-cache-cumulative](../firmware/kernels/ts-cache-cumulative.md) |
 
-`[HIGH/OBSERVED — all 28 present in the DEBUG `S:` roster; absent from the other four DEBUG
-DRAMs]`
+`[HIGH/OBSERVED — all 28 in the DVE DEBUG `S:` roster, absent from the other four]`
 
 > **NOTE — `MatchReplace` (DVE self-name) vs `MatchReplace8` (opcode `0x6f`).** The DVE
 > `S:` roster self-names the masked match-and-replace handler **`MatchReplace`**; the
 > committed [search-cluster](../firmware/kernels/search-cluster.md) page (which decodes the
 > opcode-layer struct) calls the `0x6f` op **`MatchReplace8`**. They are the same op — the
 > `R:` runtime log `R: program_window: num=%d, mask=0x%llx, match=0x%llx, replace=0x%llx`
-> is emitted by this handler, confirming the masked match→replace semantics. `[HIGH/OBSERVED
-> — both strings read this pass]`
+> is emitted by this handler, confirming the masked match→replace semantics.
 
 > **NOTE — `Max8` (`0x6c`) has no `S:` self-name in the DVE roster.** The
 > [search-cluster](../firmware/kernels/search-cluster.md) page documents a four-op cluster
@@ -415,8 +399,7 @@ characterization INFERRED-HIGH from the set]`
 ## 7. PROF CAM / TABLE — generic, shared across all four NX engines
 
 DVE ships two HW-decode profiling tables; both are **byte-identical across ACT / DVE / PE /
-POOL** (re-verified 4/4 this pass), so they are a **generic shipped resource**, not a
-per-engine opcode list.
+POOL** (4/4), so they are a **generic shipped resource**, not a per-engine opcode list.
 
 **PROF_CAM** (`0x400` = 1 KiB, sha `8fd7e422…`) — the HW-decode profiling CAM:
 16-byte fixed-stride records, 64 slots, **47 populated** (`enable == 1`). Record =
@@ -430,15 +413,14 @@ struct prof_cam_record {           /* 16 bytes */
 };
 ```
 
-First records (re-read this pass): `0x01 0x06 0x02 0x07 0x03 0xa1 0xa4 0xa7 …`, all
-`mask=0xff enable=1`. `[HIGH/OBSERVED — 47 populated re-counted; record layout decoded]`
+First records: `0x01 0x06 0x02 0x07 0x03 0xa1 0xa4 0xa7 …`, all `mask=0xff enable=1`.
 
 **PROF_TABLE** (`0x2000` = 8 KiB, sha `ce761f81…`) — the profile counter/event descriptor
 table: header word **`0x00000201`** (`01 02 00 00`), then **`0x26000010`**, then a small
 ASCII descriptor blob and zeros. Of the 8 KiB only **329 bytes are non-zero**, all within
 the first ~5.9 KiB; the rest is preallocated zero padding the HW-decode profiler fills at
 run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
-`[HIGH provenance + header words + nonzero extent re-read this pass / MED schema]`
+`[HIGH provenance + header words + nonzero extent / MED schema]`
 
 > **CORRECTION — the 47-record CAM is the GENERIC NX CAM, not a DVE (or ACT) opcode list.**
 > Because DVE/ACT/PE/POOL ship the *same* `PROF_CAM` byte-for-byte (`8fd7e422…`), the 47
@@ -457,7 +439,7 @@ run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
 | **PERF** | `0x15c20` | `0x2fc0` | **0** | 16 | 317 |
 | **TEST** | `0x15840` | `0x32c0` | **0** | 61 | 319 |
 
-`[HIGH/OBSERVED — sizes from the getters; string counts + IVP-distinct re-derived this pass]`
+`[HIGH/OBSERVED — sizes from the getter immediates]`
 
 - **DEBUG** is the largest and the **only** build carrying the 182 `S:` runtime log strings
   (vs ACT's 150 — DVE's richer handler set yields more logs). It is the RE substrate:
@@ -468,7 +450,7 @@ run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
   `…/src/decode/{alu_op,move,branch}.cpp`, `…/handlers/signal_handler.cpp`) plus the
   `ok_to_evict` out-of-bounds WARNING and `Assertion failure!`. IRAM shrinks too; the log
   call-sites are gone; IVP-distinct rises to 317 (PERF schedules/inlines more vector
-  compute). `[HIGH/OBSERVED — all 16 PERF strings enumerated this pass]`
+  compute).
 - **TEST** sits between: 0 `S:` logs but 61 strings — keeps function-name / file symbols
   for assert context (a symbol/assert build).
 
@@ -476,7 +458,6 @@ run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
 > mechanism is **invariant** across all three: same reset vector (`06 76 00 00`), same DRAM
 > table at `0x814` (+ second at `0xabc`), same 170-bound, same ErrorHandler arms, same
 > `cayman/seq/` codebase. The variant axis changes *what is logged*, not *what is dispatched*.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -490,7 +471,7 @@ run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
 | POOL | `9049bf8c` | `0x17280` | `8fd7e422` | `ce761f81` |
 | SP | `5a6f6eaa` | `0x182c0` | — | — |
 
-`[HIGH/OBSERVED — PERF_IRAM shas/sizes + PROF 4/4 identity re-verified this pass]`
+`[HIGH/OBSERVED — PERF_IRAM shas/sizes + the PROF 4/4 identity]`
 
 - **Code/data (IRAM/DRAM): DVE shares NO bytes with ACT/POOL/PE/SP.** Each engine's
   `PERF_IRAM` has a distinct sha (and a distinct size). Each engine is a
@@ -501,8 +482,6 @@ run time. **Also byte-identical 4/4.** Exact counter/event schema not decoded.
   tables.
 - **Reset vector**: byte-identical (`06 76 00 00` / `86 77 00 00`) across all 5 engines; the
   boot bodies past byte 6 are engine-specific.
-
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -527,8 +506,6 @@ different handler subset" hypothesis is **CONFIRMED** for DVE:
 | distinct handlers | **53** (28 DVE-only) | POOL 41 | 26 (7 ACT-only) |
 | compute subset | batch-norm / predicated / match-find-select / scan / transpose / dropout / `Dve*` | pool / reduce / gather / … | Activate / Quantize / TableLoad / ReadAccum / Cast |
 
-`[HIGH/OBSERVED]`
-
 > **NOTE — what DVE is NOT.** DVE is **not** a POOL `kernel_info_table` Q7-EXTISA engine
 > (the Q7 POOL EXTISA ELF is a different, separate compute back-end — see
 > [extisa inventory](extisa-inventory.md)), and it is **not** a standalone vector core.
@@ -536,9 +513,8 @@ different handler subset" hypothesis is **CONFIRMED** for DVE:
 > `S:` instruction stream and routes to the data/vector handlers, which run vector math
 > (317 IVP ops in PERF) on the single NX core's datapath. The hardware map: `TPB_0_DVE` at
 > SoC base `0x2802B00000` (`0x500000` span), a **single Xtensa-NX core** (no Q7 sub-array —
-> only POOL has the 8-core Q7 array), `engine_idx = 3`. `[HIGH — `j 0x1dc`/dispatch/handler
-> facts OBSERVED this pass; the hardware base/span CARRIED from the corpus address survey +
-> the CSR enum]`
+> only POOL has the 8-core Q7 array), `engine_idx = 3`. `[dispatch/handler HIGH/OBSERVED;
+> the hardware base/span CARRIED from the corpus address survey + the CSR enum]`
 
 > **NOTE — forward to MAVERICK.** On MAVERICK (NC-v5) the **ACT engine is folded into DVE**
 > (header-OBSERVED: DVE absorbs ACT's activation handlers). The CAYMAN DVE roster here is
@@ -550,7 +526,7 @@ different handler subset" hypothesis is **CONFIRMED** for DVE:
 
 ## 11. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm or byte read this pass):
+**HIGH / OBSERVED** (direct disasm or byte read):
 
 - 14 `CAYMAN_NX_DVE` getters (`nm` + getter-body `movq` sizes 14/14 exact); 8 real + 6
   zero-size boundary cursors (all six `movq $0x0`; cursors alias the next-engine PE IRAM).
@@ -572,7 +548,7 @@ different handler subset" hypothesis is **CONFIRMED** for DVE:
 - PERF_IRAM distinct per engine (5 distinct shas/sizes); DVE shares no IRAM/DRAM bytes.
 - DEBUG/PERF/TEST size + string-count diff; `ncore2gp` objdump decodes all 3 IRAM to real
   windowed-ABI + FLIX-VLIW (615 `entry` / 829 `retw` in DEBUG; 317/319 IVP ops PERF/TEST);
-  exit 0, empty stderr; IVP families uint→float / ordered-compare / select all present.
+  IVP families uint→float / ordered-compare / select all present.
 - Engine-identity string `engine_base_addr…→engine_idx` present.
 
 **MED / INFERRED:**
@@ -583,7 +559,7 @@ different handler subset" hypothesis is **CONFIRMED** for DVE:
 - DVE functional characterization ("data-dependent / statistical vector ops"):
   INFERRED-HIGH from the handler set; the handler **names** are OBSERVED.
 
-**CARRIED (cross-report, not re-derived here):**
+**CARRIED (from the cited pages):**
 
 - "Data/Vector Engine" expansion + `engine_idx = 3` (corpus CSR enum); the `TPB_0_DVE`
   hardware base `0x2802B00000` / `0x500000` span; PERF-as-default-flavor; the MAVERICK

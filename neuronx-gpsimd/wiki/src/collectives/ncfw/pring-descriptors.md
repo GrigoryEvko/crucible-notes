@@ -45,14 +45,15 @@ This page decodes, byte-exact:
 file `0x94020`) but **no** pring fact below is `.data`-resident. `libnrt.so`
 `.data`/`.rodata` are also VMA == file offset for the ranges used here.
 
-**Confidence tags.** `HIGH/OBSERVED` = read this session from disasm / DWARF /
-verbatim string. `MED/INFERRED` = strong multi-fact convergence. `CARRIED` =
+**Confidence tags.** The page default is `HIGH/OBSERVED` (read from disasm / DWARF /
+verbatim string). `MED/INFERRED` = strong multi-fact convergence. `CARRIED` =
 established on a sibling page and re-grounded here. The runtime *integer values*
 of `pring_base_addr` / `pring_total_desc_num` are populated in HBM at NEFF load
 and appear in **no** shipped static file — they are `LOW/OPEN` and never stated as
 fact below.
 
-> **CORRECTION to the survey hypothesis.** An earlier framing treated "pring" as a
+> **CORRECTION — pring is a descriptor ring, not a collective topology.** An earlier
+> framing treated "pring" as a
 > *persistent collective-ring topology* (a standing variant of the ring all-reduce
 > with per-peer send/recv descriptors). The binaries do not support that reading.
 > The config-key roster `pring_base_addr` / `pring_total_desc_num`
@@ -74,7 +75,7 @@ bytes — the same word is read differently by the M2S (transmit) and S2M (recei
 sides of the engine.
 
 **Table 1.0 — `union al_udma_desc` (16 B)** *(HIGH/OBSERVED — every member name +
-`DW_AT_data_member_location` read from `libnrt.so` DWARF this session)*
+`DW_AT_data_member_location` read from `libnrt.so` DWARF)*
 
 | arm | off | w | field | type | role |
 |-----|-----|---|-------|------|------|
@@ -327,7 +328,7 @@ the loads are byte-identical across all four arch copies)*
 
 The four arch copies repeat the identical loads at
 0x2aea8 / 0x2b220 / 0x2b412 (cayman), 0x43c4f / 0x43fc7 / 0x441b9 (mariana),
-0x5c9f6 / … (mariana_plus) — verified this session. The config-key roster also
+0x5c9f6 / … (mariana_plus). The config-key roster also
 ships four times (key block @0x65476.., 0x65b0b.., 0x661a0.., 0x66835..).
 
 > **QUIRK (the printer prints the field *address*).** For the two pring fields the
@@ -557,8 +558,8 @@ the device cores); that binding is `CARRIED`, not re-derived here.
 
 - The `libncfw.so` decoder `ncfw_log_basic_block_configs` ships in **all four** arch
   copies (sunda 0x11cc7, cayman 0x2aa6e, mariana 0x43815, mariana_plus 0x5c5bc)
-  with **byte-identical** pring field offsets (+0x400 / +0x408 / +0x410, verified
-  this session). `ncfw_log_basic_block_table` likewise 4× (0x11452 / 0x2a1f9 /
+  with **byte-identical** pring field offsets (+0x400 / +0x408 / +0x410).
+  `ncfw_log_basic_block_table` likewise 4× (0x11452 / 0x2a1f9 /
   0x42fa0 / 0x5bd47). The pring schema is **arch-wide**. *(HIGH/OBSERVED.)*
 - `libnrt.so` is a **single** binary serving all generations; the
   pring / vring / `al_udma_desc` / `dma_ring_info` DWARF and the builders

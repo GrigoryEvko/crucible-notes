@@ -23,24 +23,24 @@ and [the nrtucode_core_t struct](../../runtime/nrtucode-core.md); the threat-mod
 [Custom-Op Reachability / Isolation Model](../../control/security/reachability-isolation.md).
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string / config field / disassembler line read from a shipped artifact
-**this session**; `INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool
+`OBSERVED` = a byte / string / config field / disassembler line read from a shipped artifact;
+`INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool
 desync); `CARRIED` = consolidated from a cited cross-page anchor at its original confidence.
 Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
-(orientation).
+(orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an
+explicit tag.
 
-> **NOTE — what was re-carved and disassembled this session.** Every device fact below is grounded
-> in a fresh independent carve of the SEQ base firmware out of the static archive `libnrtucode.a`
+> **NOTE — carve + host-lib provenance.** Every device fact below is grounded
+> in a carve of the SEQ base firmware out of the static archive `libnrtucode.a`
 > (gpsimd-customop package), members `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o`. The carve
-> `objcopy -O binary --only-section=.rodata` reproduces **iram.bin = 116768 B (`0x1c820`), sha256
+> `objcopy -O binary --only-section=.rodata` yields **iram.bin = 116768 B (`0x1c820`), sha256
 > `8e4412b9…ab9ed70a`** and **dram.bin = 28448 B (`0x6f20`), sha256 `7bdf6ed7…d6816ecd`**, with head
 > bytes `06 76 00 00` = `j 0x1dc` (reset vector). Decode is the native `xtensa-elf-objdump` (GNU
 > Binutils 2.34.20200201, Xtensa Tools 14.09) with `XTENSA_CORE=ncore2gp` — the **only** config that
 > decodes SEQ FLIX correctly (the SEQ is Vision-Q7 FLIX/VLIW, `IsaMaxInstructionSize=32`, **not** the
 > scalar-LX NCFW core; see [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md)).
-> `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0 iram.bin` ⇒ **exit 0, empty stderr,
-> 45,901 lines**. IRAM offset == device IRAM VA (reset vector at byte 0); **DRAM string offset =
+> IRAM offset == device IRAM VA (reset vector at byte 0); **DRAM string offset =
 > device DRAM VA − `0x80000`** (the DRAM image loads at VA `0x80000`). For the raw binary carve,
 > `.text`/`.rodata` VMA == file offset by construction. The **host** facts are read from the shipped
 > x86-64 host libraries with stock `objdump`/`nm`/`dd`: the runtime-lib `libnrtucode_extisa.so`
@@ -102,9 +102,9 @@ hard fault — exactly the speculative-prefetch carve-out the shipped header pro
 ## 1. String anchors (the named xrefs this page hangs on)
 
 Every step is pinned to a `'S:'`-prefixed DEBUG log string in the device DRAM image and to a host
-format string. All offsets are byte-exact (`xxd`/`dd` this session).
+format string. All offsets are byte-exact (`xxd`/`dd`).
 
-### Device — DRAM (VA = DRAM file offset + `0x80000`) `[HIGH/OBSERVED]`
+### Device — DRAM (VA = DRAM file offset + `0x80000`)
 
 | DRAM VA | file off | IRAM `const16` site | String (byte-exact) |
 |---|---|---|---|
@@ -121,7 +121,7 @@ the unrelated DGE-DMA `S: DGE: Failed bounds check.` (`0x83105`, a different eng
 window — §7). There is **no** device string for a hard "fetch PC out of bounds → error state,"
 consistent with both `is_pc_in_bounds` callers being the soft speculative paths. `[HIGH/OBSERVED]`
 
-### Host — `libnrtucode_extisa.so` (x86-64, identity-mapped) `[HIGH/OBSERVED]`
+### Host — `libnrtucode_extisa.so` (x86-64, identity-mapped)
 
 | File VA | String (byte-exact) |
 |---|---|
@@ -145,7 +145,7 @@ consistent with both `is_pc_in_bounds` callers being the soft speculative paths.
 
 `entry a1,96`. The prologue `0x68d3..0x6967` co-issues FLIX/IVP slots and linear-sweeps with
 `.byte` noise, but every **scalar** instruction from the entry-log (`0x696a`) to the return
-(`0x6a1d`) re-verified instruction-exact this session. The decoded skeleton:
+(`0x6a1d`) is instruction-exact. The decoded skeleton:
 
 ```
 68d0: entry  a1,96
@@ -287,7 +287,7 @@ relocations — the DRAM `.c.o` carries only 2 x86 relocations, neither into thi
 ## 4. The two enforcement points — both speculative, both soft
 
 A whole-image grep for `call8 0x68d0` (plus an indirect/`jx`/function-pointer-table check) finds
-**exactly two** callers. Recount this session: `rg -c 'call8\s+0x68d0' iram.asm` ⇒ **2**.
+**exactly two** callers: `rg -c 'call8\s+0x68d0' iram.asm` ⇒ **2**.
 `[HIGH/OBSERVED]`
 
 ### 4a. Caller 1 — `wait_for_cache_line @0x5cd0`, call `@0x5d79` (the next-line prefetch)
@@ -296,7 +296,7 @@ A whole-image grep for `call8 0x68d0` (plus an indirect/`jx`/function-pointer-ta
 5d20: const16 a6,0x5654 ; 5d23 l32i.n a7,[a6]   ;; block_size  (DRAM 0x85654)
 5d25: add.n a7,a3,a7 ; 5d27 saltu a3,a7,a3 ; 5d2a add.n a3,a4,a3
       ;; next_addr = current_pc + block_size  (64-bit add with carry-propagate via saltu)
-5d61: call8 0x15208            ;; PrefetchHelper::check  (SX-FW-05 / branch-prefetch.md)
+5d61: call8 0x15208            ;; PrefetchHelper::check  (FW-05 / branch-prefetch.md)
 5d79: call8 0x68d0             ;; is_pc_in_bounds(next_addr, [lo,hi])
 5d7c: bnez.n a10,0x5dbb        ;; a10 != 0  => IN-BOUNDS -> 0x5dbb continue the cache-line fill
       ;; else (a10 == 0, OUT-OF-BOUNDS) fall through:
@@ -322,7 +322,7 @@ unaffected. Soft skip-with-warning. `[HIGH/OBSERVED]`
 
 An out-of-range branch-prefetch target is **skipped** with a warning. `[HIGH/OBSERVED]`
 
-> **NOTE — the warn helper `0x1405c` is purely soft (verified this session).** `0x1405c` begins
+> **NOTE — the warn helper `0x1405c` is purely soft.** `0x1405c` begins
 > `entry a1,176` (a clean function boundary — the `call8 0x13e00` at `0x14059` belongs to the
 > *preceding* function). Its body calls only format/emit helpers (`0x14128`/`0x14138`/`0x14b44`/
 > `0x14164`/…); it **never** calls the error-notification dispatch `0x13e00`. So the prefetch-OOB
@@ -458,7 +458,7 @@ nrtucode_result_t nrtucode_core_disable_pc_bounds_check(nrtucode_core_t *core)
 ```
 
 > **CORRECTION — disable arms the MAXIMAL window `[0, 2^64)`, not an inverted/empty one.** A naive
-> reading (and a prior pass, SX-FW-06 §6b) maps disable to `lower=0xFFFFFFFFFFFFFFFF, upper=0`
+> reading (and the earlier FW-06 §6b reading) maps disable to `lower=0xFFFFFFFFFFFFFFFF, upper=0`
 > (inverted/empty), concluding "disable ⇒ every prefetch is skipped ⇒ no speculation." **This is
 > wrong.** Trace the pointers exactly: `a96d` puts `0x0` at `[rsp+0x8]` and `a976` puts `~0` at
 > `[rsp]`. The lower write (`+0x38`) reads `&[rsp+0x8]` ⇒ writes **`0x0`**; the upper write (`+0x40`)
@@ -468,7 +468,7 @@ nrtucode_result_t nrtucode_core_disable_pc_bounds_check(nrtucode_core_t *core)
 > too: with `[0, 2^64)`, `is_pc_in_bounds` returns **true for every PC**, so **every** speculative
 > prefetch is **in-bounds and proceeds** — disable = "no PC restriction; full speculation," the exact
 > opposite of "skip everything." This is the correct device semantics. `[HIGH/OBSERVED — re-traced
-> against both host binaries this session]`
+> against both host binaries]`
 
 ### 5c. `nrtucode_core_private_get_pc_bounds(core, *lo, *hi)` — read both limits back
 
@@ -516,7 +516,7 @@ nrtucode_result_t nrtucode_core_private_get_pc_bounds(
 > object must expose exactly `{read@+0, write@+8}` with signature `int fn(ctx, soc_addr, len, buf)`.
 > `[HIGH/OBSERVED]`
 
-### 5d. The header contract (`nrtucode.h:556-577`, `nrtucode_private.h:67-68`) `[HIGH/OBSERVED]`
+### 5d. The header contract (`nrtucode.h:556-577`, `nrtucode_private.h:67-68`)
 
 The shipped header states the design intent verbatim:
 
@@ -580,7 +580,7 @@ Key contrasts `[HIGH/OBSERVED]`:
                             ;; -> call8 0x13e00  *** error-notification dispatch (HARD) ***
   ```
 - **#1 vs #3.** Both are address-range limits but on **different pointers**: #1 on the instruction PC
-  (i-stream fetch), #3 on the data SP (the stack, see [SX-ABI-09 stack switch]). #3 is
+  (i-stream fetch), #3 on the data SP (the stack, see the ABI-09 stack switch). #3 is
   **hardware-enforced per store** via the Xtensa ISL SR and raises a hard exception; #1 is software
   on speculative look-ahead only and merely skips. They never interact.
 - **#4** is a wholly separate DMA-gather engine's window check, named here only to disambiguate the
@@ -644,7 +644,7 @@ HW-enforced. That is the only piece not observable from the shipped device image
 ## Honesty ledger
 
 **HIGH / OBSERVED** (direct disassembly re-verified by aligned re-disasm; header text; ELF/dynsym;
-byte-exact strings; recounted this session):
+byte-exact strings):
 
 - Carve reproduced: `iram.bin` sha256 `8e4412b9…` and `dram.bin` sha256 `7bdf6ed7…`; host
   `libnrtucode_extisa.so` sha256 `dc00763d…`.

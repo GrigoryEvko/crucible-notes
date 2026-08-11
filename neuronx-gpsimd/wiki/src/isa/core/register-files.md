@@ -14,8 +14,8 @@ The whole roster is one frozen configuration — it does **not** vary across the
 generations (SUNDA…MAVERICK). It is read **directly out of the shipped `libisa-core.so`**: a
 single `regfiles[]` table of eight 56-byte records at VMA `0x74a800`, plus a `regfile_views[]`
 table of four 32-byte records at `0x74a780`. The accessor `num_regfiles` (@ `0x3b5c20`) returns
-`8`; `num_regfile_views` (@ `0x3b5d50`) returns `4`. Both bodies are a single `mov imm,%eax; ret`
-and were re-disassembled in-checkout. `[HIGH/OBSERVED]` throughout except where flagged.
+`8`; `num_regfile_views` (@ `0x3b5d50`) returns `4`. Both bodies are a single `mov imm,%eax; ret`.
+`[HIGH/OBSERVED]` throughout except where flagged.
 
 > **GOTCHA — there are 8 *files*, not 12, even though the TIE DB enumerates 12 regfile-class
 > entries.** The fourth field in the count is `regfile_views`: four narrowed sub-views of the
@@ -48,7 +48,7 @@ math in `regfile_name` is `lea (,rdi,8); shl $6,rdi; sub rax,rdi` — i.e. `rdi*
 rdi*56`, the proof of the 56-byte stride. A reimplementation does not need the thunks; it needs
 the two tables and the struct layout below.
 
-> **NOTE — counts are re-grounded against the binary, not a decompile grep.** Every count on this
+> **NOTE — counts are grounded against the binary, not a decompile grep.** Every count on this
 > page reproduces with `nm libisa-core.so | rg -c …` or a `readelf -x`/`objdump -d` against the
 > named VMA. The `.data.rel.ro` delta is `0x200000` *for this binary*; `.rodata` is VMA == file
 > offset, so the string pointers stored in the table (absolute link-time VMAs into `.rodata`)
@@ -421,7 +421,7 @@ typer applies to `BR`, not extra state.
 
 *Provenance: the `regfiles[]` (`0x74a800`) and `regfile_views[]` (`0x74a780`) tables, the
 `num_regfiles`/`num_regfile_views` accessors, and the bridge-op `proto_TIE_*` symbols are
-`[HIGH/OBSERVED]` — re-disassembled and `readelf -x`-dumped in-checkout from the shipped
+`[HIGH/OBSERVED]` — disassembled and `readelf -x`-dumped from the shipped
 `libisa-core.so`. The read/write stages in [§5](#5-readwrite-semantics-per-file) are `[HIGH/
 OBSERVED]` from the per-opcode schedule tables (see the port-model page). The `gvr` flag-bit
 `0x08` meaning is `[MED/INFERRED]`; the reason `tie.h` omits `gvr` is `[LOW]`. All facts read as

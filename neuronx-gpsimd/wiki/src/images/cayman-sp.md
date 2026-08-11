@@ -25,7 +25,8 @@ Confidence/evidence tags follow the project
 **OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so` (sha256 `b7c67e89…`) and decoded with the shipped `ncore2gp`
 `xtensa-elf-objdump`; the EVT_SEM aperture geometry, the TOP_SP block facts and the barrier
-pre-lowering are CARRIED from the engine/collective pages cited inline.
+pre-lowering are CARRIED from the engine/collective pages cited inline. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — the objects used.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
@@ -39,9 +40,7 @@ pre-lowering are CARRIED from the engine/collective pages cited inline.
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo,
 > Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, FLIX/VLIW). The clean C ISA header
 > `aws_neuron_isa_tpb_common.h` (shipped redistributable, in the same `customop` package) is cited
-> for the engine enum and the opcode values. All carve sha256, the reset vector, the dispatch table,
-> the boot trampoline and the handler roster were reproduced this session (objdump exit 0, empty
-> stderr). `[HIGH/OBSERVED]`
+> for the engine enum and the opcode values.
 
 ---
 
@@ -53,26 +52,26 @@ pre-lowering are CARRIED from the engine/collective pages cited inline.
    (`const16 a0,0 ; const16 a0,0x90 ; jx a0 → enter_run @0x90`) decodes *exactly* as POOL's; the
    DRAM header word is the shared `.globstruct` magic `0x6099cb34`; the DEBUG dispatch table base is
    the same DRAM `0x814`; the assertion paths are the same `/opt/workspace/NeuronUcode/cayman/seq/
-   src/…`. `[HIGH/OBSERVED]`
+   src/…`.
 2. **SP = the SYNC/CONTROL sequencer** (`TPB_SP`, `engine_idx = 4`, the 5th *execution* engine inside
    one TPB). Its 18 distinct handlers are **exactly** the shared SEQ control core — `AluOp`,
    `BRANCH`, `BranchPrefetchHint`, `Event_Semaphore`, `EXT_BREAK`, `Halt`, `INS_BREAK`, `INS_FL`,
    `MOVE`, `NOP`, `NOTIFY`, `POLL_SEM`, `Redirect`, `SET_OM`, `STRONG_ORDER`, `TensorLoad`,
-   `TensorStore`, `WRITE` — **with zero engine-specific compute handlers**. `[HIGH/OBSERVED]`
+   `TensorStore`, `WRITE` — **with zero engine-specific compute handlers**.
 3. **SP is the LEANEST of the five, and its set is the EXACT 5-way intersection.** Handler tally
    across the wave: DVE 53 \| POOL 41 \| ACT 26 \| PE 24 \| **SP 18**. SP's 18 names equal the
    intersection `SP ∩ ACT ∩ DVE ∩ PE ∩ POOL` byte-for-name (diff EMPTY), and SP is a **strict
    subset of every one** of the other four individually (SP-handlers-not-in-{ACT,DVE,PE,POOL} =
-   `0/0/0/0`). SP has **zero** SP-only handlers. `[HIGH/OBSERVED]`
+   `0/0/0/0`). SP has **zero** SP-only handlers.
 4. **12 image getters; 6 carry real bytes, 6 are zero-size boundary cursors** — DEBUG/PERF/TEST ×
    {IRAM, DRAM} = 6 flat firmware segments; DEBUG/PERF/TEST × {SRAM, EXTRAM} = 6 empty cursors (SP
    runs entirely out of IRAM+DRAM on CAYMAN). All 6 real carves are byte-identical (sha256) to the
-   matching `libnrtucode.a` member `.rodata`. `[HIGH/OBSERVED]`
+   matching `libnrtucode.a` member `.rodata`.
 5. **SP ships NO PROF and has NO paired Q7.** Where ACT/DVE/PE/POOL each ship **14** NX getters
    (12 base + 2 PROF `{CAM, TABLE}`, byte-identical across the four), SP ships **12** = base only:
    `nm | rg -c CAYMAN_NX_SP_PROF` = **0**, `rg -c CAYMAN.*Q7_SP` = **0**. SP is the **only** CAYMAN NX
    engine without PROF, and (unlike POOL) carries no paired Q7 compute core or EXTISA ELF. It is a
-   pure NX-only sequencer. `[HIGH/OBSERVED]`
+   pure NX-only sequencer.
 
 > **CORRECTION — "SP hosts the barrier/semaphore handlers" is the wrong framing.** SP hosts **no
 > SP-exclusive** sync/barrier/collective handler. The sync primitives — `Event_Semaphore` (0xa0),
@@ -81,17 +80,17 @@ pre-lowering are CARRIED from the engine/collective pages cited inline.
 > distinguishes SP is the *negative*: it is the engine whose **entire** handler set is this
 > sync/control core and **nothing else**. The collective pseudo-ops (`CORE_BARRIER 0xd8`) are
 > pre-lowered by the compiler into these same shared `EVENT_SEMAPHORE`/`POLL_SEM` HW ops — there is
-> **no** dedicated `0xd8` handler on SP or any engine (§7). `[HIGH/OBSERVED]`
+> **no** dedicated `0xd8` handler on SP or any engine (§7).
 
 ---
 
 ## 2. The 12 image getters (instruction-exact)
 
 Each getter is the 4-instruction `(img-ptr, size)` stub
-(`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`) disassembled this session
+(`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`) disassembled
 from `.text 0x9b3220..0x9b3520` (PERF/TEST) and `0x9b3720..0x9b37a0` (DEBUG). `CLS=NX, ENG=SP`. All
 12 `.data` addresses (use plain `nm`, not `nm -D` — they are local `t` symbols) and sizes agree with
-the catalog ([image-catalog-index.md](./image-catalog-index.md), CAYMAN NX_SP rows). `[HIGH/OBSERVED]`
+the catalog ([image-catalog-index.md](./image-catalog-index.md), CAYMAN NX_SP rows).
 
 | VARIANT | REGION | ACCESSOR (.text VA) | IMG-PTR (.rodata VA = file off) | SIZE | STATUS |
 |---|---|---|---|---:|---|
@@ -112,18 +111,18 @@ The six zero-size SRAM/EXTRAM getters all execute `movq $0x0,(%rsi)` and return 
 **contiguous-layout cursor** = the start of the *next* blob in the `.rodata` layout. `objdump`
 therefore aliases the SP DEBUG SRAM/EXTRAM symbols to `CAYMAN_Q7_POOL_PERF_IRAM_get.data` (`0x1f4860`)
 and the PERF/TEST SRAM/EXTRAM symbols to the next ACT blob — confirming `SP` is followed in the layout
-by the POOL Q7 image. **SP uses no SRAM/EXTRAM on CAYMAN.** `[HIGH/OBSERVED]`
+by the POOL Q7 image. **SP uses no SRAM/EXTRAM on CAYMAN.**
 
 > **NOTE — why 12, not 14.** The four sequencer engines ACT/DVE/PE/POOL each ship **14** NX getters
 > = 12 base + 2 PROF `{CAM, TABLE}`. SP ships **12** = base only. It has no HW-decode profiling
-> CAM/table (`nm | rg -c CAYMAN_NX_SP_PROF` = 0 this session). SP is the only CAYMAN NX engine
-> without PROF. `[HIGH/OBSERVED]`
+> CAM/table (`nm | rg -c CAYMAN_NX_SP_PROF` = 0). SP is the only CAYMAN NX engine
+> without PROF.
 
 ### 2.1 Carve provenance + byte-identity
 
 Carve rule (identity map): `blob = so[IMG-PTR : IMG-PTR+SIZE]` via `dd bs=1`. The 6 real carves and
-their sha256 (reproduced this session; spot-reconciled **3/3 identical** to the `libnrtucode.a`
-member `.rodata` via `ar p` + `objcopy -O binary --only-section=.rodata` + `cmp`): `[HIGH/OBSERVED]`
+their sha256 (spot-reconciled **3/3 identical** to the `libnrtucode.a`
+member `.rodata` via `ar p` + `objcopy -O binary --only-section=.rodata` + `cmp`):
 
 | IMAGE | FILE-OFF | SIZE | sha256 (full) |
 |---|---|---:|---|
@@ -139,7 +138,6 @@ The **SP PERF_IRAM `5a6f6eaa`** is the engine-distinguishing fingerprint in the 
 exactly. The archive ships the SP `img_*_contents.c.o` members (`PERF`/`TEST`/`DEBUG` × `{IRAM,DRAM}`)
 and **no** `hwdecode_*_PROF_*` member; the `internal.so` getter blob equals the `.a` member `.rodata`
 for the 3 spot-checked (`SP_PERF_IRAM`, `SP_DEBUG_IRAM`, `SP_DEBUG_DRAM`), byte-for-byte.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -147,7 +145,7 @@ for the 3 spot-checked (`SP_PERF_IRAM`, `SP_DEBUG_IRAM`, `SP_DEBUG_DRAM`), byte-
 
 None of the 6 carves is an ELF (head ≠ `\x7fELF`) — they are **flat device-memory segments**, the
 device-side `.rodata` payload of the `img_*` members (contrast POOL's Q7 EXTISA blobs, which *are*
-`EM_XTENSA` ELFs; SP has none). Heads read this session: `[HIGH/OBSERVED]`
+`EM_XTENSA` ELFs; SP has none). Heads:
 
 ```text
 IRAM (all 3 variants byte-identical):  06 76 00 00 00 00  86 77 00 00 00 00   ; j 0x1dc / j 0x1e8
@@ -155,7 +153,6 @@ DRAM (all 3 variants):                 34 cb 99 60                            ; 
 ```
 
 **Reset vector** (byte-identical across all 3 SP IRAM variants AND across all 5 engines):
-`[HIGH/OBSERVED]`
 
 ```text
 0x000:  06 76 00   j 0x1dc        ; primary reset vector -> boot path
@@ -170,11 +167,10 @@ The boot `jx a0` lands on `enter_run @ 0x90`; the trampoline at `0x1dc` decodes 
 POOL's NX core. The same flat binary can be loaded on any engine slot: the DRAM carries
 `S: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u`, so the SP
 image's `engine_idx` (= 4) is **derived at boot** from `engine_base_addr` vs `tpb_base_addr` — the
-binary is **not** hard-wired to SP (§4c). `[HIGH/OBSERVED — string; runtime-compute INFERRED-HIGH
-from the string + the shared reset/boot across all 5 engines]`
+binary is **not** hard-wired to SP (§4c). `[string HIGH/OBSERVED; runtime-compute INFERRED-HIGH]`
 
-Disassembled with the shipped `ncore2gp` objdump (exit 0, empty stderr), `SP_DEBUG_IRAM` decodes a
-**full Q7/NX windowed-ABI code body** — not a stub. Census this session: `[HIGH/OBSERVED]`
+Disassembled with the shipped `ncore2gp` objdump, `SP_DEBUG_IRAM` decodes a
+**full Q7/NX windowed-ABI code body** — not a stub. Census:
 
 | metric | SP DEBUG IRAM |
 |---|---:|
@@ -187,8 +183,8 @@ Disassembled with the shipped `ncore2gp` objdump (exit 0, empty stderr), `SP_DEB
 
 So SP carries the full windowed-ABI control spine + the generic SEQ fetch/DMA/cache infrastructure
 — it is a genuine, separately-compiled `cayman/seq/` sequencer, not a thin trampoline. (The
-FLIX-vector datapath is partly bundle-interleaved by the linear sweep — the documented SX-FW-00
-limitation — but the control spine decodes cleanly.) `[HIGH/OBSERVED]`
+FLIX-vector datapath is partly bundle-interleaved by the linear sweep — the documented FW-00
+limitation — but the control spine decodes cleanly.)
 
 ---
 
@@ -198,9 +194,9 @@ The brief's central question: is the IMG "SP" engine the per-NeuronCore **SP** (
 the standalone **TOP_SP** SoC-level sync block? The shipped ISA enum settles it decisively: **they
 are two distinct enumerated engines, and the carved image is the per-core `TPB_SP`.**
 
-### 4a. The ISA enum is authoritative — `TPB_SP(4) != TOP_SP(5)` `[HIGH/OBSERVED]`
+### 4a. The ISA enum is authoritative — `TPB_SP(4) != TOP_SP(5)`
 
-`aws_neuron_isa_tpb_common.h:139-146` (read verbatim this session):
+`aws_neuron_isa_tpb_common.h:139-146` (verbatim):
 
 ```c
 typedef enum NEURON_ISA_TPB_NEURON_ENGINE {
@@ -222,7 +218,7 @@ separate SoC-level sequencer that hosts the **global** EVT_SEM array + the SoC t
 walks the host-built collective program (the
 [collective end-to-end](../orientation/collective-end-to-end.md) `engine_idx 5` target). They are
 **not** the same block; the naming collision (both abbreviate to "SP") is the entire source of the
-question. `[HIGH/OBSERVED — the enum is the authoritative shipped artifact.]`
+question. `[HIGH/OBSERVED — the enum is the authoritative shipped artifact]`
 
 ### 4b. Both have an NX core — but this library ships exactly ONE SP image `[HIGH on the one-image fact]`
 
@@ -237,7 +233,7 @@ the data here neither confirms nor denies that the same `cayman/seq/` build serv
 this page does **not** fabricate an answer. `[HIGH on the one-image fact + the zero `TOP_SP` getter;
 LOW / NOT-CLAIMED on the TOP_SP provisioning path.]`
 
-### 4c. `engine_idx` is runtime-computed, not baked `[HIGH/OBSERVED]`
+### 4c. `engine_idx` is runtime-computed, not baked
 
 The SP DEBUG DRAM carries the **same** boot-identity string as every NX engine —
 `S: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u` — a runtime
@@ -247,7 +243,7 @@ self-identifies as `engine_idx=4` **because it is placed at the `TPB_SP` IRAM ba
 its bytes. This is the architectural reason all five NX engines can share the identical reset vector
 and the identical boot trampoline: **one boot path, late-bound identity.** `[HIGH/OBSERVED — the
 string + the shared boot; the late-binding mechanism INFERRED-HIGH from the runtime-formatted
-identity string.]`
+identity string]`
 
 ### 4d. Conclusion
 
@@ -256,7 +252,7 @@ engine inside the TPB — **distinct** from the standalone `TOP_SP` (engine 5). 
 *architecture* (each an NX-core sequencer with a semaphore/notification surface) and a *role family*
 (the TPB-side sequencer-processor IP), but they are two enumerated, separately-addressed engines.
 The `POLL_SEM` op the per-core SP carries is what lets it *participate* in global sync orchestrated
-by the standalone `TOP_SP`; it is not evidence that the image *is* `TOP_SP`. `[HIGH/OBSERVED]`
+by the standalone `TOP_SP`; it is not evidence that the image *is* `TOP_SP`.
 
 ---
 
@@ -264,9 +260,9 @@ by the standalone `TOP_SP`; it is not evidence that the image *is* `TOP_SP`. `[H
 
 Method (identical to the sibling pages): extract every single-token `S: <OpName>` from each engine's
 CAYMAN DEBUG DRAM (regex `^S: [A-Za-z][\w/-]*$`), `sort -u`, set-diff. The SP DEBUG DRAM yields
-exactly **18** distinct handler names this session. Per-engine counts (reproduced independently from
-each engine's DEBUG DRAM carve this session): DVE 53 \| POOL 41 \| ACT 26 \| PE 24 \| **SP 18** — SP
-is the **leanest** of the five. `[HIGH/OBSERVED]`
+exactly **18** distinct handler names. Per-engine counts (derived independently from
+each engine's DEBUG DRAM carve): DVE 53 \| POOL 41 \| ACT 26 \| PE 24 \| **SP 18** — SP
+is the **leanest** of the five.
 
 ### 5a. SP's 18 handlers (the complete roster)
 
@@ -289,7 +285,7 @@ By function: `[HIGH for the names; the grouping is the analyst's, MED]`
 | **sync / EVT_SEM** | `Event_Semaphore` (0xa0), `POLL_SEM` (0xb3), `NOTIFY` (0xa6) |
 | no-op | `NOP` |
 
-### 5b. SP == the intersection; a strict subset of every engine `[HIGH/OBSERVED]`
+### 5b. SP == the intersection; a strict subset of every engine
 
 `comm -12` of all five engines' handler sets (`SP ∩ ACT ∩ DVE ∩ PE ∩ POOL`) yields **exactly** these
 18 names — SP's set is byte-for-name **identical** to the 5-way intersection (diff EMPTY).
@@ -308,13 +304,12 @@ shared control core that ACT/DVE/PE/POOL are each built on top of by *adding* th
 So the engines are the same `cayman/seq/` firmware with **disjoint** compute subsets layered on the
 shared 18-handler control core; SP's extension is the **empty** one — the precise lower bound. "Same
 SEQ engine, different handler subset" is **CONFIRMED for SP, in its limiting/degenerate form.**
-`[HIGH/OBSERVED]`
 
 > **QUIRK — `EngineNop` is the cleanest discriminator between "control core" and "lean compute
 > engine".** PE — the next-leanest at 24 — carries `EngineNop` (a barrier/serialization helper shared
 > with POOL/DVE), but **SP does not.** SP's 18 names contain `NOP` (the scalar no-op) but **not**
 > `EngineNop`. The 18-name intersection is therefore strictly smaller than "PE minus its 5 matmul
-> ops": SP is the *only* engine with no member outside the all-five intersection. `[HIGH/OBSERVED]`
+> ops": SP is the *only* engine with no member outside the all-five intersection.
 
 ---
 
@@ -326,11 +321,11 @@ pure control sequencer.
 
 **`.globstruct` header + dispatcher-state init (byte-identical to POOL).** DRAM head: header word
 `0x6099cb34` @ `0x0`; the dispatcher-state init block — `4 × 0x00001000` @ `0x18` and `4 × 0x00ffffff`
-@ `0x28` — is **byte-identical between SP and POOL** (re-read this session). The shared init block is
-the common dispatcher-state initialization every flat NX DRAM carries. `[HIGH/OBSERVED]`
+@ `0x28` — is **byte-identical between SP and POOL**. The shared init block is
+the common dispatcher-state initialization every flat NX DRAM carries.
 
 **The SEQ dispatch table @ DRAM `0x814` (file `0x814`).** SP carries the same indexed-jump
-trampoline-pointer table POOL/PE/ACT use at the same base. Read this session (DEBUG, 4-byte-LE
+trampoline-pointer table POOL/PE/ACT use at the same base (DEBUG, 4-byte-LE
 trampoline pointers): `[HIGH location / MED per-opcode row decode]`
 
 ```text
@@ -346,25 +341,25 @@ real handlers** (most slots → default), matching its 18-handler set. The `Erro
 are all present. In **PERF** the table relocates to file `0x218` (head `0x62d0 0x62d6 0x62e2 0x62eb`,
 then a `0x98c3` repeating default band) — the same DEBUG-segmented-vs-PERF-clean split the sibling
 engines show. `[HIGH/OBSERVED for the table location + default/trampoline bands; the exhaustive
-per-opcode→handler decode is the FLIX-desync-limited frontier (SX-FW-00), not fully decoded here.]`
+per-opcode→handler decode is the FLIX-desync-limited frontier (FW-00), not fully decoded here.]`
 
 > **NOTE — no resident table in the SP firmware.** SP carries **no** weight/coefficient/kernel
 > table. Its only "tables" are the dispatch table and the shared dispatcher-state block. (Contrast
 > POOL, which additionally hosts a `kernel_info_table` in its Q7 EXTISA ELFs; SP has no Q7 and no
-> EXTISA.) `[HIGH/OBSERVED]`
+> EXTISA.)
 
 The SP DRAM otherwise carries the generic SEQ runtime infra — `S: IRAM cache init`,
 `S: start_fill_siram`, `S: DramRingDMA::allocate`, **`sunda_fast_fetch`**, `S: Sunda seq Loop`, the
 `DGE` (descriptor-generation-engine) family (13 `DGE` strings, incl. `DGE: Select backend Pool/RTL`),
 and `S: dge_shape[].step`/`.num` — confirming the same cache/PC-bounds/DMA/shape machinery as the
-other NX engines. `[HIGH/OBSERVED]`
+other NX engines.
 
 ---
 
 ## 7. The SP ↔ EVT_SEM / barrier interaction
 
-SP's sync handlers map to the shipped ISA opcodes (read this session from the OPCODE enum in
-`aws_neuron_isa_tpb_common.h`): `[HIGH/OBSERVED]`
+SP's sync handlers map to the shipped ISA opcodes (from the OPCODE enum in
+`aws_neuron_isa_tpb_common.h`):
 
 | HW op | ISA opcode | enum | `S:` roster handler |
 |---|---|---|---|
@@ -377,8 +372,8 @@ SP's sync handlers map to the shipped ISA opcodes (read this session from the OP
 > ops (`0xa0/0xa6/0xb0/0xb3`), but the SP `S:`-handler roster has only **three** sync names
 > (`Event_Semaphore`, `NOTIFY`, `POLL_SEM`). The `0xb0` `EVENT_SEMAPHORE_RANGE_CLEAR` has **no
 > separate roster entry on any engine** — it is covered by the single `Event_Semaphore` handler
-> (range-clear is a mode of that handler, not its own dispatch arm). Verified this session across all
-> five DEBUG DRAMs. `[HIGH/OBSERVED]`
+> (range-clear is a mode of that handler, not its own dispatch arm). Verified across all
+> five DEBUG DRAMs.
 
 These are the EVT_SEM HW-semaphore operations. They are **shared by all five engines** (each carries
 exactly one of each `S:` name — verified) — **not** SP-exclusive. SP is simply the engine whose
@@ -414,7 +409,7 @@ is **MED** — the addressing lives in the *lowered instruction operands*, not i
 ### 7.1 Annotated SP dispatch + barrier/event-wait path
 
 The SP sequencer reproduced as C pseudocode. Symbols are byte-pinned (CAYMAN opcodes / DRAM offsets
-observed this session; the EVT_SEM aperture + barrier pre-lowering CARRIED from the cited pages):
+OBSERVED; the EVT_SEM aperture + barrier pre-lowering CARRIED from the cited pages):
 
 ```c
 // ---------------------------------------------------------------------------
@@ -507,14 +502,13 @@ void h_notify(instr_t *ins) {                      // 0xa6  notification emit
 * **The dispatch mechanism is invariant** across all three: same reset vector (`06 76 00 00`), same
   boot → `enter_run @0x90`, same SEQ table (DEBUG @ `0x814` / PERF @ `0x218`), same `ErrorHandler`/
   Bad-Opcode arm, same `.globstruct` magic. **A DEBUG→RELEASE(PERF) swap is a pure observability
-  change**, not a functional/dispatch change. `[HIGH/OBSERVED]`
+  change**, not a functional/dispatch change.
 
 ---
 
 ## 9. Cross-engine code-sharing
 
-**Cross-engine PERF_IRAM matrix** (all 5 carved + hashed this session; all 5 distinct, all reproduce
-the prior engine pages exactly): `[HIGH/OBSERVED]`
+**Cross-engine PERF_IRAM matrix** (all 5 distinct, all reproduce the prior engine pages exactly):
 
 | engine | idx | PERF_IRAM sha256 | PERF_IRAM size | PROF |
 |---|---:|---|---:|---|
@@ -532,9 +526,9 @@ the prior engine pages exactly): `[HIGH/OBSERVED]`
   arms, identical EVT_SEM op set) — **not** at the linked-byte level.
 * **PROF: SP ships none.** The other four NX engines share byte-identical PROF_CAM (`8fd7e422`) /
   PROF_TABLE (`ce761f81`); SP has neither (`nm | rg -c CAYMAN_NX_SP_PROF` = 0). SP is the **only**
-  CAYMAN NX engine without PROF. `[HIGH/OBSERVED]`
+  CAYMAN NX engine without PROF.
 * **Q7: SP has none.** POOL is the only CAYMAN engine with a paired Q7 (and EXTISA ELFs). SP is a
-  pure NX-only sequencer. `[HIGH/OBSERVED]`
+  pure NX-only sequencer.
 
 > **QUIRK — SP's PERF_IRAM is the LARGEST of the five despite the FEWEST handlers.** SP_PERF_IRAM
 > (`0x182c0` ≈ 99 KiB) is bigger than POOL's (`0x17280`), DVE's, PE's and ACT's PERF_IRAM — even
@@ -543,7 +537,7 @@ the prior engine pages exactly): `[HIGH/OBSERVED]`
 > cache / sunda-fetch infrastructure (`DGE × 13`, `DramRingDMA`, `start_fill_siram`, IRAM cache,
 > `sunda_fast_fetch`, the notification/interrupt dispatch) without any compute handlers to *amortize*
 > that infra against — so the common spine is a larger fraction of a smaller total. Handler count is
-> a poor proxy for image size. `[HIGH/OBSERVED]`
+> a poor proxy for image size.
 
 ---
 
@@ -581,13 +575,13 @@ All five: identical reset `06 76 00 00`, boot → `enter_run @0x90`, `.globstruc
 dispatch table @ `0x814`, shared 18-handler control core. The four NX sequencers (PE/ACT/POOL/DVE)
 share byte-identical PROF; SP ships none. POOL alone pairs a Q7. **SP alone is the pure control
 core** — the differentiation is *entirely* the layered compute-handler subset on a common SEQ
-chassis. `[HIGH/OBSERVED]`
+chassis.
 
 ---
 
 ## 11. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - 12 `CAYMAN_NX_SP` getters indexed instruction-exact (6 real + 6 zero-size boundary cursors →
   next-blob ACT/Q7-POOL IRAM); 6 real carves byte-identical (sha256) to the `libnrtucode.a` member
@@ -596,7 +590,7 @@ chassis. `[HIGH/OBSERVED]`
 - All carves FLAT (no ELF magic); reset vector `06 76 00 00` (`j 0x1dc`) identical across
   DEBUG/PERF/TEST and across all 5 engines; boot `const16 a0,0x90 ; jx → enter_run @0x90`; 2nd vector
   `j 0x1e8 → halt 0`. `SP_DEBUG_IRAM` census 515 entry / 728 retw / 1550 call8 / 71 callx8 /
-  2044 const16 / 53 jx (native `ncore2gp` objdump, exit 0, empty stderr).
+  2044 const16 / 53 jx (native `ncore2gp` objdump).
 - DRAM head `0x6099cb34`; dispatcher-state init block (`4×0x1000` @ `0x18`, `4×0xffffff` @ `0x28`)
   byte-identical to POOL. SEQ dispatch table @ `0x814` (DEBUG, default-band `0x2ac9`/`0x2fe4`); PERF
   table @ `0x218`; `S: Dispatch opcode=0x%x` @ `0xaa8`; ErrorHandler arms @ `0x2f81`.
@@ -623,7 +617,7 @@ chassis. `[HIGH/OBSERVED]`
   — INFERRED-HIGH from the runtime-formatted identity string + the shared reset/boot across all 5.
 - The SP-op → specific EVT_SEM APB-window binding — MED (the addressing is in the lowered instruction
   operands, not the firmware image; the EVT_SEM aperture geometry itself is HIGH/CARRIED).
-- The exhaustive per-opcode SEQ dispatch-table row decode (FLIX/literal desync, SX-FW-00).
+- The exhaustive per-opcode SEQ dispatch-table row decode (FLIX/literal desync, FW-00).
 
 **LOW / NOT CLAIMED:**
 

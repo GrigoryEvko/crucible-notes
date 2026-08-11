@@ -6,7 +6,7 @@
 
 `kelf-N.json` is a top-level member of the NEFF tar container — one file per compiled subgraph/virtual core (`kelf-0.json` ↔ `sg00`). The name suggests an obvious shape: a flat table mapping each datapath engine to the `{filename, offset, size}` of its instruction binary. **It is not that.** `kelf-N.json` is a *per-subgraph graph* encoded in the **nnvm / TVM `graph_runtime` JSON dialect** — the same dialect as the top-level `neff.json` — tagged `sg_coreV1` (subgraph-core schema V1) at schema **`revision` `0.5`**. Its structural keys are the TVM graph-runtime vocabulary (`arg_nodes`, `heads`, `node_row_ptr`, `attrs`, `dltype`, `storage_id`, the `list_*` typed-list wrappers, `metadata`, `target_arch`, `graphs`, `revision`), and the engine→binary mapping is expressed through a `__kelf` op-node whose `storage_id` / `func_name` machinery *indexes* the per-engine `.bin` members — it does **not** embed bare offset/size triples. The actual byte locations of each engine binary are delegated to the **NEFF tar BOM** plus the sibling `<Engine>.json` descriptors.
 
-> **CORRECTION — `kelf-N.json` is NOT a flat `{engine → {filename, offset, size}}` map.** The S02 §299 named gap hypothesised that schema. The recovered writer key-pool (`libwalrus.so` `.rodata` `0x1c869f7…0x1c86b00`) contains **no** `offset`, `size`, or bare per-engine `filename` keys at all. What it contains is the TVM `graph_runtime` key vocabulary (`tvm_op`, `attrs`, `arg_nodes`, `heads`, `node_row_ptr`, `storage_id`, `dltype`, `list_shape`/`list_int`/`list_str`) plus the `sg_coreV1` version tag and `revision` `0.5`. `kelf-N.json` is therefore a per-subgraph TVM graph, and per-engine binary locations live in the **tar BOM** (`NeffFileWriter::addToBom` / `writeArchiveFile`) and the per-engine `<Engine>.json` descriptors — never inside `kelf-N.json` itself. *(Key-pool keys = CONFIRMED byte-verified; the delegation-to-BOM = STRONG by absence of any offset/size key.)*
+> **GOTCHA — the name promises a flat `{engine → {filename, offset, size}}` map, and there is none.** The writer key-pool (`libwalrus.so` `.rodata` `0x1c869f7…0x1c86b00`) contains no `offset`, no `size`, and no bare per-engine `filename` key. Per-engine binary locations live in the tar BOM (`NeffFileWriter::addToBom` / `writeArchiveFile`) and in the per-engine `<Engine>.json` descriptors, never inside `kelf-N.json`. That delegation is [INFERRED] from the total absence of any offset- or size-shaped key in the pool.
 
 For reimplementation, the contract is:
 
@@ -51,8 +51,8 @@ revision      ArchLevl > ArchLevel::Tonga …
 
 Two facts fall straight out of this layout:
 
-1. **The dialect is TVM `graph_runtime`.** `tvm_op`, `attrs`, `arg_nodes`, `heads`, `node_row_ptr`, `storage_id`, `dltype`, and the `list_shape`/`list_int`/`list_str` typed-list wrappers are the canonical nnvm/TVM graph-runtime serialization keys. No other JSON dialect uses this exact vocabulary. **[CONFIRMED — `\0KEY\0` byte adjacency in `libwalrus.so`.]**
-2. **`revision` `"0.5"` is the schema version for this graph.** The literal `"0.5"` sits immediately before `revision` in the pool, adjacent to `graphs`/`target_arch`/`metadata`. **[CONFIRMED — string at pool offset, neighbour of `revision`.]**
+1. **The dialect is TVM `graph_runtime`.** `tvm_op`, `attrs`, `arg_nodes`, `heads`, `node_row_ptr`, `storage_id`, `dltype`, and the `list_shape`/`list_int`/`list_str` typed-list wrappers are the canonical nnvm/TVM graph-runtime serialization keys. No other JSON dialect uses this exact vocabulary, and all of these appear as `\0KEY\0` byte-adjacent tokens in `libwalrus.so`.
+2. **`revision` `"0.5"` is the schema version for this graph.** The literal `"0.5"` sits immediately before `revision` in the pool, adjacent to `graphs`/`target_arch`/`metadata`.
 
 The `sg_coreV1` tag (the subgraph-core schema-V1 version string) and the three `kelf` tokens (`kelf-0.json`, `kelf-`, `__kelf`) live in the same packed blob. The presence of `kelf-` (the concat prefix) *and* `kelf-0.json` (the reader's fixed name) in one pool is the writer/reader handshake made visible.
 
@@ -64,44 +64,44 @@ The `sg_coreV1` tag (the subgraph-core schema-V1 version string) and the three `
 
 ### Structural Keys (TVM graph-runtime)
 
-The graph-level keys, all CONFIRMED present as `\0KEY\0` in the writer pool:
+The graph-level keys, all present as `\0KEY\0` tokens in the writer pool:
 
 | Key | Role | Confidence |
 |---|---|---|
-| `arg_nodes` | indices of the graph's input/parameter nodes | CONFIRMED (string) |
-| `heads` | output node entries `[node_id, index, version]` | CONFIRMED (string) |
-| `node_row_ptr` | CSR-style row pointer over node entries | CONFIRMED (string) |
-| `attrs` | graph attribute table (holds the typed lists below) | CONFIRMED (string) |
-| `dltype` | per-entry DLPack dtype list (under `attrs`, paired with `list_str`) | CONFIRMED (string) |
-| `storage_id` | per-entry storage/buffer id (under `attrs`, paired with `list_int`) | CONFIRMED (string) |
-| `list_shape` / `list_int` / `list_str` | TVM attr-table typed-list tag wrappers | CONFIRMED (strings) |
-| `metadata` | graph metadata sub-object (holds `target_arch` / `graphs` / `revision`) | CONFIRMED (string) |
-| `target_arch` | architecture-level string (e.g. gates `ArchLevl > ArchLevel::Tonga`) | CONFIRMED (string) |
-| `graphs` | sub-graph list / container | CONFIRMED (string) |
-| `revision` | schema revision; literal value `"0.5"` | CONFIRMED (string + value) |
-| `name` | node / graph name | CONFIRMED (in-pool) |
-| `signatures` | I/O signature table | CONFIRMED (string) |
-| `output_names` / `is_param` / `may_alias` / `must_alias` | I/O + alias annotation keys (shared with neff/tensor_map vocabulary) | CONFIRMED (strings) |
+| `arg_nodes` | indices of the graph's input/parameter nodes | CERTAIN (string) |
+| `heads` | output node entries `[node_id, index, version]` | CERTAIN (string) |
+| `node_row_ptr` | CSR-style row pointer over node entries | CERTAIN (string) |
+| `attrs` | graph attribute table (holds the typed lists below) | CERTAIN (string) |
+| `dltype` | per-entry DLPack dtype list (under `attrs`, paired with `list_str`) | CERTAIN (string) |
+| `storage_id` | per-entry storage/buffer id (under `attrs`, paired with `list_int`) | CERTAIN (string) |
+| `list_shape` / `list_int` / `list_str` | TVM attr-table typed-list tag wrappers | CERTAIN (strings) |
+| `metadata` | graph metadata sub-object (holds `target_arch` / `graphs` / `revision`) | CERTAIN (string) |
+| `target_arch` | architecture-level string (e.g. gates `ArchLevl > ArchLevel::Tonga`) | CERTAIN (string) |
+| `graphs` | sub-graph list / container | CERTAIN (string) |
+| `revision` | schema revision; literal value `"0.5"` | CERTAIN (string + value) |
+| `name` | node / graph name | CERTAIN (in-pool) |
+| `signatures` | I/O signature table | CERTAIN (string) |
+| `output_names` / `is_param` / `may_alias` / `must_alias` | I/O + alias annotation keys (shared with neff/tensor_map vocabulary) | CERTAIN (strings) |
 
 ### The `__kelf` Op-Node Attrs
 
-The node that points at the per-engine binaries. Its attrs are CONFIRMED both as strings and as `to_string`-built values in the writer disasm (§2):
+The node that points at the per-engine binaries. Its attrs appear both as strings in the pool and as `to_string`-built values in the writer disassembly (§2):
 
 | Key | Role | Confidence |
 |---|---|---|
-| `__kelf` | the kelf op-node key (op-type `"kelf"`) | CONFIRMED (string `0x1c86a38`) |
-| `tvm_op` | node op-type tag | CONFIRMED (string) |
-| `func_name` | TVM function-name attr; the constant `"0"` in `neff.json`'s `__kelf` node (see CORRECTION) | CONFIRMED (string) |
-| `flatten_data` | `"0"`/`"1"` flag (TVM standard attr) | CONFIRMED (string `0x1c86a3f`) |
-| `num_inputs` | input count, built via `std::to_string` | CONFIRMED (string `0x1c86a4c` + `to_string` call) |
+| `__kelf` | the kelf op-node key (op-type `"kelf"`) | CERTAIN (string `0x1c86a38`) |
+| `tvm_op` | node op-type tag | CERTAIN (string) |
+| `func_name` | TVM function-name attr; the constant `"0"` in `neff.json`'s `__kelf` node (see below) | CERTAIN (string) |
+| `flatten_data` | `"0"`/`"1"` flag (TVM standard attr) | CERTAIN (string `0x1c86a3f`) |
+| `num_inputs` | input count, built via `std::to_string` | CERTAIN (string `0x1c86a4c` + `to_string` call) |
 
-> **CORRECTION (Part-12 reconcile) —** the `neff.json` → `kelf-<i>.json` linkage is the `__kelf` node's **`attrs.kelf`** string (`"kelf-" + to_string(i) + ".json"`), **not** `func_name`. [12.7](neff-kelf-node.md) byte-resolves the `neff.json` `__kelf` node: `attrs.func_name == "0"` (a constant — the per-core kernel *is* the kelf, so the TVM function name is meaningless), and `attrs.kelf` carries the member name. The `func_name`/`storage_id` "indexes the per-engine `.bin`" framing above describes the TVM graph machinery *inside* `kelf-<i>.json`; the cross-member pointer from `neff.json` is `attrs.kelf`.
+> **GOTCHA — the cross-member pointer is `attrs.kelf`, not `func_name`.** In `neff.json`'s `__kelf` node, `attrs.func_name` is the constant `"0"` — the per-core kernel *is* the kelf, so the TVM function name carries no information — and `attrs.kelf` holds the member name `"kelf-" + to_string(i) + ".json"` ([12.7](neff-kelf-node.md) byte-resolves that node). The `func_name` / `storage_id` machinery described above operates *inside* `kelf-<i>.json`; it does not link the two files.
 
 ### The Key the Reader Extracts
 
 | Key | Read by | Meaning | Confidence |
 |---|---|---|---|
-| `target` | `NeffInfo.getKelf` @ `0xf640` | accelerator/arch type for the whole NEFF | CONFIRMED (`__pyx_n_u_target`) |
+| `target` | `NeffInfo.getKelf` @ `0xf640` | accelerator/arch type for the whole NEFF | CERTAIN (`__pyx_n_u_target`) |
 
 The reader's docstring (verbatim from NeffInfo.so `.rodata`):
 
@@ -111,7 +111,7 @@ Get the target type from kelf-0.json. Does not support mixed accelerator usage.
 
 So `getKelf` returns exactly `kelf-0.json["target"]` and nothing else. The writer stores the arch as `target_arch` inside the `metadata` sub-object; the reader exposes it via a `target` lookup.
 
-> **GOTCHA —** `target` (reader key, CONFIRMED) and `target_arch` (writer key, CONFIRMED) are not obviously the same JSON path. The reader's `target` is byte-pinned to `__pyx_n_u_target`; the writer's `target_arch` is byte-pinned to the `.rodata` pool. Whether `getKelf` reads a top-level `target` key or a nested `metadata.target_arch` — i.e. the exact JSON path — is **INFERRED** (no example `kelf-N.json` file is shipped in this wheel to settle it). A reimplementer should emit *both* shapes compatibly or confirm against a real `.neff`.
+> **GOTCHA — `target` and `target_arch` are not obviously the same JSON path.** The reader's `target` is byte-pinned to `__pyx_n_u_target`; the writer's `target_arch` is byte-pinned to the `.rodata` pool. Whether `getKelf` reads a top-level `target` key or a nested `metadata.target_arch` is [INFERRED] — no example `kelf-N.json` ships in this wheel to settle it. A reimplementer should emit both shapes compatibly, or confirm against a real `.neff`.
 
 ---
 
@@ -126,10 +126,10 @@ So `getKelf` returns exactly `kelf-0.json["target"]` and nothing else. The write
 ```text
 neuronxcc::backend::NeffPackager::writeNeffJson(
     NeffFileWriter&,
-    std::vector<std::unique_ptr<bir::Module>>&)        @ 0x152c740   [nm-confirmed, demangled]
+    std::vector<std::unique_ptr<bir::Module>>&)        @ 0x152c740
 ```
 
-The JSON type throughout is `nlohmann::json_abi_v3_11_3` with `ordered_map` — **key insertion order is preserved** in the output, so a reimplementation must emit keys in the same order to byte-match. **[CONFIRMED — `nlohmann…ordered_map…` call targets in the disasm.]**
+The JSON type throughout is `nlohmann::json_abi_v3_11_3` with `ordered_map` — **key insertion order is preserved** in the output, so a reimplementation must emit keys in the same order to byte-match.
 
 ### The `__kelf` Node / Filename Builder
 
@@ -163,14 +163,14 @@ for (int i = 0; i < modules.size(); ++i) {
 }
 ```
 
-Two CONFIRMED facts from this disasm:
+Two facts fall out of this disassembly:
 
-1. **The filename is `"kelf-" + std::to_string(i) + ".json"`, built with `std::string::_M_append` (@ `0x152e771`) — there is no `%d` format string.** The `kelf-` prefix and `.json` suffix are separate `.rodata` literals. **[CONFIRMED.]**
-2. **A node of op-type `"kelf"` (key `"__kelf"`) is inserted with attrs `{func_name, flatten_data, num_inputs}`**, the latter two built via `std::to_string`. **[CONFIRMED — `to_string` calls + `nlohmann operator[]` key-assignment.]**
+1. **The filename is `"kelf-" + std::to_string(i) + ".json"`, built with `std::string::_M_append` (@ `0x152e771`) — there is no `%d` format string.** The `kelf-` prefix and `.json` suffix are separate `.rodata` literals.
+2. **A node of op-type `"kelf"` (key `"__kelf"`) is inserted with attrs `{func_name, flatten_data, num_inputs}`**, the latter two built via `std::to_string`.
 
 ### Sibling Producer Methods
 
-For orientation, the `NeffPackager` roster around `writeNeffJson` (all nm-confirmed):
+For orientation, the `NeffPackager` roster around `writeNeffJson`:
 
 | Method | @ | Emits |
 |---|---|---|
@@ -179,7 +179,7 @@ For orientation, the `NeffPackager` roster around `writeNeffJson` (all nm-confir
 | `run(std::vector<unique_ptr<bir::Module>>&)` | `0x15307e0` | top-level NEFF packaging entry |
 | `run(bir::Module&)` | `0x151ec00` | single-module entry |
 
-> **NOTE (M2 — verifier frame) —** every `NeffPackager`/`NeffFileWriter` method address on this page (`writeNeffJson 0x152c740`, `writeDefJson 0x152a0e0`, etc.) is the **`.dynsym` symbol-start / function-entry** address on the cp310 binary — the prologue (`push %r15`), with the IDA `functions.json` `addr` and the demangled `.dynsym` value in agreement. `objdump -d --start-address=0x152c740` lands on the prologue, not mid-body. (IDA also reports an internal per-symbol frame ~`0xa0` lower for some of these — that is the second VA frame; verify against the entry addresses cited here.)
+> **NOTE — which VA frame these addresses are in.** Every `NeffPackager`/`NeffFileWriter` method address on this page (`writeNeffJson 0x152c740`, `writeDefJson 0x152a0e0`, etc.) is the **`.dynsym` symbol-start / function-entry** address on the cp310 binary — the prologue (`push %r15`), with the IDA `functions.json` `addr` and the demangled `.dynsym` value in agreement. `objdump -d --start-address=0x152c740` lands on the prologue, not mid-body. (IDA also reports an internal per-symbol frame ~`0xa0` lower for some of these — that is the second VA frame; verify against the entry addresses cited here.)
 
 ---
 
@@ -187,7 +187,7 @@ For orientation, the `NeffPackager` roster around `writeNeffJson` (all nm-confir
 
 ### What N Enumerates
 
-`N` is the subgraph index `i` in `writeNeffJson`'s loop over the `std::vector<std::unique_ptr<bir::Module>>`. One `bir::Module` == one subgraph; the filename is `"kelf-"+to_string(i)+".json"`. The `sg_coreV1` tag reads "subgraph-core, schema V1": each `kelf-N` corresponds to one subgraph mapped to one virtual NeuronCore, so **`kelf-0` ↔ `sg00`**. **[STRONG — `to_string(i)` over the module vector + the `sg_coreV1` tag + the reader's `sg00`↔`kelf-0` pairing.]**
+`N` is the subgraph index `i` in `writeNeffJson`'s loop over the `std::vector<std::unique_ptr<bir::Module>>`. One `bir::Module` == one subgraph; the filename is `"kelf-"+to_string(i)+".json"`. The `sg_coreV1` tag reads "subgraph-core, schema V1": each `kelf-N` corresponds to one subgraph mapped to one virtual NeuronCore, so **`kelf-0` ↔ `sg00`**. That pairing rests on three things together: the `to_string(i)` over the module vector, the `sg_coreV1` tag, and the reader's own `sg00` ↔ `kelf-0` assumption.
 
 When a graph is split across LNC cores, each core's subgraph gets its own `kelf-N.json` (N ranges over the per-core subgraphs). The split itself — what each core owns privately vs. shares — is the subject of [the multi-core (LNC) memory model](../arch/lnc-memory-model.md).
 
@@ -199,19 +199,19 @@ When a graph is split across LNC cores, each core's subgraph gets its own `kelf-
 
 ### The Datapath Engines
 
-The `__kelf` node references the per-engine instruction binaries. The engines are the five **datapath** `bir::EngineType` values, byte-confirmed from two independent sources:
+The `__kelf` node references the per-engine instruction binaries. The engines are the five **datapath** `bir::EngineType` values, fixed by two independent sources:
 
 - `bir::EngineType2string` @ `0x47fa80` and `string2EngineType` @ `0x47fe60` (libBIR.so) — the full enum is `{PE, Pool, Activation, SP, DVE, DMA, All, Unassigned}` (plus `GPSIMD`, `Sync` in the parse table).
 - `analyze_neff_artifacts.py:74` iterates `['Pool', 'SP', 'DVE', 'PE', 'Activation']` — the exact five that ship `.bin`/`.json` per subgraph.
 
 | EngineType | Datapath? | On-disk member (under `sgNN/`) | Confidence |
 |---|---|---|---|
-| `PE` (Tensor) | yes | `PE.bin` + `PE.json` | CONFIRMED |
-| `Pool` | yes | `Pool.bin` + `Pool.json` | CONFIRMED |
-| `Activation` | yes | `Activation.bin` + `Activation.json` | CONFIRMED |
-| `SP` (Vector) | yes | `SP.bin` + `SP.json` | CONFIRMED |
-| `DVE` | yes | `DVE.bin` + `DVE.json` | CONFIRMED |
-| `DMA` / `All` / `Unassigned` | no | — (non-datapath / sentinel) | CONFIRMED (enum) |
+| `PE` (Tensor) | yes | `PE.bin` + `PE.json` | CERTAIN |
+| `Pool` | yes | `Pool.bin` + `Pool.json` | CERTAIN |
+| `Activation` | yes | `Activation.bin` + `Activation.json` | CERTAIN |
+| `SP` (Vector) | yes | `SP.bin` + `SP.json` | CERTAIN |
+| `DVE` | yes | `DVE.bin` + `DVE.json` | CERTAIN |
+| `DMA` / `All` / `Unassigned` | no | — (non-datapath / sentinel) | CERTAIN (enum) |
 
 ### How the Locations Are Found (Not From `kelf-N.json`)
 
@@ -220,9 +220,7 @@ Each engine's instruction stream is a **separate NEFF tar member** `sgNN/<Engine
 - **the NEFF tar BOM** — assembled by `NeffFileWriter::addToBom` @ `0x153fb80` and `NeffFileWriter::writeArchiveFile` @ `0x153e030` (md5 over members; the tar member length gives each `.bin`'s size); and
 - **the sibling `<Engine>.json`** — DMA descriptor layout (`dma[].desc[]` `from`/`to`/`from_sizes`/`to_sizes`), read by `analyze_neff_artifacts.py`.
 
-**[engine list = CONFIRMED; `.bin`/`.json` member layout = STRONG; absence of literal offset/size keys inside `kelf-N.json` = STRONG — no such bare keys exist in the writer pool.]**
-
-> **CORRECTION (recap) —** the `{filename, offset, size}` triple the S02 §299 premise asked for does **not** live inside `kelf-N.json`. The `filename` is the `.bin` member name (via `func_name`/`storage_id`); the `offset` is the tar member position (BOM); the `size` is the tar member length and/or the `<Engine>.json` descriptor extent. `kelf-N.json` indexes; it does not tabulate offsets.
+So the `{filename, offset, size}` triple does exist — it is just spread across three places. The `filename` is the `.bin` member name (reached via `func_name` / `storage_id`); the `offset` is the tar member position recorded in the BOM; the `size` is the tar member length, and/or the extent declared in the `<Engine>.json` descriptor. `kelf-N.json` indexes; it never tabulates offsets.
 
 ---
 
@@ -256,25 +254,25 @@ def getKelf(self):
 
 ---
 
-## 6. Re-Verification Ceiling
+## 6. Limits of this reading
 
-What is byte-pinned vs. inferred:
+What is byte-pinned versus inferred:
 
 | Claim | Status | Evidence |
 |---|---|---|
-| Key pool = TVM `graph_runtime` vocabulary | CONFIRMED | `\0KEY\0` blob `0x1c869f7…0x1c86b00` |
-| `revision` value `"0.5"` | CONFIRMED | literal adjacent to `revision` in pool |
-| `sg_coreV1` tag | CONFIRMED | string in pool |
-| Filename = `"kelf-"+to_string(i)+".json"`, no printf | CONFIRMED | disasm `0x152e72f`/`0x152e771` |
-| `__kelf` node attrs `{func_name, flatten_data, num_inputs}` | CONFIRMED | `to_string` calls + key strings |
-| `writeNeffJson` @ `0x152c740` | CONFIRMED | nm demangle |
-| `getKelf` reads `kelf-0.json["target"]` | CONFIRMED | docstring + `__pyx_n_u_target` + `kelf-0.json` string |
-| Datapath engines `{PE,Pool,Activation,SP,DVE}` | CONFIRMED | `EngineType2string` + `analyze_neff_artifacts.py:74` |
-| Not a flat engine→offset map | STRONG | no offset/size/filename key in writer pool |
-| Per-engine `.bin`/`.json` member layout | STRONG | analyze_neff + tar-member semantics |
-| N = per-subgraph/per-core | STRONG | `to_string(i)` over module vector + `sg00`↔`kelf-0` |
-| `target` vs `metadata.target_arch` exact JSON path | INFERRED | no example `kelf-N.json` shipped |
-| Runtime walk `kelf-N.json` → `<Engine>.bin` | INFERRED | no runtime binary in this wheel |
+| Key pool = TVM `graph_runtime` vocabulary | CERTAIN | `\0KEY\0` blob `0x1c869f7…0x1c86b00` |
+| `revision` value `"0.5"` | CERTAIN | literal adjacent to `revision` in pool |
+| `sg_coreV1` tag | CERTAIN | string in pool |
+| Filename = `"kelf-"+to_string(i)+".json"`, no printf | CERTAIN | disasm `0x152e72f`/`0x152e771` |
+| `__kelf` node attrs `{func_name, flatten_data, num_inputs}` | CERTAIN | `to_string` calls + key strings |
+| `writeNeffJson` @ `0x152c740` | CERTAIN | nm demangle |
+| `getKelf` reads `kelf-0.json["target"]` | CERTAIN | docstring + `__pyx_n_u_target` + `kelf-0.json` string |
+| Datapath engines `{PE,Pool,Activation,SP,DVE}` | CERTAIN | `EngineType2string` + `analyze_neff_artifacts.py:74` |
+| Not a flat engine→offset map | HIGH | no offset/size/filename key in writer pool |
+| Per-engine `.bin`/`.json` member layout | HIGH | analyze_neff + tar-member semantics |
+| N = per-subgraph/per-core | HIGH | `to_string(i)` over module vector + `sg00`↔`kelf-0` |
+| `target` vs `metadata.target_arch` exact JSON path | MEDIUM | no example `kelf-N.json` shipped |
+| Runtime walk `kelf-N.json` → `<Engine>.bin` | MEDIUM | no runtime binary in this wheel |
 
 The two structural inferences (`target` JSON path; runtime traversal) would each need a shipped example `.neff`'s `kelf-N.json` or the `aws-neuronx-runtime` binary to settle — neither is in this compiler-only wheel.
 

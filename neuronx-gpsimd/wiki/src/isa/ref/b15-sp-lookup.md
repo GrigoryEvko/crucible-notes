@@ -33,8 +33,9 @@ thunk bodies in the non-stripped `libisa-core.so` (`movl $imm,(%rdi); ret`); the
 semantics** are *proven by execution* — every seed claim was computed by calling the matching
 `module__xdref_` value leaf in `libfiss-base.so` live via `ctypes` (license-free), and the **seed
 table bytes were read directly out of `.rodata`** (VMA == file-offset) and shown to be reproduced
-bit-exactly by the leaf. `[HIGH/OBSERVED]` throughout (by-execution where a value fact is stated),
-per the [confidence model](../../reference/confidence-model.md).
+bit-exactly by the leaf. The page default is `[HIGH/OBSERVED]` (by execution where a value fact is
+stated), per the [confidence model](../../reference/confidence-model.md); claims that depart from
+that default carry an explicit tag.
 
 ---
 
@@ -66,8 +67,7 @@ tables `table__RECIP_Data8` and `table__RSQRT_Data8`.
 > `nexp0nxf16`, `nexp01nxf16`, `nexp01n_2xf32` — the plain `nexp0` is fp16-only). (2) The fp16 seeds
 > index *different-width* tables; the fp32 forms here all index the **128-entry** `*_Data8` tables.
 > A reimplementer copying the fp16 seed roster verbatim into fp32 will invent a non-existent
-> `nexp0n_2xf32` opcode. `[HIGH/OBSERVED]` (member-list negative control over the 1065-op `ivp_`
-> roster).
+> `nexp0n_2xf32` opcode (a member-list negative control over the 1065-op `ivp_` roster).
 
 > **GOTCHA — `recip0`/`rsqrt0`/`sqrt0`/`div0` are *seeds*, not the function. They are accurate to ~7
 > bits and MUST be refined.** `recip0(3.0)` returns `0x3eaa0000 = 0.33203125`, not the correctly
@@ -75,7 +75,7 @@ tables `table__RECIP_Data8` and `table__RSQRT_Data8`.
 > in the mnemonic is the iteration index — these are the **0ᵗʰ approximation**. The compiler always
 > emits a seed op followed by Newton (recip/rsqrt) or QLI/`divn` (div) refine steps
 > ([B17](b17-spfma.md)/[B23](b23-divide.md)/B24). Treating a seed result as the final value is wrong
-> by ~1 part in 128. `[HIGH/OBSERVED·exec]`
+> by ~1 part in 128.
 
 ---
 
@@ -87,31 +87,33 @@ slot** (one of the six `S3_ALU` slots that host the whole family). The `opcode-s
 (`c7 07 <imm32> c3` — a single-word template; **there is no `word1` store**, the thunk writes only
 `word0`). The `byte-size` is the FLIX format length the op is placed into (16 B for the wide formats
 `F0/F1/F2/F3/F7`, 8 B for the narrow `N0`). The seed table column names the `.rodata` table the
-op's value leaf indexes.
+op's value leaf indexes. Every row is `[HIGH/OBSERVED]`; the five base forms are additionally
+**proven by execution**, while the five `t` rows are OBSERVED at the encoding level (their seed
+value equals the plain form's — see the NOTE below).
 
-| mnemonic | FLIX fmt·slot | opcode-sel imm (F1_S3) | vec lane in/out + seed table | byte-size | one-line semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_recip0n_2xf32` | F1·S3_ALU (+5 slots) | `0x26348306` | in=vec(16×f32), out=vec; **RECIP_Data8** | 16/8 | 0ᵗʰ approx of `1/x` (~7-bit seed) | H/OBS·exec |
-| `ivp_rsqrt0n_2xf32` | F1·S3_ALU (+5) | `0x26350106` | in=vec, out=vec; **RSQRT_Data8** | 16/8 | 0ᵗʰ approx of `1/√x` (~7.5-bit seed) | H/OBS·exec |
-| `ivp_sqrt0n_2xf32` | F1·S3_ALU (+5) | `0x26350306` | in=vec, out=vec; **RSQRT_Data8** | 16/8 | 0ᵗʰ approx of `√x` (mantissa-domain seed) | H/OBS·exec |
-| `ivp_div0n_2xf32` | F1·S3_ALU (+5) | `0x26338306` | in=vec, out=vec; **RECIP_Data8** | 16/8 | 0ᵗʰ approx of `1/d` (denominator seed for `divn`) | H/OBS·exec |
-| `ivp_nexp01n_2xf32` | F1·S3_ALU (+5) | `0x26348106` | in=vec, out=vec; **no table** | 16/8 | `2^x` integer-exponent split (`n`,`frac`) | H/OBS·exec |
-| `ivp_recip0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080006` | in=vec, out=vec; RECIP_Data8 | 16/8 | `recip0` throttle variant (same value) | H/OBS |
-| `ivp_rsqrt0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080206` | in=vec, out=vec; RSQRT_Data8 | 16/8 | `rsqrt0` throttle variant (same value) | H/OBS |
-| `ivp_sqrt0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080106` | in=vec, out=vec; RSQRT_Data8 | 16/8 | `sqrt0` throttle variant (same value) | H/OBS |
-| `ivp_div0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080004` | in=vec, out=vec; RECIP_Data8 | 16/8 | `div0` throttle variant (same value) | H/OBS |
-| `ivp_nexp01n_2xf32t` | F1·S3_ALU (+5) | `0x2b080304` | in=vec, out=vec; no table | 16/8 | `nexp01` throttle variant (same value) | H/OBS |
+| mnemonic | FLIX fmt·slot | opcode-sel imm (F1_S3) | vec lane in/out + seed table | byte-size | one-line semantics |
+|---|---|---|---|---|---|
+| `ivp_recip0n_2xf32` | F1·S3_ALU (+5 slots) | `0x26348306` | in=vec(16×f32), out=vec; **RECIP_Data8** | 16/8 | 0ᵗʰ approx of `1/x` (~7-bit seed) |
+| `ivp_rsqrt0n_2xf32` | F1·S3_ALU (+5) | `0x26350106` | in=vec, out=vec; **RSQRT_Data8** | 16/8 | 0ᵗʰ approx of `1/√x` (~7.5-bit seed) |
+| `ivp_sqrt0n_2xf32` | F1·S3_ALU (+5) | `0x26350306` | in=vec, out=vec; **RSQRT_Data8** | 16/8 | 0ᵗʰ approx of `√x` (mantissa-domain seed) |
+| `ivp_div0n_2xf32` | F1·S3_ALU (+5) | `0x26338306` | in=vec, out=vec; **RECIP_Data8** | 16/8 | 0ᵗʰ approx of `1/d` (denominator seed for `divn`) |
+| `ivp_nexp01n_2xf32` | F1·S3_ALU (+5) | `0x26348106` | in=vec, out=vec; **no table** | 16/8 | `2^x` integer-exponent split (`n`,`frac`) |
+| `ivp_recip0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080006` | in=vec, out=vec; RECIP_Data8 | 16/8 | `recip0` throttle variant (same value) |
+| `ivp_rsqrt0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080206` | in=vec, out=vec; RSQRT_Data8 | 16/8 | `rsqrt0` throttle variant (same value) |
+| `ivp_sqrt0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080106` | in=vec, out=vec; RSQRT_Data8 | 16/8 | `sqrt0` throttle variant (same value) |
+| `ivp_div0n_2xf32t` | F1·S3_ALU (+5) | `0x2b080004` | in=vec, out=vec; RECIP_Data8 | 16/8 | `div0` throttle variant (same value) |
+| `ivp_nexp01n_2xf32t` | F1·S3_ALU (+5) | `0x2b080304` | in=vec, out=vec; no table | 16/8 | `nexp01` throttle variant (same value) |
 
 > **GOTCHA — the opcode-selector immediate is SLOT-LOCAL, not a global opcode number.** The same
 > mnemonic carries a *completely different* selector in each of its six slots. `recip0n_2xf32` is
 > `0x26348306` in `F1_S3_ALU` but `0x868f8102` in `F0_S3_ALU`, `0x08cc0302` in `F2_S3_ALU`,
 > `0x0225bc00` in `F3_S3_ALU`, `0x289c8300` in `F7_S3_ALU`, and `0x6a685c00` in `N0_S3_ALU` (all
-> byte-exact this pass). There is **no** additive or bit-pattern relation — the F0 form even differs
+> byte-exact). There is **no** additive or bit-pattern relation — the F0 form even differs
 > in the high byte (`0x86` vs `0x26`). This page tabulates one canonical slot so the selectors are
 > comparable; a reimplementer reads the placement it actually targets from
 > `Opcode_<mnem>_Slot_<that-slot>_encode`. This is the same finding as
 > [the FLIX encode-thunk model](../core/flix-encoding.md#61-the-universal-encode-thunk-abi) and the
-> [B02 slot-local selector GOTCHA](b02-vec-alu-fp.md). `[HIGH/OBSERVED]`
+> [B02 slot-local selector GOTCHA](b02-vec-alu-fp.md).
 
 > **NOTE — the `t` suffix is a *throttle / issue* variant, not a different computation.** The five
 > `*_2xf32t` mnemonics share their value semantics with the plain forms (the value side has **no**
@@ -122,7 +124,7 @@ op's value leaf indexes.
 > band (`0x2634_xx06`/`0x2635_xx06`), so they are independent opcodes a decoder must recognize, even
 > though they compute the same seed. Their value tag is `[HIGH/OBSERVED]` on encoding and on
 > value-equivalence-by-family; not separately execution-swept (the plain leaf is the value of
-> record). `[HIGH/OBSERVED]`
+> record).
 
 ---
 
@@ -130,7 +132,7 @@ op's value leaf indexes.
 
 The seeds are not computed by polynomial; they are **read from two 512-byte lookup tables** in
 `libfiss-base.so`'s `.rodata` (section `[13]` @ VMA `0x88ff00`, **VMA == file-offset** — confirmed
-`readelf -SW` this pass, so `xxd -s <VMA>` reads them directly):
+by `readelf -SW`, so `xxd -s <VMA>` reads them directly):
 
 | table | VMA / file-off | size | entries | layout | indexed by |
 |---|---|---|---|---|---|
@@ -139,7 +141,7 @@ The seeds are not computed by polynomial; they are **read from two 512-byte look
 
 The `Data8` suffix is literal: each table holds an **8-bit** seed value packed in the low byte of a
 u32 slot (the high three bytes are zero — verified `all(v < 256)` over all 256 entries). The leading
-table bytes, read this pass:
+table bytes:
 
 ```
 RECIP_Data8 (0x958fc0):  ff fd fb f9 f7 f5 f4 f2 f0 ee ed eb e9 e8 e6 e4 …  → … 82 81 81 81   (entry 0..127)
@@ -155,7 +157,7 @@ and `RSQRT[127]=0xb5` straddle the **binade boundary** (it is *two* tables inter
 > **QUIRK — `div0` and `sqrt0` ship *no table of their own*; they share `recip0`'s and `rsqrt0`'s.**
 > `module__xdref_div0_32f_32f` (`@0x878340`) does `lea … table__RECIP_Data8` — the **same** table
 > `recip0` uses; `module__xdref_sqrt0_32f_32f` (`@0x878490`) does `lea … table__RSQRT_Data8` — the
-> **same** table `rsqrt0` uses (both `lea` addresses re-read this pass). The four reciprocal-class
+> **same** table `rsqrt0` uses (both `lea` addresses read from the leaf bodies). The four reciprocal-class
 > seeds therefore cost **two** 512-byte tables, not four. A reimplementer who allocates a distinct
 > ROM per mnemonic wastes 1 KB and risks a divergent `div0`/`recip0` seed. `nexp01` references **no**
 > table at all (§5). `[HIGH/OBSERVED]`
@@ -208,8 +210,8 @@ uint32_t recip0_f32(uint32_t x) {
 The four numbered steps are the byte-level reads from the disassembly:
 `(1)` `shr $0x16`/`shr $0xd` chain → `mant >> 16`; `(2)` `lea 0xe082f(%rip) → 958fc0
 <table__RECIP_Data8>` then `mov (%rcx,%r12,4),%r12d`; `(3)` `shl $0xe`/`and 0x7f0000` deposit;
-`(4)` `mov $0xfd,%al ; sub %r11d,%eax` exponent reflection. The `lea` target re-read this pass is
-**`0x958fc0`**, the byte-identical address of `table__RECIP_Data8`.
+`(4)` `mov $0xfd,%al ; sub %r11d,%eax` exponent reflection. The `lea` target is **`0x958fc0`**, the
+byte-identical address of `table__RECIP_Data8`.
 
 ### 4.2 The rsqrt0 seed-lookup — binade-parity indexing
 
@@ -257,13 +259,13 @@ recip0(2^-126=0x00800000) -> 0x7e7f0000  (≈ 8.47e37 = 1/2^-126, exponent refle
 
 `1/(+0) = +inf`, `1/(-0) = -inf` (sign threaded), `1/inf = +0`, and the smallest normal `2^-126`
 maps to a near-max-finite seed with mantissa byte `0x7f` = `RECIP[0] & 0x7f` — the table value for
-mantissa `1.0`, exactly as the algorithm predicts. `[HIGH/OBSERVED·exec]`
+mantissa `1.0`, exactly as the algorithm predicts.
 
 ### 4.4 Bit-exact reproduction certificate — the leaf reproduces the `.rodata` table
 
 The decisive OBSERVED-by-execution fact: for **normal inputs in the canonical binade**, the seed
 mantissa byte emitted by the leaf **equals the `.rodata` table entry, bit for bit**. Driven live via
-ctypes this pass, sweeping all 128 mantissa buckets:
+ctypes, sweeping all 128 mantissa buckets:
 
 ```python
 import ctypes, struct
@@ -282,7 +284,7 @@ mism = sum(1 for i in range(128)
 # -> mism == 0    (128/128 buckets bit-exact)
 ```
 
-Results, this pass:
+Results:
 
 | certificate | result |
 |---|---|
@@ -304,8 +306,8 @@ seed table column of these roster rows is *proven*, not inferred. `[HIGH/OBSERVE
 > because the seed reconstruction reflects the exponent and re-aligns the mantissa for the opposite
 > binade. The table value is still the source; the placement is binade-dependent. A reimplementer
 > must model both the `0xfd − exp` reflection and the parity-dependent mantissa shift, not just the
-> table read. `[HIGH/OBSERVED·exec]` (the canonical-binade reproduction is the 0-mismatch certificate
-> above; the alternation is the documented complement).
+> table read. (The canonical-binade reproduction is the 0-mismatch certificate above; the alternation
+> is the documented complement.)
 
 ---
 
@@ -361,7 +363,7 @@ sqrt0(2.0) = 0x3f340000 (0.703)     sqrt0(9.0) = 0x3f2a0000 (0.664)   // 9.0 man
 ```
 
 `sqrt0` reuses the rsqrt ROM because `√x = x · (1/√x)`: the seed is the rsqrt seed scaled, and the
-refine (Newton on `√x`, or `x · rsqrt`) finishes it. `[HIGH/OBSERVED·exec]`
+refine (Newton on `√x`, or `x · rsqrt`) finishes it.
 
 ### 5.3 `nexp01` — the table-free exponent split
 
@@ -388,13 +390,13 @@ Live: `nexp01(0.0)=0xbf800000 (-1)`, `nexp01(0.5)=0xc0000000 (-2)`, `nexp01(1.0)
 `nexp01(2.0)=0xc0000000 (-2)`, `nexp01(-1.0)=0x3f800000 (+1)` — a staircase integer-split, **not** an
 approximation of `e^-x` or `2^-x` (compare `2^-0.5 = 0.707`, which `nexp01(0.5)` is *not*). It is the
 **range-reduction primitive**, the fp32 analogue of the fp16 `nexp01nxf16`; the actual `exp`/`nexp`
-value is built downstream by an FMA polynomial on the `frac` and a scale by `2^n`. `[HIGH/OBSERVED·exec]`
+value is built downstream by an FMA polynomial on the `frac` and a scale by `2^n`.
 
 > **QUIRK — `nexp01` is the only seed op with no ROM, and fp32 has *only* the `01` form.** There is
 > no `nexp0n_2xf32` (the plain exp seed) — that mnemonic exists **only** in fp16. The fp32 exp path
 > is `nexp01` (range-split) → FMA polynomial → `addexp` scale ([B02](b02-vec-alu-fp.md)'s `addexpn`).
 > A reimplementer must not expect a table-driven fp32 `nexp0` seed; the fp32 exp is computed entirely
-> in the ALU + FMA, with `nexp01` doing only the argument reduction. `[HIGH/OBSERVED]`
+> in the ALU + FMA, with `nexp01` doing only the argument reduction.
 
 ---
 
@@ -403,7 +405,7 @@ value is built downstream by an FMA polynomial on the `frac` and a scale by `2^n
 The seed is the **0ᵗʰ iterate**; the refinement is **not in this batch** but is named here so the
 seed's role is unambiguous. fp32 needs **24 significand bits**; a ~7-bit seed reaches it in
 **2 Newton iterations** (each Newton step roughly **doubles** the correct-bit count: 7 → 14 → 28 ≥ 24).
-Measured live this pass over 50,000 random x∈[1,2): `recip0` max relative error `0.00780 ≈ 2⁻⁷·⁰`
+Measured live over 50,000 random x∈[1,2): `recip0` max relative error `0.00780 ≈ 2⁻⁷·⁰`
 (7.0 bits); `rsqrt0` `0.00546 ≈ 2⁻⁷·⁵` (7.5 bits) — both confirm the 2-iteration budget.
 
 **Reciprocal Newton step** (`y' = y·(2 − x·y)`), one fp32 FMA pair per iteration — the
@@ -442,7 +444,7 @@ their own value certificates on their pages).
 
 ## 7. Batch tally — every sp_lookup mnemonic vs `nm`
 
-The 10 mnemonics and their placement counts, re-counted this pass with
+The 10 mnemonics and their placement counts, counted with
 `nm libisa-core.so | rg -c 'Opcode_ivp_<mnem>_Slot_.*_encode'` (the only legitimate count method,
 per [coverage tally](../core/coverage-tally.md)):
 
@@ -465,7 +467,7 @@ sub-roster, `60` total. The slot set is byte-confirmed from `nm` (the
 `Opcode_ivp_<m>_Slot_{f0,f1,f2,f3,f7,n0}_s3_alu_encode` family of every mnemonic).
 
 **Value-leaf grounding.** **5 value leaves** back the 10 mnemonics (each plain/`t` pair shares one):
-`recip0`, `rsqrt0`, `sqrt0`, `div0`, `nexp01`. **All five were driven live this pass**; `recip0`
+`recip0`, `rsqrt0`, `sqrt0`, `div0`, `nexp01`. **All five were driven live**; `recip0`
 and `rsqrt0` carry the **128-bucket bit-exact `.rodata` reproduction certificate** (§4.4);
 `div0`/`sqrt0`/`nexp01` were swept on the special and binade-boundary inputs (§5). The five leaves
 roll into the **864** value-leaf denominator
@@ -506,10 +508,10 @@ roll into the **864** value-leaf denominator
 
 > **NOTE — recip and rsqrt are *one* hardware pipeline.** `libcas-core.so` carries a single
 > transcendental opcode family, `bbn_sem_vec_sprecip_rsqrt_opcode`, spanning **16 stages**
-> (`stage0..stage15`, count re-read this pass) — the `sprecip_rsqrt` name and the shared stage chain
+> (`stage0..stage15`) — the `sprecip_rsqrt` name and the shared stage chain
 > show the single-precision reciprocal and reciprocal-sqrt seeds are computed by the *same* 16-deep
 > datapath, multiplexed by the opcode selector. This is consistent with the two ops sharing the ALU
-> slot family and differing only in which `.rodata` table they index. `[HIGH/OBSERVED]`
+> slot family and differing only in which `.rodata` table they index.
 
 ---
 
@@ -538,8 +540,7 @@ roll into the **864** value-leaf denominator
 
 ## 10. Adversarial self-verification — the five strongest claims, re-challenged
 
-Each headline claim re-tested against the binary this pass; a claim survives only if a *second*
-independent witness agrees.
+A claim survives only if a *second* independent witness agrees.
 
 1. **The seed leaf reproduces the `.rodata` table bit-exactly.** *Challenge:* could the apparent
    match be my harness reading the wrong output pointer, or the table by coincidence? *Re-test:* the
@@ -548,38 +549,38 @@ independent witness agrees.
    table itself was read **independently** from `.rodata` via `xxd`/`struct.unpack` (not via the
    leaf). Two independent reads (static `.rodata` byte + dynamic leaf execution) agree across all 128
    entries. `rsqrt0` reproduces `RSQRT_Data8` over **both** 64-entry binade halves with 0 mismatches.
-   **Survives.** `[HIGH/OBSERVED·exec]`
+   **Survives.**
 
 2. **`div0` and `sqrt0` share `recip0`'s / `rsqrt0`'s tables (no private ROM).** *Challenge:* maybe
    each leaf has its own copy at a nearby address? *Re-test:* the `lea …(%rip)` in
    `module__xdref_div0_32f_32f` resolves to **`0x958fc0` = `table__RECIP_Data8`** (byte-identical to
    `recip0`'s `lea` target), and `sqrt0`'s to **`0x958dc0` = `table__RSQRT_Data8`** (identical to
    `rsqrt0`'s). `nm` shows only **two** `*_Data8` tables exist, not four. Same address ⇒ same ROM.
-   **Survives.** `[HIGH/OBSERVED]`
+   **Survives.**
 
 3. **The fp32 roster is 10 mnemonics / 60 placements, and there is no `nexp0n_2xf32`.** *Challenge:*
    could a plain fp32 exp seed exist under a different spelling? *Re-test:*
    `nm libisa-core.so | rg -o 'Opcode_(ivp_nexp0[a-z0-9_]*)_Slot' -r '$1' | sort -u` returns exactly
    `{nexp0nxf16, nexp01nxf16, nexp01n_2xf32, nexp01n_2xf32t}` — the only fp32 exp seeds are the `01`
    forms; the plain `nexp0` is fp16-only. Each of the 10 fp32 seed mnemonics has exactly **6**
-   `Slot_*_s3_alu_encode` thunks (`nm | rg -c`), summing to **60**. **Survives.** `[HIGH/OBSERVED]`
+   `Slot_*_s3_alu_encode` thunks (`nm | rg -c`), summing to **60**. **Survives.**
 
 4. **The seed is ~7 bits and needs 2 Newton iterations for fp32.** *Challenge:* maybe the seed is
    already more accurate and one iteration suffices? *Re-test:* a 50,000-sample live sweep over
    x∈[1,2) gives `recip0` max relative error `0.00780 = 2⁻⁷·⁰⁰` and `rsqrt0` `0.00546 = 2⁻⁷·⁵³`. One
    Newton step from 7.0 bits reaches ~14 bits (< 24); two reach ~28 (≥ 24). The measured 7-bit seed
    is exactly the table's 8-bit-byte resolution minus the truncation, independently consistent with
-   the `Data8` (8-bit) table width. **Survives.** `[HIGH/OBSERVED·exec]`
+   the `Data8` (8-bit) table width. **Survives.**
 
 5. **recip and rsqrt are one 16-stage hardware pipeline; the `t` variants compute the same seed.**
    *Challenge:* could `recip0` and `rsqrt0` be separate datapaths, and could `t` change the math?
    *Re-test:* `libcas-core.so` carries a **single** transcendental opcode family
-   `bbn_sem_vec_sprecip_rsqrt_opcode` with `stage0..stage15` (16 stages, count re-read) — the
+   `bbn_sem_vec_sprecip_rsqrt_opcode` with `stage0..stage15` (16 stages) — the
    combined `sprecip_rsqrt` name proves one shared pipeline; there is **no** separate
    `vec_recip`/`vec_rsqrt` stage family. For `t`: the value side has **no** `recip0`/`rsqrt0` `_32tf`
    leaf — only the plain `_32f` leaves exist, so the `t` forms necessarily resolve to the same
    arithmetic (the `t` is an issue/throttle attribute, its selectors in a distinct `0x2b08_*` band).
-   **Survives.** `[HIGH/OBSERVED]` (value-equivalence at family confidence; encoding fully OBSERVED).
+   **Survives.** (Value-equivalence at family confidence; encoding fully OBSERVED.)
 
 No claim on this page rests on a raw dump, an unnamed symbol, or a single uncorroborated witness; the
 seed-table reproduction carries a 128-bucket differential-execution certificate against the shipped
@@ -590,7 +591,7 @@ seed-table reproduction carries a 128-bucket differential-execution certificate 
 ## 11. Confidence ledger
 
 **HIGH / OBSERVED (by execution + `.rodata` read)** — driven live against `libfiss-base.so` and read
-directly from `.rodata` this pass:
+directly from `.rodata`:
 
 * `recip0`/`rsqrt0` seed mantissa byte `==` `table__{RECIP,RSQRT}_Data8[index] & 0x7f`, bit-exact
   over **128 buckets** each (canonical binade for recip; both binade halves for rsqrt) — 0 mismatches.
@@ -602,7 +603,7 @@ directly from `.rodata` this pass:
   the rsqrt ROM, and `nexp01`'s table-free integer-exponent staircase.
 * Seed accuracy ≈ 7.0 / 7.5 bits ⇒ 2 Newton iterations for fp32.
 
-**HIGH / OBSERVED** — read from `libisa-core.so` immediates / `libcas-core.so` symbols this pass:
+**HIGH / OBSERVED** — read from `libisa-core.so` immediates / `libcas-core.so` symbols:
 
 * The 10-mnemonic roster, the 6 `S3_ALU` slots, the F1 opcode-selector immediates (plain + `t`), the
   slot-local selector variance, the single-word (`word1`-absent) thunk shape, the 60-placement census.

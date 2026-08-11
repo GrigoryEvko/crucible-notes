@@ -3,7 +3,7 @@
 This is the authoritative byte-pinned **core-identity** reference: the exact set of
 configuration constants a reimplementer pins their core to so that the objects it produces
 and the firmware it accepts match the shipped GPSIMD. Every value below is read **directly
-from a shipped file this session** — the auto-generated processor-generator parameter file
+from a shipped file** — the auto-generated processor-generator parameter file
 `ncore2gp-params`, the HAL config header `core-isa.h`, the version-map header
 `xtensa-versions.h`, or a symbol/byte in one of the config binaries (`libisa-core.so`,
 `libnrtucode_internal.so`). Where a constant is a struct field, the offset and symbol are
@@ -30,29 +30,31 @@ of the identity (CoreID / ConfigName / uarch) plus the ConfigID word are what th
 the disassembler key on; pin them and every device object resolves, change one and the
 `xtensa-elf-objdump` registry no longer recognises the core.
 
-| Field | Value | Read from (file · line/symbol) | Confidence |
-|---|---|---|---|
-| **CoreID** | `ncore2gp` | `ncore2gp/build.info` (`CoreID ncore2gp`); the sole core in the `xtensa-elf-objdump` registry | `[HIGH/OBSERVED]` |
-| **ConfigName** | `Xm_ncore2gp` | `ncore2gp-params:22` (`ConfigName = Xm_ncore2gp`) | `[HIGH/OBSERVED]` |
-| **uarchName** | `Cairo` | `ncore2gp-params:25` (`uarchName = Cairo`); `isUarchCairo=1` in `core.yml` | `[HIGH/OBSERVED]` |
-| **arch (ISA family)** | `Xtensa24` | `ncore2gp-params:24` (`arch = Xtensa24`); enum `{Xtensa24, RiscV}` in `core.xparm:2637` | `[HIGH/OBSERVED]` |
-| **Exception arch** | **XEA3** | `core-isa.h:719` `XCHAL_XEA_VERSION 3`; `:726` `XCHAL_HAVE_XEA3 1` (`HAVE_XEA1/2/5 = 0`) | `[HIGH/OBSERVED]` |
-| **TargetHWVersion** | `NX1.1.4` (= `LX7.1.4`) | `ncore2gp-params:21`; `core-isa.h:260` `XCHAL_HW_VERSION_NAME "NX1.1.4"` | `[HIGH/OBSERVED]` |
-| **HW micro-arch (int)** | `281040` (= HW **RI-2020.4**) | `ncore2gp-params:19,20`; `core-isa.h:264` `XCHAL_HW_VERSION 281040` | `[HIGH/OBSERVED]` |
-| **HW accept window** | `281040 .. 281040` (**zero-width**) | `ncore2gp-params:19,20` `HWMicroArchLatest == HWMicroArchEarliest`; `core-isa.h:273,277` `MIN == MAX` | `[HIGH/OBSERVED]` |
-| **ConfigID0** | `0xC4019686` | `ncore2gp-params:110`; `core-isa.h:258` `XCHAL_HW_CONFIGID0` | `[HIGH/OBSERVED]` |
-| **ConfigID1** | `0x2908E4E3` | `ncore2gp-params:111`; `core-isa.h:259` `XCHAL_HW_CONFIGID1` | `[HIGH/OBSERVED]` |
-| **ConfigKey0 / Key1** | `0x5FA7C9E6` / `0xB2AEBB83` | `ncore2gp-params:543,544` | `[HIGH/OBSERVED]` |
-| **SW tools release** | `RI-2022.9` = `14.09` = `1409000` | `ncore2gp-params:16,17,18`; `core-isa.h:242` `XCHAL_SW_VERSION 1409000` | `[HIGH/OBSERVED]` |
-| **Customer ID** | `19270` | `ncore2gp-params:3` (header comment); `core-isa.h` header | `[HIGH/OBSERVED]` |
-| **BuildUniqueID** | `795646` = `0xc23fe` | `ncore2gp-params:541`; `build.info`; header `Build=0xc23fe` (`0xc23fe == 795646`) | `[HIGH/OBSERVED]` |
-| **BuildMode** | `Evaluation` | `ncore2gp-params:542` | `[HIGH/OBSERVED]` |
-| **SW_ABI** | `windowed` | `ncore2gp-params:525` | `[HIGH/OBSERVED]` |
-| **SW_FloatingPointABI** | `1` | `ncore2gp-params:526` | `[HIGH/OBSERVED]` |
-| **Vision type** | **Q7** (`XCHAL_VISION_TYPE = 7`) | `core-isa.h:208`; `vq7_isa=1` in `core.xparm:3638` | `[HIGH/OBSERVED]` |
-| **Coprocessor count** | `7` | `ncore2gp-params:98` `IsaCoprocessorCount = 7`; `core-isa.h:94` `XCHAL_CP_MAXCFG 7` | `[HIGH/OBSERVED]` |
-| **Register files** | `8` | `num_regfiles` @ `0x3b5c20` in `libisa-core.so` = `mov $0x8,%eax` | `[HIGH/OBSERVED]` |
-| **FLIX issue grid** | 14 formats / 46 slots | `num_formats` @ `0x3b65e0` = `0xe`; `num_slots` @ `0x3b6510` = `0x2e` | `[HIGH/OBSERVED]` |
+Every row is `[HIGH/OBSERVED]`.
+
+| Field | Value | Read from (file · line/symbol) |
+|---|---|---|
+| **CoreID** | `ncore2gp` | `ncore2gp/build.info` (`CoreID ncore2gp`); the sole core in the `xtensa-elf-objdump` registry |
+| **ConfigName** | `Xm_ncore2gp` | `ncore2gp-params:22` (`ConfigName = Xm_ncore2gp`) |
+| **uarchName** | `Cairo` | `ncore2gp-params:25` (`uarchName = Cairo`); `isUarchCairo=1` in `core.yml` |
+| **arch (ISA family)** | `Xtensa24` | `ncore2gp-params:24` (`arch = Xtensa24`); enum `{Xtensa24, RiscV}` in `core.xparm:2637` |
+| **Exception arch** | **XEA3** | `core-isa.h:719` `XCHAL_XEA_VERSION 3`; `:726` `XCHAL_HAVE_XEA3 1` (`HAVE_XEA1/2/5 = 0`) |
+| **TargetHWVersion** | `NX1.1.4` (= `LX7.1.4`) | `ncore2gp-params:21`; `core-isa.h:260` `XCHAL_HW_VERSION_NAME "NX1.1.4"` |
+| **HW micro-arch (int)** | `281040` (= HW **RI-2020.4**) | `ncore2gp-params:19,20`; `core-isa.h:264` `XCHAL_HW_VERSION 281040` |
+| **HW accept window** | `281040 .. 281040` (**zero-width**) | `ncore2gp-params:19,20` `HWMicroArchLatest == HWMicroArchEarliest`; `core-isa.h:273,277` `MIN == MAX` |
+| **ConfigID0** | `0xC4019686` | `ncore2gp-params:110`; `core-isa.h:258` `XCHAL_HW_CONFIGID0` |
+| **ConfigID1** | `0x2908E4E3` | `ncore2gp-params:111`; `core-isa.h:259` `XCHAL_HW_CONFIGID1` |
+| **ConfigKey0 / Key1** | `0x5FA7C9E6` / `0xB2AEBB83` | `ncore2gp-params:543,544` |
+| **SW tools release** | `RI-2022.9` = `14.09` = `1409000` | `ncore2gp-params:16,17,18`; `core-isa.h:242` `XCHAL_SW_VERSION 1409000` |
+| **Customer ID** | `19270` | `ncore2gp-params:3` (header comment); `core-isa.h` header |
+| **BuildUniqueID** | `795646` = `0xc23fe` | `ncore2gp-params:541`; `build.info`; header `Build=0xc23fe` (`0xc23fe == 795646`) |
+| **BuildMode** | `Evaluation` | `ncore2gp-params:542` |
+| **SW_ABI** | `windowed` | `ncore2gp-params:525` |
+| **SW_FloatingPointABI** | `1` | `ncore2gp-params:526` |
+| **Vision type** | **Q7** (`XCHAL_VISION_TYPE = 7`) | `core-isa.h:208`; `vq7_isa=1` in `core.xparm:3638` |
+| **Coprocessor count** | `7` | `ncore2gp-params:98` `IsaCoprocessorCount = 7`; `core-isa.h:94` `XCHAL_CP_MAXCFG 7` |
+| **Register files** | `8` | `num_regfiles` @ `0x3b5c20` in `libisa-core.so` = `mov $0x8,%eax` |
+| **FLIX issue grid** | 14 formats / 46 slots | `num_formats` @ `0x3b65e0` = `0xe`; `num_slots` @ `0x3b6510` = `0x2e` |
 
 > **NOTE — three names, one core.** `ncore2gp` is the Tensilica **CoreID** (the registry
 > handle a reimplementer passes as `XTENSA_CORE=ncore2gp`); `Xm_ncore2gp` is the full
@@ -152,10 +154,10 @@ scheme, and for this core they land on different years. The decoder is the shipp
 
 Reading `ncore2gp-params` against this header pins both axes precisely and **distinctly**:
 
-| Axis | Param key (value) | Header symbol | "RI" label | Confidence |
-|---|---|---|---|---|
-| **Hardware** | `HWMicroArchLatest = 281040`, `TargetHWVersion = NX1.1.4` | `XTENSA_HWVERSION_RI_2020_4 = 281040` | HW = **RI-2020.4** | `[HIGH/OBSERVED]` |
-| **Software tools** | `SWToolsRelease = RI-2022.9`, `SWToolsVername = 14.09`, `SWToolsVersion = 1409000` | `XTENSA_SWVERSION_RI_2022_9 = 1409000` | tools = **RI-2022.9** | `[HIGH/OBSERVED]` |
+| Axis | Param key (value) | Header symbol | "RI" label |
+|---|---|---|---|
+| **Hardware** | `HWMicroArchLatest = 281040`, `TargetHWVersion = NX1.1.4` | `XTENSA_HWVERSION_RI_2020_4 = 281040` | HW = **RI-2020.4** |
+| **Software tools** | `SWToolsRelease = RI-2022.9`, `SWToolsVername = 14.09`, `SWToolsVersion = 1409000` | `XTENSA_SWVERSION_RI_2022_9 = 1409000` | tools = **RI-2022.9** |
 
 > **GOTCHA — `RI-2020.4` names *both* a HW number and a SW number; the config uses only the
 > HW one.** `versions.h:430` also defines `XTENSA_SWVERSION_RI_2020_4 = 1404000` (SW "14.04").
@@ -250,7 +252,7 @@ There is exactly **one** `core-isa.h`, **one** real `ncore2gp-params` (plus its 
 every shipped-generation EXTISA Q7 blob carries the **same** toolchain comment —
 `strings libnrtucode_internal.so | rg 'XtensaTools-14.09 clang version 10.0.1'` is present for
 the four shipped gens — and the same Xtensa core/ABI `e_flags 0x300`. One core, one toolchain,
-one ABI across the four shipped generations. `[HIGH/OBSERVED]`
+one ABI across the four shipped generations.
 
 **Gen-scaling (the bounded parameter vector):** the axes that *do* move are the
 **`coretype`/`arch_id` identity slot** (this section), the per-generation opcode/dtype/ALU
@@ -271,7 +273,7 @@ The five `coretype` constants `{6, 13, 21, 29, 37}` are literal in
 `nrtucode_get_ext_isa_internal` switch @ `0x9b2b30` (`t`, local). The resolver
 `nrtucode_get_num_ext_isa_libs` @ `0x9b2c90` bounds the space with `cmp $0x25,%edi` (37) +
 `movabs $0x2020202000,%rcx` (a bitmask with bit 37 set) and `cmp $0x6,%rdx` (6) — both
-verified by disassembly this session.
+read from the disassembly.
 
 > **CORRECTION — the `coretype` stride is *not* a flat +8, and `arch_id = coretype − 1` is
 > the only uniform relation.** The set `{6, 13, 21, 29, 37}` steps **+7 (6→13) then +8, +8,
@@ -297,7 +299,7 @@ verified by disassembly this session.
 
 Beyond the identity strings, these are the datapath/ABI knobs a reimplementer must match for
 the objects and the disassembler to agree. All are read directly from `ncore2gp-params` /
-`core-isa.h` / `libisa-core.so` this session.
+`core-isa.h` / `libisa-core.so`.
 
 | Knob | Value | Anchor | Why it pins the reimplementation |
 |---|---|---|---|
@@ -330,7 +332,7 @@ The vector width is not a single define; it is a field in the `regfiles` table t
 GOTCHA. The table is at symbol `regfiles` @ VMA `0x74a800` (`nm`: `d regfiles`); with the
 `0x200000` `.data` delta it sits at file offset `0x54a800`. Each entry is 56 bytes:
 `{ name_ptr (u64), short_ptr (u64), …, width (u32 @ +16), count (u32 @ +20), …,
-default_ctype_idx (u32 @ +28), flags (u32 @ +36), … }`. The eight entries, read this session:
+default_ctype_idx (u32 @ +28), flags (u32 @ +36), … }`. The eight entries:
 
 | idx | name | width (bits) | count | role |
 |---|---|---|---|---|
@@ -426,21 +428,20 @@ this corpus, so do not hard-code one.
 
 ## 9. Adversarial self-verify — the five strongest constants, re-read from the binary
 
-Each re-read independently this session; where a constant lives in two files, both are checked
+Each is derived independently; where a constant lives in two files, both are checked
 to agree.
 
 1. **ConfigID `0xC4019686 / 0x2908E4E3`** — cross-checked between two independent files:
    `ncore2gp-params:110,111` (`HWConfigID0/1`) **and** `core-isa.h:258,259`
-   (`XCHAL_HW_CONFIGID0/1`). Both read the identical pair. `[HIGH/OBSERVED]`
+   (`XCHAL_HW_CONFIGID0/1`). Both read the identical pair.
 2. **Zero-width HW window `281040`** — `ncore2gp-params:19,20`
    (`HWMicroArchLatest == HWMicroArchEarliest == 281040`) **and** `core-isa.h:273,277`
    (`XCHAL_HW_MIN_VERSION == XCHAL_HW_MAX_VERSION == 281040`). MIN == MAX confirmed.
-   `[HIGH/OBSERVED]`
 3. **XEA3** — `core-isa.h:719` `XCHAL_XEA_VERSION 3`, `:726` `XCHAL_HAVE_XEA3 1`
-   (XEA1/2/5 = 0). `[HIGH/OBSERVED]`
+   (XEA1/2/5 = 0).
 4. **8 register files** — `objdump -d` of `num_regfiles` @ `0x3b5c20` in `libisa-core.so`
    returns `b8 08 00 00 00  mov $0x8,%eax`. The `vec` entry's `width = 512`, `count = 32` was
-   read independently from the `regfiles` table at file offset `0x54a800` (§7). `[HIGH/OBSERVED]`
+   read independently from the `regfiles` table at file offset `0x54a800` (§7).
 5. **`coretype 37` resolver** — `objdump -d` @ `0x9b2c9c` in `libnrtucode_internal.so`:
    `83 ff 25  cmp $0x25,%edi` immediately followed by `48 b9 00 20 20 20 20 …
    movabs $0x2020202000,%rcx` (bit 37 set). Confirms the OBSERVED `coretype 37` anchor; the

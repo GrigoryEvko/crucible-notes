@@ -39,7 +39,7 @@ page, not re-derived).
 
 ---
 
-## 0. Provenance — what was disassembled `[HIGH · OBSERVED]`
+## 0. Provenance — what was disassembled
 
 Everything in §1–§7 derives from the **shipped device firmware** and the **shipped Cadence
 Xtensa toolchain config**:
@@ -66,8 +66,7 @@ xtensa-elf-objdump -b binary -m xtensa -D nx_iram.bin   # XTENSA_CORE=ncore2gp i
 **Address model.** IRAM file offset **==** device IRAM VA (the reset vector is byte 0). DRAM
 lives at VA `0x80000`, so a DRAM datum's *file offset* = VA − `0x80000`; the firmware
 materialises a DRAM VA with a `const16 aX,8 ; const16 aX,0xNNNN` pair (high half = `0x0008`).
-NX IRAM = **116768 B**, NX DRAM = **28448 B** (both re-measured this session, matching the
-sibling pages' anchor).
+NX IRAM = **116768 B**, NX DRAM = **28448 B** (both match the sibling pages' anchor).
 
 > **GOTCHA — `extracted/` and `ida/` are gitignored.** `fd`/`rg` skip them by default; use
 > `--no-ignore` or absolute paths to re-ground anything here. The IDA v3 sidecars under
@@ -88,7 +87,7 @@ sibling pages' anchor).
 
 ---
 
-## 1. The two tables — sizes are config-pinned, not grepped `[HIGH · OBSERVED]`
+## 1. The two tables — sizes are config-pinned, not grepped
 
 The table sizes are **not** counted from a decompile. They are fixed by the `ncore2gp` build
 config and independently confirmed by the runtime table bytes and the dispatcher bounds-checks.
@@ -102,12 +101,11 @@ The XEA3 model in this config is `XCHAL_HAVE_XEA3 = 1`, `XCHAL_HAVE_XEA2 = 0`,
 `XCHAL_HAVE_NMI = 0`, `XCHAL_HAVE_VECBASE = 1`, `XCHAL_HAVE_CCOUNT = 1`, `XCHAL_NUM_TIMERS = 3`,
 `XCHAL_HAVE_IMPRECISE_EXCEPTIONS = 1`. The **9** in `XCHAL_EXCCAUSE_NUM` is the XEA3 *cause*
 count (the `EXCCAUSE[3:0]` nibble has 9 defined values, §4); the **37** in
-`XCHAL_NUM_INTERRUPTS` is the full interrupt-line count (§3). `[HIGH · OBSERVED — both numbers
-read directly from `core-isa.h`.]`
+`XCHAL_NUM_INTERRUPTS` is the full interrupt-line count (§3).
 
 ---
 
-## 2. Why the interrupt table is a registry, not a live vector `[HIGH · OBSERVED]`
+## 2. Why the interrupt table is a registry, not a live vector
 
 The `xtos_interrupt_table` is the XTOS C-level dispatch array the **leveled-interrupt vector**
 would index — `_xtos_handler` + `arg` per line. In a normal XTOS image, the Level-1 interrupt
@@ -127,8 +125,8 @@ vector reads `INTERRUPT`, finds the highest-priority pending bit, and `callx`'s
 `params: InterruptVectorOffsets = [0×8]` and `Level2..7InterruptVectorOffset = 0` corroborate
 from the config side: **no leveled interrupt vector is placed**. The boot path programs
 `VECBASE` exactly once (`0xad: wsr.vecbase a2`, `a2 = 0`) and then never touches an interrupt
-SR again. `[HIGH · OBSERVED — census re-run on both images this session; the lone `waiti` is
-off the FSM run-loop path, CARRIED from the surprises page.]`
+SR again. `[HIGH · OBSERVED; the lone `waiti` is off the FSM run-loop path, CARRIED from the
+surprises page.]`
 
 > **QUIRK — leveled delivery is *possible* in hardware; the firmware deliberately uses none of
 > it.** The `ncore2gp` config genuinely supports leveled interrupts: `XCHAL_HAVE_INTERRUPTS = 1`,
@@ -136,15 +134,14 @@ off the FSM run-loop path, CARRIED from the surprises page.]`
 > `INTENABLE` is therefore **not a config limitation** — it is a deliberate firmware choice to
 > run with leveled delivery effectively disabled and reach async events only through the polled
 > path and the synchronous-exception vector. That makes the "polled, not vectored" finding a
-> substantive one, not an artifact of a cut-down core. `[HIGH · OBSERVED — `XCHAL_NUM_INTLEVELS`
-> read from `core-isa.h`; instruction census re-run.]`
+> substantive one, not an artifact of a cut-down core.
 
 > **QUIRK — the timer interrupts are configured but never armed.** Ints 28/29/30 are
 > `XTHAL_INTTYPE_TIMER` (CCOMPARE0/1/2) and `ISSTimerInterrupts = [28 29 30]`, but the firmware
 > issues **zero** `wsr.ccompare`. It reads `rsr.ccount` directly (e.g. `0x897d`, `0x89bb`) for
 > *polled* timestamping. So the timer "interrupt" lines are real config lines with **no
 > firmware that fires them** — the timing model is polled CCOUNT, consistent with the
-> [polled async model](./q7-surprises-binding.md). `[HIGH · OBSERVED]`
+> [polled async model](./q7-surprises-binding.md).
 
 **The consequence for this page.** The 37 interrupt-table entries are documented below from the
 config (§3) as the *defined registry* — what each line *means* and what handler *class* it
@@ -156,7 +153,7 @@ synchronous `EXCCAUSE` fault does take the exception vector.
 
 ---
 
-## 3. The 37-entry `xtos_interrupt_table` registry `[HIGH · OBSERVED]`
+## 3. The 37-entry `xtos_interrupt_table` registry
 
 The 37 lines and their types are byte-exact from `core-isa.h` (`XCHAL_INTnn_TYPE`,
 `XCHAL_TIMERn_INTERRUPT`, `XCHAL_BREAKIN/TRAX/PROFILING_INTERRUPT`) and the params'
@@ -186,8 +183,7 @@ params array, sum verified.]`
 > 254-source SDMA/uDMA trigger set documented in [`sdma-triggers.md`](./sdma-triggers.md) §5 —
 > that set is the descriptor-DMA engine that fans up through an errtrig/apex as an aggregated
 > IRQ. Conflating the on-core iDMA's 35/36 with the SDMA trigger table is a known trap; the two
-> are different engines. `[HIGH · OBSERVED — CARRIED from #933 sdma-triggers §5, re-confirmed
-> against `core-isa.h`.]`
+> are different engines. `[HIGH · OBSERVED — CARRIED from #933 sdma-triggers §5.]`
 
 > **NOTE — two encodings of the type field, both self-consistent.** `core-isa.h` /
 > `hal-certified.h` use the canonical Xtensa HAL type enum (e.g. `SOFTWARE = 1`,
@@ -195,22 +191,21 @@ params array, sum verified.]`
 > `params: ISSInterruptTypes` array uses a compressed simulator encoding
 > (`0 = ext, 1 = sw, 2 = timer, 3 = ISS-internal`). They agree on every line index — the
 > grouping above is the same under both. The "37 entries" figure refers to the params array
-> length (and `XCHAL_NUM_INTERRUPTS`). `[HIGH · OBSERVED]`
+> length (and `XCHAL_NUM_INTERRUPTS`).
 
 > **NOTE — there is no NMI line.** `XCHAL_HAVE_NMI = 0`. The "NMI" climb on the SoC side
 > (errtrig `nmi_out`) terminates in the *management* core's fabric, not in a Q7-core NMI vector.
-> `[HIGH · OBSERVED]`
 
 ---
 
-## 4. The 9-entry `xtos_exc_handler_table` — the live path `[HIGH · OBSERVED]`
+## 4. The 9-entry `xtos_exc_handler_table` — the live path
 
 Unlike the interrupt table, the **synchronous exception** path is real: an `EXCCAUSE`-classed
 fault (illegal instruction, address/load-store error, etc.) takes the exception vector, which
 indexes the 9-entry `xtos_exc_handler_table`. This is the **default break/halt fan-out** the
 SEQ fault subsystem hooks into.
 
-### 4a. The XEA3 EXCCAUSE taxonomy `[HIGH · OBSERVED]`
+### 4a. The XEA3 EXCCAUSE taxonomy
 
 `EXCCAUSE` in XEA3 is a structured word (`corebits.h`): `[3:0]` = **CAUSE** (the 9-value nibble
 the dispatcher indexes), `[7:4]` = TYPE, `[11:8]` = SUBTYPE, `[13:12]` = LSFO, `[15:14]` =
@@ -228,10 +223,7 @@ IMPR. The 9 CAUSE values (`XCHAL_EXCCAUSE_NUM = 9`):
 | `7` | `EXCCAUSE_MEMORY` | memory management |
 | `8` | `EXCCAUSE_CP_DISABLED` | coprocessor disabled |
 
-`[HIGH · OBSERVED — the 9 names read from `corebits.h` lines 61–69; the field layout from
-lines 40–57.]`
-
-### 4b. The exception vector → dispatcher chain `[HIGH · OBSERVED]`
+### 4b. The exception vector → dispatcher chain
 
 A synchronous exception enters the vector at IRAM `0x6c`, which saves `EXCVADDR` and a couple
 of registers onto the frame and jumps to the dispatcher entry at `0x1b0` → `0x1ec`:
@@ -263,10 +255,9 @@ goto *h;                                     // 0x209: jx a4
 
 `extui a3,a3,0,4` is the literal `EXCCAUSE & 0xf` — the dispatcher keys on the CAUSE nibble of
 §4a, so the table is exactly **9 wide** (causes 0..8). `moveqz a4,a2,a4` installs the default
-`0x1c2ac` for any slot that is still zero. `[HIGH · OBSERVED — every instruction decoded;
-the `0x84e90` and `0x1c2ac` literals confirmed by a `const16`-immediate scan.]`
+`0x1c2ac` for any slot that is still zero.
 
-### 4c. The table bytes and the accessor's bounds-check `[HIGH · OBSERVED]`
+### 4c. The table bytes and the accessor's bounds-check
 
 The runtime table at DRAM `0x84e90` (file `0x4e90`), 16 words dumped, with indices `0..8`
 populated to the default and `≥9` not part of the table:
@@ -295,9 +286,9 @@ return 0;
 ```
 
 The `movi.n a6,8` + `bltu a6,a5` guard is the canonical "index must be `≤ 8`" check — a
-**9-entry** table indexed `0..8`. `[HIGH · OBSERVED — disassembled this session.]`
+**9-entry** table indexed `0..8`.
 
-### 4d. The boot install — custom SEQ handler for causes 1 / 3 / 4 `[HIGH · OBSERVED]`
+### 4d. The boot install — custom SEQ handler for causes 1 / 3 / 4
 
 At boot, `register_exception_handlers @0x26ac` calls the accessor **three** times, overriding
 the default with a **custom SEQ exception handler at `0x1a64`** for exactly three causes, and
@@ -320,7 +311,7 @@ So the **live** exception map is:
 | `0,2,5,6,7,8` | `0x1c2ac` (XTOS default) | break / save / `simcall` (§4f) |
 
 The handler address literal is `const16 a11,0 ; a11,0x1a64` → VA `0x1a64` (note: built without
-the `0x0008` DRAM high-half — it is an **IRAM** code address, not DRAM). `[HIGH · OBSERVED]`
+the `0x0008` DRAM high-half — it is an **IRAM** code address, not DRAM).
 
 > **QUIRK — only three of the nine causes are firmware-handled.** The sequencer overrides
 > CAUSE = 1 (instruction usage), 3 (external/bus), 4 (debug) — the three a running sequencer can
@@ -329,7 +320,7 @@ the `0x0008` DRAM high-half — it is an **IRAM** code address, not DRAM). `[HIG
 > issues no `syscall`, has no MMU paging surface it would fault on, and disables nothing it then
 > uses. `[HIGH · OBSERVED for the three installs; INFERRED for the why.]`
 
-### 4e. The custom SEQ handler `0x1a64` → the early FATAL emitter `0x1a80` `[HIGH · OBSERVED]`
+### 4e. The custom SEQ handler `0x1a64` → the early FATAL emitter `0x1a80`
 
 `0x1a64` extracts the **12-bit EXCCAUSE FULLTYPE** field from the saved exception context and
 tail-calls the early FATAL emitter, which raises a `notification_t` with code `'B'` (`0x42`)
@@ -356,10 +347,9 @@ This is the **direct tie to the SEQ fault subsystem**: `0x1a80`'s `call8 0x13e00
 *FATAL raise wrapper (severity 2)* documented on [`error-handler.md`](../../firmware/seq/error-handler.md)
 §5d — it calls `raise_error(2, record)`, then the halt-dispatch `0xa2e0`, then spins at
 `j 0x13e14`. The `get_block_id` call (`0x13d90`) and the packing are byte-identical to that
-page's `build_error_record`. `[HIGH · OBSERVED — `0x1a80` is the same `code 'B'` early emitter
-named in error-handler §1; the `0x13e00`/`0x13d90` targets match.]`
+page's `build_error_record`.
 
-### 4f. The XTOS default handler `0x1c2ac` and break handler `0x1c2a4` `[HIGH · OBSERVED]`
+### 4f. The XTOS default handler `0x1c2ac` and break handler `0x1c2a4`
 
 For the six causes left on the default, the table points at `0x1c2ac`, the XTOS default
 exception handler. It re-publishes `EXCCAUSE`/`EXCVADDR`, stages a full register-save area at
@@ -392,9 +382,7 @@ default C-handler for the per-cause array of §4g):
     1c2aa:  1df0        retw.n
 ```
 
-`[HIGH · OBSERVED]`
-
-### 4g. The per-cause C-handler array `0x84ec0` `[HIGH · OBSERVED]`
+### 4g. The per-cause C-handler array `0x84ec0`
 
 Alongside the 9-entry primary table, the image carries the XTOS **per-cause C-handler array**
 at DRAM `0x84ec0` — `{handler, arg}` pairs, accessed by a second accessor at `0x1c240`
@@ -410,8 +398,7 @@ The boot path also `wsr.isb`'s this base (`0xa4: const16 a4,0x4ec0 ; wsr.isb a4`
 instruction-breakpoint scratch wiring of the debug surface. This array is the **per-cause**
 companion to the **per-nibble** primary table of §4b: the primary 9-entry table is what the
 live exception vector indexes; the 39-pair array is the legacy C-handler registry, default
-break. `[HIGH · OBSERVED — 39 `{0x1c2a4, k}` pairs decoded; accessor `0x1c240` uses an 8-byte
-stride.]`
+break.
 
 ---
 
@@ -474,7 +461,7 @@ here.]`
 
 ---
 
-## 7. Function & table map `[HIGH · OBSERVED]`
+## 7. Function & table map
 
 | Address / table | Identity | Role |
 |---|---|---|

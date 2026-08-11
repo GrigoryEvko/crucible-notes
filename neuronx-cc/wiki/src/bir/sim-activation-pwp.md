@@ -1,6 +1,6 @@
 # BIR Simulator: Activation & the PWP Numeric Model
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). Two binaries are in play. `libpwp_sim.so` (md5 `9bd71c8e75e2e002073b52d03c8b9fab`, BuildID-sha1 `c0b9dc4a217f3626d34ef08b5830619064ae7c55`) is the numeric model — **not** stripped, full DWARF + demangled symbols, 535 functions, all decompiled (the "failures" are PLT/GOT stubs); for its `.text`/`.rodata`, virtual address equals file offset (string `@0x17058` == fileoff `0x17058`). `libBIRSimulator.so` (md5 `f3acdcba9176056cb50daac01389dd13`) is the interpreter that delegates to it; the same `.data` `+0x1000` VMA→file-offset delta documented in [`sim-dispatch-state`](sim-dispatch-state.md) applies there. Every `libpwp_sim` address below is CERTAIN by symbol, not inference. Other wheels differ; treat each address as version-pinned.*
+> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). Two binaries are in play. `libpwp_sim.so` (md5 `9bd71c8e75e2e002073b52d03c8b9fab`, BuildID-sha1 `c0b9dc4a217f3626d34ef08b5830619064ae7c55`) is the numeric model — **not** stripped, full DWARF + demangled symbols, 535 functions, all decompiled (the "failures" are PLT/GOT stubs); for its `.text`/`.rodata`, virtual address equals file offset (string `@0x17058` == fileoff `0x17058`). `libBIRSimulator.so` (md5 `f3acdcba9176056cb50daac01389dd13`) is the interpreter that delegates to it; the same `.data` `+0x1000` VMA→file-offset delta documented in [`sim-dispatch-state`](sim-dispatch-state.md) applies there. Every `libpwp_sim` address below is resolved by symbol rather than inferred. Other wheels differ; treat each address as version-pinned.*
 
 ## Abstract
 
@@ -81,7 +81,9 @@ void visitInstActivation(InstVisitor *this, bir::InstActivation *inst) {
 }
 ```
 
-Three facts a reimplementer must mirror. **(1)** Dispatch is by *name string*, not by the enum integer — `ActivationFunctionType2string` is the indirection, and the same string set is the `lookupSimFunction` compare-key roster (§2.3) and the profile FuncMap (§3.1). **(2)** scale/bias/alpha are float32-only when immediate; the assert at L330 is the gate. **(3)** The per-element contract is `out[i] = ActFn(in[i]·scale + bias ; alpha)` — the affine pre-scale is applied *before* the activation, and `alpha` passes through unchanged (used only by Prelu and the symmetry reconstruction; ignored by exp/sigmoid/…). **[HIGH]** — every line ref above is from the `0x2012d0` decompiled body; L330 string, L148 `ActivationFunctionType2string` call, L353/L485 `simulate` calls, and L500 `doEngineAccumReduce(...,-1)` are all confirmed present.
+Three facts a reimplementer must mirror. **(1)** Dispatch is by *name string*, not by the enum integer — `ActivationFunctionType2string` is the indirection, and the same string set is the `lookupSimFunction` compare-key roster (§2.3) and the profile FuncMap (§3.1). **(2)** scale/bias/alpha are float32-only when immediate; the assert at L330 is the gate. **(3)** The per-element contract is `out[i] = ActFn(in[i]·scale + bias ; alpha)` — the affine pre-scale is applied *before* the activation, and `alpha` passes through unchanged (used only by Prelu and the symmetry reconstruction; ignored by exp/sigmoid/…).
+
+*Anchors: every line reference above is from the `0x2012d0` decompiled body — the L330 assert string, the L148 `ActivationFunctionType2string` call, the L353/L485 `simulate` calls, and the L500 `doEngineAccumReduce(…, -1)`.*
 
 > **QUIRK — the dedicated opcodes never touch the PWP model.** Five activation-engine opcodes are hardwired in the interpreter and bypass `libpwp_sim` entirely: `InstReciprocal` (`IT 21`, `@0x1d9e60`) is inline exact `1.0f/x`; `InstExponential` (`IT 103`, `@0x1fe920`) is the fused softmax primitive `expf(in[i] − rowmax)` followed by an `EngineAccumulationType` reduce (the running SUM for the softmax denominator); `InstReadActivationAccumulator` (`IT 5`, `@0x1d2ae0`) / `InstActivationReadAccumulator` (`IT 101`, thunk → `@0x1d2ae0`) drain the per-engine accumulator with no math; `InstLoadActFuncSet` (`IT 6`, `@0x1b2070`) is a no-op validity gate (asserts `ActFuncSetId > -1` — it does **not** model LUT-set residency). So `InstReciprocal` and `Activation(func=Reciprocal)` are **not** numerically interchangeable in the simulator: the dedicated op is true `1/x`; the generic op can engage the polynomial LUT. The HW-side choice between the two encodings is a codegen decision, invisible here. The `LoadActFuncSet` no-op is the simulator's deliberate divergence from the silicon LUT-set budget documented in [`activation-engine`](../arch/activation-engine.md).
 
@@ -91,7 +93,7 @@ Three facts a reimplementer must mirror. **(1)** Dispatch is by *name string*, n
 
 ### 2.1 Class layout
 
-`PWPSim::Simulator` is 96 bytes (IDA `structures.json`, **[CERTAIN]**). It is embedded inside the `birsim::InstVisitor` machine-state object (see [`sim-dispatch-state`](sim-dispatch-state.md) for the embedding offset); the visitor passes its address into `simulate`.
+`PWPSim::Simulator` is 96 bytes, per the IDA `structures.json`. It is embedded inside the `birsim::InstVisitor` machine-state object (see [`sim-dispatch-state`](sim-dispatch-state.md) for the embedding offset); the visitor passes its address into `simulate`.
 
 ```c
 struct PWPSim::Simulator {            // size 96
@@ -108,8 +110,8 @@ struct PWPSim::Simulator {            // size 96
 
 The constructor `Simulator(std::string const& pwp_path)` `@0xced0` runs three steps:
 
-1. **Probe.** `can_use_pwp_table = use_pwp_table()` `@0xac20` — returns `false` if `pwp_path` is empty, else constructs an `std::ifstream`, opens the path, and returns `is_open()` (then closes). It does **not** read the file; it is a pure "does a profile exist and open" probe. This resolves where `can_use_pwp_table` comes from: it is exactly `ifstream(pwp_path).is_open()`, with `pwp_path` the ctor's only argument — no CLI flag, no env var. **[CERTAIN]**
-2. **FuncMap.** If the probe succeeded, the ctor lazily builds a function-local `static` `unordered_map<std::string,std::string>` named `FuncMap` (json_filename → activation_name), `__cxa_guard`-protected. **[CERTAIN]** — decoded from the ctor's strcpy literals and the SIMD constants `@0x17D10..0x17E20` (§3.1).
+1. **Probe.** `can_use_pwp_table = use_pwp_table()` `@0xac20` — returns `false` if `pwp_path` is empty, else constructs an `std::ifstream`, opens the path, and returns `is_open()` (then closes). It does **not** read the file; it is a pure "does a profile exist and open" probe. This resolves where `can_use_pwp_table` comes from: it is exactly `ifstream(pwp_path).is_open()`, with `pwp_path` the ctor's only argument — no CLI flag, no env var.
+2. **FuncMap.** If the probe succeeded, the ctor lazily builds a function-local `static` `unordered_map<std::string,std::string>` named `FuncMap` (json_filename → activation_name), `__cxa_guard`-protected — decoded from the ctor's strcpy literals and the SIMD constants `@0x17D10..0x17E20` (§3.1).
 3. **Load.** It iterates `FuncMap`; for each `{filename, actname}` it builds `path = pwp_path + filename` and calls `initialize_pwptable(path, actname)`, parsing that JSON into `tables[actname]` (§3).
 
 So **`pwp_path` is a directory**, and each function's profile is a separate JSON file inside it. The loaded files are the same per-function profiles the wheel ships (`exp_400p.json`, `reciprocal_400p.json`, `sqrt_65536p.json`, …) — the simulator's "PWP table" *is* the shipped profile directory, addressed by the FuncMap filename table.
@@ -130,9 +132,9 @@ for (i in 0..count-1) {
 }
 ```
 
-> **QUIRK — the operands named "scale" and "bias" are passed swapped relative to their roles.** Disassembly of `@0xccf0` spills `xmm0→var_D0`, `xmm1→var_CC`, `xmm2→var_C8` (`0xcd15`/`0xcd43`/`0xcd49`), then the per-element compute at `0xce36 mulss xmm0,[rbx]` / `0xce3f addss xmm0,var_D0` loads `var_CC` (= xmm1) as the **multiplier** and adds `var_D0` (= xmm0). In SysV float-arg order, with the declared signature `(…, scale, bias, …)`, xmm0=scale and xmm1=bias — so the loop literally computes `bias·in[i] + scale`. The visitor caller (§1) marshals `xmm0=scale, xmm1=bias` consistently, so the *end-to-end* affine is correct, but a reimplementation that follows the parameter names rather than the register assignment will swap multiplier and addend. Follow the registers: `var_CC` (xmm1, second float arg) = multiplier, `var_D0` (xmm0, first float arg) = addend. **[CERTAIN — disasm-anchored `0xce36`/`0xce3f`.]**
+> **QUIRK — the operands named "scale" and "bias" are passed swapped relative to their roles.** Disassembly of `@0xccf0` spills `xmm0→var_D0`, `xmm1→var_CC`, `xmm2→var_C8` (`0xcd15`/`0xcd43`/`0xcd49`), then the per-element compute at `0xce36 mulss xmm0,[rbx]` / `0xce3f addss xmm0,var_D0` loads `var_CC` (= xmm1) as the **multiplier** and adds `var_D0` (= xmm0). In SysV float-arg order, with the declared signature `(…, scale, bias, …)`, xmm0=scale and xmm1=bias — so the loop literally computes `bias·in[i] + scale`. The visitor caller (§1) marshals `xmm0=scale, xmm1=bias` consistently, so the *end-to-end* affine is correct, but a reimplementation that follows the parameter names rather than the register assignment will swap multiplier and addend. Follow the registers: `var_CC` (xmm1, second float arg) = multiplier, `var_D0` (xmm0, first float arg) = addend. *Anchors: `0xce36` (`mulss`) and `0xce3f` (`addss`).*
 
-`lookupSimFunction` `@0xc3d0` is a 31-arm `std::string::compare` chain. For the matched name it fetches `&tables[name]` (`operator[]` on `this+0x28`) and composes a `std::function`: the bound `sim_<fn>` member pointer plus the `AFTable&`, with the standard `_M_invoke@0xe2d0` / `_M_manager@0xe290` trampoline. The chain order is `Identity, Square, Relu, Lrelu, Prelu, Sigmoid, Tanh, Exp, Softplus, Sqrt, Rsqrt, Ln, Ln_prime, Erf, Sin, Arctan, Sign, Gelu, Mish, Gelu_apprx_tanh, Gelu_apprx_sigmoid, Derivative_Gelu, Derivative_Erf, Copy, Abs, Reciprocal, Abs_reciprocal_sqrt, MemsetZero, Silu, Derivative_silu`, then a trailing `else` for `Derivative_Gelu_apprx_sigmoid`. An unmatched name throws `std::runtime_error("Unsupported activation function Simulator::simulation: " + name)` (cold `@0x8ffe`, string `.rodata @0x17218`). The bound `std::function` signature `float(PWPSim::Simulator*, PWPSim::AFTable&, float ele, float alpha, bool usePwp)` is confirmed in `structures.json` and fixes the `sim_<fn>` call shape. **[CERTAIN]**
+`lookupSimFunction` `@0xc3d0` is a 31-arm `std::string::compare` chain. For the matched name it fetches `&tables[name]` (`operator[]` on `this+0x28`) and composes a `std::function`: the bound `sim_<fn>` member pointer plus the `AFTable&`, with the standard `_M_invoke@0xe2d0` / `_M_manager@0xe290` trampoline. The chain order is `Identity, Square, Relu, Lrelu, Prelu, Sigmoid, Tanh, Exp, Softplus, Sqrt, Rsqrt, Ln, Ln_prime, Erf, Sin, Arctan, Sign, Gelu, Mish, Gelu_apprx_tanh, Gelu_apprx_sigmoid, Derivative_Gelu, Derivative_Erf, Copy, Abs, Reciprocal, Abs_reciprocal_sqrt, MemsetZero, Silu, Derivative_silu`, then a trailing `else` for `Derivative_Gelu_apprx_sigmoid`. An unmatched name throws `std::runtime_error("Unsupported activation function Simulator::simulation: " + name)` (cold `@0x8ffe`, string `.rodata @0x17218`). The bound `std::function` signature `float(PWPSim::Simulator*, PWPSim::AFTable&, float ele, float alpha, bool usePwp)` comes from `structures.json` and fixes the `sim_<fn>` call shape.
 
 ---
 
@@ -140,7 +142,7 @@ for (i in 0..count-1) {
 
 ### 3.1 The static FuncMap (json filename → activation name)
 
-32 entries, decoded from the ctor literals + SIMD constants `@0x17D10..0x17E20` **[CERTAIN]**. The filenames are the shipped profile names; the activation names are the `lookupSimFunction` compare-keys. The full roster is in the Part-10 activation pages (planned); the simulator-relevant subset and its three structural notes:
+32 entries, decoded from the ctor literals plus the SIMD constants `@0x17D10..0x17E20`. The filenames are the shipped profile names; the activation names are the `lookupSimFunction` compare-keys. The full roster is in the Part-10 activation pages (planned); the simulator-relevant subset and its three structural notes:
 
 | json file (profile) | activation name | note |
 |---|---|---|
@@ -153,11 +155,11 @@ for (i in 0..count-1) {
 | `identity_1p.json` / `copy_1p.json` / `relu_1p.json` / `sign_1p.json` / `abs_1p.json` | `Identity`/`Copy`/`Relu`/`Sign`/`Abs` | the universal 1-point residents |
 | … (≈30 total) | … | |
 
-Notes: **(1)** the sim picks ONE concrete resolution per function (e.g. `exp_400p`, not the 777-bucket variant). **(2)** there is **no** FuncMap entry for `Prelu` (it is pure alpha-slope, no PWP path) or `Is_finite`. **(3)** `Ln` loads the single-pass `ln_40p.json`; the simulator does not model the multipass LUT iteration, a known sim-vs-silicon divergence for `ln`. **[CERTAIN]**
+Notes: **(1)** the sim picks ONE concrete resolution per function (e.g. `exp_400p`, not the 777-bucket variant). **(2)** there is **no** FuncMap entry for `Prelu` (it is pure alpha-slope, no PWP path) or `Is_finite`. **(3)** `Ln` loads the single-pass `ln_40p.json`; the simulator does not model the multipass LUT iteration, a known sim-vs-silicon divergence for `ln`.
 
 ### 3.2 `AFTable` and sub-structs
 
-All offsets are byte-exact in `structures.json` **[CERTAIN]**. `AFTable` is 184 bytes:
+All offsets below are byte-exact in `structures.json`. `AFTable` is 184 bytes:
 
 ```c
 struct PWPSim::AFTable {              // size 184
@@ -206,7 +208,7 @@ The two-level shape lives in `pwp_nonsat_region`: one region per *octave* (expon
 - `parse_xd` `@0xa550`: reads `x,d0,d1,d2,d3` each via the nested path `[<key>,"int"]` then `LODWORD`-stores — the bit-exact coefficient load.
 - `parse_sat` `@0xab50`: reads `sat_point`/`mantissa_point` as **true** `int64`s (not bit patterns) and `parse_xd`s the clamp section.
 
-The four saturation sub-keys are assembled from the constants `@0x17CC0` (`"saturation_points"`) and `@0x17CD0..0x17D00` (`sat_point_{pos,neg}_{high,low}`). **[CERTAIN]** for `parse_xd`/`parse_sat`/`find_*`; **[HIGH]** for the `initialize_pwptable` field-order (read from the 602-line body).
+The four saturation sub-keys are assembled from the constants `@0x17CC0` (`"saturation_points"`) and `@0x17CD0..0x17D00` (`sat_point_{pos,neg}_{high,low}`). The `parse_xd`, `parse_sat`, and `find_*` bodies are read in full; the `initialize_pwptable` field *order* is taken from its 602-line body and is the weaker of the two readings.
 
 ---
 
@@ -225,7 +227,7 @@ float evaluate_generic(Simulator *this, AFTable *T, float v, float alpha) {
         return (v <= 0.0f) ? T->ninf_result : T->pinf_result;
     //  NaN falls THROUGH: |NaN| compares false to FLT_MAX and != 0, so a NaN input
     //  reaches the bucket path; nan_result is loaded but not returned by a dedicated
-    //  NaN branch (see Adversarial verification G2).
+    //  NaN branch (see "Limits of this reading", §6).
 
     // (2) SYMMETRY FOLD — even/odd functions reuse one half of the table
     float sel;
@@ -305,7 +307,7 @@ exponent_sect *find_pwp_nonsat_section(AFNonSatTy *region_base, float sel) {
 }
 ```
 
-The LUT is **two-level**: the outer index is the biased exponent (`bits(sel) >> 23`, masked to a `u8`), selecting one `pwp_nonsat_region` per octave (the region vector is indexed by `exp + 127`); the inner index is the top `extract_size` mantissa bits, selecting one of `2^extract_size` uniform buckets *within* that octave (`num_sections == 2^extract_size` for in-range octaves). Each bucket holds one degree-3 Taylor expansion `{x, d0, d1, d2, d3}`. The consequence is precisely the right shape for fp32: because each octave gets its own bucket array, the buckets are **exponentially denser near zero and exponentially wider away from it** — matching the relative (ULP) precision of floating-point and the activation engine's hardware LUT addressing. A profile's total physical bucket count (`lut_size` in the shipped JSON; e.g. `exp` = 371 positive + 406 negative = 777) is the sum over octaves of these per-octave bucket arrays. **[CERTAIN — `find_pwp_nonsat_section` body + disasm; the `lut_size`=Σ-buckets relation cross-referenced from the shipped profile schema, see Part-10 (planned).]**
+The LUT is **two-level**: the outer index is the biased exponent (`bits(sel) >> 23`, masked to a `u8`), selecting one `pwp_nonsat_region` per octave (the region vector is indexed by `exp + 127`); the inner index is the top `extract_size` mantissa bits, selecting one of `2^extract_size` uniform buckets *within* that octave (`num_sections == 2^extract_size` for in-range octaves). Each bucket holds one degree-3 Taylor expansion `{x, d0, d1, d2, d3}`. The consequence is precisely the right shape for fp32: because each octave gets its own bucket array, the buckets are **exponentially denser near zero and exponentially wider away from it** — matching the relative (ULP) precision of floating-point and the activation engine's hardware LUT addressing. A profile's total physical bucket count (`lut_size` in the shipped JSON; e.g. `exp` = 371 positive + 406 negative = 777) is the sum over octaves of these per-octave bucket arrays. *Anchors: the `find_pwp_nonsat_section` body and its disassembly; the `lut_size` = Σ-buckets relation is cross-referenced from the shipped profile schema rather than read here.*
 
 ### 4.2 The polynomial evaluation — mixed precision is decisive
 
@@ -316,13 +318,13 @@ Step (5) is a degree-3 Taylor expansion about the bucket breakpoint `x`, but the
 - `0x9b17 cvtss2sd [rax+0Ch]` and `0x9b1c cvtss2sd [rax+10h]` — d2 (+0xC) and d3 (+0x10) are promoted to **double**; the `d2·t²` and `d3·t³` terms accumulate in double.
 - `0x9b5b call _pow` — the cubic term uses libm `pow(t, 3.0)`, **not** `t*t*t`.
 
-So a faithful reimplementation must evaluate `d0 + d1·t` in float, accumulate `d2·t²` and `d3·t³` in double, and compute `t³` with `pow(t,3.0)` — the rounding differs from a uniform-precision Horner form. **[CERTAIN — disasm-anchored.]**
+So a faithful reimplementation must evaluate `d0 + d1·t` in float, accumulate `d2·t²` and `d3·t³` in double, and compute `t³` with `pow(t,3.0)` — the rounding differs from a uniform-precision Horner form. Every step above is anchored to a named instruction in the `0x99c0` disassembly.
 
 ### 4.3 Symmetry families and special values
 
-The symmetry flags collapse a function's table to one half. `symmetry_en=false` (exp, sigmoid, tanh, sqrt, softplus, …) means `sel = v` and no reconstruction. `symmetry_en=true` with `symmetry_invert_sign_opt=true` is an **odd** function: for `v < 0`, evaluate the polynomial on `|v|`, negate, and add `symmetry_point`. The shipped `reciprocal_400p` profile is exactly this — `symmetry_en=true`, `invert_sign_opt=true`, `opt_use_neg_region=false`, `symmetry_point=0`, `zero_result≈3.39e38` (the `1/0` saturation) — so `1/(−x) = −(1/x)` is reconstructed by step (6). **[CERTAIN — cross-checked against the shipped profile.]**
+The symmetry flags collapse a function's table to one half. `symmetry_en=false` (exp, sigmoid, tanh, sqrt, softplus, …) means `sel = v` and no reconstruction. `symmetry_en=true` with `symmetry_invert_sign_opt=true` is an **odd** function: for `v < 0`, evaluate the polynomial on `|v|`, negate, and add `symmetry_point`. The shipped `reciprocal_400p` profile is exactly this — `symmetry_en=true`, `invert_sign_opt=true`, `opt_use_neg_region=false`, `symmetry_point=0`, `zero_result≈3.39e38` (the `1/0` saturation) — so `1/(−x) = −(1/x)` is reconstructed by step (6). Those flag values are read from the shipped profile.
 
-Special values resolve to the `AFTable` scalar fields: `v==0 → zero_result`; `v=+inf → pinf_result`; `v=−inf → ninf_result`; an input whose biased exponent crosses a `sat_point_*_high` threshold lands in that clamp section (e.g. `exp`'s `sat_point_pos_high` carries `d0=+inf` with `d1=d2=d3=0`, so the normal poly eval returns `+inf` — that *is* the overflow clamp). `nan_result` is loaded into the table but is **not** returned by an explicit NaN branch (see §6 G2).
+Special values resolve to the `AFTable` scalar fields: `v==0 → zero_result`; `v=+inf → pinf_result`; `v=−inf → ninf_result`; an input whose biased exponent crosses a `sat_point_*_high` threshold lands in that clamp section (e.g. `exp`'s `sat_point_pos_high` carries `d0=+inf` with `d1=d2=d3=0`, so the normal poly eval returns `+inf` — that *is* the overflow clamp). `nan_result` is loaded into the table but is **not** returned by an explicit NaN branch (see the limits noted in §6).
 
 ---
 
@@ -339,7 +341,7 @@ float sim_<fn>(Simulator *this, AFTable *T, float ele, float alpha, bool usePwp)
 }
 ```
 
-The exact fallback is the reference math the PWP LUT is approximating — useful both as a spec for the LUT and as the default (no-profile) numerics. Verbatim closed forms (constants read from the decompiled bodies; addresses **[CERTAIN]** by symbol):
+The exact fallback is the reference math the PWP LUT is approximating — useful both as a spec for the LUT and as the default (no-profile) numerics. Verbatim closed forms — constants read from the decompiled bodies, addresses resolved by symbol:
 
 | Activation | addr | usePwp | Exact fallback |
 |---|---|---|---|
@@ -375,35 +377,40 @@ The exact fallback is the reference math the PWP LUT is approximating — useful
 | `Derivative_silu`(28) | `0xa3e0` | yes | `(x*e^x+1)*e^x/(e^x+1)²` |
 | `memset_zero` | `0xa360` | yes | `0.0` |
 
-Math constants for bit-exact reimplementation: `√2 = 1.414213562373095`, `1/√2 = 0.7071067811865476`, `√(2/π) = 0.7978845608028654`, `1/√(2π) = 0.3989423`, `2/√π = 1.1283792`, tanh-gelu cubic coeff `0.044715`, sigmoid-gelu scale `1.702`. `Prelu` is the only kernel with no `usePwp` branch. `Mish`/`Derivative_Gelu` *call* `sim_softplus`/`sim_erf`/`sim_exp` with the inner exact value, so the composite stays exact even when `usePwp` is set. **[CERTAIN — `sim_sigmoid`/`sim_gelu`/`sim_prelu` bodies read in full; the gate pattern is identical across the roster.]**
+Math constants for bit-exact reimplementation: `√2 = 1.414213562373095`, `1/√2 = 0.7071067811865476`, `√(2/π) = 0.7978845608028654`, `1/√(2π) = 0.3989423`, `2/√π = 1.1283792`, tanh-gelu cubic coeff `0.044715`, sigmoid-gelu scale `1.702`. `Prelu` is the only kernel with no `usePwp` branch. `Mish`/`Derivative_Gelu` *call* `sim_softplus`/`sim_erf`/`sim_exp` with the inner exact value, so the composite stays exact even when `usePwp` is set. The `sim_sigmoid`, `sim_gelu`, and `sim_prelu` bodies were read in full; the gate pattern is identical across the roster.
 
 ---
 
-## 6. Adversarial verification — the five strongest claims
+## 6. Evidence summary
 
-Each claim below was re-checked against the binary; the verification ceiling is stated honestly.
+| Claim | Evidence | Confidence |
+|---|---|---|
+| `evaluate_generic` is one generic evaluator — no per-function evaluator exists | the `0x99c0` body reads only `AFTable` data (symmetry flags, sat points, bucket sections, the four result scalars); every `sim_<fn>` calls the same `evaluate_generic`, checked in `sim_sigmoid@0x9d10` and `sim_gelu@0x9f30` | CERTAIN |
+| Two-level segment selection: outer = biased exponent, inner = top `extract_size` mantissa bits | `find_pwp_nonsat_section@0x9340`: `region_base + 40*(u8)(bits>>23)` outer, `(mant & 0x7FFFFF) >> (23 - extract_size)` inner, `20*sectid` stride, `num_sections = (finish-start)/20` — byte-exact in decompiled C and disasm | CERTAIN |
+| The polynomial is mixed-precision degree-3 with a libm `pow` cubic | disasm `@0x99c0`: `subss` for `t`, `mulss`/`addss` for `d0+d1·t` in float, `cvtss2sd` of d2/d3 then `mulsd` in double, `call _pow` for `t³` | CERTAIN |
+| `simulate` passes scale/bias swapped relative to the parameter names | disasm `@0xccf0`: `xmm0→var_D0`, `xmm1→var_CC`; the per-element `mulss xmm0,[rbx]` uses `var_CC` (the "bias" arg) as multiplier and `addss var_D0` adds the "scale" arg | CERTAIN |
+| `AFTable` is 184 B with the documented sub-struct offsets | `structures.json`: `AFTable`=184 (symmetry flags @0/1/2, scalars @4..20, `pos_region`@24 / `neg_region`@48, four `pwp_sat_region`@72/100/128/156); `pwp_nonsat_region`=40; `pwp_sat_region`=28; `exponent_sect`=20 | CERTAIN |
 
-1. **`evaluate_generic` is one generic evaluator (no per-function evaluator).** **[CONFIRMED]** — the `0x99c0` body reads only `AFTable` data (symmetry flags, sat points, the bucket sections, the four result scalars); the function-specific behavior is entirely in the loaded table, and every `sim_<fn>` calls the *same* `evaluate_generic` (verified in `sim_sigmoid@0x9d10`, `sim_gelu@0x9f30`). No counter-evidence of a per-function PWP path.
-2. **Two-level segment selection: outer = biased exponent, inner = top `extract_size` mantissa bits.** **[CONFIRMED]** — `find_pwp_nonsat_section@0x9340`: `region_base + 40*(u8)(bits>>23)` (outer), `(mant & 0x7FFFFF) >> (23 - extract_size)` (inner), `20*sectid` element stride, `num_sections = (finish-start)/20`. Byte-exact in both decompiled C and disasm.
-3. **The polynomial is mixed-precision degree-3 with a libm `pow` cubic.** **[CONFIRMED]** — disasm `@0x99c0`: `subss`(t), `mulss`/`addss` for `d0+d1·t` (float), `cvtss2sd` of d2/d3 then `mulsd` (double), `call _pow` for `t³`. A `t*t*t` reimplementation would diverge in rounding.
-4. **`simulate` passes scale/bias swapped vs. the parameter names.** **[CONFIRMED]** — disasm `@0xccf0`: `xmm0→var_D0`, `xmm1→var_CC`; per-element `mulss xmm0,[rbx]` uses `var_CC` (xmm1, the "bias" arg) as the multiplier, `addss var_D0` adds `var_D0` (xmm0, the "scale" arg). The register assignment is the truth, not the names.
-5. **`AFTable` is 184 B with the documented sub-struct offsets.** **[CONFIRMED]** — `structures.json`: `AFTable`=184 (symmetry flags @0/1/2, scalars @4..20, `pos_region`@24 / `neg_region`@48, four `pwp_sat_region`@72/100/128/156); `pwp_nonsat_region`=40 (exponent@0, num_sections@4, extract_size@8, sections@16); `pwp_sat_region`=28; `exponent_sect`=20.
+### Limits of this reading
 
-**Verification ceiling / open items.**
-- **G1 — generator-only profile fields.** The shipped JSONs carry `imm_bias`, `exponent_offset`, `max_diff`, `fma_const0/1`, `lower_bound`/`upper_bound`, `use_multipass`, and various `*_id`s that **neither** `initialize_pwptable` nor `evaluate_generic` reads. They are KaenaPWP LUT-generator / HW metadata; the simulator consumes only the already-baked `{x,d0..d3}` buckets, four sat points, and the special-value scalars. **[INFERRED — absence-of-read, verified across the two loader bodies; not proven exhaustively over every JSON key.]**
-- **G2 — NaN handling.** `evaluate_generic` has explicit branches only for `v==0` and `|v|>FLT_MAX`. A NaN input falls through to bit-decompose → bucket-select → poly, so `nan_result` is loaded but not returned by a dedicated NaN branch. Whether a NaN ever lands in a section whose poly reproduces `nan_result` is data-dependent; **not traced** with a NaN input. **[INFERRED.]**
-- **G3 — negative-side `sat_point` semantics.** The positive side compares `int sat_point` vs `int expo` (≤255, always ≥0); the negative side uses `(u8)expo`. The bodies are explicit (§4 step 4), but the JSON author's intent for neg-region `sat_point` keying is **not** proven against a negative-region trace. **[INFERRED.]**
-- **G4 — `ln` multipass divergence.** The simulator loads single-pass `ln_40p.json`; silicon `ln` is multipass. The single-pass bucket eval is a real sim-vs-silicon divergence for `ln`, **not** chased to a numeric delta. **[INFERRED.]**
-- **G5 — `InstVisitor+0x205` provenance.** The scalar-vs-bulk dispatch flag (§1) and the TBB task vtables `off_2267B20`/`off_2267AF0` are read at call-site granularity; the source that *sets* `+0x205` is **not** traced. **[Not traced.]**
+**Generator-only profile fields.** The shipped JSONs carry `imm_bias`, `exponent_offset`, `max_diff`, `fma_const0/1`, `lower_bound`/`upper_bound`, `use_multipass`, and various `*_id`s that neither `initialize_pwptable` nor `evaluate_generic` reads. They appear to be KaenaPWP LUT-generator and hardware metadata; the simulator consumes only the already-baked `{x,d0..d3}` buckets, the four sat points, and the special-value scalars. This rests on absence-of-read across the two loader bodies, not on an exhaustive sweep of every JSON key.
+
+**NaN handling.** `evaluate_generic` has explicit branches only for `v==0` and `|v|>FLT_MAX`. A NaN input falls through to bit-decompose → bucket-select → polynomial, so `nan_result` is loaded but never returned by a dedicated NaN branch. Whether a NaN ever lands in a section whose polynomial happens to reproduce `nan_result` is data-dependent and was not traced with a NaN input.
+
+**Negative-side `sat_point` semantics.** The positive side compares `int sat_point` against `int expo` (≤255, always ≥0); the negative side uses `(u8)expo`. The bodies are explicit (§4 step 4), but the profile author's intent for neg-region `sat_point` keying is [UNRESOLVED] — no negative-region trace was run against it.
+
+**`ln` multipass divergence.** The simulator loads single-pass `ln_40p.json` while silicon `ln` is multipass. The single-pass bucket evaluation is a real sim-vs-silicon divergence for `ln`; it was not chased to a numeric delta.
+
+**The scalar-vs-bulk dispatch flag.** `InstVisitor+0x205` (§1) and the TBB task vtables `off_2267B20`/`off_2267AF0` are read at call-site granularity; whatever *sets* `+0x205` is [UNRESOLVED].
 
 ---
 
 ## 7. Function map
 
-| Symbol | addr | identity | conf |
+| Symbol | addr | identity | Confidence |
 |---|---|---|---|
 | `birsim::InstVisitor::visitInstActivation` | `0x2012d0` | generic act → name → `PWPSim::simulate` | HIGH |
-| `birsim::InstVisitor::simulateActivate2` | `0x1fc360` | fused activation + TensorScalar/Reduction | MED |
+| `birsim::InstVisitor::simulateActivate2` | `0x1fc360` | fused activation + TensorScalar/Reduction | MEDIUM |
 | `birsim::InstVisitor::visitInstExponential` | `0x1fe920` | exact `expf(x−rowmax)` + reduce (softmax) | HIGH |
 | `birsim::InstVisitor::visitInstReciprocal` | `0x1d9e60` | exact inline `1.0f/x` | CERTAIN |
 | `birsim::InstVisitor::visitInstReadActivationAccumulator` | `0x1d2ae0` | drain per-engine accumulator | HIGH |

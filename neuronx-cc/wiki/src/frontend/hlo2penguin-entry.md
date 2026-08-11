@@ -213,9 +213,7 @@ The option count is not inferred from `--help` text. It is the number of distinc
 | `cl::list<float>` | `listIfbNS0_6parserIfEEED2Ev` | 1 |
 | **Total option objects** | | **74** |
 
-The static-init makes 47 `cl::Option::Option(…)` base ctors + 47 `addArgument()` + 46 `setArgStr()` + 36 `addCategory()` calls; the remaining options use the all-in-one templated `cl::opt<…>::opt(args…)` ctor (which inlines the base ctor and arg-add) plus the 8 `cl::apply<opt<bool>,initializer<bool>,…>` helpers. The total `__cxa_atexit` count is 77 = **74 options + 1 `Hlo2PenguinCategory` + 2 log-level maps**, a consistency check that the 74 figure closes exactly.
-
-> **CORRECTION —** an earlier driver-strand note (D-A01) reported "73 `cl::opt` objects." The binary truth is **74**: the destructor-registration count is unambiguous, and the catalog below enumerates 74 distinct argStrings (no duplicates), every one of which is present verbatim in the ELF `strings`. The off-by-one in the prose count did not affect that report's catalog, which already listed 74 rows. STRONG.
+The static-init makes 47 `cl::Option::Option(…)` base ctors + 47 `addArgument()` + 46 `setArgStr()` + 36 `addCategory()` calls; the remaining options use the all-in-one templated `cl::opt<…>::opt(args…)` ctor (which inlines the base ctor and arg-add) plus the 8 `cl::apply<opt<bool>,initializer<bool>,…>` helpers. The total `__cxa_atexit` count is 77 = **74 options + 1 `Hlo2PenguinCategory` + 2 log-level maps**, so the 74 figure closes exactly. The catalog below enumerates 74 distinct argStrings with no duplicates, each present verbatim in the ELF `strings`.
 
 ### The build pattern
 
@@ -321,7 +319,11 @@ Every argStr below was confirmed present verbatim in the ELF (`strings -n 3` exa
 
 `--logical-nc-config` (`0x27670c`, hidden, `cl::opt<int>`, default `1`, values `{1,2}`) selects the logical NeuronCore configuration — how many physical NeuronCores the front-half treats as one logical unit (`1` = one core, `2` = the dual-core "lnc2" grouping). The driver passes it as `--logical-nc-config=<n>` from the config key `logical_nc_config`. All nine `--target-instance` family tokens are present verbatim in the ELF (`inf1 trn1 inf2 gen3 core_v4 trn1n trn2 trn2n trn3`); the default is `trn1`. `GetHiloCompileConfig` additionally references the backend-dialect token `"tonga"` (`0x27ab43`), threaded into the config even though the Tonga backend dialect itself is not loaded in this front-half.
 
-> **CORRECTION —** the native `--verbose` default is `error` and `--logfile-verbose` default is `debug` (binary, this section). These differ from the Python `CompileCommand` argparser defaults (`--verbose=user`, `--logfile-verbose=info`). Both are correct for their respective layers — the Python defaults belong to a *different* parser (Part 3.2, two-parser architecture) and must not be conflated with the native cl-level defaults here.
+> **GOTCHA — the verbosity defaults differ between the two parsers.** Natively,
+> `--verbose` defaults to `error` and `--logfile-verbose` to `debug`. The Python
+> `CompileCommand` argparser defaults to `--verbose=user` and `--logfile-verbose=info`.
+> Both are right for their own layer (Part 3.2, two-parser architecture); quoting the
+> Python defaults as the native ones is the usual mix-up.
 
 ---
 
@@ -333,7 +335,7 @@ Every argStr below was confirmed present verbatim in the ELF (`strings -n 3` exa
 
 A few flag effects are applied *outside* the config object, directly in `main`, by dedicated setters: `SetNativeKernelCastType(nativeKernelAutoCast)` (`0x1edc9b8`) installs the `native-kernel-auto-cast` policy globally, and `SetDynamicDMASbufBytes(nativeKernelDynamicDMABytes)` (`0x1edc9d0`) installs the Dynamic-DMA scratch size. The verbosity enums are routed through `verbosityMapping` (`0x9c66960`) into console/file log levels rather than into the config.
 
-> **GAP —** the precise per-flag → `CompileConfig`-field offset mapping inside `GetHiloCompileConfig` was **not** byte-traced (the function is decompile-skipped; only its disassembly exists). Flag→behavior on this page is established from the help strings and the explicit setter wiring in `main`; the exact struct layout of `hilo::CompileConfig` is a follow-up. MED.
+> **GAP —** the precise per-flag → `CompileConfig`-field offset mapping inside `GetHiloCompileConfig` was **not** byte-traced (the function is decompile-skipped; only its disassembly exists). Flag→behavior on this page is established from the help strings and the explicit setter wiring in `main`; the exact struct layout of `hilo::CompileConfig` is a follow-up.
 
 ---
 
@@ -372,7 +374,13 @@ Native `--flag` tokens emitted by `HLOToTensorizer.so` (verbatim from its Cython
 | `--disable-load-fusion` / `--emit-tensor-level-dropout-ops` | same |
 | `--ml-dtypes-version=` / `--logfile=` / `--logfile-verbose=` / `--verbose=` | same (last three hidden incl. `logfile`) |
 
-> **CORRECTION —** the task framing that `--internal-hlo2tensorizer-options` is parsed by this native tool is wrong. A `strings` scan of the ELF returns **zero** matches for `internal-hlo2tensorizer-options` and `tensorizer-options`, and a single match for `targets` (an MLIR pass-arg fragment). The user's `internal_hlo2tensorizer_options` string is split on whitespace by `HLOToTensorizer.so` and appended **verbatim** onto the native `argv` — so any §4 flag *can* be injected through it, but the token `--internal-hlo2tensorizer-options` never reaches the native cl parser. STRONG (negative grep + driver string evidence).
+The user's `internal_hlo2tensorizer_options` string is split on whitespace by `HLOToTensorizer.so` and appended **verbatim** onto the native `argv`, so any §4 flag can be injected through it.
+
+> **GOTCHA — `--internal-hlo2tensorizer-options` is a *driver* flag; the native tool never
+> sees it.** A `strings` scan of the ELF returns zero matches for
+> `internal-hlo2tensorizer-options` and for `tensorizer-options`, and a single match for
+> `targets` (an MLIR pass-arg fragment). The option name is consumed and unwrapped on the
+> Python side; only its *contents* reach the native `cl` parser.
 
 > **GOTCHA —** `HLOToTensorizer.so` also emits tokens that are **not** in §4: `--modular-flow-mac-target=200000000000`, `--layers-per-module=`, `--num-neuroncores-per-sengine=`, `--max-{all-gathers,all-reduce,reduce-scatter}-buffer-size=`, `--coalesce-{all-gathers,all-reduces,reduce-scatters}[=false]`, `--build-with-users`, `--disable-layer-det`, `--mmf`, `--native-int64`, `--disable-verifier=`. These are **not** rejected — they are consumed by the partitioner sub-grammar (`xla::partition::*`) reached *inside* `HiloPrePartitionCompile` (`0x1efcb70`) and/or routed through the `partitioner-opts` `options_string`. Do not expect them in `--help`; they are a separate grammar layered under `--partition`.
 

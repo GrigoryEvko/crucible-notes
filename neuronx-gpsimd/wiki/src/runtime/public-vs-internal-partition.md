@@ -10,7 +10,7 @@
 > version map byte-for-byte. See also the [Runtime Synthesis](./runtime-synthesis.md) for the
 > layered narrative behind the private side.
 
-All counts below are re-grounded directly from the host runtime image
+All counts below are grounded directly from the host runtime image
 `libnrt.so.2.31.24.0` (x86-64 ELF, **122,956,336 bytes**, BuildID
 `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, SONAME `libnrt.so.1`, *not stripped*, carries
 `.debug_info`). Every numeric claim is taken from a piped `nm`/`readelf`/`objdump` read of
@@ -20,8 +20,6 @@ that binary and the installed public headers shipped alongside it — never from
 ---
 
 ## 0. The partition in five numbers
-
-`[HIGH/OBSERVED]`
 
 | count | meaning | how measured |
 |------:|---------|--------------|
@@ -36,7 +34,7 @@ that binary and the installed public headers shipped alongside it — never from
 145  PUBLIC API  ⇒  ~17,438 functions (17,583 − 145) are PRIVATE (symtab-only)
 ```
 
-The exact session that produced the canonical figure:
+The canonical figure:
 
 ```console
 $ nm -D <libnrt.so.2.31.24.0> | rg -c ' T '
@@ -52,7 +50,7 @@ $ nm -D <libnrt.so.2.31.24.0> | rg -c ' T '
 
 ## 1. Two symbol tables: who can bind to what
 
-`[HIGH/OBSERVED]` This image is **not stripped**, so it carries *both* a full `.symtab` and a
+This image is **not stripped**, so it carries *both* a full `.symtab` and a
 dynamic `.dynsym`. The two are not equivalent contracts:
 
 | table | defined `FUNC` (`t`+`T`) | who can bind |
@@ -86,7 +84,7 @@ acts on.
 
 ## 2. Private prefixes are 100% absent from `.dynsym` (boundary proof)
 
-`[HIGH/OBSERVED]` The entire driver / descriptor / queue-manager machinery is compiled
+The entire driver / descriptor / queue-manager machinery is compiled
 *hidden*: it exists in `.symtab` (debug info) but contributes **zero** entries to `.dynsym`.
 
 | prefix | `.symtab` text (`t`+`T`) | `.dynsym` `T` | verdict |
@@ -117,7 +115,7 @@ $ for p in nrt_ nrta_ nec_; do nm -D <bin> | rg ' T ' | rg -c " $p"; done
 
 ### 2.1 `nec_` is the only split prefix
 
-`[HIGH/OBSERVED]` 16 `nec_*` are GLOBAL exports (the device + topology ABI); 11 `nec_*` are
+16 `nec_*` are GLOBAL exports (the device + topology ABI); 11 `nec_*` are
 `.symtab`-only PRIVATE. Of those 11, **10** are the `nec_vil_*` virtual-instance-layer
 introspection helpers that *back* the public getters, plus `nec_get_version_info` (which is
 header-declared but **not exported in this build** — §3.2):
@@ -161,7 +159,7 @@ nec_rid_to_mla_idx                nec_set_recv_size_bytes
 
 ## 3. Cross-reference vs the shipped public headers (the vendor's own contract)
 
-`[HIGH/OBSERVED]` The runtime ships 10 function-bearing public headers under
+The runtime ships 10 function-bearing public headers under
 `include/nrt/` (plus `ndl/` driver-shared headers). These declarations **are** binary-derived
 ground truth — they are installed strings shipped in the same package as the `.so`. Scraping
 every `<nrt|nrta|nec>_NAME(` declaration form across them:
@@ -180,13 +178,13 @@ every `<nrt|nrta|nec>_NAME(` declaration form across them:
 | `nrt_version.h` | 1 (`nrt_get_version`) |
 | **union (deduped, real functions)** | **147** |
 
-> **CORRECTION (to DX-RT-15 §2, the "154 declared names").** The clean union of *real* function
+> **CORRECTION — the "154 declared names" figure.** The clean union of *real* function
 > names across **all 10** function-bearing `nrt/` headers is **147**, not 154. The 154 figure
 > double-counted: it (a) folded in 7 include-guard / typedef pseudo-tokens (`nrt_async`,
 > `nrt_async_sendrecv`, `nrt_experimental`, `nrt_profile`, `nrt_status`, `nrt_sys_trace`,
 > `nrt_version` — zero `name(` call-form matches), and (b) under-counted by *omitting*
-> `ndebug_stream.h` (3 `nrt_debug_*`) and `nrt_version.h` (`nrt_get_version`) from its 7-header
-> scrape, so its `nrt_get_version`/`nrt_debug_*` exports were briefly mis-flagged as
+> `ndebug_stream.h` (3 `nrt_debug_*`) and `nrt_version.h` (`nrt_get_version`) from that 7-header
+> scrape, so `nrt_get_version`/`nrt_debug_*` were mis-flagged there as
 > "undeclared." With those four restored and the pseudo-tokens removed, the union is **147** and
 > the headline diffs below are unchanged.
 
@@ -199,7 +197,7 @@ nec_get_version_info
 nrt_get_status_as_str
 ```
 
-### 3.1 Diff: declared-and-exported `[HIGH/OBSERVED]`
+### 3.1 Diff: declared-and-exported
 
 ```
 exported-but-undeclared : 0      ← no "secret" exports
@@ -209,7 +207,7 @@ intersection            : 145    ← the .dynsym GLOBAL set ⊆ header-declared 
 This is the strongest statement of the partition: **the exported set is a subset of the
 header-declared set**. The version script and the headers do not contradict each other.
 
-### 3.2 Diff: declared-but-not-exported in this build = exactly 2 `[HIGH/OBSERVED]`
+### 3.2 Diff: declared-but-not-exported in this build = exactly 2
 
 Two header-public functions are **not** in `.dynsym`:
 
@@ -228,7 +226,7 @@ Two header-public functions are **not** in `.dynsym`:
 
 ## 4. The 4 `std::string` symbols — ABI leakage, explicitly NOT API
 
-`[HIGH/OBSERVED]` Four libstdc++ COMDAT/inline `std::string` internals were emitted into the
+Four libstdc++ COMDAT/inline `std::string` internals were emitted into the
 version scope and into `.dynsym` with **LOCAL** binding:
 
 ```console
@@ -249,7 +247,7 @@ a clean-room version script; a correct `local: *;` clause naturally suppresses t
 
 ## 5. The versioned-symbol map — `NRT_2.0.0` vs `NRT_3.0.0`
 
-### 5.1 `.gnu.version_d` node tree `[HIGH/OBSERVED]`
+### 5.1 `.gnu.version_d` node tree
 
 ```console
 $ readelf -VW <bin> | rg -A6 'Version definition'
@@ -274,7 +272,7 @@ $ readelf --dyn-syms -W <bin> | rg 'NRT_[23].0.0$' | rg ' ABS '
  753: 0…0  0 OBJECT GLOBAL DEFAULT ABS NRT_2.0.0
 ```
 
-### 5.2 Per-node callable counts `[HIGH/OBSERVED]`
+### 5.2 Per-node callable counts
 
 ```console
 $ nm -D <bin> | rg '@@NRT_2.0.0' | rg -c ' T '   →  137   (stable sync C ABI)
@@ -295,9 +293,9 @@ Raw per-node line counts (what an `nm -D --defined-only` auditor sees, **all** b
 > stable C syms." The measured **callable** count for `NRT_2.0.0` is **137**, not 143 — the
 > "143" folds the 4 `std::string` leaks and the 2 anchors into the 2.0.0 node
 > (`137 + 4 + 2 = 143`). Canonical: `NRT_2.0.0` = **137** callable, `NRT_3.0.0` = **8**
-> callable, total **145**. `[HIGH/OBSERVED]`
+> callable, total **145**.
 
-### 5.3 The 8 `NRT_3.0.0` exports — the complete async-schedule family `[HIGH/OBSERVED]`
+### 5.3 The 8 `NRT_3.0.0` exports — the complete async-schedule family
 
 ```console
 $ nm -D <bin> | rg '@@NRT_3.0.0' | rg ' T '
@@ -311,7 +309,7 @@ $ nm -D <bin> | rg '@@NRT_3.0.0' | rg ' T '
 > confuse it with `nrt_add_*` (e.g. `nrt_add_tensor_to_tensor_set`, which is a *sync*
 > `NRT_2.0.0` export, an `nrt_a…`, **not** an `nrta_`).
 
-### 5.4 The 137 `NRT_2.0.0` exports by family `[HIGH/OBSERVED]`
+### 5.4 The 137 `NRT_2.0.0` exports by family
 
 ```
 nec_*   16   device / topology ABI (the public subset of §2.1)
@@ -397,7 +395,7 @@ references, because 3.0.0 transitively *contains* the 2.0.0 surface (§5.1).
 
 ## 7. The GPSIMD seam — where this public surface meets the GPSIMD corpus
 
-`[HIGH/OBSERVED]` The GPSIMD customop corpus ships **no** standalone `libnrt.so`; its `.so`
+The GPSIMD customop corpus ships **no** standalone `libnrt.so`; its `.so`
 files are the Xtensa/`ncore2gp` toolchain and customop runtime helpers, none of which import
 `nrt_`/`nrta_`/`nec_` symbols as UND. The single host-side coupling point between the 145-export
 public surface and GPSIMD is one export:
@@ -418,8 +416,6 @@ by private code below it.
 ---
 
 ## 8. Reimplementer takeaways
-
-`[HIGH]`
 
 - Implement exactly **145** functions to be a drop-in `libnrt` for this build: **137** under a
   `NRT_2.0.0` node, **8** (`nrta_*`) under a `NRT_3.0.0` node that **parents** `NRT_2.0.0`.
@@ -457,9 +453,10 @@ by private code below it.
 
 ### Provenance
 
-All counts re-measured from `libnrt.so.2.31.24.0` (BuildID `8bb57aba…`, 122,956,336 bytes) via
+All counts measured from `libnrt.so.2.31.24.0` (BuildID `8bb57aba…`, 122,956,336 bytes) via
 piped `nm`/`readelf`/`objdump`, cross-referenced against the 10 installed `nrt/` public headers
 (`nrt.h`, `nec.h`, `nrt_async.h`, `nrt_async_sendrecv.h`, `nrt_profile.h`, `nrt_sys_trace.h`,
 `nrt_experimental.h`, `nrt_status.h`, `nrt_version.h`, `ndebug_stream.h`). Tags:
 `OBSERVED` = direct read of `.dynsym`/`.symtab`/`.gnu.version_d`/header text;
-`INFERRED` = reasoned across the binary and the headers.
+`INFERRED` = reasoned across the binary and the headers. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.

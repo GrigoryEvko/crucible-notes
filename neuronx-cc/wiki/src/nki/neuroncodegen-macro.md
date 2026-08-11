@@ -52,7 +52,7 @@ The emitter never re-emits the inner math. It does three things: (a) choose the 
 
 ### Bespoke twins vs the generic path
 
-The LOWER side does *not* carry a `codegen<Name>` for every macro. The split is sharp and is provable by **string absence**: a family with a bespoke twin has its NAME and `codegen<Name>` interned in BirCodeGenLoop.so; a generic-routed family has neither (only the leaf module string survives). The confirmed bespoke set, with VA addresses from `BirCodeGenLoop` function-address table:
+The LOWER side does *not* carry a `codegen<Name>` for every macro. The split is sharp and is provable by **string absence**: a family with a bespoke twin has its NAME and `codegen<Name>` interned in BirCodeGenLoop.so; a generic-routed family has neither (only the leaf module string survives). The bespoke set, with VA addresses from the `BirCodeGenLoop` function-address table:
 
 | Bespoke `codegen<Name>` | VA | Macro NAME it consumes |
 |---|---|---|
@@ -69,9 +69,9 @@ The LOWER side does *not* carry a `codegen<Name>` for every macro. The split is 
 | `codegenBIRKernel` (+`codegenBIRKernelAccess`) | `0xa8360` | `BIRKernel` and every generic-routed macro |
 | `codegenInternalNativeNkiKernel` | `0x8d630` | (the shared trace spine) |
 
-Everything else — `RouterTopK`, `ExpertMLPs`, `RowTiledMM`, `ColumnTiledMM`, `CaymanPackedPETranspose`, `AttentionTkgFwd` — has **zero** bespoke-string occurrences in BirCodeGenLoop.so and lowers through generic `codegenBIRKernel` + the registry. The decode-vs-prefill distinction for the TKG path is carried as an `is_tkg` flag (string confirmed in BirCodeGenLoop.so) on the config bag, not as a separate NAME. `[CONFIRMED by name-presence/absence]`
+Everything else — `RouterTopK`, `ExpertMLPs`, `RowTiledMM`, `ColumnTiledMM`, `CaymanPackedPETranspose`, `AttentionTkgFwd` — has **zero** bespoke-string occurrences in BirCodeGenLoop.so and lowers through generic `codegenBIRKernel` + the registry. The decode-vs-prefill distinction for the TKG path is carried as an `is_tkg` flag (the string is interned in BirCodeGenLoop.so) on the config bag, not as a separate NAME. The bespoke/generic split above is established by name presence and absence in the module's string pool.
 
-> **QUIRK — `MatMulMX`/`QuantizeMX` are *not* macro twins.** The report's "MX path → codegenMatMulMX" is loose. The real lower symbols are `codegenMatMulMXOp` and `codegenQuantizeMXOp` (@ `0x1c0000`) — per-*instruction* op codegens, not family-macro codegens. MX block-scaled quant is an inline op used *inside* the leaves, not a macro-kernel family. See §5. `[CORRECTION]`
+> **GOTCHA — `MatMulMX`/`QuantizeMX` are *not* macro twins.** The lower symbols are `codegenMatMulMXOp` and `codegenQuantizeMXOp` (@ `0x1c0000`) — per-*instruction* op codegens, not family-macro codegens. MX block-scaled quant is an inline op used *inside* the leaves, not a macro-kernel family. See §5.
 
 ---
 
@@ -104,13 +104,13 @@ The complete catalog. The **emit method** is on `GeneratedNeuronCodegen` (mdef i
 | (norm/reduce macro) | `NeuronReduceMacro` | `codegenNeuronReduceMacro` | — |
 | (generic / fallback) | `BIRKernel` | `codegenBIRKernel` | registry leaf |
 
-> **NOTE — mdef indices.** The emit-side indices (#319–#377) are the Cython method ordinals reported from the KernelBuilder `__pyx_mdef` roster (the macro band runs from `attention_kernel` family up to `…_379finalize_kernel`). The lower-side ordinals are read directly from `__pyx_pw_…BirCodeGenLoop_<NNN>codegen<Name>` symbol names — e.g. `codegenAttentionMMSoftmaxMM` = method #219, `codegenBIRKernel` = #221, `codegenBackwardsAttention` = #223, `codegenNormQKV` = #227, `_resolve_kernel_config` = #235, `_trace_internal_kernel_to_new_nki_frontend` = #241, `codegenInternalNativeNkiKernel` = #243, `codegenMLPKernel` = #245, `codegenRMSNormQuantKernel` = #247, `codegenTiledNativeKernelAttention` = #253, `cayman_matmul_double_row_ap` = #287. The emit-side ordinals are `STRONG` (roster-derived); the lower-side ordinals are `CONFIRMED` (in the symbol).
+> **NOTE — mdef indices.** The emit-side indices (#319–#377) are the Cython method ordinals reported from the KernelBuilder `__pyx_mdef` roster (the macro band runs from `attention_kernel` family up to `…_379finalize_kernel`). The lower-side ordinals are read directly from `__pyx_pw_…BirCodeGenLoop_<NNN>codegen<Name>` symbol names — e.g. `codegenAttentionMMSoftmaxMM` = method #219, `codegenBIRKernel` = #221, `codegenBackwardsAttention` = #223, `codegenNormQKV` = #227, `_resolve_kernel_config` = #235, `_trace_internal_kernel_to_new_nki_frontend` = #241, `codegenInternalNativeNkiKernel` = #243, `codegenMLPKernel` = #245, `codegenRMSNormQuantKernel` = #247, `codegenTiledNativeKernelAttention` = #253, `cayman_matmul_double_row_ap` = #287. The emit-side ordinals are roster-derived; the lower-side ordinals are read literally out of the symbol name.
 
 ---
 
 ## 3. Tiled vs untiled: the IO-type test (the real heuristic)
 
-> **CORRECTION — It is not a tile-size threshold.** A natural guess is that `*_tiled` vs `*_untiled` is chosen by a tile-size or tile-shape threshold, or by the K15 `SBSizeLegalization` decision. Both are wrong. The selector is a **type classification of the kernel's IOs**: are the operands already SBUF-resident `MemrefTile`s (NDTiles), or are they whole HBM tensors that the kernel must itself tile? `[CONFIRMED]`
+> **GOTCHA — this is not a tile-size threshold.** The natural guess — that `*_tiled` vs `*_untiled` is chosen by a tile-size/shape threshold, or by the K15 `SBSizeLegalization` decision — does not hold. The selector is a **type classification of the kernel's IOs**: are the operands already SBUF-resident `MemrefTile`s (NDTiles), or whole HBM tensors that the kernel must itself tile?
 
 The decision lives in helper `_is_all_io_type_memref_tile` (mdef #313). Its rodata docstring is verbatim:
 
@@ -142,19 +142,19 @@ The three outcomes:
 
 - **all `MemrefTile`** → `is_tiled = true` → `_tiled_<family>_kernel_impl` → NAME `TiledNativeKernel<Family>`.
 - **all whole HBM tensors** → `_untiled_<family>_kernel_impl` → NAME `<Family>` (the base name).
-- **mixed** → hard assert. The user-facing sibling message is verbatim *"Inputs/outputs to quant_mlp_fused_add_kernel must be all tensors or all tiles, not a mix of both"* (and the generic *" must be all tensors or all tiles, not a mix of both"*). `[CONFIRMED]`
+- **mixed** → hard assert. The user-facing sibling message is verbatim *"Inputs/outputs to quant_mlp_fused_add_kernel must be all tensors or all tiles, not a mix of both"* (and the generic *" must be all tensors or all tiles, not a mix of both"*).
 
 The two NAMEs are not just decorative — the LOWER side asserts on exactly this pair. The keystone, verbatim from BirCodeGenLoop.so:
 
 > *"Expected to get an AttentionMMSoftmaxMM or TiledNativeKernelAttention but got "*
 
-with the companion type annotation `Union[AttentionMMSoftmaxMM, TiledNativeKernelAttention]`. That `Union` is the untiled/tiled pair, named explicitly, proving the split is a binary NAME choice on the IO type. `[CONFIRMED]`
+with the companion type annotation `Union[AttentionMMSoftmaxMM, TiledNativeKernelAttention]`. That `Union` is the untiled/tiled pair, named explicitly: the split is a binary NAME choice on the IO type.
 
-A second corroboration ties a *feature* to the untiled path: *"Softmax caching not supported yet for tiled attention_kernel. Pass in tensors instead of tiles."* — `cache_softmax` is legal only when operands are tensors (the untiled path), confirming `is_tiled` is purely "are the operands tiles." `[CONFIRMED]`
+A second string ties a *feature* to the untiled path: *"Softmax caching not supported yet for tiled attention_kernel. Pass in tensors instead of tiles."* — `cache_softmax` is legal only when operands are tensors (the untiled path), which pins `is_tiled` to purely "are the operands tiles."
 
 > **NOTE — Relation to K15 `SBSizeLegalization`.** K15 sizes and legalizes SBUF tiles upstream. The tiled emitter *presupposes* legalized `MemrefTile`s — the caller (e.g. a `TiledNative` codegen loop in BirCodeGenLoop) already produced them. So K15 is upstream of the tiled branch; it is not the branch *condition*. The tiled emitter consumes K15's output but does not call `SBSizeLegalization` itself. `[INFERRED]`
 
-> **GOTCHA — Disassembly limit.** In the `_mlp_kernel` wrapper @ `0x1ef3e0`, after the ~14 `__Pyx_GetKwValue_FASTCALL` kwarg-parse prologue, the body shows a `GetAttrStr` + `FastCallDict`-on-`self` cascade — the visible shape of `if self._is_all_io_type_memref_tile(ios): self._tiled_…(…) else: self._untiled_…(…)`. The interned-name operands were *not* slot-resolved to literal method strings from the mstate table, so the branch is `STRONG` (structurally certain, the two `codegen*` twins + rodata names make it unambiguous), not byte-exact per call.
+> **NOTE — how far the disassembly reaches here.** In the `_mlp_kernel` wrapper @ `0x1ef3e0`, after the ~14 `__Pyx_GetKwValue_FASTCALL` kwarg-parse prologue, the body shows a `GetAttrStr` + `FastCallDict`-on-`self` cascade — the shape of `if self._is_all_io_type_memref_tile(ios): self._tiled_…(…) else: self._untiled_…(…)`. The interned-name operands were not slot-resolved to literal method strings from the mstate table, so the branch structure is read from the two `codegen*` twins plus the rodata name roster rather than byte-exactly per call site.
 
 ---
 
@@ -178,7 +178,7 @@ PyObject *mlp_fused_add_kernel(self, x, weights, mlp_out, attn_out, **cfg) {
 }
 ```
 
-The residual operands are `(mlp_out, attn_out)`, and the **pairing contract** is verbatim: *"Fused add requires both mlp_out and attn_out to be provided or neither of them"* — an exclusive-or is rejected. Semantically: the MLP block's residual *is* the attention block's output (`attn_out`), so the transformer's `x + MLP(norm(x))` residual stream becomes a single macro op rather than a kernel followed by a graph-level add. `[CONFIRMED]`
+The residual operands are `(mlp_out, attn_out)`, and the **pairing contract** is verbatim: *"Fused add requires both mlp_out and attn_out to be provided or neither of them"* — an exclusive-or is rejected. Semantically: the MLP block's residual *is* the attention block's output (`attn_out`), so the transformer's `x + MLP(norm(x))` residual stream becomes a single macro op rather than a kernel followed by a graph-level add.
 
 `quant_mlp_fused_add_kernel` (#361) combines the residual-add *and* the quant fold (§5) in one macro; its all-tensors-or-all-tiles guard (§3) is the verbatim `quant_mlp_fused_add_kernel` message quoted above.
 
@@ -188,11 +188,11 @@ The residual operands are `(mlp_out, attn_out)`, and the **pairing contract** is
 
 Two emitters fold quantization into an existing macro rather than introducing a new family:
 
-**`quant_mlp_kernel` (#363) / `quant_mlp_fused_add_kernel` (#361)** emit the same `MLP` macro (`codegenMLPKernel` → `mlp.so`), but with quantized weights. The operand set gains per-projection scale tensors `gate_up_w_scale` and `down_w_scale`, and (for fp8) an `is_fp8_kernel` gate. The quant mode is carried as `QuantOnly` (an interned NAME in the macro's config), and the matmul folds the scale rather than running a separate dequant. The leaf is `quant_mlp_isa_kernel` / `quant_mlp_fused_add_isa_kernel`. `[CONFIRMED operand names + leaf]`
+**`quant_mlp_kernel` (#363) / `quant_mlp_fused_add_kernel` (#361)** emit the same `MLP` macro (`codegenMLPKernel` → `mlp.so`), but with quantized weights. The operand set gains per-projection scale tensors `gate_up_w_scale` and `down_w_scale`, and (for fp8) an `is_fp8_kernel` gate. The quant mode is carried as `QuantOnly` (an interned NAME in the macro's config), and the matmul folds the scale rather than running a separate dequant. The leaf is `quant_mlp_isa_kernel` / `quant_mlp_fused_add_isa_kernel`.
 
-**`rmsnorm_quant_kernel` (#347)** is RMSNorm with a fused output quantize — `norm-then-quantize` as a single macro, no separate quantize op. Operands: `hidden_in`, `eps` (float-typed — guard *"Expecting eps input to have type float"*), `weight`, `dst_scale` / `scales` (the output quant scale), and `dst_dtype` (gated *"dst_dtype must be float32 or bfloat16."*). NAME `RMSNormQuant`(`Kernel`) → `codegenRMSNormQuantKernel` @ `0x9a9c0` → `rmsnorm.so`. `[CONFIRMED]`
+**`rmsnorm_quant_kernel` (#347)** is RMSNorm with a fused output quantize — `norm-then-quantize` as a single macro, no separate quantize op. Operands: `hidden_in`, `eps` (float-typed — guard *"Expecting eps input to have type float"*), `weight`, `dst_scale` / `scales` (the output quant scale), and `dst_dtype` (gated *"dst_dtype must be float32 or bfloat16."*). NAME `RMSNormQuant`(`Kernel`) → `codegenRMSNormQuantKernel` @ `0x9a9c0` → `rmsnorm.so`.
 
-> **QUIRK — MX block-scaled quant is a different layer.** Don't conflate the `quant_mlp`/`rmsnorm_quant` scale *folds* with MX. MX (block-scaled, `block_size 32`, x4-packed) is a **per-instruction** path: `GeneratedNeuronCodegen.quantize_mx` (#161) emits a `QuantizeMXOp`; `matmult_mx` (#107) emits a `MatMulMXOp` with `stationary_scale`/`moving_scale`. Their lower twins are `codegenQuantizeMXOp` (@ `0x1c0000`) and `codegenMatMulMXOp` — instruction codegens, not family-macro codegens. MX ops live *inside* the compiled leaves; they are not a macro-kernel emitter. `[CONFIRMED]`
+> **QUIRK — MX block-scaled quant is a different layer.** Don't conflate the `quant_mlp`/`rmsnorm_quant` scale *folds* with MX. MX (block-scaled, `block_size 32`, x4-packed) is a **per-instruction** path: `GeneratedNeuronCodegen.quantize_mx` (#161) emits a `QuantizeMXOp`; `matmult_mx` (#107) emits a `MatMulMXOp` with `stationary_scale`/`moving_scale`. Their lower twins are `codegenQuantizeMXOp` (@ `0x1c0000`) and `codegenMatMulMXOp` — instruction codegens, not family-macro codegens. MX ops live *inside* the compiled leaves; they are not a macro-kernel emitter.
 
 ---
 
@@ -212,19 +212,19 @@ The untiled attention macro has **five** NAME forms — the chosen form *is* the
 | `V2AttentionMMSoftmaxMMWithoutSwap` | gen2 ("V2") PE-array variant |
 | `V2CausalAttentionMMSoftmaxMMWithoutSwap` | gen2 causal, no swap |
 
-Three of these (`AttentionMMSoftmaxMM`, `…WithoutSwap`, `CausalAttention…WithoutSwap`) appear directly in the readable `_pre_prod_kernels/attn_fwd.py` source; the two `V2*` forms are present in the compiled leaf / KernelBuilder rodata pool. The `WithoutSwap` suffix records whether MM2 keeps stationary/moving as-given vs swaps to legalize the PE-array contraction axis (cross-ref Part 6.7, mm1→softmax→mm2). The selector — which depends on `is_causal`, MM2 operand-layout swap legality, and arch/"V2" — was not disassembled to the comparand level; the NAMEs are `CONFIRMED`, the selector logic is `STRONG/INFERRED`.
+Three of these (`AttentionMMSoftmaxMM`, `…WithoutSwap`, `CausalAttention…WithoutSwap`) appear directly in the readable `_pre_prod_kernels/attn_fwd.py` source; the two `V2*` forms are present in the compiled leaf / KernelBuilder rodata pool. The `WithoutSwap` suffix records whether MM2 keeps stationary/moving as-given vs swaps to legalize the PE-array contraction axis (cross-ref Part 6.7, mm1→softmax→mm2). The NAMEs themselves are read from the string pool. The selector that picks among them — which depends on `is_causal`, MM2 operand-layout swap legality, and arch/"V2" — was not disassembled to the comparand level, so its exact predicate is [INFERRED].
 
-> **GOTCHA — the causal-no-swap form hardcodes scale 1.0.** Verbatim contract: *"CausalAttentionMMSoftmaxMMWithoutSwap only supports scale equal to 1.0"*. The causal-no-swap kernel pre-folds the softmax scale into Q upstream, so it rejects any `scale != 1.0`. `[CONFIRMED]`
+> **GOTCHA — the causal-no-swap form hardcodes scale 1.0.** Verbatim contract: *"CausalAttentionMMSoftmaxMMWithoutSwap only supports scale equal to 1.0"*. The causal-no-swap kernel pre-folds the softmax scale into Q upstream, so it rejects any `scale != 1.0`.
 
 ### Decode (TKG) and prefix-caching
 
-`attention_tkg_fwd_kernel` (#343) is the decode / token-generation emitter (`_tiled_`#337 / `_untiled_`#335 impls) → macro `AttentionTkgFwd` → `attention.so::attention_tkg_fwd_isa_kernel`. Its operand set adds the KV-cache split (`cache_softmax`, `k_prior`/`k_active`/`v_active` = prior vs current KV). It has **no** bespoke `codegen<Name>`; it lowers via generic `codegenBIRKernel` with the `is_tkg` flag on the config bag. `[CONFIRMED name + leaf; flow STRONG]`
+`attention_tkg_fwd_kernel` (#343) is the decode / token-generation emitter (`_tiled_`#337 / `_untiled_`#335 impls) → macro `AttentionTkgFwd` → `attention.so::attention_tkg_fwd_isa_kernel`. Its operand set adds the KV-cache split (`cache_softmax`, `k_prior`/`k_active`/`v_active` = prior vs current KV). It has **no** bespoke `codegen<Name>`; it lowers via generic `codegenBIRKernel` with the `is_tkg` flag on the config bag.
 
-`attention_prefix_caching_fwd_kernel` (#371) is the vLLM-style prefix-cache flash-attention emitter (`_tiled_`#367 / `_untiled_`#369) → the **unique** `prefix_caching_attention.so` leaf (a distinct `.so`, confirmed present in the wheel). It is **name-keyed**: the verbatim error *"Prefix caching is not implemented for this kernel name "* is a dict lookup on `kernel_name` → the prefix-caching leaf; an unknown name raises. `prefix_mask` is the extra operand. `[CONFIRMED]`
+`attention_prefix_caching_fwd_kernel` (#371) is the vLLM-style prefix-cache flash-attention emitter (`_tiled_`#367 / `_untiled_`#369) → the **unique** `prefix_caching_attention.so` leaf (a distinct `.so`, confirmed present in the wheel). It is **name-keyed**: the verbatim error *"Prefix caching is not implemented for this kernel name "* is a dict lookup on `kernel_name` → the prefix-caching leaf; an unknown name raises. `prefix_mask` is the extra operand.
 
 ### Backwards (training)
 
-`backwards_attention_kernel` (#375) → macro `BackwardsAttention` → `codegenBackwardsAttention` @ `0x1e02c0` → the `attention.so` backward leaf. Two verbatim contracts gate it: *"Backwards Attention BIR kernel only supports softmax scale = 1.0"* and *"Backwards Attention BIR kernel does not currently support non zero dropout prob"* — `scale != 1` and `dropout > 0` are both forbidden. `[CONFIRMED]`
+`backwards_attention_kernel` (#375) → macro `BackwardsAttention` → `codegenBackwardsAttention` @ `0x1e02c0` → the `attention.so` backward leaf. Two verbatim contracts gate it: *"Backwards Attention BIR kernel only supports softmax scale = 1.0"* and *"Backwards Attention BIR kernel does not currently support non zero dropout prob"* — `scale != 1` and `dropout > 0` are both forbidden.
 
 ### The MM / hw_ubench probes and Cayman
 
@@ -234,7 +234,7 @@ Three emitters produce hardware-microbench tiled-GEMM probes that all resolve to
 - `column_tiled_mm_kernel` (#323) → `ColumnTiledMM` (guard *"Must be ColumnTiledMM but got "*) → `column_tiled_matmul_isa_kernel`.
 - `packed_cayman_pe_tp_kernel` (#319) → `CaymanPackedPETranspose` (guard *"Must be CaymanPackedPETranspose but got "*) → `packed_cayman_pe_tp_isa_kernel`.
 
-`packed_cayman_pe_tp_kernel` is the gen3 "Cayman" packed PE-array tensor-parallel matmul probe: the PE array runs a **double-row** packed GEMM (two output rows per pass) with a fused transpose. The lower side builds the double-row access pattern in `cayman_matmul_double_row_ap` @ `0xecf30`. Its contracts (verbatim): *"first F dim of LHS and RHS of the double_row matmult must be 2"* (pack factor = 2 = two rows), *"perf_mode=`double_row_gen3` is not supported on "* (gen3-gated; `double_row_gen3` is a confirmed string), and the partition-stride rule *" must have indexing i \* 32 + j at partition dimension for src tensor with more than 32 partitions but got "* (the 32-lane packed-transpose stride). Operands: `stationary`/`moving`, `tile_position`/`tile_size`, `transpose`, `psum`, `num_channels`, `perf_mode`, `double_row_indices`, `lhs_free_and_double_row_shape`. Additional Cayman contracts: *"Unexpected double row index size"* and the tile-combine helper `combine_trn2_double_row_matmult_tiles` (the 2-row PSUM pack/merge). `[CONFIRMED]`
+`packed_cayman_pe_tp_kernel` is the gen3 "Cayman" packed PE-array tensor-parallel matmul probe: the PE array runs a **double-row** packed GEMM (two output rows per pass) with a fused transpose. The lower side builds the double-row access pattern in `cayman_matmul_double_row_ap` @ `0xecf30`. Its contracts (verbatim): *"first F dim of LHS and RHS of the double_row matmult must be 2"* (pack factor = 2 = two rows), *"perf_mode=`double_row_gen3` is not supported on "* (gen3-gated; `double_row_gen3` is interned in the string pool), and the partition-stride rule *" must have indexing i \* 32 + j at partition dimension for src tensor with more than 32 partitions but got "* (the 32-lane packed-transpose stride). Operands: `stationary`/`moving`, `tile_position`/`tile_size`, `transpose`, `psum`, `num_channels`, `perf_mode`, `double_row_indices`, `lhs_free_and_double_row_shape`. Additional Cayman contracts: *"Unexpected double row index size"* and the tile-combine helper `combine_trn2_double_row_matmult_tiles` (the 2-row PSUM pack/merge).
 
 > **NOTE — "Cayman" is a uarch codename.** `targets.cayman.Cayman` is imported by BirCodeGenLoop. The packed PE-TP family is unique to the private `hw_ubench` microbench — it is not a model kernel; it is a hardware probe for the gen3 double-row matmul.
 
@@ -259,7 +259,7 @@ codegenBIRKernel ─┴─►  codegenInternalNativeNkiKernel  @0x8d630
                        _private_kernels.<leaf>.so   (the compiled compute)
 ```
 
-`_INTERNAL_KERNEL_REGISTRY` is built once by `_build_internal_kernel_registry`, whose docstring is verbatim *"Build the registry of all internal NKI kernels that can be traced to new NKI frontend."* The registered leaf modules visible as strings in BirCodeGenLoop.so include `neuronxcc.nki._private_kernels.{blockwise_mm, conv, mlp}` (the registry references more; these are the ones interned in the decompiled band). The full leaf set is confirmed on disk under `neuronxcc/nki/_private_kernels/`: `attention`, `attention_cte`, `blockwise_mm`, `collective_matmul`, `conv`, `cumsum`, `expert_mlps`, `fused_linear`, `hw_ubench`, `_internal`, `llama3_transformer`, `mlp`, `prefix_caching_attention`, `qkv`, `rmsnorm`, `RoPE`, `router_topk`, `shard_common`, `transpose` (all `cpython-310-x86_64-linux-gnu.so`). `[CONFIRMED]`
+`_INTERNAL_KERNEL_REGISTRY` is built once by `_build_internal_kernel_registry`, whose docstring is verbatim *"Build the registry of all internal NKI kernels that can be traced to new NKI frontend."* The registered leaf modules visible as strings in BirCodeGenLoop.so include `neuronxcc.nki._private_kernels.{blockwise_mm, conv, mlp}` (the registry references more; these are the ones interned in the decompiled band). The full leaf set is confirmed on disk under `neuronxcc/nki/_private_kernels/`: `attention`, `attention_cte`, `blockwise_mm`, `collective_matmul`, `conv`, `cumsum`, `expert_mlps`, `fused_linear`, `hw_ubench`, `_internal`, `llama3_transformer`, `mlp`, `prefix_caching_attention`, `qkv`, `rmsnorm`, `RoPE`, `router_topk`, `shard_common`, `transpose` (all `cpython-310-x86_64-linux-gnu.so`).
 
 The per-`codegen<Name>` bodies differ only in **how** they marshal a macro's operands into the kernel's argument bag; a shared nested helper (`codegenBIRKernelAccess` / `addBIRKernelTileAccess` / `addBIRKernelNDimSubTensorAccess`) builds the tile/sub-tensor access patterns. The marshalling bodies themselves are not traced here — that is the lower-side codegen page's scope; this page grounds the EMIT→NAME→codegen→registry→leaf spine.
 

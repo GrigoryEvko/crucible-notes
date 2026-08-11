@@ -9,7 +9,7 @@ the full reset → start bring-up (run-stall release). It is the host counterpar
 device-side bring-up documented in [Boot / Reset Sequence](../uarch/boot-reset.md): the HAL is
 what BAR0-writes the image and clears the run-stall that the device reset vector waits behind.
 
-Everything here is **byte-pinned to a shipped artifact this session**: the host x86-64 ELF
+Everything here is **byte-pinned to a shipped artifact**: the host x86-64 ELF
 `libnrt.so.2.31.24.0` (`122,956,336` B, BuildID `8bb57aba…387c102e`, `2.31.24.0` git
 `0b044f4ce`, **with `debug_info`, not stripped**), disassembled with stock `objdump` at the
 addresses recovered from the IDA function sidecar. For `.text`/`.rodata` the rule
@@ -23,9 +23,10 @@ Where prompt-level folklore or a sibling note disagrees with the binary, **the b
 and an in-place **CORRECTION** callout says so.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/instruction read from a shipped artifact this session; `INFERRED` =
+`OBSERVED` = a byte/string/instruction read from a shipped artifact; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed
-with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
+with `HIGH`/`MED`/`LOW`. The page default is `[HIGH/OBSERVED]`; claims that depart from it carry
+an explicit tag. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
 
 > **WALL — v5 (Maverick / NC-v5) is not in this binary.** This `libnrt.so` registers Q7 HAL
@@ -69,8 +70,8 @@ programmed-IO copy.
 
 ## 1. The Q7 HAL symbol set
 
-Recovered with the IDA function sidecar; each address below is independently re-disassembled in
-the sections that follow. `[HIGH/OBSERVED]`
+Recovered with the IDA function sidecar; each address below is independently disassembled in
+the sections that follow.
 
 **Generic arch-dispatching trampolines** (`.text`):
 
@@ -105,7 +106,7 @@ Provenance `.rodata` strings (binary-derived, citeable): `common/q7/aws_hal_q7.c
 ## 2. The generic dispatch model (kaena_khal slot table)
 
 Every generic `aws_hal_q7_*` function follows **one** pattern. Disassembling
-`aws_hal_get_q7_params @0x44bfb0`: `[HIGH/OBSERVED]`
+`aws_hal_get_q7_params @0x44bfb0`:
 
 ```c
 // aws_hal_get_q7_params @0x44bfb0 — the canonical trampoline shape.
@@ -148,7 +149,7 @@ legacy/Inf1 slot. `[HIGH/OBSERVED; enum binding CARRIED]`
 
 ### 2.1 The two physical write primitives
 
-The HAL ultimately reaches BAR0 through exactly two primitives. `[HIGH/OBSERVED]`
+The HAL ultimately reaches BAR0 through exactly two primitives.
 
 **(a) Bulk image write — `al_mem_write_buf @0x265990`.** Asserts `dst` and `len` are 4-byte
 aligned, then `len >>= 2` to a word count and calls `axi_write(dst, src, words)`:
@@ -178,13 +179,13 @@ dma_ctrl, engine_base, …) uses (b).
 
 > **NOTE.** Image payload goes through (a), word-blasted; control registers through (b). Both
 > land in BAR0 via `ndl_bar_write`. **No DMA is used to install the ucode — it is a
-> programmed-IO copy.** `[HIGH/OBSERVED]`
+> programmed-IO copy.**
 
 ---
 
 ## 3. `aws_hal_get_q7_params` — the Q7 engine parameter map
 
-Recovered signature (x86-64 SysV ABI): `[HIGH/OBSERVED]`
+Recovered signature (x86-64 SysV ABI):
 
 ```c
 // owner = al_hal_q7_owner: 2 = AL_HAL_POOLING_Q7 (the GPSIMD/custom-op engine)
@@ -198,7 +199,7 @@ void aws_hal_get_q7_params(int owner /*edi*/, u64 *base /*rsi*/, u64 *iram_size 
 
 `aws_hal_get_q7_params_sunda @0x478f90` accepts **`owner==2` only**; any other value falls
 through to `__assert_fail("aws_hal_get_q7_params_sunda")` (note: no CC branch). The constants
-are stored as immediate `movq`s, read directly from the disasm: `[HIGH/OBSERVED]`
+are stored as immediate `movq`s, read directly from the disasm:
 
 ```c
 // aws_hal_get_q7_params_sunda @0x478f90
@@ -217,7 +218,6 @@ are stored as immediate `movq`s, read directly from the disasm: `[HIGH/OBSERVED]
 
 `aws_hal_get_q7_params_cayman @0x47ae70` and `aws_hal_get_q7_params_mariana @0x477610` return
 the **same geometry**; only `num_q7` depends on the owner. Disasm of the Cayman variant:
-`[HIGH/OBSERVED]`
 
 ```c
 // aws_hal_get_q7_params_cayman @0x47ae70
@@ -257,7 +257,7 @@ staging window (see [§5](#5-the-swap-dynamic-kernel-load-dkl-mechanism)).
 
 ## 4. `aws_hal_q7_ucode_eng_init` — the ucode install
 
-Recovered signature: `[HIGH/OBSERVED]`
+Recovered signature:
 
 ```c
 // imgs points at TWO nrt_ucode_img records:
@@ -269,8 +269,6 @@ int aws_hal_q7_ucode_eng_init(void *tpb_handle /*rdi*/, u64 image_base /*rsi*/,
 ```
 
 ### 4a. Owner mapping — the v2-vs-v3/v4 split
-
-`[HIGH/OBSERVED]`
 
 - **Sunda** (`@0x46b9a0`): `r9d` must be `0`. The disasm opens `test %r9d,%r9d; jne <reject>`;
   the reject arm logs `"Invalid q7 owner %u for v2 (only pooling supported)"` and returns `-1`.
@@ -285,7 +283,7 @@ Cayman/Mariana are dual-owner.
 ### 4b. Size validation — the host-side admission gate
 
 After resolving params, the loader compares each image size against its aperture. Both error
-strings are present verbatim in `.rodata`. `[HIGH/OBSERVED]`
+strings are present verbatim in `.rodata`.
 
 ```c
 if (imgs[0].size /* IRAM, +0x08 */ > iram_size)
@@ -298,8 +296,6 @@ This is the host-side per-image bounds gate complementing the device prelink seg
 check and the device `NUM_POOL_CORES` assert (security posture; CARRIED).
 
 ### 4c. The per-core install loop
-
-`[HIGH/OBSERVED]`
 
 ```c
 // Per-core IRAM/DRAM destination addresses are computed from base + iram_rsvd/dram_rsvd and
@@ -319,18 +315,16 @@ for (u32 core = 0; core < num_q7; core++) {
 
 > **QUIRK — broadcast-by-replication.** With `num_q7 == 8` for POOLING, the **same image is
 > written to all 8 cores** — the engine is an 8-core SPMD cluster running one identical program
-> (consistent with the device-side "all-POOL broadcast", total_cpus == 8). `[HIGH/OBSERVED]`
+> (consistent with the device-side "all-POOL broadcast", total_cpus == 8).
 
 > **GOTCHA — order is DRAM-then-IRAM, per core.** A reimplementation that writes IRAM first (or
 > all DRAM then all IRAM) diverges from the shipped order. The data image is installed before
-> the code image on each core. `[HIGH/OBSERVED]`
+> the code image on each core.
 
 Cayman and Mariana loop bodies are byte-identical to each other and structurally identical to
-Sunda; only the owner-branch and the params differ. `[HIGH/OBSERVED]`
+Sunda; only the owner-branch and the params differ.
 
 ### 4d. `write_padded @0x473eb0` — the pad+copy+write primitive
-
-`[HIGH/OBSERVED]`
 
 ```c
 // write_padded @0x473eb0
@@ -358,7 +352,7 @@ int write_padded(u64 dst, const void *src, u64 size, u64 padded_size,
 > **before** the word-blast, so the engine IRAM/DRAM is fully initialized with no stale tail.
 > The optional `swap_cb` is the seam the nrtucode layer can interpose to stream/swap images
 > instead of a straight MMIO copy (see [The nrtucode Subsystem](nrtucode-bringup.md)); in the
-> `stpb` bring-up path it is passed through from the stpb config. `[HIGH/OBSERVED]`
+> `stpb` bring-up path it is passed through from the stpb config.
 
 ---
 
@@ -372,7 +366,7 @@ runtime image-swap (DKL) control surface. The critical finding is **per-arch**.
 `aws_hal_q7_swap_table_sunda @0x46b7d0` computes
 `base = aws_hal_arch_get_xt_local_reg_offset(...)` then `al_reg_write32`s **three** registers —
 the swap-table descriptor triple. The disasm shows the three `lea 0x83c/0x840/0x844(%rbx),%rdi;
-call al_reg_write32` sequences (each preceded by an `al_hal_log`): `[HIGH/OBSERVED]`
+call al_reg_write32` sequences (each preceded by an `al_hal_log`):
 
 ```c
 // aws_hal_q7_swap_table_sunda @0x46b7d0
@@ -388,11 +382,9 @@ returns those three addresses (`base+0x83c/0x840/0x844`) so the firmware/nrtucod
 a swap descriptor to them directly. `aws_hal_q7_swap_file_io_table_sunda @0x46b8e0`
 `al_reg_write32`s the **host↔device file/stdio I/O table**: `base+0x70` `dma_tx_ring_base`,
 `base+0x74` `dma_tx_ring_length`, `base+0x838` `q7_intr_info` — wiring the `pool_stdio` channel
-into the SEQ DMA TX ring + the Q7 interrupt-info register. `[HIGH/OBSERVED]`
+into the SEQ DMA TX ring + the Q7 interrupt-info register.
 
 ### 5b/5c. Cayman + Mariana — NO-OP stubs
-
-`[HIGH/OBSERVED]`
 
 ```c
 // aws_hal_q7_swap_table_cayman @0x471470  (Mariana @0x464ab0 byte-identical):
@@ -427,7 +419,7 @@ int owner /*dl*/) → tpb_base + table[eng_type]`, with the Q7 type folding `own
 
 `aws_hal_arch_sunda_get_xt_local_reg_offset @0x479070` is a jump table (`cmp $0x4,%esi; ja
 <assert>`; `movslq (%rcx,%rsi,4),%rax; add %rcx,%rax; jmp *%rax` with table @`0x9f2700`). The
-five arms read as immediate `mov $imm,%eax; add %rdi,%rax; ret`: `[HIGH/OBSERVED]`
+five arms read as immediate `mov $imm,%eax; add %rdi,%rax; ret`:
 
 | `eng_type` | Base (added to `tpb_base`) | Engine |
 |---|---|---|
@@ -442,7 +434,7 @@ and $0xfffffffffd800000,%rax; add $0x2860000,%rax` idiom — i.e. `owner==1 ? 0x
 
 ### 6b. Cayman — 6 engine types (incl. the bit-35 secure-aperture fold)
 
-`aws_hal_arch_cayman_get_xt_local_reg_offset @0x47afe0` (table @`0x9f41e0`): `[HIGH/OBSERVED]`
+`aws_hal_arch_cayman_get_xt_local_reg_offset @0x47afe0` (table @`0x9f41e0`):
 
 | `eng_type` | Base | Engine |
 |---|---|---|
@@ -469,7 +461,6 @@ neighboring `aws_hal_get_eng_hw_decode_table_params_cayman @0x47af40` shows the 
 Relative to the [§6a](#6a-sunda-5-engine-types)/[§6b](#6b-cayman-6-engine-types-incl-the-bit-35-secure-aperture-fold)
 base, recovered from the per-register writer functions (each is a one-line
 `add $off,%rdi; jmp al_reg_write32` thunk, or names the register in its `al_hal_log`):
-`[HIGH/OBSERVED]`
 
 | Offset | HAL name | Role |
 |---|---|---|
@@ -497,8 +488,9 @@ base, recovered from the per-register writer functions (each is a one-line
 This is the single most important reimplementation trap on the page. `[HIGH/OBSERVED that the
 offsets differ; MED on the cause]`
 
-The **device-side register spec** (the `tpb_xt_local_reg` CSR block, Part 13 — *plain text here,
-not yet authored*) lays the NX bundle out as `release_run_stall@0x0000`, `start_ctrl@0x0004`,
+The **device-side register spec** ([the `tpb_xt_local_reg` CSR
+block](../control/csr/tpb-xt-local-reg.md), Part 13) lays the NX bundle out as
+`release_run_stall@0x0000`, `start_ctrl@0x0004`,
 `run_state@0x0008`, `dma_rx_base@0x000C`, `dma_tx_base@0x0010`, `instr_halt_ctrl@0x0014`,
 `intr_ctrl@0x0018`, `intr_info@0x001C`; the Q7 bundle @`0x3000` with
 `release_run_stall@0x3000 [7:0]` reset `0xFF`, `start_ctrl@0x3004`,
@@ -517,7 +509,8 @@ KaenaHal was generated from a **separate (Sunda-physical / register-spec) layout
 device-side per-arch register spec. The two are **two views of the same registers** and must not
 be conflated.
 
-> **GOTCHA.** For a reimplementation: trust the device CSR spec (`tpb_xt_local_reg`, Part 13)
+> **GOTCHA.** For a reimplementation: trust the device CSR spec
+> ([`tpb_xt_local_reg`](../control/csr/tpb-xt-local-reg.md), Part 13)
 > for the **device register semantics**, and the [§6c](#6c-the-hal-flattened-nxq7-local-register-offsets)
 > table for the **host HAL's actual write offsets**. The functional intent is unchanged — write
 > `0 → release run-stall`, read low bit → running — but the *byte* offsets differ. The `+N` shift
@@ -533,7 +526,7 @@ be conflated.
 classes — ERROR/EVT_SEM/INST) → `aws_hal_stpb_regs_init` → `aws_hal_stpb_pooling_init @0x45c170`
 (dispatch via `khal+0x368` to the per-arch impl). The per-arch `pooling_init` is the actual Q7
 bring-up. The **Sunda** variant `aws_hal_stpb_sunda_pooling_init @0x46e8d0` recovers this config
-struct (`rdi=cfg`): `[HIGH/OBSERVED]`
+struct (`rdi=cfg`):
 
 | `cfg` offset | Field |
 |---|---|
@@ -547,7 +540,7 @@ struct (`rdi=cfg`): `[HIGH/OBSERVED]`
 | `+0x88` | DMA config (→ `dma_init` `rsi`) |
 | `+0xe0/0xe4/0xe8` | engine-id / cluster bitfields (→ `regs_init`) |
 
-The steps, with addresses re-disassembled: `[HIGH/OBSERVED]`
+The steps, with the disassembled addresses:
 
 ```text
 STEP 1  regs_init @0x46e5d0
@@ -589,7 +582,7 @@ STEP 6  release_eng_run_stall  @0x46e810  => RELEASES (or not) the 8 Q7 cores �
 
 This is the heart of reset/start control, and the disasm is unambiguous. **Both** STEP 5 and
 STEP 6 resolve the same base via `get_xt_local_reg_offset(eng_type=2 POOL, owner=1)`, then
-tail-jump a per-arch writer. `[HIGH/OBSERVED]`
+tail-jump a per-arch writer.
 
 ```c
 // aws_hal_stpb_sunda_pooling_release_seq_run_stall @0x46e7e0
@@ -685,7 +678,7 @@ device-side datapath geometry driven by the PE/Pool sequencers, **not** by `aws_
 > **NOTE.** Cayman & Mariana `get_q7_params` + `ucode_eng_init` are **byte-identical** to each
 > other; the (NC-v3 vs NC-v4) divergence is in the firmware DKL flavor + the device rev, **not**
 > the host HAL. Sunda is the structural outlier (smaller apertures, no CC, host-resident swap,
-> SEQ-released Q7). `[HIGH/OBSERVED]`
+> SEQ-released Q7).
 
 ---
 
@@ -716,28 +709,28 @@ device-side datapath geometry driven by the PE/Pool sequencers, **not** by `aws_
 
 ---
 
-## 11. Self-verification — the top-5 claims, re-checked this session
+## 11. Self-verification — the top-5 claims
 
-Each was re-disassembled at the named address with bounded `objdump` against this `libnrt.so`:
+Each is disassembled at the named address with bounded `objdump` against this `libnrt.so`:
 
 1. **Dispatch shape + `khal+0xb8` slot.** `aws_hal_get_q7_params @0x44bfb0`: `call
    al_hal_tpb_get_arch_type` → `je <assert>` → `lea …#caeb80 <kaena_khal>; mov 0xb8(%rax),%rax`
    → `je <assert>` → `jmp *%rax`. **Confirmed** — `kaena_khal @0xcaeb80`, slot `+0xb8`,
-   tail-jump. `[HIGH/OBSERVED]`
+   tail-jump.
 2. **Sunda geometry.** `get_q7_params_sunda @0x478f90`: `cmp $0x2,%edi; jne <assert>`, then
    `movq $0x2980000 / $0x10000 / $0x10000 / $0x0 / $0x0` and `movl $0x8`. **Confirmed** — base
-   `0x2980000`, IRAM/DRAM 64 K, no rsvd, 8 cores, pooling-only. `[HIGH/OBSERVED]`
+   `0x2980000`, IRAM/DRAM 64 K, no rsvd, 8 cores, pooling-only.
 3. **Cayman dual-owner geometry + secure fold.** `get_q7_params_cayman @0x47ae70`: `je` for
    `owner==2` (`num_q7=8`), `cmp $0x5` for CC (`num_q7=4`); both base `0x3100000`, IRAM `0x20000`,
    DRAM `0x40000`, rsvd `0x60000`/`0x40000`. The sibling `…hw_decode_table_params_cayman`
-   independently shows the `movabs $0xfffffff800000000` bit-35 fold. **Confirmed.** `[HIGH/OBSERVED]`
+   independently shows the `movabs $0xfffffff800000000` bit-35 fold. **Confirmed.**
 4. **Sunda swap REAL vs Cayman STUB.** `swap_table_sunda @0x46b7d0` `lea 0x83c/0x840/0x844(%rbx);
    call al_reg_write32` ×3; `swap_table_cayman @0x471470` = `xor %eax,%eax; ret`;
-   `…get_register_offsets_cayman @0x471480` zeroes its 3 out-pointers. **Confirmed.** `[HIGH/OBSERVED]`
+   `…get_register_offsets_cayman @0x471480` zeroes its 3 out-pointers. **Confirmed.**
 5. **Run-stall split.** `release_seq_run_stall @0x46e7e0` → writes NX `+0x04 = 0` (via
    `@0x4796a0`, `lea 0x4(%rbx),%rdi`); `release_eng_run_stall @0x46e810` tail-jumps the Sunda Q7
    writer `@0x4796e0` which is `repz ret` (no-op). **Confirmed** — host releases NX, Sunda's Q7
-   release is a stub. `[HIGH/OBSERVED]`
+   release is a stub.
 
 Supporting confirmations: `al_mem_write_buf @0x265990` (`test $0x3` align asserts, `shr $0x2`
 word-count, `call axi_write`), `ucode_eng_init_sunda @0x46b9a0` (`test %r9d,%r9d; jne <reject>`,
@@ -789,6 +782,6 @@ for Cayman/Mariana; the notification/EVT_SEM completion-ring byte format.
   Q7 run-stall-release detail (Sunda SEQ `EVT_SEM` vs Cayman/Mariana host `0xFF→0x00`).
 - [Boot / Reset Sequence + Startup Config](../uarch/boot-reset.md) — the device-side reset vector
   that waits behind the run-stall this HAL clears.
-- `tpb_xt_local_reg` CSR (Part 13, control/csr/tpb-xt-local-reg.md — *plain text, not yet
-  authored*) — the authoritative device-side register-bundle layout this HAL drives, reconciled
-  in [§6d](#6d-the-offset-vs-spec-reconciliation).
+- [`tpb_xt_local_reg` CSR](../control/csr/tpb-xt-local-reg.md) (Part 13) — the authoritative
+  device-side register-bundle layout this HAL drives, reconciled in
+  [§6d](#6d-the-offset-vs-spec-reconciliation).

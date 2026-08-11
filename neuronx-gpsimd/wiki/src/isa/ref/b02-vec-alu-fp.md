@@ -26,9 +26,9 @@ Everything below is grounded two ways: the **opcode-selector immediates** are re
 the `Opcode_<mnem>_Slot_<slot>_encode` thunk bodies in the non-stripped `libisa-core.so`
 (`movl $imm,(%rdi); ret`); the **value semantics** are *proven by execution* — every fp claim on
 this page was computed by calling the matching `module__xdref_` leaf in `libfiss-base.so` live via
-`ctypes` (license-free), the binary acting as the arbiter of its own arithmetic. `[HIGH/OBSERVED]`
-throughout (by-execution where a value fact is stated), per the
-[confidence model](../../reference/confidence-model.md).
+`ctypes` (license-free), the binary acting as the arbiter of its own arithmetic. The page default is
+`[HIGH/OBSERVED]` (by-execution where a value fact is stated); claims that depart from that default
+carry an explicit tag, per the [confidence model](../../reference/confidence-model.md).
 
 ---
 
@@ -78,66 +78,70 @@ column states the operand **arity/role**, not absolute bit offsets (which differ
 > **GOTCHA — the opcode-selector immediate is SLOT-LOCAL, not a global opcode number.** The same
 > mnemonic carries a *completely different* selector in each slot it is legal in. `addnxf16` is
 > `0x25d10000` in `F1_S3_ALU` but `0x86bf0000` in `F0_S3_ALU`, `0x03900004` in `F2_S2_Mul`,
-> `0x01970000` in `F7_S2_Mul`, and `0x00db8000` in `N1_S2_Mul` (all byte-exact this pass). There is
+> `0x01970000` in `F7_S2_Mul`, and `0x00db8000` in `N1_S2_Mul` (all byte-exact). There is
 > **no** slot-invariant "fp-add opcode"; the iclass is invariant, the per-slot packing is not. This
 > page tabulates one canonical slot so the selectors are comparable; a reimplementer reads the
-> placement it actually targets from `Opcode_<mnem>_Slot_<that-slot>_encode`. `[HIGH/OBSERVED]`
+> placement it actually targets from `Opcode_<mnem>_Slot_<that-slot>_encode`.
+
+Every row of §2.1–§2.2 is `[HIGH/OBSERVED]`, with the value semantics additionally proven by
+execution — except `ivp_addexpmnxf16` and `ivp_addexpn_2xf32`, whose encoding is OBSERVED but whose
+value rule is read structurally rather than execution-swept (§4.2, §10).
 
 ### 2.1 fp16 (`nxf16`) — 32-lane
 
-| mnemonic | FLIX fmt·slot | opcode-sel imm (F1_S3) | vec field roles | byte-size | one-line semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_absnxf16` | F1·S3_ALU (+12 slots) | `0x2ba80306` | `a=vec(o), b=vec(i)` | 16/8 | `|x|` — clear sign bit, NaN/Inf preserved | H/OBS·exec |
-| `ivp_negnxf16` | F1·S3_ALU (+12) | `0x25ba0202` | `a=vec(o), b=vec(i)` | 16/8 | `−x` — toggle sign bit (incl. ±0, NaN) | H/OBS·exec |
-| `ivp_addnxf16` | F1·S3_ALU (+8) | `0x25d10000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b + c`, RNE/FCR rounded | H/OBS·exec |
-| `ivp_subnxf16` | F1·S3_ALU (+8) | `0x26210000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b − c`, FCR rounded | H/OBS·exec |
-| `ivp_mulnxf16` | F1·S3_ALU (+8) | `0x25f10000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b × c`, single-round (GRS) | H/OBS·exec |
-| `ivp_addexpnxf16` | F1·S3_ALU (+5) | `0x25820202` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | scale: `exp_a += (exp_c − bias)` | H/OBS·exec |
-| `ivp_addexpmnxf16` | F1·S3_ALU (+5) | `0x2be80306` | `a=vec(o), b=vec(i)` | 16/8 | `addexp` minus-variant (sign/scale) | H/OBS |
-| `ivp_maxnxf16` | F1·S3_ALU (+11) | `0x24eb0000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | NaN-**asymmetric** max (b-NaN wins) | H/OBS·exec |
-| `ivp_minnxf16` | F1·S3_ALU (+11) | `0x2a0b0000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | NaN-asymmetric min | H/OBS·exec |
-| `ivp_maxnumnxf16` | F1·S3_ALU (+11) | `0x24e98000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | IEEE-754 `maxNum` (number wins) | H/OBS·exec |
-| `ivp_minnumnxf16` | F1·S3_ALU (+11) | `0x24ee8000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | IEEE-754 `minNum` (number wins) | H/OBS·exec |
-| `ivp_oeqnxf16` | F1·S3_ALU (+13) | `0x27054800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `==` (quiet on qNaN) | H/OBS·exec |
-| `ivp_olenxf16` | F1·S3_ALU (+13) | `0x27064800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `<=` (**signaling**) | H/OBS·exec |
-| `ivp_oltnxf16` | F1·S3_ALU (+13) | `0x27074800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `<` (**signaling**) | H/OBS·exec |
-| `ivp_ueqnxf16` | F1·S3_ALU (+13) | `0x27044c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `==` (quiet) | H/OBS·exec |
-| `ivp_ulenxf16` | F1·S3_ALU (+13) | `0x27054c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<=` (quiet) | H/OBS·exec |
-| `ivp_ultnxf16` | F1·S3_ALU (+13) | `0x27074c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<` (quiet) | H/OBS·exec |
-| `ivp_uleqnxf16` | F1·S3_ALU (+13) | `0x27064c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<=` (**signaling** `q`) | H/OBS·exec |
-| `ivp_ultqnxf16` | F1·S3_ALU (+13) | `0x27804800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<` (**signaling** `q`) | H/OBS·exec |
-| `ivp_uneqnxf16` | F1·S3_ALU (+13) | `0x27814800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | `!=` or unordered (quiet) | H/OBS·exec |
-| `ivp_unnxf16` | F1·S3_ALU (+13) | `0x27824800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered (either is NaN, quiet) | H/OBS·exec |
-| `ivp_clsfynxf16` | F1·S3_ALU (+8) | `0x25920202` | `a=vec(o), b=vec(i)` | 16/8 | 8-bit class mask (see fp sub-ISA §5.4) | H/OBS·exec |
+| mnemonic | FLIX fmt·slot | opcode-sel imm (F1_S3) | vec field roles | byte-size | one-line semantics |
+|---|---|---|---|---|---|
+| `ivp_absnxf16` | F1·S3_ALU (+12 slots) | `0x2ba80306` | `a=vec(o), b=vec(i)` | 16/8 | `|x|` — clear sign bit, NaN/Inf preserved |
+| `ivp_negnxf16` | F1·S3_ALU (+12) | `0x25ba0202` | `a=vec(o), b=vec(i)` | 16/8 | `−x` — toggle sign bit (incl. ±0, NaN) |
+| `ivp_addnxf16` | F1·S3_ALU (+8) | `0x25d10000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b + c`, RNE/FCR rounded |
+| `ivp_subnxf16` | F1·S3_ALU (+8) | `0x26210000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b − c`, FCR rounded |
+| `ivp_mulnxf16` | F1·S3_ALU (+8) | `0x25f10000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | `b × c`, single-round (GRS) |
+| `ivp_addexpnxf16` | F1·S3_ALU (+5) | `0x25820202` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | scale: `exp_a += (exp_c − bias)` |
+| `ivp_addexpmnxf16` | F1·S3_ALU (+5) | `0x2be80306` | `a=vec(o), b=vec(i)` | 16/8 | `addexp` minus-variant (sign/scale) |
+| `ivp_maxnxf16` | F1·S3_ALU (+11) | `0x24eb0000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | NaN-**asymmetric** max (b-NaN wins) |
+| `ivp_minnxf16` | F1·S3_ALU (+11) | `0x2a0b0000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | NaN-asymmetric min |
+| `ivp_maxnumnxf16` | F1·S3_ALU (+11) | `0x24e98000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | IEEE-754 `maxNum` (number wins) |
+| `ivp_minnumnxf16` | F1·S3_ALU (+11) | `0x24ee8000` | `a=vec(o), b=vec(i), c=vec(i)` | 16/8 | IEEE-754 `minNum` (number wins) |
+| `ivp_oeqnxf16` | F1·S3_ALU (+13) | `0x27054800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `==` (quiet on qNaN) |
+| `ivp_olenxf16` | F1·S3_ALU (+13) | `0x27064800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `<=` (**signaling**) |
+| `ivp_oltnxf16` | F1·S3_ALU (+13) | `0x27074800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | ordered `<` (**signaling**) |
+| `ivp_ueqnxf16` | F1·S3_ALU (+13) | `0x27044c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `==` (quiet) |
+| `ivp_ulenxf16` | F1·S3_ALU (+13) | `0x27054c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<=` (quiet) |
+| `ivp_ultnxf16` | F1·S3_ALU (+13) | `0x27074c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<` (quiet) |
+| `ivp_uleqnxf16` | F1·S3_ALU (+13) | `0x27064c00` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<=` (**signaling** `q`) |
+| `ivp_ultqnxf16` | F1·S3_ALU (+13) | `0x27804800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered `<` (**signaling** `q`) |
+| `ivp_uneqnxf16` | F1·S3_ALU (+13) | `0x27814800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | `!=` or unordered (quiet) |
+| `ivp_unnxf16` | F1·S3_ALU (+13) | `0x27824800` | `a=vbool(o), b=vec(i), c=vec(i)` | 16/8 | unordered (either is NaN, quiet) |
+| `ivp_clsfynxf16` | F1·S3_ALU (+8) | `0x25920202` | `a=vec(o), b=vec(i)` | 16/8 | 8-bit class mask (see fp sub-ISA §5.4) |
 
 ### 2.2 fp32 (`n_2xf32`) — 16-lane
 
 The fp32 forms are the **same opcodes at the same slot**, distinguished by a slot-local precision
-bit (§3.3). Selectors at `F1_S3_ALU` (byte-exact this pass):
+bit (§3.3). Selectors at `F1_S3_ALU`, byte-exact:
 
-| mnemonic | opcode-sel imm (F1_S3) | precision-bit Δ vs fp16 | conf |
-|---|---|---|---|
-| `ivp_absn_2xf32` | `0x2bc80306` | `0x2ba8`→`0x2bc8`: byte2 bit 5 (`+0x20`) | H/OBS·exec |
-| `ivp_negn_2xf32` | `0x25ca0202` | `0x25ba`→`0x25ca`: byte2 bit 4 (`+0x10`) | H/OBS·exec |
-| `ivp_addn_2xf32` | `0x25d90000` | `0x25d1`→`0x25d9`: byte2 bit 3 (`+0x08`) | H/OBS·exec |
-| `ivp_subn_2xf32` | `0x26290000` | `0x2621`→`0x2629`: byte2 bit 3 (`+0x08`) | H/OBS·exec |
-| `ivp_muln_2xf32` | `0x25f90000` | `0x25f1`→`0x25f9`: byte2 bit 3 (`+0x08`) | H/OBS·exec |
-| `ivp_addexpn_2xf32` | `0x258a0202` | `0x2582`→`0x258a`: bit 3 | H/OBS |
-| `ivp_maxn_2xf32` | `0x24ec0000` | `0x24eb`→`0x24ec` (group remap) | H/OBS·exec |
-| `ivp_minn_2xf32` | `0x2a1b0000` | `0x2a0b`→`0x2a1b`: byte2 bit 4 | H/OBS·exec |
-| `ivp_maxnumn_2xf32` | `0x24ea0000` | `0x24e98000`→`0x24ea0000` | H/OBS·exec |
-| `ivp_minnumn_2xf32` | `0x24ef0000` | `0x24ee8000`→`0x24ef0000` | H/OBS·exec |
-| `ivp_oeqn_2xf32` | `0x2705c800` | `0x4800`→`0xc800`: byte2 bit 7 (`+0x80`) | H/OBS·exec |
-| `ivp_olen_2xf32` | `0x2706c800` | byte2 bit 7 | H/OBS·exec |
-| `ivp_oltn_2xf32` | `0x2707c800` | byte2 bit 7 | H/OBS·exec |
-| `ivp_ueqn_2xf32` | `0x2704cc00` | byte2 bit 7 | H/OBS·exec |
-| `ivp_ulen_2xf32` | `0x2705cc00` | byte2 bit 7 | H/OBS·exec |
-| `ivp_ultn_2xf32` | `0x2707cc00` | byte2 bit 7 | H/OBS·exec |
-| `ivp_uleqn_2xf32` | `0x2706cc00` | byte2 bit 7 | H/OBS·exec |
-| `ivp_ultqn_2xf32` | `0x2780c800` | byte2 bit 7 | H/OBS·exec |
-| `ivp_uneqn_2xf32` | `0x2781c800` | byte2 bit 7 | H/OBS·exec |
-| `ivp_unn_2xf32` | `0x2782c800` | byte2 bit 7 | H/OBS·exec |
-| `ivp_clsfyn_2xf32` | `0x259a0202` | `0x2592`→`0x259a`: bit 3 | H/OBS·exec |
+| mnemonic | opcode-sel imm (F1_S3) | precision-bit Δ vs fp16 |
+|---|---|---|
+| `ivp_absn_2xf32` | `0x2bc80306` | `0x2ba8`→`0x2bc8`: byte2 bit 5 (`+0x20`) |
+| `ivp_negn_2xf32` | `0x25ca0202` | `0x25ba`→`0x25ca`: byte2 bit 4 (`+0x10`) |
+| `ivp_addn_2xf32` | `0x25d90000` | `0x25d1`→`0x25d9`: byte2 bit 3 (`+0x08`) |
+| `ivp_subn_2xf32` | `0x26290000` | `0x2621`→`0x2629`: byte2 bit 3 (`+0x08`) |
+| `ivp_muln_2xf32` | `0x25f90000` | `0x25f1`→`0x25f9`: byte2 bit 3 (`+0x08`) |
+| `ivp_addexpn_2xf32` | `0x258a0202` | `0x2582`→`0x258a`: bit 3 |
+| `ivp_maxn_2xf32` | `0x24ec0000` | `0x24eb`→`0x24ec` (group remap) |
+| `ivp_minn_2xf32` | `0x2a1b0000` | `0x2a0b`→`0x2a1b`: byte2 bit 4 |
+| `ivp_maxnumn_2xf32` | `0x24ea0000` | `0x24e98000`→`0x24ea0000` |
+| `ivp_minnumn_2xf32` | `0x24ef0000` | `0x24ee8000`→`0x24ef0000` |
+| `ivp_oeqn_2xf32` | `0x2705c800` | `0x4800`→`0xc800`: byte2 bit 7 (`+0x80`) |
+| `ivp_olen_2xf32` | `0x2706c800` | byte2 bit 7 |
+| `ivp_oltn_2xf32` | `0x2707c800` | byte2 bit 7 |
+| `ivp_ueqn_2xf32` | `0x2704cc00` | byte2 bit 7 |
+| `ivp_ulen_2xf32` | `0x2705cc00` | byte2 bit 7 |
+| `ivp_ultn_2xf32` | `0x2707cc00` | byte2 bit 7 |
+| `ivp_uleqn_2xf32` | `0x2706cc00` | byte2 bit 7 |
+| `ivp_ultqn_2xf32` | `0x2780c800` | byte2 bit 7 |
+| `ivp_uneqn_2xf32` | `0x2781c800` | byte2 bit 7 |
+| `ivp_unn_2xf32` | `0x2782c800` | byte2 bit 7 |
+| `ivp_clsfyn_2xf32` | `0x259a0202` | `0x2592`→`0x259a`: bit 3 |
 
 `ivp_addexpmn_2xf32` = `0x2bf80306`. The `oeqn_2xf32`=`0x2705c800` value matches the
 [FLIX encoding §6.2](../core/flix-encoding.md) spot-check byte-for-byte (independent re-read).
@@ -150,7 +154,7 @@ bit (§3.3). Selectors at `F1_S3_ALU` (byte-exact this pass):
 > [refuted "u-bit/lane/fp-pred global triad"](../core/flix-encoding.md#62-the-two-tier-selector-model):
 > precision is a *format-local enumerated field*, realized as a distinct opcode per precision, not
 > one bit you can OR in. A reimplementer's assembler must select the precision *opcode*, never
-> flip a fixed bit. `[HIGH/OBSERVED]`
+> flip a fixed bit.
 
 ---
 
@@ -186,8 +190,8 @@ round mode `%ecx`→`-0x3c(%rsp)`, and two further stack-passed pointers reloade
 last (`mov %r15d,(%rax)` where `%rax = 0x40(%rsp)`). `mul`'s prologue is identical but reads a
 *third* incoming stack pointer at `0x48(%rsp)`, so `mul` is 9 args with the result last. Passing
 fewer pointers null-derefs (segfault) — this is the ABI a reimplementer must honor to drive the
-oracle. `[HIGH/OBSERVED]` — prologue read + ABI confirmed by `add(2.0,3.0)=5.0`,
-`mul(2.0,3.0)=6.0` returning the correct bits in the last pointer.
+oracle. The prologue read is confirmed by `add(2.0,3.0)=5.0` and `mul(2.0,3.0)=6.0` returning the
+correct bits in the last pointer.
 
 ### 3.2 `add` / `sub` — annotated value model
 
@@ -236,7 +240,7 @@ add(-0, -0, RNE) -> 0x8000 (-0)      add(2.0, -2.0, RNE) -> 0x0000 (+0; exact ca
 The sign of an exact zero result is `+` under all modes except `RD`, which signs it `−` — the
 IEEE-754 rule the [fp sub-ISA](../core/fp-sub-isa.md) round core implements. fp32
 (`add_1_1_1_32f_32f_32f_2`) reproduces every one of these bit-for-bit at the `2^24` tie boundary
-(§6.3). `[HIGH/OBSERVED·exec]`
+(§6.3).
 
 ### 3.3 `mul` — GRS / sticky single-rounding
 
@@ -259,7 +263,7 @@ mul(60000, 60000, RZ ) -> 0x7bff = max-finite      (RZ overflow clamps to larges
 The RZ-overflow→max-finite vs RNE-overflow→inf split is the
 [directed-round-overflow rule](../core/fp-sub-isa.md#51-what-is-full-ieee-754): overflow under a
 mode that rounds *away* from the infinity yields `±0x7bff` (fp16) / `±0x7f7fffff` (fp32), under
-RNE/toward-the-infinity it yields `±inf`. `[HIGH/OBSERVED·exec]`
+RNE/toward-the-infinity it yields `±inf`.
 
 **Signed-zero + special-value certificate.**
 
@@ -270,7 +274,7 @@ mul(inf, 2.0) -> 0x7c00 (+inf)   mul(inf, -2.0)-> 0xfc00 (-inf)
 ```
 
 `0 × inf = qNaN + Invalid` is the IEEE invalid-operation case; the result sign is the **XOR of the
-input signs** for every finite product, including the signed zeros. `[HIGH/OBSERVED·exec]`
+input signs** for every finite product, including the signed zeros.
 
 ### 3.4 The Invalid sticky flag — observed live
 
@@ -280,7 +284,6 @@ invalid-operation (`inf − inf`, `0 × inf`, or an sNaN input) and `0x0` otherw
 inexact add does **not** set it — `add(1024.0,0.5)` Invalid field = `0x0`). This is the per-lane
 input to the `SHARED_OR` `InvalidFlag`
 ([fp sub-ISA §5.2](../core/fp-sub-isa.md#52-the-shared_or-flag-semantics--the-deviation-a-reimplementer-must-model)).
-`[HIGH/OBSERVED·exec]`
 
 ---
 
@@ -314,7 +317,7 @@ neg(+2.0=0x4000) -> 0xC000 (-2.0)    neg(+0=0x0000)   -> 0x8000 (-0)     neg(NaN
 ```
 
 A reimplementer models `abs`/`neg` as pure sign-bit ops in the integer domain; they are the
-**only** sign manipulators in the slice (no `copysign`, §1 GOTCHA). `[HIGH/OBSERVED·exec]`
+**only** sign manipulators in the slice (no `copysign`, §1 GOTCHA).
 
 ### 4.2 `addexp` — the exponent-add range-reduction primitive
 
@@ -340,8 +343,8 @@ addexp(1.5=0x3e00, 1.0=0x3c00) -> 0x3e00 = 1.5      addexp(-1.0, 2.0)-> 0xc000 =
 This is the standard fast scale-by-power-of-two used inside the transcendental
 range-reduction kernels (the exponent of `b` selects the binade; `a`'s significand is the
 unit-interval value). `addexpm` is the minus/sign variant (selector `0x2be80306`); its exact
-mantissa-mask differs but the family is the same exponent-domain ALU op — encoding pinned,
-the `m`-variant value detail `[HIGH/OBSERVED]` on structure. `[HIGH/OBSERVED·exec]` for `addexp`.
+mantissa-mask differs but the family is the same exponent-domain ALU op — encoding pinned, the
+`m`-variant value detail `[HIGH/OBSERVED]` on structure only (not execution-swept, §7 NOTE).
 
 ---
 
@@ -352,7 +355,7 @@ NaN input. The value leaves are `module__xdref_{min,max}_1_16f_16f_16f` (@ `0x52
 and `module__xdref_{minnum,maxnum}_1_16f_16f_16f` (@ `0x524bc0`/`0x524cc0`); all four take
 `(scratch, a, b, status_ptr, result_ptr)` — **no round mode** (min/max select, they do not round)
 — with the fp **result in the *last* pointer** (`%r8`, arg-5) and an Invalid status in arg-4
-(`%rcx`). `[HIGH/OBSERVED]` — ABI read from the two store sites and confirmed by `max(2.0,3.0)=3.0`.
+(`%rcx`). The ABI is read from the two store sites and confirmed by `max(2.0,3.0)=3.0`.
 
 ### 5.1 The numeric behavior
 
@@ -394,13 +397,13 @@ min(+0, -0) -> 0x8000 (-0)     min(-0, +0) -> 0x0000 (+0)
 
 On the `+0`/`−0` tie (which compare-equal), `max`/`min` return the **second** operand — the same
 "operand `b` wins on equal" rule that drives the NaN asymmetry. (IEEE leaves the signed-zero
-min/max tie implementation-defined; this core picks operand `b`.) `[HIGH/OBSERVED·exec]`
+min/max tie implementation-defined; this core picks operand `b`.)
 
 ### 5.4 sNaN handling
 
 All four forms raise **Invalid** (`0x1` in the status field) on an sNaN input and return the
 *number* (`maxnum(sNaN, 3.0) = 3.0 + Invalid`; `max(sNaN, 3.0) = 3.0 + Invalid`). sNaN always
-signals; only the *quiet*-NaN behavior differs between the plain and `*num` forms. `[HIGH/OBSERVED·exec]`
+signals; only the *quiet*-NaN behavior differs between the plain and `*num` forms.
 
 ---
 
@@ -408,8 +411,8 @@ signals; only the *quiet*-NaN behavior differs between the plain and `*num` form
 
 The ten compares write a per-lane boolean to `vbool` (the `a=vbool(o)` roster role). The value
 leaves are `module__xdref_<pred>_1_1_16f_16f` — ABI `(scratch, a, b, status_ptr, bool_ptr)`, the
-**boolean result in the *last* pointer** (`%r8`) and the **Invalid status in arg-4** (`%rcx`).
-`[HIGH/OBSERVED]` — ABI confirmed by `oeq(2,2)=1`, `olt(2,3)=1`.
+**boolean result in the *last* pointer** (`%r8`) and the **Invalid status in arg-4** (`%rcx`); the
+ABI is confirmed by `oeq(2,2)=1`, `olt(2,3)=1`.
 
 ### 6.1 The truth table (proven by execution)
 
@@ -428,7 +431,6 @@ leaves are `module__xdref_<pred>_1_1_16f_16f` — ABI `(scratch, a, b, status_pt
 
 The **ordered** predicates (`o*`) are *false* when either operand is NaN; the **unordered**
 predicates (`u*`) are *true* when either operand is NaN (so `ult(2, qNaN)=1`, `un(2, qNaN)=1`).
-`[HIGH/OBSERVED·exec]`
 
 ### 6.2 The quiet/signaling split — proven by the Invalid status field
 
@@ -481,13 +483,13 @@ mul(-0, 2.0) -> 0x80000000 (-0)                // sign = a^b
 This grounds the fp sub-ISA's
 [gen-invariant two-precision claim](../core/fp-sub-isa.md#6-the-fp-datatype-set): the fp16 and
 fp32 datapaths are one round/compare core multiplexed across the two widths, producing the
-identical rounding, NaN-asymmetry, signed-zero, and quiet/signaling algebra. `[HIGH/OBSERVED·exec]`
+identical rounding, NaN-asymmetry, signed-zero, and quiet/signaling algebra.
 
 ---
 
 ## 7. Batch tally — every fp-ALU mnemonic vs `nm`
 
-The 52 mnemonics and their placement counts, re-counted this pass with
+The 52 mnemonics and their placement counts, counted with
 `nm libisa-core.so | rg -c 'Opcode_ivp_<mnem>_Slot_.*_encode'` (the only legitimate count method,
 per [coverage tally](../core/coverage-tally.md)):
 
@@ -507,12 +509,12 @@ BATCH TOTAL   : 52 mnemonics,  572 placements   (of the 12569-placement certifie
 ```
 
 **Value-leaf grounding.** Every arithmetic/compare/min-max/sign mnemonic resolves to a
-`module__xdref_` value leaf that was **driven live this pass**: `add`/`sub`/`mul`,
+`module__xdref_` value leaf that was **driven live**: `add`/`sub`/`mul`,
 `max`/`min`/`maxnum`/`minnum`, `oeq`/`ole`/`olt`/`ueq`/`ule`/`ult`/`uleq`/`ultq`/`uneq`/`un`,
 `abs`/`neg`, `addexp` — fp16 fully, fp32 spot-confirmed for the edge classes (§6.3). `clsfy`'s mask
 is execution-validated on the
 [fp sub-ISA page](../core/fp-sub-isa.md#54-the-classify-mask--proven-by-execution); this page
-states its encoding only. `[HIGH/OBSERVED·exec]`
+states its encoding only.
 
 > **NOTE — ungrounded / deferred items (honestly flagged).**
 > (1) `addexpm`'s exact mantissa-mask value semantics are read structurally from the body but were
@@ -544,43 +546,41 @@ states its encoding only. `[HIGH/OBSERVED·exec]`
 
 ## 9. Adversarial self-verification — the five strongest claims, re-challenged
 
-Each headline claim of this page re-tested against the binary this pass; a claim survives only if a
-*second* independent witness agrees.
+A claim survives here only if a *second* independent witness agrees.
 
 1. **`add` rounds RNE-ties-to-even, RU ceils.** *Challenge:* could the leaf be ignoring the mode
-   arg (the un-parameterized RZ-default)? *Re-test:* `add(1024.0,0.5,rm)` returns `0x6400` (RNE,
+   arg (the un-parameterized RZ-default)? *Test:* `add(1024.0,0.5,rm)` returns `0x6400` (RNE,
    even-down), `0x6401` (RU), `0x6400` (RZ); `add(1025.0,0.5,RNE)`→`0x6402` (odd → up). Four
    *distinct* mode outcomes on the same inputs ⇒ the mode arg is honored and RNE is genuine ties-to-even.
    Cross-witness: matches the [fp sub-ISA 3000-pair sweep](../core/fp-sub-isa.md#32-the-encoding--proven-by-execution).
-   **Survives.** `[HIGH/OBSERVED·exec]`
+   **Survives.**
 
 2. **`max`/`min` are NaN-asymmetric (operand `b` wins).** *Challenge:* could the apparent asymmetry
-   be a swapped result/status pointer in my harness? *Re-test:* with the pointers fixed by the
+   be a swapped result/status pointer in the harness? *Test:* with the pointers fixed by the
    `max(2.0,3.0)=3.0` sanity, `max(NaN_a,3.0)=3.0` but `max(3.0,NaN_b)=NaN_b` — and the
    `+0`/`−0` tie *also* returns operand `b` (`max(+0,−0)=−0`, `max(−0,+0)=+0`), an independent
    confirmation of the same "operand-b-wins" rule on a non-NaN tie. fp32 reproduces it. **Survives.**
-   `[HIGH/OBSERVED·exec]`
 
 3. **The `q` suffix is *signaling*, not quiet; `olt`/`ole` signal on qNaN.** *Challenge:* maybe the
-   Invalid field is just always set for NaN inputs? *Re-test:* on the *same* `(2.0, qNaN)` input,
+   Invalid field is just always set for NaN inputs? *Test:* on the *same* `(2.0, qNaN)` input,
    `oeq`/`ueq`/`ult`/`un` report Invalid=`0x0` while `olt`/`ole`/`uleq`/`ultq` report `0x1` — the
    flag *discriminates* by predicate, so it is genuine signaling behavior, not a blanket NaN flag.
-   sNaN sets it for all ten (the always-signals baseline). **Survives.** `[HIGH/OBSERVED·exec]`
+   sNaN sets it for all ten (the always-signals baseline). **Survives.**
 
 4. **The opcode-selector imm is slot-local.** *Challenge:* maybe `F1_S3_ALU` selectors are
-   representative and the rest are derived by an offset? *Re-test:* `addnxf16` across five slots
+   representative and the rest are derived by an offset? *Test:* `addnxf16` across five slots
    yields `0x25d10000`/`0x86bf0000`/`0x03900004`/`0x01970000`/`0x00db8000` — no additive or
    bit-pattern relation; the F0 form even differs in the high byte (`0x86` vs `0x25`). The selector
    is genuinely per-`(opcode,slot)`, exactly as the
    [FLIX encode-thunk model](../core/flix-encoding.md#61-the-universal-encode-thunk-abi) states.
-   **Survives — and is the reason §2 fixes one canonical slot.** `[HIGH/OBSERVED]`
+   **Survives — and is the reason §2 fixes one canonical slot.**
 
 5. **No native `copysign`; `abs`=`x & 0x7fff`, `neg`=`x ^ 0x8000`.** *Challenge:* could a
-   copysign-class op hide under a different name (e.g. a `mk*adj`)? *Re-test:* `rg -i
+   copysign-class op hide under a different name (e.g. a `mk*adj`)? *Test:* `rg -i
    copysign|csign|signinj` over the 1065-op roster = 0; and the `abs`/`neg` bodies are nine and
    twenty-seven bytes, both pure sign-bit integer ops with no flag pointer in their ABI, confirmed
    by `abs(-inf)=+inf`, `neg(+0)=-0`. The `mkdadj`/`mksadj` ops are *magnitude-adjust* (a different
-   B16/B24 family), not copysign. **Survives.** `[HIGH/OBSERVED·exec]`
+   B16/B24 family), not copysign. **Survives.**
 
 No claim on this page rests on a raw dump, an unnamed symbol, or a single uncorroborated witness;
 every fp value fact carries a differential-execution certificate against the shipped leaf.
@@ -589,7 +589,7 @@ every fp value fact carries a differential-execution certificate against the shi
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED (by execution)** — driven live against `libfiss-base.so` this pass:
+**HIGH / OBSERVED (by execution)** — driven live against `libfiss-base.so`:
 
 * `add`/`sub`/`mul` rounding (RNE ties-to-even, RU/RD/RZ directed; the `1024.0+0.5` and `2^24+0.5`
   tie certificates), signed-zero algebra (`+0+−0`, exact cancellation under RD), GRS single-round
@@ -604,7 +604,7 @@ every fp value fact carries a differential-execution certificate against the shi
   sub-ISA cross-reference; observed here directly).
 * fp32 precision-invariance of every edge behavior above.
 
-**HIGH / OBSERVED** — read from `libisa-core.so` immediates / disassembly this pass:
+**HIGH / OBSERVED** — read from `libisa-core.so` immediates / disassembly:
 
 * The 52-mnemonic roster, the `F1_S3_ALU` opcode-selector immediates (fp16 + fp32), the slot-local
   variance of the selector, the fp16/fp32 precision-bit positions, the 572-placement census.

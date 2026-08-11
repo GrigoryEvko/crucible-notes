@@ -40,7 +40,7 @@ standalone container. That weak-undef split is the structural signature of the
 
 ---
 
-## 1. Toolchain, targets, identity (re-validated this session)
+## 1. Toolchain, targets, identity
 
 Every offset/size/sha256 below is anchored to these exact binaries. Host-side
 characterization (the container `.so` wrapper) uses **stock x86-64 `binutils`**
@@ -61,7 +61,7 @@ ConfigName `Xm_ncore2gp`, uarch *Cairo*, Xtensa24 / RI-2022.9 / NX1.1.4, FLIX/VL
   needed lib — a leaf, no `internal`/`ncfw` dependency)**, BuildID
   `7bb03bc42ce1530924a1797ec9d5e518a7ae5e44`, **9,656,488 bytes**, 27 sections, 9
   program headers, `e_shoff = 9,654,760`, entry `0x0`. sha256 `dc00763d…` (matches the
-  Part-6 inventory anchor; re-hashed this session). *[HIGH/OBSERVED]*
+  Part-6 inventory anchor). *[HIGH/OBSERVED]*
 
 * **Device ELF carve (identity map):** the container's big read-only `.rodata` `LOAD`
   segment maps **file offset == VA**, so the carve is a flat slice:
@@ -180,8 +180,8 @@ the carve length is the ELF's own structural extent. *[HIGH/OBSERVED]*
 | 16 | `.shstrtab` | — | `0x00ced8` | `0x0185` | — | |
 
 > **QUIRK — the arch5 single-data-band layout.** SUNDA has **NO `.rodata` section** and
-> **NO `.globstruct` section**. Contrast the arch3 CAYMAN EXTISA ELF (carved this
-> session for comparison): CAYMAN has `.rodata` @`0x02000000` sz `0x1ec` *and*
+> **NO `.globstruct` section**. Contrast the arch3 CAYMAN EXTISA ELF (carved
+> for comparison): CAYMAN has `.rodata` @`0x02000000` sz `0x1ec` *and*
 > `.globstruct` @`0x02000408` sz `0x48`. SUNDA collapses everything into a **single
 > `.data` band** @`0x02000080`. This is the structural arch5 signature: the oldest
 > gen's compiler/link layout merged const + global-struct + data into one writable
@@ -203,7 +203,7 @@ Three device VA windows: **code @ `0x010xxxxx`, data @ `0x020xxxxx`, dyn @
 > model.** The committed base-image Q7 firmware getters (e.g. `cayman-act.md`,
 > `cayman-pe.md`, `maverick-pe.md`) frame the device firmware as **IRAM at device VA
 > `0x0`** and **DRAM at device VA `0x80000`** (so *DRAM string file-offset = device VA
-> − `0x80000`*; see [memory-model.md](../topics/memory-model.md)). That flat
+> − `0x80000`*; see [memory-model.md](../dma/sbuf-psum-banks.md)). That flat
 > two-region model is the **base** Q7 image's convention. The **EXTISA device ELF is a
 > different object**: a relocatable `ET_EXEC` with the **`0x01000000` / `0x02000000` /
 > `0x03000000` PIC three-window** layout above and a `.dynamic`+`.rela.got` tail. The
@@ -367,7 +367,7 @@ fixed 8-byte records, **no header, no in-band terminator** — the same packed l
 the committed [kernel-info-table.md](../firmware/pool/kernel-info-table.md) documents).
 **Record = `{ +0x00 [0x00] [0x00] [spec] [opcode] | +0x04 funcVA (LE u32) }`**;
 equivalently the key bytes form `LE u32 = opcode<<24 \| spec<<16` (with `spec = 0`
-throughout), followed by the LE funcVA. Read byte-exact this session:
+throughout), followed by the LE funcVA. Read byte-exact:
 
 | idx | opcode (dec/hex) | spec | funcVA | kernel (from the SUNDA JSON name map) |
 |---|---|---|---|---|
@@ -416,7 +416,7 @@ The on-device dispatch (the shell's `dispatch_wrapper`, documented at
 The carved JSON (`0x6c0`, sha256 `d282bd4f37e71d87…`) parses to valid JSON:
 `"library": "all.stripped.so"`, `"ulib_to_ucode_version": "1.21.1.0"`, **17
 functions** as `{name, opcode}` pairs. It is a faithful (slightly abridged) descriptor
-of the SO — genuine metadata, not a decoy. *[HIGH/OBSERVED — parsed this session.]*
+of the SO — genuine metadata, not a decoy. *[HIGH/OBSERVED — parsed.]*
 
 ---
 
@@ -528,10 +528,9 @@ The full SUNDA EXTISA load chain, anchored to the RT-loader linkage:
    lib tables. EXTISA is its own region, surfaced *only* via `get_ext_isa`. *[HIGH.]*
 
 > The NEFF↔ELF relationship — how this staged device ELF relates to a deployed NEFF's
-> embedded uOps and the runtime's overall image graph — is the subject of a **Part 11
-> page** (`neff/neff-elf-relationship.md`), not yet authored. Treat this as a forward
-> reference; the EXTISA delivery characterized here is the device-image input to that
-> staging.
+> embedded uOps and the runtime's overall image graph — is the subject of
+> [`neff/neff-elf-relationship.md`](../neff/neff-elf-relationship.md). The EXTISA
+> delivery characterized here is the device-image input to that staging.
 
 ---
 
@@ -555,7 +554,7 @@ magics — 1 host + the 4 internal-only MAVERICK device ELFs + others — **none
 SUNDA blob). So the host customop lib carries only the **weak reference**; SUNDA's
 kernels are resolved **exclusively** from `libnrtucode_extisa.so` (where the same two
 getters are the **defined** `0xaf10` / `0xaef0` stubs, §4). *[HIGH/OBSERVED — both
-checks run this session.]*
+checks run.]*
 
 ### 8b. The standalone-vs-internal-twin split, per generation
 
@@ -587,7 +586,7 @@ the shipped external-lib provider for SUNDA … MARIANA_PLUS. *[HIGH/OBSERVED §
 | JSON sidecar | **REAL `0x6c0` (17-func)** | DUMMY `0x20` (decoy) |
 | multi-lib split | **1 lib** (`all.stripped.so`) | 4 libs (17/1/2/9 split) |
 
-*[HIGH/OBSERVED — both ELFs carved and `xtensa-elf-readelf`'d this session.]*
+*[HIGH/OBSERVED — both ELFs carved and `xtensa-elf-readelf`'d.]*
 
 ### 8d. Why SUNDA uses a separate lib (the synthesis)
 
@@ -620,7 +619,7 @@ carried from the 17 KB-shell + loader-string finding.]*
 * [kernel_info_table byte layout](../firmware/pool/kernel-info-table.md) and
   [external-lib loader / `dispatch_wrapper`](../firmware/pool/external-lib-loader.md) —
   the packed-key record format and the on-device consumer.
-* [Memory model](../topics/memory-model.md) — the base-firmware IRAM@0x0 / DRAM@0x80000
+* [Memory model](../dma/sbuf-psum-banks.md) — the base-firmware IRAM@0x0 / DRAM@0x80000
   framing the EXTISA ELF's `0x01/0x02/0x03` windows are contrasted against.
 
 The host ext-isa getter symbol that resolves the SUNDA blob in the standalone container

@@ -41,10 +41,10 @@ All six names are verbatim string literals in the binary (`isMarker`/`isMarkerEn
 |---|---|---|---|---|
 | `NeuronBoundaryMarker-Start` | loop-body | — | `NeuronAddBoundaryMarker` (this binary) | CERTAIN |
 | `NeuronBoundaryMarker-End` | loop-body | — | `NeuronAddBoundaryMarker` (this binary) | CERTAIN |
-| `AwsNeuronModuleMarkerStart-Forward` | module | forward | upstream (PyTorch-XLA / frontend) | CERTAIN (string) / INFERRED (producer) |
-| `AwsNeuronModuleMarkerStart-Backward` | module | backward | upstream | CERTAIN / INFERRED |
-| `AwsNeuronModuleMarkerEnd-Forward` | module | forward | upstream | CERTAIN / INFERRED |
-| `AwsNeuronModuleMarkerEnd-Backward` | module | backward | upstream | CERTAIN / INFERRED |
+| `AwsNeuronModuleMarkerStart-Forward` | module | forward | upstream (PyTorch-XLA / frontend) [INFERRED] | CERTAIN |
+| `AwsNeuronModuleMarkerStart-Backward` | module | backward | upstream [INFERRED] | CERTAIN |
+| `AwsNeuronModuleMarkerEnd-Forward` | module | forward | upstream [INFERRED] | CERTAIN |
+| `AwsNeuronModuleMarkerEnd-Backward` | module | backward | upstream [INFERRED] | CERTAIN |
 
 > **NOTE —** there is no `CreateCustomCall("AwsNeuronModuleMarker…")` site in either `hlo-opt` or `hlo2penguin`. The four module markers *arrive in the input HLO* from the driver/frontend autograd instrumentation; this binary only consumes them. The `-Forward`/`-Backward` suffix is the only carrier of the autograd direction — there is no separate dtype suffix the way the collective/softmax custom-calls have one, because a marker's shape is simply the wrapped value's shape.
 
@@ -70,7 +70,9 @@ bool isMarkerEnd(inst):
         || t == "AwsNeuronModuleMarkerEnd-Backward";
 ```
 
-So `isMarker` ≡ "is any of the six marker targets (Start or End, loop-body or module)" and `isMarkerEnd` ≡ "is one of the three End targets". (CERTAIN — both string-compare chains transcribed byte-for-byte; opcode is `cmpb $0x2B, 0x14(inst)`.)
+So `isMarker` ≡ "is any of the six marker targets (Start or End, loop-body or module)" and `isMarkerEnd` ≡ "is one of the three End targets".
+
+*Anchors: both string-compare chains transcribed byte-for-byte from `0x1ebdfa0` / `0x1ebdf20`; the opcode gate in each is `cmpb $0x2B, 0x14(inst)`.*
 
 > **QUIRK —** `hlo-opt` has *only* `isMarker` and `isMarkerEnd`. The companion `hlo_utils::isMarkerStart` and `hlo_utils::getMarkerBackendConfig` exist **only in `hlo2penguin`** — because only the partitioner needs to read direction and backend-config explicitly. In `hlo-opt`, canonicalize and removal treat all six names uniformly, so a Start-vs-End or fwd-vs-bwd distinction is never needed.
 
@@ -86,12 +88,12 @@ A marker custom-call, on the wire, is:
 | **operands** | exactly 1 (the wrapped value); after canonicalization, 1 *tuple* | CERTAIN |
 | **shape** | the wrapped value's shape; after canonicalization, the tuple's shape | CERTAIN |
 | **custom_call_target** | one of the six names in §1 | CERTAIN |
-| **opaque / backend_config** | literal `"boundaryCount=<N>"` (token `boundaryCount=` + base-10 int via `FastIntToBuffer`) | CERTAIN (loop-body); module config read by `getMarkerBackendConfig` (MED) |
+| **opaque / backend_config** | literal `"boundaryCount=<N>"` (token `boundaryCount=` + base-10 int via `FastIntToBuffer`) for loop-body markers; module-marker config is read by `getMarkerBackendConfig` and its full schema is upstream | CERTAIN (loop-body) |
 | **api_version** | `2` (`API_VERSION_STATUS_RETURNING`) on emit; `1` (`API_VERSION_ORIGINAL`) after canonicalize-rebuild | CERTAIN |
 
-The `<N>` in `boundaryCount=<N>` is a monotone per-module counter (the pass's `[this+8]` field, incremented after each while-loop). It is the **pairing key**: a consumer pairs an opening marker with its closing marker by matching `boundaryCount`. The dedicated parser `hilo::ExtractBoundaryCountFromBackendConfig` (@0x1fcb170) recovers `<N>` from the backend-config string. (`ExtractBoundaryCountFromBackendConfig` is a confirmed symbol in the function table; that it parses the `boundaryCount=` token is STRONG — the token string and the function are the only `boundaryCount` consumers.)
+The `<N>` in `boundaryCount=<N>` is a monotone per-module counter (the pass's `[this+8]` field, incremented after each while-loop). It is the **pairing key**: a consumer pairs an opening marker with its closing marker by matching `boundaryCount`. The dedicated parser `hilo::ExtractBoundaryCountFromBackendConfig` (@0x1fcb170) recovers `<N>` from the backend-config string. The symbol is present in the function table; that it parses the `boundaryCount=` token follows from the token string and this function being the only two `boundaryCount` sites in the binary.
 
-The `CustomCallApiVersion` enum is verbatim in `.rodata`: `API_VERSION_UNSPECIFIED` (0), `API_VERSION_ORIGINAL` (1), `API_VERSION_STATUS_RETURNING` (2), `API_VERSION_STATUS_RETURNING_UNIFIED`, `API_VERSION_TYPED_FFI` (3). (CERTAIN — all five strings present.)
+The `CustomCallApiVersion` enum is verbatim in `.rodata`: `API_VERSION_UNSPECIFIED` (0), `API_VERSION_ORIGINAL` (1), `API_VERSION_STATUS_RETURNING` (2), `API_VERSION_STATUS_RETURNING_UNIFIED`, `API_VERSION_TYPED_FFI` (3) — all five appear as strings.
 
 > **GOTCHA —** the `api_version` *drops* from 2 to 1 when `CanonicalizeBoundaryMarker` rebuilds a marker. A reimplementation that asserts `api_version == 2` on every marker will reject every canonicalized one. The version is not meaningful to the marker's semantics — it is an artifact of which `CreateCustomCall` call site produced the instruction.
 
@@ -112,7 +114,7 @@ NeuronWhileLoopUnroller::Run  @0x20019df          ── #112 while_loop_unrolle
             └─ NeuronAddBoundaryMarker::TransformWhileLoop  @0x2001ff0
 ```
 
-> **CORRECTION (D-B28) —** `NeuronAddBoundaryMarker` is **not** a `--passes` registry pass. There is no `RegisterNeuronAddBoundaryMarker`; the *only* caller of `Run` is `NeuronWhileLoopUnroller::Run`, which stack-constructs the pass (vtable `_ZTVN3xla4hilo23NeuronAddBoundaryMarkerE`@0x412ee0, vptr +0x10 = 0x412ef0) and invokes it on the module. So loop-body markers are stamped as a side-effect of while-loop unrolling, not as a standalone pipeline entry. (CERTAIN — no `Register…` factory exists for it; the `name()` stub @0x2001e30 returns `neuron_add_boundary_marker` but is never registered.)
+> **GOTCHA —** `NeuronAddBoundaryMarker` looks like a registry pass — it has a `name()` stub @0x2001e30 returning `neuron_add_boundary_marker` — but it is not one. No `RegisterNeuronAddBoundaryMarker` factory exists, and the only caller of `Run` is `NeuronWhileLoopUnroller::Run`, which stack-constructs the pass (vtable `_ZTVN3xla4hilo23NeuronAddBoundaryMarkerE` @0x412ee0, vptr +0x10 = 0x412ef0) and invokes it directly on the module. Loop-body markers are therefore stamped as a side-effect of while-loop unrolling, and searching the `--passes` table for them turns up nothing.
 
 ### Algorithm
 
@@ -156,7 +158,9 @@ void TransformWhileLoop(while_inst):
     this->boundaryCount += 1                          // add qword [this+8], 1
 ```
 
-Result graph for the while body: the former root `r` becomes `End(Start(r))`, with `r`'s previous consumers redirected through `Start`. Both markers carry the same `boundaryCount=N` opaque and the same shape (= `r`'s shape). (CERTAIN — full disasm of both bodies; `CreateCustomCall` register setup decoded: `rcx`=1 operand, target len/ptr in `r8`/`r9`, stack-pushed `2` = api_version, stack-pushed opaque; `set_root_instruction` 2nd arg = 0. `Run` constants `{1,4,8,16,40,121}` where 121 = `0x79` = `kWhile`.)
+Result graph for the while body: the former root `r` becomes `End(Start(r))`, with `r`'s previous consumers redirected through `Start`. Both markers carry the same `boundaryCount=N` opaque and the same shape (= `r`'s shape).
+
+*Anchors: full disassembly of `0x2002370` and `0x2001ff0`. The `CreateCustomCall` register setup reads `rcx`=1 operand, target length/pointer in `r8`/`r9`, stack-pushed `2` for api_version and the opaque below it; `set_root_instruction`'s second argument is 0. `Run`'s constant pool is `{1,4,8,16,40,121}`, where 121 = `0x79` = `kWhile`.*
 
 > **NOTE —** `Run` iterates **all** computations (`[m+0x40]`) to find while-loops, whereas the canonicalize/remove passes walk only the **entry** computation (`[m+0x38]`). The asymmetry is correct: while-bodies are nested computations, while the module markers live in the entry computation.
 
@@ -200,9 +204,11 @@ bool Run(m, threads):
     return changed
 ```
 
-A marker that wrapped N loose operands `M(a,b,c)` becomes `M'(tuple(a,b,c))`, and its uses are re-expressed through `get-tuple-element`s. The **target name and backend-config are preserved** — the backend-config is deep-cloned under a Mutex via `CloneBackendConfigProto` and re-wrapped in a `BackendConfigWrapper`. Only `api_version` drops to `1` on the rebuilt custom-call. (CERTAIN — `CreateTuple` + `CreateCustomCall` + `CreateGetTupleElement` + clone/wrapper callees and both CHECK strings transcribed; `TUPLE` PrimitiveType code = `0xD` byte-compared at the shape's element-type word.)
+A marker that wrapped N loose operands `M(a,b,c)` becomes `M'(tuple(a,b,c))`, and its uses are re-expressed through `get-tuple-element`s. The **target name and backend-config are preserved** — the backend-config is deep-cloned under a Mutex via `CloneBackendConfigProto` and re-wrapped in a `BackendConfigWrapper`. Only `api_version` drops to `1` on the rebuilt custom-call.
 
-Diagnostics (CERTAIN, verbatim): `"marker->ReplaceAllUsesWith(gte)"`, `"computation->RemoveInstruction(marker)"`, `"nullptr != entry_computation_"`.
+*Anchors: the `CreateTuple`, `CreateCustomCall`, `CreateGetTupleElement`, and clone/wrapper callees, plus both CHECK strings; the `TUPLE` PrimitiveType code `0xD` is byte-compared at the shape's element-type word.*
+
+Verbatim diagnostics: `"marker->ReplaceAllUsesWith(gte)"`, `"computation->RemoveInstruction(marker)"`, `"nullptr != entry_computation_"`.
 
 > **QUIRK —** the backend-config clone is **Mutex-guarded** (`CloneBackendConfigProto` @0x96cc620 takes a lock). The marker's proto backend-config is a shared, lazily-parsed object inside the `HloInstruction`; deep-copying it onto the rebuilt instruction without the lock would race the lazy-parse path. A reimplementation that copies the opaque as a raw string sidesteps the lock but loses the structured proto that `getMarkerBackendConfig` later reads.
 
@@ -244,7 +250,9 @@ bool Run(m, threads):
     return changed
 ```
 
-**Mode A** is the trivial 1-operand strip: the wrapped value flows directly to former consumers. **Mode B** unwraps a canonicalized `marker(tuple(…))` by replacing each `gte(marker, i)` with `tuple.operand(i)`, then drops the marker and its now-unused tuple. A marker output reaching a **non-GTE** user is the error `NCC_ITUP001` — i.e. after canonicalization, markers *must* be consumed via `get-tuple-element`. (CERTAIN — `kTuple`=`0x78` and `kGetTupleElement`=`0x3A` byte-compared at `(op+0x14)`; all four CHECK strings + `NCC_ITUP001` + the diagnostic text `" used by non-GTE instruction "` and resolution `"Use GetTupleElement to access tuple components in boundary markers"` transcribed.)
+**Mode A** is the trivial 1-operand strip: the wrapped value flows directly to former consumers. **Mode B** unwraps a canonicalized `marker(tuple(…))` by replacing each `gte(marker, i)` with `tuple.operand(i)`, then drops the marker and its now-unused tuple. A marker output reaching a **non-GTE** user is the error `NCC_ITUP001` — i.e. after canonicalization, markers *must* be consumed via `get-tuple-element`.
+
+*Anchors: `kTuple`=`0x78` and `kGetTupleElement`=`0x3A` byte-compared at `(op+0x14)`; all four CHECK strings, `NCC_ITUP001`, the diagnostic text `" used by non-GTE instruction "`, and the resolution `"Use GetTupleElement to access tuple components in boundary markers"`.*
 
 > **GOTCHA —** loop-body markers are stripped in **at least three places**: this pass (#31) *and* the DUS/DS index simplifier (#80) *and* the slice-mover (#87), which inline-strip `NeuronBoundaryMarker-Start/-End` themselves (see [4.11](whileloop-unroll-tripcount.md)). The redundancy is defensive — multiple passes run after the unroller emits the markers, and any of them may need to see through a marker to its operand. The slice-mover's legality check explicitly whitelists `NeuronBoundaryMarker-End` as an allowed extra user of a dynamic-slice GTE (string: *"Dynamic slice input GTE has users that are not dynamic-slice, root tuple, or NeuronBoundaryMarker-End"*). A reimplementation that strips markers in only one pass will trip that check.
 
@@ -281,7 +289,7 @@ MarkerSplitter::split(HloModule*)                         ── the partition d
 
 The whole subsystem exists to serve two transformations that need to know "where one layer ends and the next begins":
 
-- **Gradient checkpointing (activation recomputation).** Forward markers delimit each layer's forward span. A checkpointing scheme keeps only the boundary activations and recomputes the interior of each span during the backward pass. The `-Forward`/`-Backward` direction tells the partitioner which span is the cheap-to-recompute forward and which is the gradient it pairs against. See the norm/checkpoint kernels in [6.7.5](../nki/norm-checkpoint-kernels.md).
+- **Gradient checkpointing (activation recomputation).** Forward markers delimit each layer's forward span. A checkpointing scheme keeps only the boundary activations and recomputes the interior of each span during the backward pass. The `-Forward`/`-Backward` direction tells the partitioner which span is the cheap-to-recompute forward and which is the gradient it pairs against. See the norm/checkpoint kernels in [6.7.5](../nki/normalization-kernels.md).
 - **Pipeline-parallel partitioning.** The cut points are exactly the seams at which a model is sliced into pipeline stages, each stage assigned to a device. `boundaryCount` orders the stages; the Start/End pairs delimit each stage's instructions.
 
 In both cases the marker is pure structural metadata — it carries no profiling payload beyond `boundaryCount=`. The `OpMetadata` cloned through canonicalize (and preserved onto the tuple/GTE) is the channel by which span provenance survives the rewrites.
@@ -317,25 +325,26 @@ void        xla::partition::removeBoundaryMarker(HloModule*);                  /
 bool        xla::partition::MarkerSplitter::split(HloModule*);
 ```
 
-Opcodes (byte `(inst+0x14)`): `kCustomCall`=`0x2B`, `kWhile`=`0x79`, `kTuple`=`0x78`, `kGetTupleElement`=`0x3A`. `TUPLE` PrimitiveType=`0xD`, byte-compared at the shape's element-type word. (All CERTAIN.)
+Opcodes (byte `(inst+0x14)`): `kCustomCall`=`0x2B`, `kWhile`=`0x79`, `kTuple`=`0x78`, `kGetTupleElement`=`0x3A`. `TUPLE` PrimitiveType=`0xD`, byte-compared at the shape's element-type word.
 
 ---
 
-## 8. Adversarial Self-Verification
+## 8. Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+| Claim | Anchor |
+|---|---|
+| `NeuronAddBoundaryMarker` is not a registry pass; its only caller is `NeuronWhileLoopUnroller::Run` | function table holds `NeuronAddBoundaryMarker::Run` @0x2002370 and `::TransformWhileLoop` @0x2001ff0 but no `RegisterNeuronAddBoundaryMarker` factory; the only `Register…` factories in this area are `RegisterCanonicalizeBoundaryMarker` and `RegisterBoundaryMarkerRemoval`, each with its own `_M_invoke`/`_M_manager` lambdas |
+| Exactly six marker target names, and `isMarker` is their union | all six strings present; `isMarker` @0x1ebdfa0 and `isMarkerEnd` @0x1ebdf20 are the only detector symbols in `hlo-opt` |
+| Removal Mode B errors on a non-GTE user with `NCC_ITUP001` | `NCC_ITUP001`, `" used by non-GTE instruction "`, and `"Use GetTupleElement to access tuple components in boundary markers"` all present, alongside the four `ReplaceAllUsesWith` / `RemoveInstruction` CHECK strings |
+| The penguin partitioner derives layer cut-points in `MarkerAnalyzer::analyzeLayerBoundary` | `MarkerSplitter::split`, `MarkerAnalyzer::analyzeLayerBoundary`, `preprocessBoundaryMarker`, `canonicalizeAndRemoveBoundaryMarker`, `removeBoundaryMarker`, `isMarkerStart`, `getMarkerBackendConfig` all in the `hlo2penguin` function table; DEBUG strings `"[analyzeLayerBoundary] cutMarkers size = "` and `"[analyzeLayerBoundary] found cut point "` in its string pool |
+| `CustomCallApiVersion` enum values | `API_VERSION_ORIGINAL` = 1 and `API_VERSION_STATUS_RETURNING` = 2 present verbatim in `.rodata` |
 
-1. **"`NeuronAddBoundaryMarker` is not a registry pass; its only caller is `NeuronWhileLoopUnroller::Run`."** Re-checked: the function table has `NeuronAddBoundaryMarker::Run` @0x2002370 and `::TransformWhileLoop` @0x2001ff0, but no `RegisterNeuronAddBoundaryMarker` factory (the `Register…` factories present are *only* `RegisterCanonicalizeBoundaryMarker` and `RegisterBoundaryMarkerRemoval`, confirmed via `_M_invoke`/`_M_manager` lambdas in `functions.json`). **CONFIRMED.**
+## 9. Limits of this reading
 
-2. **"There are exactly six marker target names and `isMarker` is their union."** Re-checked the strings table: `NeuronBoundaryMarker-Start`, `NeuronBoundaryMarker-End`, `AwsNeuronModuleMarkerStart-Forward`, `AwsNeuronModuleMarkerStart-Backward`, `AwsNeuronModuleMarkerEnd-Forward`, `AwsNeuronModuleMarkerEnd-Backward` all present; `isMarker`@0x1ebdfa0 + `isMarkerEnd`@0x1ebdf20 are the only two detector symbols in `hlo-opt`. **CONFIRMED.**
-
-3. **"Removal Mode B errors on a non-GTE user with `NCC_ITUP001`."** Re-checked: `NCC_ITUP001`, `" used by non-GTE instruction "`, and `"Use GetTupleElement to access tuple components in boundary markers"` are all present in `hlo-opt` strings, alongside the four `ReplaceAllUsesWith`/`RemoveInstruction` CHECK strings. **CONFIRMED.**
-
-4. **"The penguin partitioner derives layer cut-points via `MarkerAnalyzer::analyzeLayerBoundary`."** Re-checked: `MarkerSplitter::split`, `MarkerAnalyzer::analyzeLayerBoundary`, `preprocessBoundaryMarker`, `canonicalizeAndRemoveBoundaryMarker`, `removeBoundaryMarker`, `isMarkerStart`, `getMarkerBackendConfig` are all in the `hlo2penguin` function table; DEBUG strings `"[analyzeLayerBoundary] cutMarkers size = "` and `"[analyzeLayerBoundary] found cut point "` are in `hlo2penguin` strings. **CONFIRMED.**
-
-5. **"`api_version` is 2 on emit, 1 after canonicalize."** The `CustomCallApiVersion` enum strings (`API_VERSION_ORIGINAL`=1, `API_VERSION_STATUS_RETURNING`=2) are confirmed in `.rodata`. The emit-vs-canonicalize values (2 vs 1) are read from the `CreateCustomCall` call-site register setup in the disasm — the *register decode* is STRONG, but I have not independently re-disassembled both call sites in this pass; tagging the **emit→2, canonicalize→1 split as STRONG** (the enum values themselves are CERTAIN).
-
-Inferred / not-pinned, tagged in place: the **upstream producer** of the four `AwsNeuronModuleMarker*` custom-calls (INFERRED — no creation site in either binary; they arrive in the input HLO); the **exact module-marker backend-config schema** beyond `boundaryCount` (MED — read by `getMarkerBackendConfig`, content upstream); the **precise Start↔End nesting/pairing rule** in `analyzeLayerBoundary` (MED — sketched from callee/string evidence, deferred to a penguin-partition deep dive in [Part 5](../penguin/marker-splitter-partition.md)). No address, default, or field meaning on this page is fabricated; every numeric anchor was re-grepped from the cp310 function/strings tables.
+- The emit→2 / canonicalize→1 `api_version` split is read from the `CreateCustomCall` call-site register setup rather than from a re-disassembly of both call sites end to end. The enum values themselves are directly observed; the assignment of each to a call site is one step removed.
+- The upstream producer of the four `AwsNeuronModuleMarker*` custom-calls is not identified — neither binary contains a creation site, so they must arrive in the input HLO.
+- The module-marker backend-config schema beyond `boundaryCount` is unknown; the content is produced upstream and only read here via `getMarkerBackendConfig`.
+- The precise Start↔End nesting and pairing rule inside `analyzeLayerBoundary` is sketched from callee and string evidence rather than traced; see Marker Splitter & Penguin Partition for the deeper treatment.
 
 ---
 
@@ -352,5 +361,5 @@ Inferred / not-pinned, tagged in place: the **upstream producer** of the four `A
 
 - [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — 4.11; the while-loop unroller that produces loop-body markers, and the DUS/DS passes that inline-strip them
 - [Pass Registry](pass-registry.md) — the `--passes` table where #30 `canonicalize-boundary-marker` and #31 `boundary-marker-removal` are registered
-- [Marker Splitter & Penguin Partition](../penguin/marker-splitter-partition.md) — Part 5; the layer-cut algorithm in `hlo2penguin` that consumes the module markers
-- [Norm & Checkpoint Kernels](../nki/norm-checkpoint-kernels.md) — 6.7.5; gradient-checkpointing kernels whose recompute spans are delimited by the forward/backward markers
+- Marker Splitter & Penguin Partition — Part 5; the layer-cut algorithm in `hlo2penguin` that consumes the module markers
+- [Norm & Checkpoint Kernels](../nki/normalization-kernels.md) — 6.7.5; gradient-checkpointing kernels whose recompute spans are delimited by the forward/backward markers

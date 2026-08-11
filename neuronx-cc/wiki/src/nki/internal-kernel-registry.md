@@ -1,6 +1,6 @@
 # The _INTERNAL_KERNEL_REGISTRY Mechanism
 
-> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 canonical). The registry lives in `BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so`, under `neuronxcc/starfish/penguin/targets/codegen/` ("Generate Backend IR from tensoriser IR at the TongaISAInst level"). The second (top-k) registry lives in `neuronxcc/nki/_private_kernels/topk/topk_method_mapping.cpython-310-x86_64-linux-gnu.so`. Cython-compiled, `-O3 -fwrapv -fPIC -g`, UNSTRIPPED with `debug_info`. Addresses are version-pinned; cp311/cp312 share the `__pyx` method roster but were not byte-diffed. Provenance: D-P18 (builder/table closer), D-O30 (production-kernel inventory).*
+> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 canonical). The registry lives in `BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so`, under `neuronxcc/starfish/penguin/targets/codegen/` ("Generate Backend IR from tensoriser IR at the TongaISAInst level"). The second (top-k) registry lives in `neuronxcc/nki/_private_kernels/topk/topk_method_mapping.cpython-310-x86_64-linux-gnu.so`. Cython-compiled, `-O3 -fwrapv -fPIC -g`, UNSTRIPPED with `debug_info`. Addresses are version-pinned; cp311/cp312 share the `__pyx` method roster but were not byte-diffed.*
 
 ## Abstract
 
@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Config record** | `InternalKernelConfig.__init__` — mdef #20, `@0x99ef0`, `BirCodeGenLoop.py:192` |
 | **Query** | `BirCodeGenLoop._resolve_kernel_config` — mdef #235, `@0xa0ca0`, `BirCodeGenLoop.py:2884` |
 | **Consumer** | `codegenInternalNativeNkiKernel` — mdef #243, `@0x8d630` (IT56 `InstNKIKLIRKernel` driver) |
-| **Entry count** | **13** (confirmed: 13 `__pyx_n_u_*` key loads, 13 `InternalKernelConfig` constructions) |
+| **Entry count** | **13** — 13 `__pyx_n_u_*` key loads, 13 `InternalKernelConfig` constructions |
 | **Second registry** | `SUPPORTED_TOPK_METHOD_MAPPING` — `dict[SupportedTopkMethods, callable]`, 3 entries, own `.so` |
 
 ---
@@ -53,7 +53,7 @@ function get_internal_kernel_registry():       // mdef #17, @0x87d70, py:341
     return reg;
 ```
 
-The getter is the **only** caller of the builder: `_build_internal_kernel_registry` is referenced exactly once, through `__pyx_n_s_build_internal_kernel_registry`, from inside the getter. There is no eager-build site at module-exec time. `[CONFIRMED — getter body @0x87d70; single build reference.]`
+The getter is the **only** caller of the builder: `_build_internal_kernel_registry` is referenced exactly once, through `__pyx_n_s_build_internal_kernel_registry`, from inside the getter. There is no eager-build site at module-exec time.
 
 > **NOTE — first-use is keyed to the first *registered* lowering, not module import.** `get_internal_kernel_registry` is called from `_resolve_kernel_config`, which runs only when `codegenInternalNativeNkiKernel` lowers an `InstNKIKLIRKernel` macro node. A compilation that emits only `InstBIRKernel` library macros (MLP/QKV/attention name-inlined) never builds the registry. The 13 leaf-module imports are paid for once, on demand.
 
@@ -138,7 +138,7 @@ Registry KEY (= `inst.func_name`, the `__pyx_n_u_` unicode dict key, in insertio
 | 12 | `tiled_pf_transpose` | `neuronxcc.private_nkl.transpose` | `tiled_pf_transpose` | `None` | `_get_attrs` | `True` |
 | 13 | `tiled_dve_transpose_10` | `neuronxcc.private_nkl.transpose` | `tiled_dve_transpose_10` | `None` | `_get_attrs` | `True` |
 
-`[CONFIRMED]` — every key, module, and leaf name is a verbatim string; the per-entry config triple is read byte-for-byte from the kwarg `_PyDict_SetItem` stream that precedes each `__pyx_n_u_<KEY>` registry-set in the builder disassembly (`0xbd4b0`). The interleaving is:
+Every key, module, and leaf name is a verbatim string; the per-entry config triple comes from the kwarg `_PyDict_SetItem` stream that precedes each `__pyx_n_u_<KEY>` registry-set in the builder at `0xbd4b0`. The interleaving is:
 
 ```text
 disasm @0xbd4b0 — kwarg / key load order (line numbers within the .asm body):
@@ -156,7 +156,7 @@ disasm @0xbd4b0 — kwarg / key load order (line numbers within the .asm body):
   n_s_kernel_func, n_s_args_builder, Py_True, n_s_requires_multicore_grid → n_u_tiled_dve_transpose_10
 ```
 
-Exactly **13** `__pyx_n_u_*` key constants load (`SelectAndScatter`, `ResizeNearest`, `Conv2d_pbp_0f1b_0i1o_01fb_experi…`, `Conv2d_pbp_fb01_io01_01bf_experi…`, `Conv2d_dw_fb01_io01_01bf_rep_nhw…`, `Conv1d_depthwise_bf01_oi01_bf01`, `conv2d_column_packing`, `conv2d_column_packing_io10`, `conv2d_column_packing_1`, `blockwise_mm`, `conv2d_depthwise_f01b_o01i_bf01`, `tiled_pf_transpose`, `tiled_dve_transpose_10`), matched by exactly 13 `InternalKernelConfig` construction sites (26 `__pyx_n_s_InternalKernelConfig` references = 13 × {`GetBuiltinName`, `GetModuleGlobalName` fallback}). No 14th `_PyDict_SetItem` keyed by an `n_u_` constant exists in the body. `[CONFIRMED — disasm enumeration @0xbd4b0.]`
+Exactly **13** `__pyx_n_u_*` key constants load (`SelectAndScatter`, `ResizeNearest`, `Conv2d_pbp_0f1b_0i1o_01fb_experi…`, `Conv2d_pbp_fb01_io01_01bf_experi…`, `Conv2d_dw_fb01_io01_01bf_rep_nhw…`, `Conv1d_depthwise_bf01_oi01_bf01`, `conv2d_column_packing`, `conv2d_column_packing_io10`, `conv2d_column_packing_1`, `blockwise_mm`, `conv2d_depthwise_f01b_o01i_bf01`, `tiled_pf_transpose`, `tiled_dve_transpose_10`), matched by exactly 13 `InternalKernelConfig` construction sites (26 `__pyx_n_s_InternalKernelConfig` references = 13 × {`GetBuiltinName`, `GetModuleGlobalName` fallback}). No 14th `_PyDict_SetItem` keyed by an `n_u_` constant exists in the body.
 
 ### Two import namespaces
 
@@ -175,11 +175,13 @@ Two transcription traps that a reimplementer copying the keys verbatim will hit:
 
 > **QUIRK — keys #3–6 are Capitalised, their functions lowercase.** `Conv2d_…` / `Conv1d_…` keys dispatch to `conv2d_…` / `conv1d_…` functions. The capitalised form is the Penguin **macro-op name** (`inst.func_name`); the lowercase form is the Python function symbol. Keys #7–9 (`conv2d_column_packing*`) and #11 (`conv2d_depthwise_…`) are lowercase and function-identical. The case is not a typo — it tracks where the string came from (macro-op enum vs. import symbol).
 
-### Corrections to the inventory pass (D-O30 §3)
+### Two near-miss names
 
-> **CORRECTION (D-O30 §3 #1) — there is NO `mlp` / `fused_mlp_isa_kernel` registry entry.** O30 read the registry as mapping `mlp → fused_mlp_isa_kernel`. The binary disproves this two ways: (1) the string `neuronxcc.nki._private_kernels.mlp` IS interned in `BirCodeGenLoop.so` (`@0x1eed00`), but it is referenced only for the `TKG_BS_SEQLEN_THRESHOLD` constant (`@0x1f3280`), used by `codegenMLPKernel` — not for a registry registration; (2) the string `fused_mlp_isa_kernel` is **absent** from `BirCodeGenLoop.so` entirely, and there is no `__pyx_n_u_MLP` / `__pyx_n_u_mlp` registry key. MLP, QKV, attention, RMSNorm, and backward-attention are `InstBIRKernel` library nodes *name-inlined* downstream by their own `codegen<Name>` twins — they are not `InstNKIKLIRKernel` registry-traced carriers (see [the three-sink kernel-node model](three-sink-kernel-model.md) and [NeuronCodegen macro-kernel emitters](neuroncodegen-macro.md)). The complete `__pyx_n_u_*` key enumeration is exactly the 13 above.
+> **GOTCHA — MLP is not in this registry.** No `__pyx_n_u_MLP`/`__pyx_n_u_mlp` key exists, and the string `fused_mlp_isa_kernel` is absent from `BirCodeGenLoop.so` entirely. MLP, QKV, attention, RMSNorm, and backward-attention are `InstBIRKernel` library nodes *name-inlined* downstream by their own `codegen<Name>` twins, never registry-traced (see [the three-sink kernel-node model](three-sink-kernel-model.md) and [NeuronCodegen macro-kernel emitters](neuroncodegen-macro.md)).
 
-> **CORRECTION (D-O30 §3 #2) — resize is `private_nkl.resize.resize_nearest_fixed_dma_kernel`, not `_internal.resize_nearest_kernel`.** O30 charted the registry as `{blockwise_mm, mlp, conv, _internal}` and placed resize under `(_internal)`. The registry actually imports `resize_nearest_fixed_dma_kernel` from `neuronxcc.private_nkl.resize` (`@0x1f22a0`). The `_internal.so` module hosts a *different* function, `resize_nearest_kernel` (no `_fixed_dma`), which the registry does not reference. O30 also omitted `SelectAndScatter` (#1) and the two transpose entries (#12, #13).
+The module path `neuronxcc.nki._private_kernels.mlp` *is* interned in `BirCodeGenLoop.so` (`@0x1eed00`), which makes the miss easy to fall into — but it is referenced only to reach the `TKG_BS_SEQLEN_THRESHOLD` constant (`@0x1f3280`) that `codegenMLPKernel` consults, not for any registry registration.
+
+> **GOTCHA — two resize kernels, one letter apart in role.** The registry binds `resize_nearest_fixed_dma_kernel` from `neuronxcc.private_nkl.resize` (`@0x1f22a0`). A *different* function, `resize_nearest_kernel` (no `_fixed_dma`), lives in `_internal.so` and is never referenced here.
 
 ---
 
@@ -217,13 +219,13 @@ class InternalKernelConfig:                       // __init__ mdef #20, @0x99ef0
 
 | Field | Offset role | Default | Meaning | Conf |
 |---|---|---|---|---|
-| `kernel_func` | required arg 1 | — | The imported compiled NKI leaf function to re-trace. Required; every entry sets it. | CONFIRMED |
-| `operand_count` | kwarg | `None` | Number of *input* operands to marshal into ndarray proxies. `None` ⇒ use **all** operands. Table split: `2` for conv/select/depthwise/column-packing, `1` for resize, `None` for pbp-conv/blockwise/transpose. | CONFIRMED |
-| `additional_args_builder` | kwarg | `None` | `inst → kwargs` marshaller; one of three live lambdas (below). `None` ⇒ no extra kwargs. | CONFIRMED |
-| `requires_multicore_grid` | kwarg | `False` | `True` ⇒ trace the leaf with `grid=(VNC(2),)` for multi-core. Set only by the two transposes (#12, #13). | CONFIRMED |
-| `output_is_parameter` | kwarg | `False` | Whether the output tensor is a kernel **parameter** vs. an internally-allocated buffer; gates dst-proxy marshalling in `_resolve_kernel_config`. **No registry entry sets it** ⇒ all 13 default `False`. | CONFIRMED |
+| `kernel_func` | required arg 1 | — | The imported compiled NKI leaf function to re-trace. Required; every entry sets it. | CERTAIN |
+| `operand_count` | kwarg | `None` | Number of *input* operands to marshal into ndarray proxies. `None` ⇒ use **all** operands. Table split: `2` for conv/select/depthwise/column-packing, `1` for resize, `None` for pbp-conv/blockwise/transpose. | CERTAIN |
+| `additional_args_builder` | kwarg | `None` | `inst → kwargs` marshaller; one of three live lambdas (below). `None` ⇒ no extra kwargs. | CERTAIN |
+| `requires_multicore_grid` | kwarg | `False` | `True` ⇒ trace the leaf with `grid=(VNC(2),)` for multi-core. Set only by the two transposes (#12, #13). | CERTAIN |
+| `output_is_parameter` | kwarg | `False` | Whether the output tensor is a kernel **parameter** vs. an internally-allocated buffer; gates dst-proxy marshalling in `_resolve_kernel_config`. **No registry entry sets it** ⇒ all 13 default `False`. | CERTAIN |
 
-> **NOTE — the schema has 5 data fields, but the docstring lists only 4.** The class docstring enumerates `kernel_func`, `operand_count`, `additional_args_builder`, `requires_multicore_grid`. `__init__` takes a 5th data parameter, `output_is_parameter` (the 6th positional including `self`), with default `Py_False`, and `_resolve_kernel_config` reads `cfg.output_is_parameter` to gate output-proxy construction. The field is real and consumed; the docstring is stale. Treat the schema as 5 fields. `[CONFIRMED — __init__ pyargnames vector @0x99ef0; read site in _resolve_kernel_config.]`
+> **NOTE — the schema has 5 data fields, but the docstring lists only 4.** The class docstring enumerates `kernel_func`, `operand_count`, `additional_args_builder`, `requires_multicore_grid`. `__init__` takes a 5th data parameter, `output_is_parameter` (the 6th positional including `self`), with default `Py_False`, and `_resolve_kernel_config` reads `cfg.output_is_parameter` to gate output-proxy construction. The field is real and consumed — it is in the `__init__` pyargnames vector at `@0x99ef0` and has a read site in `_resolve_kernel_config` — so treat the schema as 5 fields and the docstring as stale.
 
 ### The three live arg-builder lambdas
 
@@ -235,7 +237,7 @@ All four lambdas are constructed in Phase B of the builder, but only three are e
 | `_get_conv_attrs_with_out_shape` | #5, `@0x111020` | 259 | `get_attrs_dict()` augmented with an explicit `out_shape` derived from `inst.dsts_shapes` | #5–9, #11 |
 | `_get_resize_args` | #7, `@0x957e0` | 266 | builds from `inst.results` / `.access_shape` / `out_shape` (resize-specific) | #2 |
 
-> **GOTCHA — `_get_conv_attrs` (mdef #3, `@0x111760`) is built but UNUSED.** The builder constructs a fourth lambda, `_get_conv_attrs`, and writes it into the closure scope-struct field `__pyx_v__get_conv_attrs`. But that scope field is only **written**, never **read** inside the builder body — no `additional_args_builder` kwarg slot dereferences it. Every conv entry that needs conv attributes uses `_get_conv_attrs_with_out_shape` (mdef #5) instead. `_get_conv_attrs` is a refactor remnant: a near-identity / plain `get_attrs_dict` passthrough that no registry entry binds. A reimplementer can omit it without behavioral change. `[STRONG — write-only scope field; zero read sites in the builder.]`
+> **GOTCHA — `_get_conv_attrs` (mdef #3, `@0x111760`) is built but UNUSED.** The builder constructs a fourth lambda, `_get_conv_attrs`, and writes it into the closure scope-struct field `__pyx_v__get_conv_attrs`. But that scope field is only **written**, never **read** inside the builder body — no `additional_args_builder` kwarg slot dereferences it. Every conv entry that needs conv attributes uses `_get_conv_attrs_with_out_shape` (mdef #5) instead. `_get_conv_attrs` is a refactor remnant: a near-identity / plain `get_attrs_dict` passthrough that no registry entry binds. A reimplementer can omit it without behavioral change. (The write-only scope field and the zero read sites are direct; calling it a refactor remnant is the reading that fits.)
 
 ---
 
@@ -273,7 +275,7 @@ function _resolve_kernel_config(self, inst):       // mdef #235, @0xa0ca0, py:28
     return (cfg, kf, additional_args, call_args)
 ```
 
-The miss is a **hard raise** — there is no fallback to a readable `.py` leaf or a default kernel. The message is assembled from two verbatim string fragments: the prefix `Internal NKI kernel '` (`@0x1f43c0`) and the suffix `' is not registered. Available kernels: ` (`@0x1f17e0`), with `str(registry.keys())` appended (the `keys` attribute is read for the message). `[CONFIRMED — both fragments in strings.json; n_s_keys read site.]`
+The miss is a **hard raise** — there is no fallback to a readable `.py` leaf or a default kernel. The message is assembled from two verbatim string fragments: the prefix `Internal NKI kernel '` (`@0x1f43c0`) and the suffix `' is not registered. Available kernels: ` (`@0x1f17e0`), with `str(registry.keys())` appended (the `keys` attribute is read for the message).
 
 ### Consumers
 
@@ -311,9 +313,9 @@ SUPPORTED_TOPK_METHOD_MAPPING = {                    // the registry dict
 | `SupportedTopkMethods.CASCADED` | `cascaded_2_stage_topk` | `neuronxcc.nki._private_kernels.topk.cascaded_2_stage_topk` |
 | `SupportedTopkMethods.ROTATIONAL` | `rotational_topk` | `neuronxcc.nki._private_kernels.topk.rotational_topk` |
 
-`[CONFIRMED]` — the enum members (`SCANNING` `@0x5730`, `CASCADED` `@0x5740`, `ROTATIONAL` `@0x56f0`), the dict variable (`SUPPORTED_TOPK_METHOD_MAPPING` `@0x5610`), the enum class (`SupportedTopkMethods` `@0x5650`), and the three function/module strings are all verbatim in the module's own `strings.json`.
+The enum members (`SCANNING` `@0x5730`, `CASCADED` `@0x5740`, `ROTATIONAL` `@0x56f0`), the dict variable (`SUPPORTED_TOPK_METHOD_MAPPING` `@0x5610`), the enum class (`SupportedTopkMethods` `@0x5650`), and the three function/module strings are all verbatim in the module's own string table.
 
-> **CORRECTION (D-O30 §3 #3) — the first enum member is `SCANNING`, not `NAIVE_SCANNING`.** O30 named the key `NAIVE_SCANNING`. The binary enum member string is `SCANNING`; it is the *function* that is named `naive_scanning_topk`. No `NAIVE_SCANNING` string exists in the module — only `SCANNING`, `CASCADED`, `ROTATIONAL`. The dispatch key is the enum value, not a name string.
+> **GOTCHA —** the enum member is `SCANNING`; only the *function* it maps to is `naive_scanning_topk`. There is no `NAIVE_SCANNING` member. The dispatch key is the enum value, not a name string.
 
 ### How it differs from the main registry
 
@@ -328,7 +330,7 @@ The two registries are parallel in spirit but independent in every mechanical de
 | Consumer | `BirCodeGenLoop` lowering (codegen time) | the top-k kernel itself (trace-time autodispatch) |
 | Selection driver | macro-op name from the Penguin op | K-size / cost (small-K → scanning, mid → cascaded, K>8 → rotational) |
 
-The top-k picker chooses a strategy *inside* a kernel at trace time; the internal-kernel registry chooses *which kernel leaf to re-trace* at codegen time. They never interact. `[CONFIRMED — distinct binaries, distinct key/value types.]` The top-k strategy semantics are documented in Part 6.7 (top-k algorithms); see the forward cross-reference below.
+The top-k picker chooses a strategy *inside* a kernel at trace time; the internal-kernel registry chooses *which kernel leaf to re-trace* at codegen time. They never interact. The top-k strategy semantics are documented in Part 6.7 (top-k algorithms); see the forward cross-reference below.
 
 ---
 
@@ -336,18 +338,18 @@ The top-k picker chooses a strategy *inside* a kernel at trace time; the interna
 
 | Symbol | mdef | VA | py-line | Role | Conf |
 |---|---|---|---|---|---|
-| `InternalKernelConfig.__init__` | 20 | `0x99ef0` | 192 | config record (5 data fields) | CONFIRMED |
-| `_build_internal_kernel_registry` | 15 | `0xbd4b0` | 207 | builder (13 entries, lazy) | CONFIRMED |
-| `…<locals>._get_attrs` | 1 | `0xad3e0` | 240 | `lambda inst: get_attrs_dict()` | CONFIRMED |
-| `…<locals>._get_conv_attrs` | 3 | `0x111760` | ~250 | UNUSED remnant (write-only scope field) | STRONG |
-| `…<locals>._get_conv_attrs_with_out_shape` | 5 | `0x111020` | 259 | attrs + `out_shape` (conv) | CONFIRMED |
-| `…<locals>._get_resize_args` | 7 | `0x957e0` | 266 | `results` / `access_shape` / `out_shape` (resize) | CONFIRMED |
-| `get_internal_kernel_registry` | 17 | `0x87d70` | 341 | lazy-build getter | CONFIRMED |
-| `_resolve_kernel_config` | 235 | `0xa0ca0` | 2884 | registry `.get` + ndarray proxies | CONFIRMED |
-| `_trace_kernel_beta2` | 237 | `0x18ebc0` | — | KLIR trace leaf (`NKI_FRONTEND` default) | CONFIRMED |
-| `_trace_kernel_beta3` | 239 | `0x1ad940` | — | BIR compile leaf | CONFIRMED |
-| `_trace_internal_kernel_to_new_nki_frontend` | 241 | `0x5cd10` | 3012 | thin trace router | CONFIRMED |
-| `codegenInternalNativeNkiKernel` | 243 | `0x8d630` | 3028 | IT56 `InstNKIKLIRKernel` carrier driver | CONFIRMED |
+| `InternalKernelConfig.__init__` | 20 | `0x99ef0` | 192 | config record (5 data fields) | CERTAIN |
+| `_build_internal_kernel_registry` | 15 | `0xbd4b0` | 207 | builder (13 entries, lazy) | CERTAIN |
+| `…<locals>._get_attrs` | 1 | `0xad3e0` | 240 | `lambda inst: get_attrs_dict()` | CERTAIN |
+| `…<locals>._get_conv_attrs` | 3 | `0x111760` | ~250 | UNUSED remnant (write-only scope field) | HIGH |
+| `…<locals>._get_conv_attrs_with_out_shape` | 5 | `0x111020` | 259 | attrs + `out_shape` (conv) | CERTAIN |
+| `…<locals>._get_resize_args` | 7 | `0x957e0` | 266 | `results` / `access_shape` / `out_shape` (resize) | CERTAIN |
+| `get_internal_kernel_registry` | 17 | `0x87d70` | 341 | lazy-build getter | CERTAIN |
+| `_resolve_kernel_config` | 235 | `0xa0ca0` | 2884 | registry `.get` + ndarray proxies | CERTAIN |
+| `_trace_kernel_beta2` | 237 | `0x18ebc0` | — | KLIR trace leaf (`NKI_FRONTEND` default) | CERTAIN |
+| `_trace_kernel_beta3` | 239 | `0x1ad940` | — | BIR compile leaf | CERTAIN |
+| `_trace_internal_kernel_to_new_nki_frontend` | 241 | `0x5cd10` | 3012 | thin trace router | CERTAIN |
+| `codegenInternalNativeNkiKernel` | 243 | `0x8d630` | 3028 | IT56 `InstNKIKLIRKernel` carrier driver | CERTAIN |
 
 mdef ordinals are encoded in the `__pyx_pw_…BirCodeGenLoop_<NNN><name>` symbol names (e.g. `_15_build_internal_kernel_registry`, `_17get_internal_kernel_registry`, `_20InternalKernelConfig`, `_235_resolve_kernel_config`); the VAs are the function entry addresses from `functions.json`.
 

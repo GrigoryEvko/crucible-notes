@@ -76,7 +76,7 @@ The "across penguin" column was verified by listing matches over `*TongaIsl*/*_s
 
 `NeuronIslDependenceAnalysis` is a **schedule validator / legality oracle**. It answers "is this candidate ordering dependence-legal?" and nothing else. There is no ILP, no affine-coefficient search, no Feautrier/Pluto. The reorder *decision* belongs to the client (see [The Client](#the-client--who-supplies-the-schedule)).
 
-> **CORRECTION (Y02-1) —** earlier framing of this component treated `double_schedule_relation` and the `scheduled_raw_deps` / `scheduled_war_deps` / `scheduled_waw_deps` tokens as evidence of a scheduling step. They are **source-level local-variable names**, present only in the Cython string-init table (`__Pyx_CreateStringTabAndInitStrings`) and never as a `getattr` in any traced body. Cython folds local names into the global string pool. They name the legality logic ([§ Legality Kernel](#legality-kernel--internal_check_valid_schedule)), not a scheduler. `double_schedule_relation` in particular is an *inline expression*, not a method or an ISL primitive — islpy has no such call.
+> **GOTCHA — `double_schedule_relation` and `scheduled_*_deps` are local-variable names, not calls.** Cython folds source-level local names into the global string pool, so these appear in the string-init table (`__Pyx_CreateStringTabAndInitStrings`) yet never as a `getattr` in any body. They name intermediate values in the legality logic ([§ Legality Kernel](#legality-kernel--internal_check_valid_schedule)). `double_schedule_relation` in particular is an *inline expression* — islpy has no primitive of that name — so a string sweep that reads them as scheduler entrypoints will mis-classify the whole component.
 
 ---
 
@@ -104,23 +104,23 @@ Read this as: an outer **BAND** schedules every statement by its `i` coordinate;
 ### Algorithm
 
 ```c
-// get_schedule_tree @ 0x1f600  (entrypoint, STRONG)
+// get_schedule_tree @ 0x1f600  (entrypoint)
 isl.Schedule get_schedule_tree(self, stmt):
-    dom  = self.get_child_domain_union_set(stmt);     // UnionSet of every stmt domain (Y01 §3.3)
+    dom  = self.get_child_domain_union_set(stmt);     // UnionSet of every stmt domain
     root = isl.ScheduleNode.from_domain(dom).child(0); // DOMAIN node, descend to its child
     node = self.get_schedule_tree_helper(stmt, root);  // fill SEQUENCE/FILTER/BAND recursively
     return node.get_schedule();                        // finished isl.Schedule
 ```
 
-The ordered `from_domain → child → get_schedule_tree_helper → get_schedule` call chain is confirmed in the decompiled body of `0x1f600`. The top node is **always** a DOMAIN over the whole-kernel iteration domain; everything below is the helper's work.
+The ordered `from_domain → child → get_schedule_tree_helper → get_schedule` call chain appears in that order in the decompiled body of `0x1f600`. The top node is **always** a DOMAIN over the whole-kernel iteration domain; everything below is the helper's work.
 
 ### Function Map
 
 | Function | VA | Role | Confidence |
 |---|---|---|---|
-| `get_schedule_tree` | `0x1f600` | entrypoint; builds `isl.Schedule` | CONFIRMED (docstring + body) |
-| `get_schedule_tree_helper` | `0x3bbd0` | recursive tree assembler | STRONG |
-| `get_child_domain_union_set` | `0x33a70` | subtree-domain `UnionSet` (shared with Y01) | CONFIRMED |
+| `get_schedule_tree` | `0x1f600` | entrypoint; builds `isl.Schedule` | CERTAIN (docstring + body) |
+| `get_schedule_tree_helper` | `0x3bbd0` | recursive tree assembler | HIGH |
+| `get_child_domain_union_set` | `0x33a70` | subtree-domain `UnionSet` (shared with the dependence half) | CERTAIN |
 
 ---
 
@@ -133,7 +133,7 @@ Walks the penguin IR and emits schedule nodes, mirroring the domain-building tra
 ### Algorithm
 
 ```c
-// get_schedule_tree_helper @ 0x3bbd0  (STRONG)
+// get_schedule_tree_helper @ 0x3bbd0
 ScheduleNode get_schedule_tree_helper(self, stmt, root):
     if isinstance(stmt, NeuronInst):              // a single instruction = a leaf statement
         node = self.add_band(root, domain, var);  // schedule THIS stmt by an outer IV coordinate
@@ -146,7 +146,7 @@ ScheduleNode get_schedule_tree_helper(self, stmt, root):
     elif isinstance(stmt, (Axis, ScopeRegion)):   // a loop level / region = a SEQUENCE of children
         node = self.add_sequence_filter(root, stmt.instructions);  // descends/recurses per child
     else:
-        assert False;  // "Unhandled IR class in NeuronISLDependenceAnalysis"  (CONFIRMED literal)
+        assert False;  // "Unhandled IR class in NeuronISLDependenceAnalysis"  (literal in .rodata)
     return node;
 ```
 
@@ -165,7 +165,7 @@ Inserts exactly **one** 1-D schedule band that schedules each statement instance
 ### Algorithm
 
 ```c
-// add_band @ 0x24bc0  (STRONG; exact isl call shapes INFERRED from islpy 2023.1)
+// add_band @ 0x24bc0  (exact isl call shapes [INFERRED] from islpy 2023.1 semantics)
 ScheduleNode add_band(self, root, domain, var):
     bsl  = root.domain().get_basic_set_list();
     mupa = None;
@@ -196,7 +196,7 @@ Inserts a **SEQUENCE** node whose children are per-statement **FILTER**s, then r
 ### Algorithm
 
 ```c
-// add_sequence_filter @ 0x22b20  (STRONG)
+// add_sequence_filter @ 0x22b20
 ScheduleNode add_sequence_filter(self, root, stmts):
     usl = isl.UnionSetList.alloc(self.ctx, len(stmts));
     for s in stmts:
@@ -236,10 +236,10 @@ check_valid_schedule(self, root, insts, new_schedule, dependence_types={RAW, WAR
 ### Algorithm
 
 ```c
-// check_valid_schedule @ 0x273f0  (CONFIRMED call sequence)
+// check_valid_schedule @ 0x273f0  (call sequence as decompiled)
 Optional<DependenceViolation> check_valid_schedule(self, root, insts, new_schedule,
                                                    dependence_types):
-    reads, writes = self.get_dependency_map(insts);                 // May-access maps (Y01 §5.2)
+    reads, writes = self.get_dependency_map(insts);                 // May-access maps
     sched = (new_schedule or self.get_schedule_tree(root)).get_map(); // UnionMap sN[ivs] -> [time]
     sched = self.try_simplify(sched);                                // coalesce/gist (IslSimplifier)
     order = sched.lex_le_union_map(sched);                           // happens-before (<=) in time
@@ -253,11 +253,11 @@ Optional<DependenceViolation> check_valid_schedule(self, root, insts, new_schedu
         if v is not None:
             return DependenceViolation(v.src_id, v.dst_id, tensor, dt, msg);
             // msg one of: "RAW violation on tensor: " / "WAR violation on tensor: " /
-            //             "WAW violation on tensor: "  (CONFIRMED literals)
+            //             "WAW violation on tensor: "  (literals in .rodata)
     return None;  // no class produced a violation -> schedule is LEGAL
 ```
 
-The decompiled body of `0x273f0` confirms the exact prologue `get_dependency_map → get_schedule_tree → get_map → try_simplify → try_simplify → lex_le_union_map`, then **three** identical `DependenceType → try_simplify → apply_range → reverse → try_simplify → intersect → internal_check_valid_schedule` blocks — one per RAW/WAW/WAR class.
+The decompiled body of `0x273f0` runs the prologue `get_dependency_map → get_schedule_tree → get_map → try_simplify → try_simplify → lex_le_union_map`, then **three** identical `DependenceType → try_simplify → apply_range → reverse → try_simplify → intersect → internal_check_valid_schedule` blocks — one per RAW/WAW/WAR class.
 
 > **GOTCHA —** the pairing is **May-dependence**, not exact dataflow. `pairs` are *all* access-pairs touching the same allocation that are schedule-ordered (`apply_range(reverse)` then `intersect(order)`), built without `compute_flow`/`union_access_info` (both absent). A reimplementer who reaches for ISL exact dataflow will produce a *different, sparser* relation and may admit reorderings this gate rejects. The conservatism is deliberate.
 
@@ -295,7 +295,7 @@ double_schedule_relation = dependences.apply_domain(schedule).apply_range(schedu
 ### Algorithm
 
 ```c
-// internal_check_valid_schedule @ 0x3f080  (STRONG; isl shapes INFERRED)
+// internal_check_valid_schedule @ 0x3f080  (isl argument shapes [INFERRED])
 Optional<DependenceViolation> internal_check_valid_schedule(self, dependences, schedule, debug_info):
     dsr = dependences.apply_domain(schedule).apply_range(schedule);   // time x time
     for m in dsr.get_map_list():                  // per basic dependence (n_map of them)
@@ -327,10 +327,10 @@ A schedule is **legal iff** for every dependence edge the source instance is sch
 ### The `singleton` closure
 
 ```c
-// internal_check_valid_schedule.<locals>.singleton @ 0x1d7a0  (closure body; STRONG)
+// internal_check_valid_schedule.<locals>.singleton @ 0x1d7a0  (closure body)
 isl.Set singleton(us):                         // us : UnionSet expected to hold ONE space
     s = isl.Set.from_union_set(us);
-    if <us not a single space>:  raise "ExpectedSpace";   // CONFIRMED literal
+    if <us not a single space>:  raise "ExpectedSpace";   // literal in .rodata
     return s;
 ```
 
@@ -340,11 +340,11 @@ A nested helper that coerces a single-space `isl.UnionSet` to a plain `isl.Set` 
 
 | Function | VA | Role | Confidence |
 |---|---|---|---|
-| `check_valid_schedule` | `0x273f0` | legality gate; iterates RAW/WAW/WAR | CONFIRMED |
-| `internal_check_valid_schedule` | `0x3f080` | per-dep lex-lt kernel + double-schedule | STRONG |
-| `…singleton` (closure) | `0x1d7a0` | `UnionSet`→`Set` coercion | STRONG |
-| `…singleton` (def wrapper) | `0x1e6d0` | closure factory slot | STRONG |
-| `DependenceViolation.__init__` | `0x18ce0` | violation record | CONFIRMED |
+| `check_valid_schedule` | `0x273f0` | legality gate; iterates RAW/WAW/WAR | CERTAIN |
+| `internal_check_valid_schedule` | `0x3f080` | per-dep lex-lt kernel + double-schedule | HIGH |
+| `…singleton` (closure) | `0x1d7a0` | `UnionSet`→`Set` coercion | HIGH |
+| `…singleton` (def wrapper) | `0x1e6d0` | closure factory slot | HIGH |
+| `DependenceViolation.__init__` | `0x18ce0` | violation record | CERTAIN |
 
 ---
 
@@ -352,7 +352,7 @@ A nested helper that coerces a single-space `isl.UnionSet` to a plain `isl.Set` 
 
 `DependenceViolation.__init__(self, src_id, dst_id, tensor, type, msg)` @ `0x18ce0` is a plain record carrying the failing edge's source/dest statement ids, the offending tensor/allocation, the `DependenceType`, and a formatted message. It is the `Optional` return of both `check_valid_schedule` and `internal_check_valid_schedule`; a `None` return means *legal*.
 
-Two enums gate behavior (both `enum.Enum`, confirmed in `*_enums.json` / string pool):
+Two enums gate behavior (both `enum.Enum`, recovered from `*_enums.json` and the string pool):
 
 | Enum | Members | Use |
 |---|---|---|
@@ -363,7 +363,7 @@ Two enums gate behavior (both `enum.Enum`, confirmed in `*_enums.json` / string 
 
 ## The Client — who supplies the schedule
 
-The **sole** caller of `check_valid_schedule` is `SoftwarePipelineCodeGen.SoftwarePipelineCodeGen._reorder_instructions` (confirmed: that `.so` carries both `"check_valid_schedule"` and `"NeuronIslDependenceAnalysis"` strings, plus the `_reorder_instructions` qualname). Its vocabulary fixes the "who schedules" answer (all CONFIRMED string literals):
+The **sole** caller of `check_valid_schedule` is `SoftwarePipelineCodeGen.SoftwarePipelineCodeGen._reorder_instructions` — that `.so` carries both the `"check_valid_schedule"` and `"NeuronIslDependenceAnalysis"` strings alongside the `_reorder_instructions` qualname. Its vocabulary fixes the "who schedules" answer (all string literals from its pool):
 
 ```text
 "Applying reordering based on execution_orders: "
@@ -427,21 +427,25 @@ LEGALITY       UnionMap.apply_domain/apply_range/reverse/intersect/lex_le_union_
                MultiPwAff.identity_on_domain_space/lex_lt_at_multi_pw_aff · Set.universe
 ```
 
-None is a scheduler-search call. `Schedule.compute_schedule`, `ScheduleConstraints.{set_validity,set_proximity,set_coincidence,compute_schedule}`, `UnionAccessInfo`, and `UnionFlow.compute_flow` are all **absent** (raw-binary verified).
+None is a scheduler-search call. `Schedule.compute_schedule`, `ScheduleConstraints.{set_validity,set_proximity,set_coincidence,compute_schedule}`, `UnionAccessInfo`, and `UnionFlow.compute_flow` are all **absent** from the binary.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+Where the page's principal claims come from:
 
-1. **"No scheduler exists."** Re-grepped each of `compute_schedule`, `ScheduleConstraints`, `set_proximity`, `set_coincidence`, `compute_flow` individually over this `.so`'s string table (0 hits each) and over `*TongaIsl*`/`*Simplifier*`/`SoftwarePipelineCodeGen` string tables (0 files matched). **Holds — CONFIRMED.**
-2. **"Legality = double-schedule + lex-lt emptiness."** The decompiled body of `0x3f080` shows `apply_domain → apply_range → get_map_list → … lex_lt_at_multi_pw_aff → identity_on_domain_space → intersect_domain → intersect_range → is_empty → DependenceViolation`, twice. **Holds — STRONG (call order traced).**
-3. **"check_valid_schedule runs 3 identical RAW/WAW/WAR blocks over a `lex_le` order."** Body of `0x273f0` shows `…lex_le_union_map`, then 3× `DependenceType → apply_range → reverse → intersect → internal_check_valid_schedule`. **Holds — CONFIRMED.**
-4. **"add_band coordinate is the existing IV, no search."** Body of `0x24bc0` shows `var_on_domain` + `set_aff(0,·)` (a single 1-D affine = the chosen set-dim), `union_add`-folded, `insert_partial_schedule`. No coefficient enumeration, no cost call. **Holds — STRONG.**
-5. **"The client decides; this class validates."** `SoftwarePipelineCodeGen` carries `_reorder_instructions`, `execution_order`, `"Applying reordering based on execution_orders:"`, `disable_execution_order_check`, and references both `check_valid_schedule` and `NeuronIslDependenceAnalysis`; it has **no** scheduler symbols. **Holds — CONFIRMED.**
+- **No scheduler exists.** Each of `compute_schedule`, `ScheduleConstraints`, `set_proximity`, `set_coincidence`, `compute_flow` was grepped individually against this `.so`'s string table (0 hits each) and against the `*TongaIsl*` / `*Simplifier*` / `SoftwarePipelineCodeGen` string tables (no file matched).
+- **Legality = double-schedule + lex-lt emptiness.** The body of `0x3f080` runs `apply_domain → apply_range → get_map_list → … lex_lt_at_multi_pw_aff → identity_on_domain_space → intersect_domain → intersect_range → is_empty → DependenceViolation`, twice.
+- **Three identical RAW/WAW/WAR blocks over a `lex_le` order.** The body of `0x273f0` runs `…lex_le_union_map`, then 3× `DependenceType → apply_range → reverse → intersect → internal_check_valid_schedule`.
+- **`add_band`'s coordinate is the existing IV.** The body of `0x24bc0` runs `var_on_domain` + `set_aff(0,·)` — a single 1-D affine over the chosen set-dim — `union_add`-folded into `insert_partial_schedule`. No coefficient enumeration, no cost call.
+- **The client decides, this class validates.** `SoftwarePipelineCodeGen` carries `_reorder_instructions`, `execution_order`, `"Applying reordering based on execution_orders:"`, `disable_execution_order_check`, and references both `check_valid_schedule` and `NeuronIslDependenceAnalysis`; it carries no scheduler symbols of its own.
 
-One correction was issued in place ([Y02-1](#the-no-scheduler-verdict)): the `double_schedule_relation` / `scheduled_*_deps` tokens are local-variable names, not a scheduling step. The eight cited VAs are the `__pyx_pw_` wrappers (the canonical entry symbols), flagged in the opening NOTE rather than mislabeled as `__pyx_pf_` body slots. No claim required fabrication; isl exact-call *shapes* inside `add_band`/`internal_check_valid_schedule` are tagged INFERRED from islpy semantics where the getattr name was present but the argument tuple was not individually traced.
+## Limits of this reading
+
+- The exact islpy argument tuples inside `add_band` and `internal_check_valid_schedule` are **[INFERRED]** from islpy 2023.1 semantics: the `getattr` name is present in each body, but the argument tuple was not individually traced.
+- The cited VAs are `__pyx_pw_` public wrappers with the method body inlined, not separately-named `__pyx_pf_` body slots (see the opening NOTE); a symbol table from a different Cython build may number them differently.
+- islpy itself is treated as a black box. Only the sequence of calls into it is recovered, not what ISL does with them.
 
 ---
 

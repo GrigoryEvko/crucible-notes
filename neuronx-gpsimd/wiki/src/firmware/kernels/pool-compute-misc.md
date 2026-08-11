@@ -32,7 +32,7 @@ and `nm -S` blob ranges, or in the Q7 `kernel_info_table` (KIT) membership carri
 
 ## 0. Master matrix — fourteen opcodes, one row each
 
-Confidence tags: **HIGH/MED/LOW** × **OBSERVED** (read/compiled this analysis) /
+Confidence tags: **HIGH/MED/LOW** × **OBSERVED** (read/compiled) /
 **INFERRED** (derived) / **CARRIED** (from a prior cross-referenced decode). The `FLAG`
 column is `[SU CA MA MV]` presence in the four generation enums.
 
@@ -67,7 +67,7 @@ POOL software kernel; and `0x85`/`0x86` are **custom-op marshalling**, not POOL 
 
 ## 1. The name pull — byte-exact from the four `common.h` enums
 
-Re-grepped `NEURON_ISA_TPB_OPCODE_… = 0x..  // Y` in each
+Read `NEURON_ISA_TPB_OPCODE_… = 0x..  // Y` in each
 `neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_common.h`. All five cluster-A and all five
 cluster-B opcodes plus the custom-op pair are `// Y` (maintained) and byte-identical in name,
 value, and flag across SUNDA→MAVERICK. The ACT pair is generation-gated. Enum line numbers
@@ -90,20 +90,20 @@ value, and flag across SUNDA→MAVERICK. The ACT pair is generation-gated. Enum 
 | `0x93` | `TRANSPOSE_TENSOR_SCALAR_ARITH_OP` | 235 | 230 | `YYYY` |
 | `0x95` | `MODIFY_POOL_CONFIG` | 237 | 232 | `YYYY` |
 
-[All **HIGH/OBSERVED** — re-grepped all four enums this analysis.]
+[All **HIGH/OBSERVED**.]
 
 > **GOTCHA — opcode-byte aliasing in unrelated enums.** The byte `0x49` is *also*
 > `NEURON_ISA_TPB_EVT_SEM_NONBLOCKING_CMD_SEM_WRITE = 0x49` in mariana/maverick's
 > event-semaphore *command* enum; `0x93`/`0x95` reappear as `WAIT_MODE`/`UPDATE_MODE`
 > semaphore-mode enum values. None of those are opcodes. The **opcode** enum value is
 > unambiguous: `0x49 = MEMSET`, `0x93 = TRANSPOSE_TENSOR_SCALAR_ARITH_OP`,
-> `0x95 = MODIFY_POOL_CONFIG` in all four gens. [HIGH/OBSERVED.]
+> `0x95 = MODIFY_POOL_CONFIG` in all four gens.
 
-The `struct2opcode` reverse map (jq over each gen's `instruction_mapping.json`) binds the names
+The `struct2opcode` reverse map in each gen's `instruction_mapping.json` binds the names
 to structs exactly as the matrix shows. On CAYMAN/MARIANA/MAVERICK the `0x85`/`0x86` enum
 values persist but carry **no** `struct2opcode` entry and ship **no** struct header — the
-custom-op format is frozen at the SUNDA (v2) layout (see §13). [HIGH/OBSERVED — `fd` finds
-two `custom_op*.h` only under `neuron_sunda_arch_isa/tpb`, zero elsewhere.]
+custom-op format is frozen at the SUNDA (v2) layout (see §13). [HIGH/OBSERVED — two
+`custom_op*.h` only under `neuron_sunda_arch_isa/tpb`, zero elsewhere.]
 
 ---
 
@@ -134,7 +134,7 @@ CAYMAN_NX_DVE_DEBUG_DRAM_get.data        0x18b320 .. 0x192080   (+0x6d60)
 SUNDA_Q7_POOL_RELEASE_*                  (RELEASE images, no S: table)
 ```
 
-Applied to this page's non-KIT ops (exact-token byte counts this analysis):
+Applied to this page's non-KIT ops (exact-token byte counts):
 
 | Op | KIT(SU)? | `S:` token | count | resident blob | ⇒ engine |
 |---|---|---|---|---|---|
@@ -150,7 +150,7 @@ Cross-check: `CopyPredicated` @ `0x18dc20` falls inside `CAYMAN_NX_DVE_DEBUG_DRA
 `0x18b320..0x192080`, and `TensorScalarAddr`/`LoadPoolArgument`/`ModifyPoolConfig` @ `0x1d02d0`
 + all fall inside `CAYMAN_NX_POOL_DEBUG_DRAM` `0x1cdc40..0x1d4b60`. The `CastPredicated`
 neighbour (`0x18dc33/0x427f13/0x6efc33/0x8affe3`) sits `0x13` bytes above each `CopyPredicated`
-token. [All **HIGH/OBSERVED** — byte scan + `nm -S` this analysis.]
+token. [All **HIGH/OBSERVED**.]
 
 > **CORRECTION — `CopyPredicated` count.** Earlier prose described "3 distinct copies per DVE
 > blob." The exact newline-terminated token count is **1 per DVE blob × 4 blobs = 4** — the
@@ -220,10 +220,10 @@ It is a **fixed-function** 1/x: the ALU is bypassed (`op == Bypass`), there is n
 axis, and the src/dst element counts match (pure same-shape element-wise). The dedicated HW
 reciprocal datapath is the Vision-Q7 `IVP_RECIP0*` seed plus the `IVP_RECIPQLIN_*` refinement —
 see §4. This is distinct from the batch-norm Newton reciprocal/rsqrt Param-RAM machinery and
-from the avg-pool host-precomputed `1/N` multiply. [HIGH/OBSERVED — header text + validator.]
+from the avg-pool host-precomputed `1/N` multiply. [HIGH/OBSERVED.]
 
 **Per-gen.** `// Y` SU/CA/MA/MV; struct 64 B and the reciprocal arm present in all four
-`s4d4_tr.h`. [HIGH/OBSERVED.]
+`s4d4_tr.h`.
 
 ### 4. The reciprocal datapath — seed-and-refine (device-ISA grounded)
 
@@ -259,8 +259,7 @@ The `recip0` (seed) + `recipqli` (refine) split, the per-precision pairing (`16f
 the divide path `module__xdref_div0_*`/`module__xdref_divn_*` (reciprocal-then-multiply) are
 all present in the ISS model. The numeric `1/x` identity is the documented behaviour of the
 Cadence Vision `IVP_RECIP0` seed instruction.
-[Symbol existence & naming **HIGH/OBSERVED** (`nm -D libfiss-base.so`); the staged-Newton
-refinement *order* **MED/INFERRED**; the `IVP_RECIP0` numeric contract **CARRIED**.]
+[HIGH symbols; MED refine order; CARRIED numeric contract]
 
 > **NOTE — value functions not driven live.** The `module__xdref_recip0_*` value functions
 > in `libfiss-base.so` take an ISS *processor-state* pointer (the disassembly of
@@ -284,16 +283,15 @@ refinement *order* **MED/INFERRED**; the `IVP_RECIP0` numeric contract **CARRIED
 | 44 | `dst_mem_pattern` (`TENSOR4D`) | 20 | |
 
 `offsetof`: `dst_element_count@28 dtype@32 ser_mode@36 set_value@40 dst@44`, `sizeof=64`.
-[HIGH/OBSERVED.]
 
 `D4_MR` is shared by `MEMSET (0x49)`, `RNG (0x4d)`, `REG_STORE (0x4b)`, and — on CAYMAN+ only —
 `DVE_READ_INDICES (0xe9)`. The SUNDA `struct2opcode` set is exactly `{MEMSET, REG_STORE, RNG}`
 (no `DVE_READ_INDICES`), a shared-struct *validator-set* evolution that does **not** change
-MEMSET's own encoding. [HIGH/OBSERVED — `jq` diff of the SUNDA vs maverick map.]
+MEMSET's own encoding. [HIGH/OBSERVED — SUNDA vs maverick map diff.]
 
 **Dispatch.** In the SUNDA flat Q7 KIT (`pool_memset`); on CAYMAN+ reached via the SEQ ASCII
-handler (not in the 17-entry KIT). ⇒ surface `Q7KIT(SU) / SEQ`. [HIGH — KIT carried from
-[kernel-info-table](../pool/kernel-info-table.md).]
+handler (not in the 17-entry KIT). ⇒ surface `Q7KIT(SU) / SEQ`.
+[HIGH/CARRIED — [kernel-info-table](../pool/kernel-info-table.md).]
 
 **Semantics.** Header lines 24–25, verbatim: *"Set a memory region with a given value."* The
 fill value is `set_value @40`, written across `num_active_channels`. The legal value/dtype
@@ -317,12 +315,11 @@ bool memset_set_value_type(Inst i) {
 A region **fill**, not arithmetic and not pooling. The RNG sibling (`0x4d`) header note —
 *"common practice to follow an RNG instruction with a normalization … e.g. read 16 random bits
 as UINT16, and divide by (2^16-1)"* — is what ties the `0x48`/`0x49`/`0x4d` family together.
-[HIGH/OBSERVED.]
 
 > **QUIRK — verbatim source artifacts.** `memset_set_value_type` lists `Dtype::UINT32`
 > **twice** in the 4-byte set (a copy-paste in the shipped header), and the helper is named
 > `d4_mr_zero_serialization` even though its body asserts `== Serial` (not zero). Neither
-> changes behaviour. [HIGH/OBSERVED.]
+> changes behaviour.
 
 ### 6. `0x67 POOL_BUFFER_LOAD` — fill the pooling-engine gather buffer
 
@@ -337,7 +334,7 @@ as UINT16, and divide by (2^16-1)"* — is what ties the `0x48`/`0x49`/`0x4d` fa
 | 44 | `mask` (u32) | 4 | `pool_buffer_mask` (subset-match bits) |
 | 48 | `reserved2[16]` | 16 | 0 |
 
-`offsetof`: `src@12 in_dtype@32 start_index@40 mask@44`, `sizeof=64`. [HIGH/OBSERVED.] This is a
+`offsetof`: `src@12 in_dtype@32 start_index@40 mask@44`, `sizeof=64`. This is a
 single-op struct.
 
 **Dispatch.** In the SUNDA flat Q7 KIT (`pool_pool_buffer_load`); SEQ on CAYMAN+. ⇒
@@ -368,7 +365,7 @@ bool is_valid_pool_buffer_load(Inst i) {
 
 Supported dtypes (header line 33): `FP16/BFLOAT16/UINT8/UINT16/FP32/UINT32/INT32`; stored as raw
 bytes, so the dtype only sizes the element (1/2/4 B). Class = a buffer **load**, SBUF-only, not
-compute. [HIGH/OBSERVED.]
+compute.
 
 ### 7. `0x69 LOAD_MASK_SELECT` — load a 32-byte channel-select mask table
 
@@ -382,11 +379,10 @@ compute. [HIGH/OBSERVED.]
 | 15 | `reserved0[17]` | 17 | 0 |
 | 32 | `immediate` (`MOVE_IMMEDIATE`) | 32 | the 32-byte mask payload |
 
-`offsetof`: `param_ram_offset@12 imm_ptr_select@14 immediate@32`, `sizeof=64`. [HIGH/OBSERVED.]
+`offsetof`: `param_ram_offset@12 imm_ptr_select@14 immediate@32`, `sizeof=64`.
 
 **Dispatch.** Not in any Q7 KIT — the `CTRL_IM` class is a control/argument-load family decoded
-on the SEQ control surface (same struct as `EngineNop`/`LoadParameterRam`). [HIGH/OBSERVED — KIT
-absence; SEQ-control class.]
+on the SEQ control surface (same struct as `EngineNop`/`LoadParameterRam`). [HIGH/OBSERVED.]
 
 **Semantics.** Writes a 32-entry channel-select MASK table from `immediate[0..31]` into the
 pooling engine config state. Each byte is range-validated:
@@ -404,12 +400,11 @@ Interpretation: 32 select-indices, one per output channel; a value `0..63` selec
 channel (the POOL channel range is 64-wide), and `255` is the disabled/pass sentinel. A
 config/argument **load**, not compute. The natural consumer is a downstream channel select/permute
 (plausibly StreamShuffle `0x6a` or AffineSelect `0x92`), but that consumer edge is not
-byte-traced. [Struct+validator **HIGH/OBSERVED**; per-value meaning + consumer link
-**MED/INFERRED**.]
+byte-traced. [HIGH struct+validator; MED per-value + consumer]
 
 ### 8. `0x6a STREAM_SHUFFLE` — cross-channel lane-permute within 32 channels
 
-**Struct** `S4D4_TR` — the *same* 64-B struct as RECIPROCAL (§3), same field layout. [HIGH/OBSERVED.]
+**Struct** `S4D4_TR` — the *same* 64-B struct as RECIPROCAL (§3), same field layout.
 
 **Dispatch.** Not in any Q7 KIT; SEQ ASCII dispatch. Same `0xF0`-bridge caveat as `0x48` (shares
 the struct with Copy/Cast, which do hold KIT rows). [HIGH/OBSERVED for KIT absence; bridge
@@ -435,8 +430,8 @@ A pure **data-movement** lane-permute: it reorders elements across the 32-channe
 type change and no arithmetic. Its same-struct sibling StreamTranspose (`0x6b`) is the 32×32
 transpose; StreamShuffle is the in-group permute. The underlying device primitive is the
 `xdref_dsel*`/`xdref_sel*` (`ivp_dselnx16t`/`ivp_selnx16t`) lane-select family in
-`libfiss-base.so` (semantic match, not a byte-traced dispatch edge). [Header+validator
-**HIGH/OBSERVED**; execution primitive **MED/INFERRED**.]
+`libfiss-base.so` (semantic match, not a byte-traced dispatch edge).
+[HIGH header+validator; MED execution primitive]
 
 ---
 
@@ -457,7 +452,7 @@ transpose; StreamShuffle is the in-group permute. The underlying device primitiv
 | 32 | `src1_mem_pattern` | 16 | data tensor (read) |
 | 48 | `dst_mem_pattern` | 16 | dst (write, **merge**) |
 
-`offsetof`: `in0_in1_dtype@12 out@13 op@14 src0@16 src1@32 dst@48`, `sizeof=64`. [HIGH/OBSERVED.]
+`offsetof`: `in0_in1_dtype@12 out@13 op@14 src0@16 src1@32 dst@48`, `sizeof=64`.
 
 **Dispatch — DVE, hardware-native.** Absent from both the SUNDA-18 and CAYMAN-17 Q7 KITs; the
 `S: CopyPredicated\n` token appears **4×** co-resident with `S: CastPredicated` in the four
@@ -485,8 +480,7 @@ The only difference from `CastPredicated (0x99)` is the `s3s3d3_copy_cast_pred_s
 clause: COPY requires `dtype_hi == out_dtype`; CAST short-circuits it (permits a cast via the
 FP32 hub) — exactly the plain Copy `0x46` vs Cast `0x47` split. `0x72` is the minimal member of
 the predicated-op family: predicate-gated copy, no cast, no reduce, two tensors (data + mask).
-[Validator **HIGH/OBSERVED**; the per-lane `selnx16t`/`bitkillt` merge body **MED/INFERRED** from
-the DVE co-residence — body not byte-traced.]
+[HIGH validator; MED per-lane merge body]
 
 The family, now closed:
 
@@ -497,7 +491,7 @@ The family, now closed:
 | `0xe8` | `COPY_PREDICATED_SCALAR` | `S3D3_CP_PRED_SCALAR` | no | no | [copypredicatedscalar.md](copypredicatedscalar.md) |
 | `0xea` | `SELECT_REDUCE` (dev. `CopyPredicatedReduce`) | `S2S2D2_STT` | no | MAX | [copypredicatedreduce.md](copypredicatedreduce.md) |
 
-All four are DVE-native, src0-integer-predicate, vbool `_t` bitkillt MERGE. [HIGH/OBSERVED.]
+All four are DVE-native, src0-integer-predicate, vbool `_t` bitkillt MERGE.
 
 ### 10. `0x74 TENSOR_SCALAR_ADDR` — 64-bit integer address arithmetic (POOL)
 
@@ -519,11 +513,9 @@ All four are DVE-native, src0-integer-predicate, vbool `_t` bitkillt MERGE. [HIG
 | 52 | `dst_mem_pattern` (`TENSOR2D`) | 12 | result addrs/mask, SBUF-only |
 
 `offsetof`: `src@12 imm0@24 imm1@32 op0@44 op1@45 nac@46 rev@47 dst@52`, `sizeof=64`.
-[HIGH/OBSERVED.]
 
 **Dispatch.** In the SUNDA Q7 KIT; 3× POOL self-name on CAYMAN+ (§2). Both src and dst are
 `AllowedInPSUM::False` — the header states *"Neuron POOL cannot access PSUM"* (line 287).
-[HIGH/OBSERVED.]
 
 **Semantics.** Header: *"Designed for 64 bit address calculations. Specialized version of
 TensorScalar/TensorScalarPtr."* The base formula is the TensorScalar
@@ -550,16 +542,14 @@ addresses; cases D/E produce a range-check boolean mask. It is the **index→add
 feeding the gather/scatter/indirect-copy POOL primitives (Gather `0x68`, IndirectCopy `0xe7`,
 EmbeddingUpdate `0x79`). Class = integer address arithmetic, not float compute. Per-imm
 `IMM_SRC` chooses inline u64/i64 immediate, SBUF/PSUM pointer, or register-held pointer.
-[HIGH/OBSERVED — the 5 cases are verbatim header pseudocode.]
+[HIGH/OBSERVED.]
 
 ### 11. `0x7a LOAD_POOL_ARGUMENT` — load 8 argument words into pool state (POOL control)
 
 **Struct** `CTRL_IM` (the same 64-B control-immediate struct as `0x69`; §7). For LoadPoolArgument
 the `imm_ptr_select @14` u8 is an **8-bit per-slot mode mask**, and `immediate @32` is `8 × u32`.
-[HIGH/OBSERVED.]
 
 **Dispatch.** In the SUNDA Q7 KIT; 3× POOL self-name on CAYMAN+ (§2). ⇒ `Q7KIT(SU)+POOL / POOL`.
-[HIGH/OBSERVED.]
 
 **Semantics.** Loads up to 8 "pool argument" words — each chosen per-slot as a direct inline
 value or an SBUF pointer — into the pool engine's per-instruction argument state, staging
@@ -582,21 +572,20 @@ bool lpa_valid_imm_ptr(Inst i, uint8_t idx) {
 
 Contrast with its `CTRL_IM` siblings: `LoadParameterRam (0x66)` uses `param_ram_offset`;
 `LoadMaskSelect (0x69)` carries 32 masksel bytes with `imm_ptr_select == 0`; `EngineNop (0x9f)`
-carries no immediates. [HIGH/OBSERVED.]
+carries no immediates.
 
 ### 12. `0x93 TRANSPOSE_TENSOR_SCALAR_ARITH_OP` — TensorScalar arith with a transposed source
 
 **Struct** `S3D3_TS` (64 B), shared with `TensorScalarArith (0x43)`, `TensorScalarBitvec`,
 `TensorScalarPtr*`, `Exponential`, `TensorScalarCache{Reduce,Cumulative}`. Field offsets:
 `accumulator_cmd@12 src@16 in_dtype@32 out_dtype@33 nac@34 op0@36 op1@37 rev@38 imm0@40 imm1@44
-dst@48`, `sizeof=64`. [HIGH/OBSERVED.]
+dst@48`, `sizeof=64`.
 
-**Dispatch.** Has **no** dedicated self-name (`0× S: TransposeTensorScalar*`, confirmed this
-analysis) and is absent from both Q7 KITs. It shares the `is_valid_tensor_scalar_op` validator
+**Dispatch.** Has **no** dedicated self-name (`0× S: TransposeTensorScalar*`)
+and is absent from both Q7 KITs. It shares the `is_valid_tensor_scalar_op` validator
 with the regular `TensorScalarArith (0x43)` and is handled by the **same TensorScalar datapath**,
 the transpose being a source-pattern variant rather than a separate kernel — hence no separate
-self-name and no separate KIT row. [Struct+validator **HIGH/OBSERVED**; exact host worker
-(DVE Tensor-Scalar vs a POOL transpose path) **MED/INFERRED** — no surface token.]
+self-name and no separate KIT row. [HIGH struct+validator; MED exact host worker]
 
 **Semantics.** The TensorScalar arith `op1(op0(tensor, scalar0), scalar1)` with the source read
 in a **transposed** access pattern. Two extra constraints, unique to `0x93`:
@@ -614,7 +603,7 @@ bool s3d3_transpose_check(Inst i) {
 
 Everything else (AluOp acceptance, dtype rules, `reverse_operands`, per-imm `IMM_SRC`) is
 identical to `TensorScalarArith` — only the source is read transposed and the channel count is
-32-aligned. `in_dtype` `FP32R::False`, `out_dtype` `FP32R::True`. [HIGH/OBSERVED.]
+32-aligned. `in_dtype` `FP32R::False`, `out_dtype` `FP32R::True`.
 
 ### 13. `0x95 MODIFY_POOL_CONFIG` — ucode-library load/unload (POOL engine config)
 
@@ -630,16 +619,16 @@ identical to `TensorScalarArith` — only the source is read transposed and the 
 | 32 | `reserved1[32]` | 32 | 0 |
 
 `offsetof`: `modify_op@12 core_mask@13 soc_addr@16 library_index@24 library_size@28`,
-`sizeof=64`. [HIGH/OBSERVED.]
+`sizeof=64`.
 
 > **CORRECTION — `library_size` vs the ASCII-layout comment.** The in-header ASCII layout
 > comment labels offset 28 as `reserved0[u8;4]`, but the actual C struct (line 69) declares
 > `uint32_t library_size` there, and the validator `has_valid_modify_pool_config_library_size`
 > bounds `library_size <= 64*1024`. The struct + validator are authoritative: **offset 28 =
-> `library_size`**, not reserved. (Present in all four gens.) [HIGH/OBSERVED — `gcc` + validator.]
+> `library_size`**, not reserved. (Present in all four gens.) [HIGH/OBSERVED.]
 
 **Dispatch.** 3× POOL self-name (§2); absent from both Q7 KITs (a POOL front-end control
-instruction, not a compute KIT kernel). [HIGH/OBSERVED.]
+instruction, not a compute KIT kernel).
 
 **Semantics.** Header purpose block, verbatim: *"intended to be used for NRT to … change the
 POOL engine's config between model switches … this instruction can also be used at the start of
@@ -655,8 +644,7 @@ latency … can be hidden behind any other ops."*
 // UnloadLib(2): evict it BEFORE the switch (the gap the instruction closes).
 ```
 
-Engine config / dynamic-library management, not compute. [HIGH/OBSERVED — header + the
-`MODIFY_POOL_OP` enum + validator.]
+Engine config / dynamic-library management, not compute.
 
 ---
 
@@ -667,7 +655,7 @@ their **name and struct** are custom-op marshalling, not POOL compute. They are 
 custom-op subsystem encodes a call into a customer C++ op. They carry **no** compute dtype field
 and perform **no** tensor math. The struct + the `CUSTOM_OP_ARG_TYPE/LOCATION/UNION` enum block
 exist **only** in the SUNDA arch-isa (the format was frozen at v2); CAYMAN+ keep the enum value
-`// Y` but ship no struct. [HIGH/OBSERVED — `fd`: 2 `custom_op*.h` under sunda, 0 elsewhere.]
+`// Y` but ship no struct. [HIGH/OBSERVED — 2 `custom_op*.h` under sunda, 0 elsewhere.]
 
 ### 14. `0x85 CUSTOM_OP_HEADER` — `CUSTOM_OP_HEADER_STRUCT` (64 B, SUNDA-only)
 
@@ -684,15 +672,13 @@ exist **only** in the SUNDA arch-isa (the format was frozen at v2); CAYMAN+ keep
 
 `offsetof`: `num_payloads@12 function_id@14 num_arguments@15 has_scratch_space@16
 scratch_space_addr@20 scratch_space_size@24 scratch_space_num_partitions@28`, `sizeof=64`.
-[HIGH/OBSERVED.]
 
 Validator `is_valid_custom_op_header`: valid header/events + CustomOpHeader opcode + reserved
 zero + `scratch_space_valid` (`has_scratch_space == 0` ⟺ addr/size/num_partitions all 0; else all
 non-zero). The HEADER is the first 64 B of a multi-64 B custom-op instruction: one HEADER + N
 PAYLOAD blocks. Dispatch: the runtime/ucode reads the HEADER, resolves `function_id` to an
 external custom-op library entry, copies the payload args, and calls the customer C++ op.
-[Struct/validator/semantics **HIGH/OBSERVED**; the ucode external-lib dispatch path
-**MED/INFERRED** — not byte-traced.]
+[HIGH struct+semantics; MED external-lib dispatch path]
 
 ### 15. `0x86 CUSTOM_OP_PAYLOAD` — `CUSTOM_OP_PAYLOAD_STRUCT` (64 B, SUNDA-only)
 
@@ -702,13 +688,12 @@ external custom-op library entry, copies the payload args, and calls the custome
 | 15 | `arg_type` (`CUSTOM_OP_ARG_TYPE`) | 1 | `{INVALID=0, TENSOR=1, ARRAY_OF_TENSOR=2}` |
 | 16 | `arg` (`CUSTOM_OP_ARG_UNION`) | 48 | opaque `{tensor \| array_of_tensor}`; `tensor.location {SBUF=1, HBM=2}` |
 
-`offsetof`: `arg_type@15 arg@16`, `sizeof(arg union)=48`, `sizeof(struct)=64`. [HIGH/OBSERVED.]
+`offsetof`: `arg_type@15 arg@16`, `sizeof(arg union)=48`, `sizeof(struct)=64`.
 
 Each payload carries **one** argument; per the header comment, output arguments precede input
 arguments, and `ARRAY_OF_TENSOR` is a meta-type recording the array's tensor count. The header's
 own tag reads `… / POOL / CUSTOM_OP_PAYLOAD` — the only sense in which the pair is "POOL" is that
 it is issued into the POOL engine's instruction queue. No POOL arithmetic is performed.
-[HIGH/OBSERVED.]
 
 ---
 
@@ -743,7 +728,6 @@ breakpoint/slope table that `ACTIVATION_TABLE_LOAD 0x23` installs — see
 | 60 | `reverse_operands` (`TENS_SCALAR_REV_OPS`) | 1 | |
 
 `offsetof`: `reduce_cmd@26 activation_func@35 imm0@36 relu_param@44 dst@48`, `sizeof=64`.
-[HIGH/OBSERVED.]
 
 **Semantics.** Like base ACTIVATE it applies a scalar activation FUNCTION (selected by
 `activation_func`, evaluated by the HW PWL datapath) to a tensor, but on a **2-D** pattern and
@@ -765,8 +749,8 @@ and reduction tightly:
 ```
 
 ⇒ ACTIVATE2 fuses `{affine via op0/op1}` + `{activation_func PWL}` + `{reduce}` into one pass.
-The exact affine-then-PWL-then-reduce ordering needs a device-body decode (deferred). [Struct +
-validator **HIGH/OBSERVED**; the fusion *order* **MED/INFERRED**.]
+The exact affine-then-PWL-then-reduce ordering needs a device-body decode (deferred).
+[HIGH struct+validator; MED fusion order]
 
 ### 17. `0x26 ACTIVATE_MULTIPASS` — multi-pass activation with a prev-pass accumulator (`S1S2D2_AM`, 64 B)
 
@@ -785,7 +769,7 @@ validator **HIGH/OBSERVED**; the fusion *order* **MED/INFERRED**.]
 | 48 | `dst_mem_pattern` (`MEM_PATTERN2D`) | 12 | |
 | 60 | `imm1` | 4 | |
 
-`offsetof`: `activation_func@34 prev_pass_mem_pattern@40 imm1@60`, `sizeof=64`. [HIGH/OBSERVED.]
+`offsetof`: `activation_func@34 prev_pass_mem_pattern@40 imm1@60`, `sizeof=64`.
 
 Deltas vs ACTIVATE2: (i) **adds** a 1-D `prev_pass_mem_pattern @40` — the accumulator carried
 between passes; (ii) **drops** the 3rd immediate (`relu_param`); (iii) src, dst, **and** prev_pass
@@ -801,8 +785,7 @@ are **SBUF-only** (`AllowedInPSUM::False` on all three — ACTIVATE2 allowed PSU
 // than the single-shot PSUM-drain of 0x21/0x25.
 ```
 
-[Struct + validator **HIGH/OBSERVED**; the streaming semantics **MED/INFERRED** from the struct
-shape + the SBUF-only + reduce_cmd IR.]
+[HIGH struct+validator; MED streaming semantics]
 
 ### 18. The MAVERICK ACT→DVE fold (no opcode move)
 
@@ -815,20 +798,18 @@ bytes. But there is a real **engine/scheduling migration** of `0x25`:
   firmware-wide**, and the MAVERICK DVE PROF_CAM arms `0x23 + 0x25` — i.e. ACTIVATE2 is now
   scheduled/decoded on the **DVE engine lane**, with no separate ACT handler image.
 - `0x26 ACTIVATE_MULTIPASS` is **not** in the MAVERICK DVE PROF arm list and has **0× self-name**
-  (verified this analysis) — spec-present (enum+struct+validator) but **image-dormant** in the
-  shipped carves.
+  — spec-present (enum+struct+validator) but **image-dormant** in the shipped carves.
 - Microarch corroboration: `0x21`/`0x25`/`0x26` all validate channels against
   `DVE_NUM_CHANNELS` — the activation family was already sized to the DVE channel grid at NC-v4+,
   consistent with the v5 fold.
 
-[Opcode-stable + `0x25`-on-DVE + `0x26`-dormant **HIGH/OBSERVED**; the `DVE_NUM_CHANNELS` causal
-reading **MED/INFERRED**.]
+[HIGH opcode-stable + DVE arm; MED causal reading]
 
 > **NOTE — empirical self-name counts.** `Activate2` resolves **2×** (not the full POOL/ACT 3×)
 > in `libnrtucode_internal.so` (`0x4050a0`/`0x6cba20`), `Activate` and `ActivationTableLoad`
 > resolve **3×**, and `ActivateMultipass` resolves **0×**. The `2×` for ACTIVATE2 reflects its
 > presence in two engine images (the MARIANA ACT handler and one other) and absence from the
-> third, consistent with the v4→v5 transition. [HIGH/OBSERVED.]
+> third, consistent with the v4→v5 transition.
 
 The PROFILER (`PROF_CAM`) is the per-engine HW-decode instruction profiler — it *arms* which
 opcodes get decode-profiled. It is **not** the activation PWL lookup, which is the separate
@@ -856,18 +837,18 @@ on both); the only per-gen drift in a *shared* struct is `D4_MR` gaining a 4th v
 | `0x26` `ACTIVATE_MULTIPASS` | absent | absent | absent | `// Y` + `S1S2D2_AM` | ×0 (dormant) |
 
 SUNDA device-string absence for the engine-native ops is a RELEASE-build artifact (SUNDA ships
-`SUNDA_*_RELEASE_*` only); presence rests on the header. [Opcode+struct **HIGH/OBSERVED** all
-gens; SUNDA self-name absence **MED/INFERRED** (RELEASE).]
+`SUNDA_*_RELEASE_*` only); presence rests on the header.
+[HIGH opcode+struct all gens; MED SUNDA self-name absence]
 
 ---
 
 ## 20. Honesty ledger
 
-**HIGH / OBSERVED (read/compiled/byte-scanned this analysis).**
+**HIGH / OBSERVED.**
 
-- All fourteen names + `// Y` flags re-grepped byte-exact from the four `common.h` enums
+- All fourteen names + `// Y` flags read byte-exact from the four `common.h` enums
   (line refs §1); the `0x49`/`0x93`/`0x95` non-opcode enum aliases flagged.
-- All fourteen `struct2opcode` bindings via `jq`; all fourteen structs `gcc`-compiled to
+- All fourteen `struct2opcode` bindings; all fourteen structs `gcc`-compiled to
   `sizeof=64` (maverick + sunda) with `offsetof` matching the header columns. `CUSTOM_OP_ARG_UNION
   = 48 B`. SUNDA `D4_MR` set = `{MEMSET, REG_STORE, RNG}` (no `DVE_READ_INDICES`).
 - Dispatch surfaces: `S: <Name>\n` exact-token byte counts — `CopyPredicated ×4` (DVE,

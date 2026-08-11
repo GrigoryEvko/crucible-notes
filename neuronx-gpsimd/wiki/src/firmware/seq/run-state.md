@@ -12,7 +12,7 @@ the microcode it interprets. This page **opens the SEQ-internals cluster**
 [SoC window-manager](soc-window-manager.md)); it owns the *state* and the *transitions*,
 and cross-links the loop, the dispatch hub, and the error path rather than re-deriving them.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The anchor image is
+Everything below is **byte-pinned to a shipped artifact**. The anchor image is
 the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from `libnrtucode.a` (member
 `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code, `…_DRAM_contents.c.o` for strings),
 disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, Cairo µarch,
@@ -24,11 +24,12 @@ onto the addresses here. Where a sibling note or the prompt-level report disagre
 disassembly, **the binary wins**, and an in-place **CORRECTION** says so.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string/JSON-field read from a shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string/JSON-field read from a shipped image; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor;
 crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading),
-**NOTE** (orientation).
+**NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag.
 
 > **NOTE — addressing convention.** All code addresses are **IRAM-image offsets == device
 > IRAM VA** (`ResetVectorOffset=0`, InstRAM base `0x0`). DRAM string offsets are the low-16
@@ -113,7 +114,7 @@ through the device MMIO window. On the CAYMAN family the absolute address is bui
 
 So the CAYMAN-family device-side aperture is **`0x04000000 + nx-offset`**, observed directly
 from the address-build bytes: `start_ctrl = 0x04000004`, `run_state = 0x04000008`,
-`intr_info = 0x0400001C`. `[HIGH/OBSERVED]`
+`intr_info = 0x0400001C`.
 
 | nx offset | CAYMAN device abs addr | byte-exact const16 site (IRAM) |
 |---|---|---|
@@ -130,14 +131,14 @@ from the address-build bytes: `start_ctrl = 0x04000004`, `run_state = 0x04000008
 > `0x200030802027a000`. Those are the **host/SoC** addresses of the same 64 KiB aperture; the
 > `0x04000000`-based addresses above are the **device-local** view the SEQ firmware actually
 > dereferences. For the device-side read sites on this page, the const16-built `0x04000000`
-> base is authoritative — it is what the instruction stream loads/stores. `[HIGH/OBSERVED]`
+> base is authoritative — it is what the instruction stream loads/stores.
 
 ### 1.2 The resume-PC register pair (general bundle)
 
 The resume PC is saved/restored through two registers in the **`general` bundle** of the same
 regfile (`AddressOffset 0x1000`, `ArraySize 60`, `BundleSizeInBytes 0x20`, one `lr.value`
 `[31:0]` per slot). With stride `0x20`, `lr[3] = 0x1000 + 3·0x20 = 0x1060` and
-`lr[4] = 0x1080`. The firmware addresses them as `0x04001060` / `0x04001080`. `[HIGH/OBSERVED]`
+`lr[4] = 0x1080`. The firmware addresses them as `0x04001060` / `0x04001080`.
 
 | general reg | device abs addr | role |
 |---|---|---|
@@ -176,7 +177,6 @@ The store at `0x2d22` is a **displaced** `s32i.n a4,a3,4`: `a3` still holds
 `0x04000004` (`start_ctrl`) from the ack, and `+4` lands on `0x04000008` (`run_state`); the
 `movi a5,0x400 ; const16 a5,8` at `0x2d1c` independently materialises the same `run_state`
 address into `a5` but is not the store base — a small dead-code artifact of the codegen.
-`[HIGH/OBSERVED]`
 
 > **QUIRK — there is no numeric `HALTED` or `ERROR` code.** `RUNNING(1)` and `PAUSED(2)` are
 > the only stable status codes the host reads. The fatal halt writes the **running-flag struct
@@ -269,7 +269,7 @@ remote status word and a test of **bit 2**.
 > the only index whose slot holds `0x2e89` is **`0x60`**. The handler *body* (`0x2e89`,
 > `call8 0x1ca4`, the `rer`, the two call targets) is exactly as reported — only the table
 > index was wrong. The `0xa1` figure appears to be a transcription collision with the ISA-halt
-> finalize address `0xa390`. **Use index `0x60`.** `[HIGH/OBSERVED]`
+> finalize address `0xa390`. **Use index `0x60`.**
 
 ```c
 // sync/wait handler @0x2e89  (dispatch table index 0x60)
@@ -333,7 +333,7 @@ void setup_halt(running_flag_t *flag /*a2*/, u32 halt_reason /*a3, saved at a1+1
 > `a4`(=`0x04001060`) + `0x20` = `0x04001080`; the `movi a5,0x400 ; const16 a5,0x1080` pair
 > *materialises* the HI address into `a5` but `a5` is **not** the store base — a dead pair,
 > like the `a5` in §2. Both resolve to `0x04001080`; do not be misled into thinking two
-> different addresses are touched. `[HIGH/OBSERVED]`
+> different addresses are touched.
 
 ### 4c. Entering-HALT `@0x3a44` + fatal dispatch `@0xa2e0` + finalize `0xa390`
 
@@ -355,7 +355,7 @@ void fatal_halt(void) {
 }
 ```
 
-> **CORRECTION (folds SX-FW-09's "inferred halt CSR ~0x8_0400").** FW-09 left the halt-CSR
+> **CORRECTION (folds FW-09's "inferred halt CSR ~0x8_0400").** FW-09 left the halt-CSR
 > identity inferred. The Entering-HALT store target is byte-exactly **`run_state`** (`nx 0x0008`
 > == abs `0x04000008`), **not** `instr_halt_ctrl` (`0x0014`). The value stored is the
 > halt-context **pointer** `0x00085644`, used as a fatal sentinel. `instr_halt_ctrl` (`0x0014`)
@@ -455,7 +455,7 @@ void raise_fatal(err_t *e) {            // 13e00: entry a1,48
 > exits the loop on `poll-surprises==0` *or* the stop-flag clearing, returns `retw.n` at
 > `0x31a9` to the outer boot loop `@0x2499`, which re-enters `enter_run` and spin-polls
 > `start_ctrl` again. HALT is reserved for the fatal/error path and the explicit
-> `op@2e89` bit2-clear case. `[HIGH/OBSERVED]`
+> `op@2e89` bit2-clear case.
 
 > **NOTE — PC-bounds is a *soft* guard.** `is_pc_in_bounds @0x68d0`
 > ([pc-bounds.md](pc-bounds.md)) is a speculative prefetch guard (skip the prefetch on
@@ -515,7 +515,7 @@ void raise_fatal(err_t *e) {            // 13e00: entry a1,48
 
 Method: carve the `NX_POOL_DEBUG` IRAM `.rodata` from `libnrtucode.a` for each generation
 (`objcopy -O binary --only-section=.rodata`) and byte-search the run-state-machine
-instruction signatures. Image sizes (this session): **SUNDA 59,600 / CAYMAN 116,768 /
+instruction signatures. Image sizes: **SUNDA 59,600 / CAYMAN 116,768 /
 MARIANA 114,816 / MARIANA_PLUS 119,616 bytes**. `[HIGH/OBSERVED]`
 
 **CAYMAN family (CAYMAN / MARIANA / MARIANA_PLUS) — identical algorithm & encoding, only
@@ -534,7 +534,7 @@ bytes match):
 | `run_state==2` dispatcher test | `0x4c82` | `0x4e02` | `0x4e9e` |
 
 ⇒ CSR aperture, register offsets, enum values (`1`/`2`), handshake, Pause/Halt logic, and
-dispatcher are **100% invariant** across the three Cayman-class gens. `[HIGH/OBSERVED]`
+dispatcher are **100% invariant** across the three Cayman-class gens.
 
 > **NOTE — offset anchors.** The `run_state=1` row anchors on the start of the
 > `52a4005408004913` byte signature (the `const16 a5,8` materialise + the `s32i.n a4,a3,4`
@@ -560,7 +560,7 @@ window (`0x00100000` vs `0x04000000`) and the per-register offsets (`start_ctrl 
 > **QUIRK — SUNDA's run-state CSR window is a genuine architectural aperture difference.**
 > `0x00100000` (SUNDA) vs `0x04000000` (CAYMAN family) is observed directly from the two
 > images' address-build bytes — not assumed. SUNDA's `intr_info`-style `movi 16; const16 ,0x1c`
-> RUN selector was not found in this pass, so SUNDA's dispatcher likely lacks the
+> RUN selector was not found, so SUNDA's dispatcher likely lacks the
 > `intr_info==1` selector or encodes it elsewhere (`[MED/INFERRED]` — the SUNDA dispatcher was
 > not fully traced here).
 
@@ -599,7 +599,7 @@ sibling SEQ-internals pages cover the machinery this page only touches at transi
 - [SEQ PC-Bounds Guard](pc-bounds.md) — `is_pc_in_bounds @0x68d0`, the soft prefetch guard
   noted in §7.
 - [`tpb_xt_local_reg` CSR (nx / general / window bundles)](../../control/csr/tpb-xt-local-reg.md)
-  *(target not yet authored — canonical home for the full register-bundle map; offsets/fields
+  *(canonical home for the full register-bundle map; offsets/fields
   here are read directly from `tpb_xt_local_reg.json`)*.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the `OBSERVED` /
   `INFERRED` / `CARRIED` × `HIGH` / `MED` / `LOW` tags used throughout.

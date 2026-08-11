@@ -8,7 +8,7 @@ Three of `hlo-opt`'s HLO passes are where stock XLA collective ops stop being ge
 
 The other two passes are fusion, not lowering, but they share the same file and the same collective family. `xla::FuseSendRecv` (key `fuse-send-recv`) pairs `Send`/`Recv` by `channel_id` — keyed on the **Done** opcodes `kSendDone`/`kRecvDone`, not the bare `Send`/`Recv` — and emits a fused `kCustomCall` carrying a `channel_id=<N>` backend-config plus an output tuple, hard-failing with `FailedPrecondition` if any half lacks a `channel_id`. `xla::FuseReduceScatter` (key `fuse-reduce-scatter`) is a 74-byte driver that ORs two helpers, `concatenationFusion` and `concatenationDividendFusion`, over the entry computation only; both detect N `reduce-scatter` ops feeding one `concatenate` and merge them into one wider `kReduceScatter` via `CreateReduceScatter`.
 
-All three are **Neuron-authored passes** (`xla::` namespace, no upstream-XLA equivalent), reusing stock XLA instruction factories (`CreateCustomCall`, `CreateReduceScatter`, `CreateTuple`). The binary was archived with the decompiler disabled, so the reconstruction is from raw `objdump -d -M intel` on the live ELF, the IDA `context/*.md` callee sidecars, the `HloOpcodeString` opcode-enum anchor, and byte-exact rodata reads. The opcode gate, the target-name templates, the suffix tables, and the exclusion of `kAllToAll`/`kCollectivePermute` are all directly observed; the per-collective `backend_config` key format and the `FuseSendRecv` fused target literal are not isolated (the rewrite runs through deferred closures / runtime string ops) and are tagged MED.
+All three are **Neuron-authored passes** (`xla::` namespace, no upstream-XLA equivalent), reusing stock XLA instruction factories (`CreateCustomCall`, `CreateReduceScatter`, `CreateTuple`). The binary was archived with the decompiler disabled, so the reconstruction is from raw `objdump -d -M intel` on the live ELF, the IDA `context/*.md` callee sidecars, the `HloOpcodeString` opcode-enum anchor, and byte-exact rodata reads. The opcode gate, the target-name templates, the suffix tables, and the exclusion of `kAllToAll`/`kCollectivePermute` are all directly observed. Two things are not: the per-collective `backend_config` key format and the `FuseSendRecv` fused target literal, both of which are produced by deferred closures and runtime string operations rather than static constants.
 
 For reimplementation, the contract is:
 
@@ -164,18 +164,18 @@ for (g : groups):
 
 // channel_id / collective-dimension: captured into the rewrite closure
 // (shr rax,1 @0x1e9125a reads the optional channel_id; array_state count = dimension)
-// carried in the new CC's backend_config — exact key format NOT isolated (MED)
+// carried in the new CC's backend_config — exact key format not isolated
 ```
 
-The `replica_groups` are preserved exactly. The `channel_id`, `use_global_device_ids`, and the collective dimension (`all_gather_dim` for AllGather, `scatter_dim` for ReduceScatter) are captured into the per-collective deferred closure and carried into the custom-call's `backend_config`; there is **no inline `CreateCustomCall`** call site inside `Run` (the closures run at loop-exit), and the decompiler was disabled, so the exact `backend_config` key form is not recovered (MED).
+The `replica_groups` are preserved exactly. The `channel_id`, `use_global_device_ids`, and the collective dimension (`all_gather_dim` for AllGather, `scatter_dim` for ReduceScatter) are captured into the per-collective deferred closure and carried into the custom-call's `backend_config`; there is **no inline `CreateCustomCall`** call site inside `Run` — the closures run at loop-exit — so the exact `backend_config` key form is not recovered [UNRESOLVED].
 
 ### Conversion table
 
 | NativeOp (opcode) | CustomCall target | Attrs preserved | Confidence |
 |---|---|---|---|
-| `kAllReduce` (7) | `AwsNeuronAllReduce<Add\|Max\|Min><dtype>` | replica_groups (verbatim); reduce-op + dtype in name; channel_id/use_global_ids in closure | CERTAIN (name); MED (channel) |
-| `kReduceScatter` (87) | `AwsNeuronReduceScatter<Add\|Max\|Min><dtype>` | replica_groups; reduce-op + dtype in name; scatter-dim in closure | CERTAIN (name); MED (dim) |
-| `kAllGather` (4) | `AwsNeuronAllGather<dtype>` (**no** reduce-op) | replica_groups; dtype in name; all_gather_dim in closure | CERTAIN (name); MED (dim) |
+| `kAllReduce` (7) | `AwsNeuronAllReduce<Add\|Max\|Min><dtype>` | replica_groups (verbatim); reduce-op + dtype in name; channel_id/use_global_ids in closure | CERTAIN (name); MEDIUM (channel) |
+| `kReduceScatter` (87) | `AwsNeuronReduceScatter<Add\|Max\|Min><dtype>` | replica_groups; reduce-op + dtype in name; scatter-dim in closure | CERTAIN (name); MEDIUM (dim) |
+| `kAllGather` (4) | `AwsNeuronAllGather<dtype>` (**no** reduce-op) | replica_groups; dtype in name; all_gather_dim in closure | CERTAIN (name); MEDIUM (dim) |
 | `kAllToAll` (10) | **NOT handled** — falls through gate | — | CERTAIN (no 0xa path) |
 | `kCollectivePermute` (29) | **NOT handled** here | — | CERTAIN (no 0x1d path) |
 
@@ -254,13 +254,11 @@ StatusOr<bool> Run(HloModule *module, const flat_hash_set<string_view>&):
 
 The pairing key is `channel_id`. The pass keys on the **Done** opcodes (`kSendDone=103`, `kRecvDone=84`), reaches back through `mutable_operand(0)` to the producing `Send`/`Recv`, and reads its `channel_id()`. The fused `backend_config` is the literal `"channel_id="` concatenated with the decimal channel id, rendered via the two-digit ASCII lookup table at `0x4091a0` (`"0001…99"`, with the `0x346dc5d63886594b` divide-by-100 magic). The custom-call is created at `CustomCallApiVersion = 1` (`API_VERSION_ORIGINAL`).
 
-> **GOTCHA —** the match keys are `kSendDone`/`kRecvDone`, **not** `kSend`/`kRecv`. A reimplementation that scans for bare `Send`/`Recv` will never fire — the Done node is the anchor, and the actual Send/Recv is reached one operand-hop back.
-
-> **CORRECTION (S2-02) —** S2-02 described this pass as keyed on bare `Send`/`Recv`. The binary keys on `kSendDone(103)`/`kRecvDone(84)`, pairs by `channel_id`, and hard-fails with `FailedPrecondition("Send and Recv must have channel_id")` (`0x28a4f0`) when either is absent.
+> **GOTCHA —** the match keys are `kSendDone` (103) / `kRecvDone` (84), **not** `kSend`/`kRecv` — the pass name suggests otherwise. A reimplementation that scans for bare `Send`/`Recv` will never fire: the Done node is the anchor, and the actual Send/Recv is reached one operand-hop back. Pairing is by `channel_id`, and a missing one on either half is a hard `FailedPrecondition("Send and Recv must have channel_id")` (`0x28a4f0`).
 
 ### Token-shape validators
 
-The fused rewrite walks the token plumbing and asserts shape invariants. All are verbatim rodata strings (CERTAIN):
+The fused rewrite walks the token plumbing and asserts shape invariants. Each guard below is a verbatim rodata string:
 
 | String | rodata | Guards |
 |---|---|---|
@@ -270,9 +268,9 @@ The fused rewrite walks the token plumbing and asserts shape invariants. All are
 | `Cannot handle nested tuple shape` | `0x2e4770` | flat-tuple-only restriction |
 | `nullptr != entry_computation_` | `0x2108c9` (`./xla/hlo/ir/hlo_module.h` `0x25f076`) | entry computation present |
 
-### The fused target name (GAP)
+### The fused target name
 
-The fused custom-call's `custom_call_target` is **constructed at runtime** (string ops via `r14`/`[rbp-0x638]`), and an exhaustive rodata-reference sweep of the 12.6 KB function finds **no `AwsNeuron*` literal** anywhere — the only printable strings referenced are `"channel_id="` and `"Send and Recv must have channel_id"`. The name is therefore derived from the matched `Send`/`Recv` (most plausibly copied from their existing custom-call target via `BackendConfigWrapper::GetRawString`), not a fixed `AwsNeuronSendRecv`-style literal. The exact literal is **UNRESOLVED (MED)** — the decompiler was disabled and the string is not a static constant. This page does **not** invent a name for it.
+The fused custom-call's `custom_call_target` is **constructed at runtime** (string ops via `r14`/`[rbp-0x638]`), and an exhaustive rodata-reference sweep of the 12.6 KB function finds **no `AwsNeuron*` literal** anywhere — the only printable strings referenced are `"channel_id="` and `"Send and Recv must have channel_id"`. The name is therefore derived from the matched `Send`/`Recv` (most plausibly copied from their existing custom-call target via `BackendConfigWrapper::GetRawString`), not a fixed `AwsNeuronSendRecv`-style literal. The exact literal is [UNRESOLVED] — the string is not a static constant, and this page does not invent a name for it.
 
 ---
 
@@ -296,7 +294,7 @@ xla::FuseReduceScatter::Run  @ 0x1eace30   (74 B — thin driver)
 ### Algorithm
 
 ```c
-// xla::FuseReduceScatter::Run @ 0x1eace30 — full disasm, CERTAIN
+// xla::FuseReduceScatter::Run @ 0x1eace30 — full 74-byte body
 StatusOr<bool> Run(HloModule *module, const flat_hash_set<string_view>&):
     comp    = module->entry_computation();                  // 0x1eaa310
     changed = xla::concatenationFusion(comp);               // 0x1eabf80 -> ebx
@@ -307,7 +305,7 @@ StatusOr<bool> Run(HloModule *module, const flat_hash_set<string_view>&):
 Two independent helpers, ORed; both operate on the **entry computation only**.
 
 ```c
-// xla::fuseWithOperands @ 0x1eaa460 — the shared rewriter, CERTAIN
+// xla::fuseWithOperands @ 0x1eaa460 — the shared rewriter
 bool fuseWithOperands(HloComputation *comp,
                       vector<HloInstruction*> operands,
                       HloReduceScatterInstruction *base):
@@ -333,7 +331,7 @@ The new wide reduce-scatter inherits `replica_groups`, `to_apply` (reduction bod
 
 | Helper | Detects | Requires | Result | Confidence |
 |---|---|---|---|---|
-| `concatenationFusion` | `concat(RS, RS, …)` (thru opt-barrier/tuple) | shared replica_groups + to_apply + scatter-dim | 1 wide `kReduceScatter` | HIGH (opcodes CERTAIN; pattern shape MED) |
+| `concatenationFusion` | `concat(RS, RS, …)` (thru opt-barrier/tuple) | shared replica_groups + to_apply + scatter-dim | 1 wide `kReduceScatter` | HIGH |
 | `concatenationDividendFusion` | `RS(div(concat(…), bcast(const)))` | divisor `IsAll` uniform const | fused `kReduceScatter` + re-applied divide | HIGH |
 
 > **NOTE —** `FuseReduceScatter` (#28) is **not** the same machinery as the combiner `NeuronReduceScatterCombiner` (#78). #28 is concat-based structural fusion over the entry computation; #78 is a key-based combiner using the XLA combiner + `CombineKey`. They run independently and target different IR shapes.
@@ -375,17 +373,20 @@ absl::Status xla::FailedPrecondition(...);                         // 0x1eacef0
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims were re-checked against the live ELF, not just the backing report:
+| Claim | Anchor |
+|---|---|
+| Exactly three collectives convert | `Run` contains `cmp al,0x7` (`0x1e90ea9`), `cmp al,0x57` (`0x1e90e68`), `cmp al,0x4` (`0x1e90e70`), each branching to a distinct base-name builder; there is no fourth collective compare |
+| AllToAll and CollectivePermute are excluded | sweeping the full `Run` body for `cmp al,0xa` and `cmp al,0x1d` returns zero hits — the exclusion is the absence of the compare instruction, not an inference from a missing name |
+| Target-name templates and suffix tables | every base template (`AwsNeuronAllRedu` / `AwsNeuronReduceS` / `AwsNeuronAllGath`), every reduce-op (`Add`/`Max`/`Min`/`UNKNOWNOP`), and every dtype suffix (`_f32`/`_bf16`/`_f16`/`_u32`/`_s64`/`_s32`/`_UNKNOWNDTYPE`) read byte-exact from rodata at the cited VAs (delta −0x200000) |
+| `FuseReduceScatter` is `concatenationFusion` OR `concatenationDividendFusion` | the whole 74-byte `Run` is `entry_computation()` → `call concatenationFusion` (`ebx`) → `call concatenationDividendFusion` → `or ebx,eax` → return; `fuseWithOperands` calls `CreateReduceScatter` (`0x9668310`) with the full mangled signature |
+| `FuseSendRecv` keys on the Done opcodes and emits a custom-call + tuple | `cmp al,0x54` and `cmp al,0x67` present; `channel_id()`, `FailedPrecondition`, `CreateCustomCall` (string_view target + string backend_config + CustomCallApiVersion), and `CreateTuple` all called from the body |
 
-1. **Three-collective handled set.** `objdump` of `Run` shows exactly `cmp al,0x7` (`0x1e90ea9`), `cmp al,0x57` (`0x1e90e68`), `cmp al,0x4` (`0x1e90e70`), each branching to a distinct base-name builder. No fourth collective compare. **CONFIRMED.**
-2. **AllToAll / CollectivePermute exclusion.** A grep of the full `Run` body for `cmp al,0xa` and `cmp al,0x1d` returns zero hits. The exclusion is the absence of the compare, not an inference. **CONFIRMED.**
-3. **Target-name templates + suffix tables.** Every base template (`AwsNeuronAllRedu`/`AwsNeuronReduceS`/`AwsNeuronAllGath`), every reduce-op (`Add`/`Max`/`Min`/`UNKNOWNOP`), and every dtype suffix (`_f32`/`_bf16`/`_f16`/`_u32`/`_s64`/`_s32`/`_UNKNOWNDTYPE`) was read byte-exact from rodata at the cited VAs (delta −0x200000). **CONFIRMED.**
-4. **FuseReduceScatter = concatenationFusion ‖ concatenationDividendFusion.** The full 74-byte `Run` disassembles to `entry_computation()` → `call concatenationFusion` (`ebx`) → `call concatenationDividendFusion` → `or ebx,eax` → return. `fuseWithOperands` calls `CreateReduceScatter` (`0x9668310`) with the full mangled signature. **CONFIRMED.**
-5. **FuseSendRecv keys + emission.** `cmp al,0x54` and `cmp al,0x67` present; `channel_id()`, `FailedPrecondition`, `CreateCustomCall` (string_view target + string backend_config + CustomCallApiVersion), and `CreateTuple` all called from the body. **CONFIRMED.**
+## Limits of this reading
 
-Two items remain MED and are **not** fabricated: the per-collective `backend_config` key format for ConvertCollectivesToCustomCall (deferred-closure rewrite, no inline `CreateCustomCall`), and the `FuseSendRecv` fused target literal (runtime-assembled string, no `AwsNeuron*` constant in the function).
+- The per-collective `backend_config` key format for `ConvertCollectivesToCustomCall` is not recovered: the rewrite runs through deferred closures with no inline `CreateCustomCall` call site.
+- The `FuseSendRecv` fused target literal is not recovered: the name is assembled at runtime, and no `AwsNeuron*` constant is referenced anywhere in the 12.6 KB function.
 
 ---
 
@@ -401,5 +402,5 @@ Two items remain MED and are **not** fabricated: the per-collective `backend_con
 
 - [Collective-Permute Path](collectivepermute-to-allgather.md) — 4.8; where `kAllToAll`/`kCollectivePermute` are actually lowered (not here)
 - [Collective Combiners](collective-combiners.md) — 4.5; the key-based RS/AR combiners that run alongside these fusions
-- [SPMD Emission](../distribution/spmd-emission.md) — Part 13; produces the native collectives this pass converts
-- [Lower-Local-Collectives](../walrus/lower-local-collectives.md) — Part 8; the consumer of the `AwsNeuron*` custom-call family
+- [SPMD Emission](../distribution/spmd-collective-emission.md) — Part 13; produces the native collectives this pass converts
+- [Lower-Local-Collectives](../walrus/local-collectives.md) — Part 8; the consumer of the `AwsNeuron*` custom-call family

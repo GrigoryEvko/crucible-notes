@@ -30,15 +30,15 @@ The driver is intentionally **thin at the top and fat in the leaves**. `runOnMod
 | **Debug artifact** | optional `<fn>.TensorizerBIR.json` (`curModule.toJson` → `json.dumps`) |
 | **Source anchor** | each method body carries the literal `"neuronxcc/starfish/penguin/targets/codegen/BirCodeGenLoop.py"` + a line |
 
-> **NOTE — Line-number convention.** Every method body embeds a `_Pyx_TraceSetupAndCall` traceback literal: the `.py` path and a line number. These are the Cython *def-line* anchors cited throughout (e.g. `runOnModule` → `py4010`). A sibling found that `addr2line` on the DWARF returns the *body-first-line*, which can sit a few lines below the def-line. Where both are available the DWARF line is preferred; this page cites the traceback def-lines because they are the stable per-method anchors present in `.rodata`.
+> **NOTE — Line-number convention.** Every method body embeds a `_Pyx_TraceSetupAndCall` traceback literal carrying the `.py` path and a line number. Those are Cython *def-line* anchors, and they are what this page cites (e.g. `runOnModule` → `py4010`), because they live in `.rodata` and are stable per method. `addr2line` on the DWARF answers a different question — it returns the *body-first-line*, which can sit a few lines below the def-line — so the two will not always agree.
 
-> **METHOD — How the call sequences were recovered.** The Hex-Rays decompiled bodies suffer "local variable allocation has failed" mangling, so the ordered attribute/method-call sequence for each method is recovered from the **disasm**: each `mov rsi, …__pyx_n_s_<id>` / `__pyx_kp_[us]_<lit>` operand names a Python identifier or string literal, and reading those **in program order** reconstructs the actual call chain. Every claim below is tagged CONFIRMED (directly in this binary's disasm/strings) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.
+> **NOTE — how the call sequences were recovered.** The Hex-Rays decompiled bodies carry "local variable allocation has failed" mangling, so the ordered attribute/method-call sequence for each method comes from the disassembly instead: each `mov rsi, …__pyx_n_s_<id>` / `__pyx_kp_[us]_<lit>` operand names a Python identifier or string literal, and reading those in program order reconstructs the call chain. Where a name-trace is the evidence for a claim, the trace itself is quoted.
 
 ---
 
 ## 1. The call tree at a glance
 
-The driver is a depth-first walk of the Penguin function tree. The spine is the `BirCodeGenLoopGen` base visitor firing `stmt.transform(self)` per node; this class supplies the per-node-type overrides. CONFIRMED for every named method (disasm name-traces, §§3–6).
+The driver is a depth-first walk of the Penguin function tree. The spine is the `BirCodeGenLoopGen` base visitor firing `stmt.transform(self)` per node; this class supplies the per-node-type overrides. Every method named below has a disasm name-trace behind it (§§3–6).
 
 ```text
 runOnModule(self, cls, cu)                         [py4010]  thin FAN-OUT
@@ -72,17 +72,17 @@ runOnModule(self, cls, cu)                         [py4010]  thin FAN-OUT
       └─ export_new_nki_fe_metrics / print_new_nki_frontend_cache_statistics
 ```
 
-The **`curBlockStack` discipline** is the spine of the whole walk: it is a LIFO of open BIR `BasicBlock`s, and *every* emitted instruction lands in `curBlockStack[-1]`. `beforeStmtTransform` pushes the function entry block `"Block1"`; each interior control node (`transformAxis`/`ScopeRegion`/`While`) pushes its body block and pops it after recursing; `afterStmtTransform` pops `"Block1"`. CONFIRMED across §§3–6 (`curBlockStack` + `append`/`pop` name loads present in every relevant body).
+The **`curBlockStack` discipline** is the spine of the whole walk: it is a LIFO of open BIR `BasicBlock`s, and *every* emitted instruction lands in `curBlockStack[-1]`. `beforeStmtTransform` pushes the function entry block `"Block1"`; each interior control node (`transformAxis`/`ScopeRegion`/`While`) pushes its body block and pops it after recursing; `afterStmtTransform` pops `"Block1"`. The `curBlockStack` plus `append`/`pop` name loads are present in every relevant body.
 
-> **CORRECTION — codegenLoop does not walk the loop body.** An early framing attributed the body walk and per-statement dispatch to `codegenLoop`. That is wrong. `codegenLoop` (§4) only **materializes** the BIR loop axis + loop wrapper and **opens** the body block `"block0"`. The body walk lives in `transformAxis` (§4): `codegenLoop(axis)` → `for stmt in axis.stmts: stmt.transform(self)` → `curBlockStack.pop()`. Disasm name-trace of `transformAxis@0x62260`: `{axis, codegenLoop, stmts, transform, curBlockStack, self, axis, pop}`. CONFIRMED.
+> **GOTCHA — `codegenLoop` does not walk the loop body.** The name suggests otherwise, but `codegenLoop` (§4) only *materializes* the BIR loop axis and loop wrapper and *opens* the body block `"block0"`. The body walk belongs to `transformAxis`: `codegenLoop(axis)` → `for stmt in axis.stmts: stmt.transform(self)` → `curBlockStack.pop()`. The name-trace of `transformAxis@0x62260` reads `{axis, codegenLoop, stmts, transform, curBlockStack, self, axis, pop}`.
 
-> **CORRECTION — the Stmt hooks are PER-FUNCTION, not per-statement.** Despite the names, `beforeStmtTransform(self, f)` and `afterStmtTransform(self, f)` take a *function* `f`, not a statement. `beforeStmtTransform` is the function **prologue** (creates the `bir::Function`, opens the entry BB, wires IO, installs the identity weight, lowers the exit); `afterStmtTransform` is the **epilogue** (finalize tensors, pop the entry BB, flush NKI-frontend metrics). The genuinely per-statement bookkeeping (dep-edges, engine/predicate stamping) is in `transformInstruction` (§6), per emitted *instruction*. CONFIRMED (arg names + name-traces, §5).
+> **GOTCHA — the Stmt hooks are per-function, not per-statement.** Despite their names, `beforeStmtTransform(self, f)` and `afterStmtTransform(self, f)` take a *function* `f`. `beforeStmtTransform` is the function prologue — it creates the `bir::Function`, opens the entry BB, wires IO, installs the identity weight, and lowers the exit; `afterStmtTransform` is the epilogue, finalizing tensors, popping the entry BB, and flushing NKI-frontend metrics. The genuinely per-statement bookkeeping (dep-edges, engine and predicate stamping) lives in `transformInstruction` (§6), once per emitted *instruction*.
 
 ---
 
 ## 2. beta3 (this driver) vs beta2 (the klr path)
 
-The single most important orientation fact: there are two BIR front-ends, and this is the one that builds the Module. The distinction is crisp and CONFIRMED on the beta3 side from this binary; the beta2 column cross-references the `TranslateNKIASTToBIR` BackendPass (STRONG, multi-strand).
+The single most important orientation fact: there are two BIR front-ends, and this is the one that builds the Module. The beta3 column is read from this binary; the beta2 column cross-references the `TranslateNKIASTToBIR` BackendPass and is carried from the walrus side.
 
 | Axis | **`BirCodeGenLoop` (beta3)** | `TranslateNKIASTToBIR` (beta2, klr) |
 |---|---|---|
@@ -98,9 +98,9 @@ The single most important orientation fact: there are two BIR front-ends, and th
 | Dep edges | `transformInstruction` wires Flow/Output/Anti/Ordered + affine predicates | `KlirToBirCodegen` wires edges in the generated NKI function |
 | Debug artifact | `<fn>.TensorizerBIR.json` | bir-json (`createFromJson`) |
 
-**Convergence.** Both drivers terminate at the *same* BIR L1 Instruction data model — `Matmult`/`Activation`/`DMACopy`/… at the TongaISAInst granularity. beta3 constructs the whole Module top-down from the Penguin tree; beta2 patches NKI-kernel nodes into an already-built Module from serialized klr. They are true parallel front-ends, not stages of one pipeline. (STRONG.)
+**Convergence.** Both drivers terminate at the *same* BIR L1 Instruction data model — `Matmult`/`Activation`/`DMACopy`/… at the TongaISAInst granularity. beta3 constructs the whole Module top-down from the Penguin tree; beta2 patches NKI-kernel nodes into an already-built Module from serialized klr. They are true parallel front-ends, not stages of one pipeline.
 
-> **CONFIRMED — beta3 builds, it does not mutate.** The `curModule.addFunction` call lives in `beforeStmtTransform@0xd1080` (name loads `curModule`, `addFunction`, §5), and there is **no** `addFunction` anywhere in `runOnModule@0x975f0` or `runOnFunction@0xadb40` (their only structural attr loads are `subgraph_functions`/`runOnFunction` and `run_with_exception_handling`/`toJson` respectively). The Module is therefore constructed function-by-function during the prologue hook, never patched into an existing one — the defining beta3 property.
+> **NOTE — beta3 builds, it does not mutate.** The `curModule.addFunction` call lives in `beforeStmtTransform@0xd1080` (name loads `curModule`, `addFunction`, §5), and there is **no** `addFunction` anywhere in `runOnModule@0x975f0` or `runOnFunction@0xadb40` (their only structural attr loads are `subgraph_functions`/`runOnFunction` and `run_with_exception_handling`/`toJson` respectively). The Module is therefore constructed function-by-function during the prologue hook, never patched into an existing one — the defining beta3 property.
 
 ---
 
@@ -108,11 +108,11 @@ The single most important orientation fact: there are two BIR front-ends, and th
 
 ### `runOnModule` (`_319` @ `0x975f0`, `py4010`) — the module fan-out
 
-Signature CONFIRMED from disasm argparse: `runOnModule(self, cls, cu)`, with `pyargnames = [cls, cu]`. `cls` is a classmethod-style class pass-through (the same shape as the rest of the pass-entry convention); `cu` is the compilation unit / Penguin module being lowered.
+The disasm argparse gives the signature directly: `runOnModule(self, cls, cu)`, with `pyargnames = [cls, cu]`. `cls` is a classmethod-style class pass-through (the same shape as the rest of the pass-entry convention); `cu` is the compilation unit / Penguin module being lowered.
 
 ```c
 // _319 runOnModule(self, cls, cu)                  BirCodeGenLoop.py:4010
-// CONFIRMED name loads (program order): {cls, cu, subgraph_functions, runOnFunction}
+// Name loads read in program order: {cls, cu, subgraph_functions, runOnFunction}
 PyObject *runOnModule(self, cls, cu) {
     results = PyList_New(0);
     for (f in cu.subgraph_functions) {              // the ONLY attr read off `cu`
@@ -123,15 +123,15 @@ PyObject *runOnModule(self, cls, cu) {
 }
 ```
 
-`runOnModule` is a pure fan-out: enumerate `cu.subgraph_functions`, call `runOnFunction` on each, accumulate the results. CONFIRMED — the disasm contains exactly four interesting name loads (`cls`, `cu`, `subgraph_functions`, `runOnFunction`) and nothing else.
+`runOnModule` is a pure fan-out: enumerate `cu.subgraph_functions`, call `runOnFunction` on each, accumulate the results. The disasm contains exactly four interesting name loads — `cls`, `cu`, `subgraph_functions`, `runOnFunction` — and nothing else.
 
-> **GOTCHA — no module/registry setup lives here.** One might expect the `bir::Module` creation, the constant section, and the internal-kernel registry build to sit in `runOnModule`. They do not. The `bir::Module` (`curModule`) is **base-class instance state** (created in the upstream driver, not Cython-compiled into this class) and is populated per-function by `beforeStmtTransform`. The `_INTERNAL_KERNEL_REGISTRY` is a **module-level global** built lazily by `_build_internal_kernel_registry` (mangled `BirCodeGenLoop_31_build_internal_kernel_registry` — no class infix; CONFIRMED in `_strings.json` alongside `get_internal_kernel_registry`), consulted by the internal-kernel codegens, *not* per-`runOnModule`. Its docstring (verbatim, CONFIRMED): *"Build the registry of all internal NKI kernels that can be traced to new NKI frontend."*
+> **GOTCHA — no module/registry setup lives here.** One might expect the `bir::Module` creation, the constant section, and the internal-kernel registry build to sit in `runOnModule`. They do not. The `bir::Module` (`curModule`) is **base-class instance state** (created in the upstream driver, not Cython-compiled into this class) and is populated per-function by `beforeStmtTransform`. The `_INTERNAL_KERNEL_REGISTRY` is a **module-level global** built lazily by `_build_internal_kernel_registry` (mangled `BirCodeGenLoop_31_build_internal_kernel_registry` — no class infix; it sits in `_strings.json` alongside `get_internal_kernel_registry`), consulted by the internal-kernel codegens, *not* per-`runOnModule`. Its docstring, verbatim: *"Build the registry of all internal NKI kernels that can be traced to new NKI frontend."*
 
 ### `runOnFunction` (`_321` @ `0xadb40`, `py4015`) — the per-function shell
 
 ```c
 // _321 runOnFunction(self, cls, cu)                BirCodeGenLoop.py:4015
-// CONFIRMED name loads (program order):
+// Name loads read in program order:
 //   {cls, cu, run_with_exception_handling, num_dynamic_instances,
 //    dump_tensorizer_bir_json, curModule, toJson, json, dumps, value,
 //    NumpyJsonEncoder, indent, __enter__, __exit__, dump, print_info}
@@ -152,21 +152,21 @@ PyObject *runOnFunction(self, cls, cu) {
 
 `runOnFunction` is a delegation shell. It (1) hands the real lowering to `run_with_exception_handling`, (2) estimates the dynamic-instance count, (3) optionally serializes the just-built `bir::Module` to a `"<fn>.TensorizerBIR.json"` debug artifact (the beta3 analog of beta2's bir-json), and (4) prints info.
 
-> **CORRECTION — runOnFunction does NOT build the bir::Function.** The `bir::Function` creation, IO/argument setup, loop-nest walk, and basic-block construction are **not** inlined here — there is no `addFunction`, `addBasicBlock`, or `Argument` vocabulary anywhere in this body (CONFIRMED by the name-trace, which contains only the 16 names above). Those responsibilities are split: `bir::Function` creation → `beforeStmtTransform` (§5); IO wiring → `ensureDstOnFunction` (§5); loop-nest/BB walk → `transformAxis`/`codegenLoop` (§4). STRONG.
+> **GOTCHA — `runOnFunction` does not build the `bir::Function`.** Function creation, IO/argument setup, the loop-nest walk, and basic-block construction are all elsewhere: there is no `addFunction`, `addBasicBlock`, or `Argument` vocabulary anywhere in this body, whose name-trace contains only the 16 names above. The responsibilities split three ways — `bir::Function` creation to `beforeStmtTransform` (§5), IO wiring to `ensureDstOnFunction` (§5), and the loop-nest/BB walk to `transformAxis` / `codegenLoop` (§4).
 
-> **STRONG — `run_with_exception_handling` is the upstream body-walk visitor.** The identifier is a string in this binary but has **no method body here**, so it is inherited from the upstream driver base. There it wraps the visitor that fires `beforeStmtTransform` → per-stmt `stmt.transform(self)` → `afterStmtTransform` over the function body, with the `run_with_exception_handling` name supplying the error-recovery posture.
+`run_with_exception_handling` is the upstream body-walk visitor. The identifier appears as a string in this binary but has no method body here, so it is inherited from the upstream driver base. There it wraps the visitor that fires `beforeStmtTransform` → per-stmt `stmt.transform(self)` → `afterStmtTransform` over the function body, with the name itself supplying the error-recovery posture.
 
 ---
 
 ## 4. Loops, scopes, while — control structure → BIR
 
-The four interior control nodes (static axis, dynamic axis, scope region, while) share one shape — **enter / recurse / exit** — and each delegates the BIR-node construction to a `codegen*` factory that opens a body block on `curBlockStack`. CONFIRMED for all four.
+The four interior control nodes (static axis, dynamic axis, scope region, while) share one shape — **enter / recurse / exit** — and each delegates the BIR-node construction to a `codegen*` factory that opens a body block on `curBlockStack`.
 
 ### The enter/recurse/exit pattern
 
 ```c
 // transformAxis (_25 @ 0x62260, py636)             — STATIC loop axis
-// CONFIRMED trace: {axis, codegenLoop, stmts, transform, curBlockStack, self, axis, pop}
+// name-trace: {axis, codegenLoop, stmts, transform, curBlockStack, self, axis, pop}
 void transformAxis(self, axis) {
     self.codegenLoop(axis);                 // build BIR loop + open body BB "block0"
     for (stmt in axis.stmts)                // recurse into the loop body
@@ -175,11 +175,11 @@ void transformAxis(self, axis) {
 }
 ```
 
-`transformDynamicAxis` (`_29` @ `0x5d7e0`, `py669`), `transformScopeRegion` (`_21` @ `0x60d90`, `py601`), and `transformWhile` (`_17` @ `0x12e940`, `py561`) are byte-for-byte the same shape, differing only in their factory call (`codegenLoop` with `dynamic=`, `codegenScopeRegion`, `codegenWhile`) and the body-list attribute (`stmts` vs `children`). The static-vs-dynamic distinction is **not** in the visitor — both axis visitors funnel into `codegenLoop`; the dispatch table simply keys one visitor entry per Penguin axis subclass. CONFIRMED.
+`transformDynamicAxis` (`_29` @ `0x5d7e0`, `py669`), `transformScopeRegion` (`_21` @ `0x60d90`, `py601`), and `transformWhile` (`_17` @ `0x12e940`, `py561`) are byte-for-byte the same shape, differing only in their factory call (`codegenLoop` with `dynamic=`, `codegenScopeRegion`, `codegenWhile`) and the body-list attribute (`stmts` vs `children`). The static-vs-dynamic distinction is **not** in the visitor — both axis visitors funnel into `codegenLoop`; the dispatch table simply keys one visitor entry per Penguin axis subclass.
 
 ### `codegenLoop` (`_27` @ `0x1daca0`, `py645`) — the loop-axis factory
 
-This is the single choke-point where a Penguin axis becomes a BIR loop node. CONFIRMED name loads: `{curModule, functions, function, name_2, checkAxisRepeat, it, dynamic, BirDynamicForAxis, BirAxis, addAxis, curBlockStack, InstDynamicForLoop, InstLoop, setParallel, parallel, addLoop, instructions, getName, get_attr_default, setBasicBlock, addBasicBlock, basicBlocks, block0, append}`.
+This is the single choke-point where a Penguin axis becomes a BIR loop node. Its name loads are: `{curModule, functions, function, name_2, checkAxisRepeat, it, dynamic, BirDynamicForAxis, BirAxis, addAxis, curBlockStack, InstDynamicForLoop, InstLoop, setParallel, parallel, addLoop, instructions, getName, get_attr_default, setBasicBlock, addBasicBlock, basicBlocks, block0, append}`.
 
 ```c
 // codegenLoop(self, axis, dynamic=False)           BirCodeGenLoop.py:645
@@ -211,13 +211,13 @@ PyObject *codegenLoop(self, axis, dynamic) {
 }
 ```
 
-> **The E16 axis bridge (CONFIRMED end-to-end).** A static axis lowers to `BirAxis` (= `bir::LoopAxis`, `InstLoop`/IT105) and carries `setParallel(axis.parallel)`: `parallel=True` ⇔ `AxisType.Affine` (reorderable/vectorizable), `parallel=False` ⇔ `AxisType.Sequential` (ordered, no-reorder). A *single* `LoopAxis` node carries this attribute — there is no separate "parallel axis" class. A dynamic axis lowers to `BirDynamicForAxis` (= `bir::DynamicForLoopAxis`, `InstDynamicForLoop`/IT106) with `hasRuntimeValue=1`, `lb`/`ub`/`stride` as runtime `QuasiAffineExpr`, and **no** `setParallel` (a runtime loop is inherently ordered). This is the consuming-side confirmation of the upstream `create_affine_axis_block` (NeuronCodegen produces the Penguin axis; `codegenLoop` lowers it to the E16 node). The body BB is uniformly named `"block0"`; the function entry BB is `"Block1"` (§5). CONFIRMED.
+> **The E16 axis bridge.** A static axis lowers to `BirAxis` (= `bir::LoopAxis`, `InstLoop`/IT105) and carries `setParallel(axis.parallel)`: `parallel=True` ⇔ `AxisType.Affine` (reorderable/vectorizable), `parallel=False` ⇔ `AxisType.Sequential` (ordered, no-reorder). A *single* `LoopAxis` node carries this attribute — there is no separate "parallel axis" class. A dynamic axis lowers to `BirDynamicForAxis` (= `bir::DynamicForLoopAxis`, `InstDynamicForLoop`/IT106) with `hasRuntimeValue=1`, `lb`/`ub`/`stride` as runtime `QuasiAffineExpr`, and **no** `setParallel` (a runtime loop is inherently ordered). This is the consuming-side confirmation of the upstream `create_affine_axis_block` (NeuronCodegen produces the Penguin axis; `codegenLoop` lowers it to the E16 node). The body BB is uniformly named `"block0"`; the function entry BB is `"Block1"` (§5).
 
 ### `codegenScopeRegion` (`_23` @ `0x173390`, `py615`) — scope as a degenerate loop
 
 ```c
 // codegenScopeRegion(self, scope_region)           BirCodeGenLoop.py:615
-// CONFIRMED loads: {checkAxisRepeat, BirAxis, addLoop, InstLoop, setBasicBlock, no_reorder}
+// name loads: {checkAxisRepeat, BirAxis, addLoop, InstLoop, setBasicBlock, no_reorder}
 void codegenScopeRegion(self, scope_region) {
     it.checkAxisRepeat();
     bir_axis = BirAxis(it);  fn.addAxis(bir_axis);
@@ -228,13 +228,13 @@ void codegenScopeRegion(self, scope_region) {
 }
 ```
 
-> **QUIRK — BIR has no ScopeRegion instruction.** A Penguin `ScopeRegion` (the upstream `allocation_scope`/`if_scope`/`stage_scope`/`no_reorder` container) is modelled as a **degenerate single-iteration `InstLoop`** carrying a `no_reorder` `BirAxis`. There is no dedicated BIR region instruction; a scope is a trivial loop block whose basic-block records the reordering barrier (`no_reorder` read at `setBasicBlock`). The walrus allocator/scheduler then treat the enclosed BB as a lifetime/ordering region. CONFIRMED (`no_reorder` + `InstLoop` + `setBasicBlock` name loads).
+> **QUIRK — BIR has no ScopeRegion instruction.** A Penguin `ScopeRegion` (the upstream `allocation_scope`/`if_scope`/`stage_scope`/`no_reorder` container) is modelled as a **degenerate single-iteration `InstLoop`** carrying a `no_reorder` `BirAxis`. There is no dedicated BIR region instruction; a scope is a trivial loop block whose basic-block records the reordering barrier (`no_reorder` read at `setBasicBlock`). The walrus allocator/scheduler then treat the enclosed BB as a lifetime/ordering region. The `no_reorder`, `InstLoop`, and `setBasicBlock` name loads are all present.
 
 ### `codegenWhile` (`_19` @ `0x122c40`, `py575`) — while as `InstDoWhile`
 
 ```c
 // codegenWhile(self, while_loop)                   BirCodeGenLoop.py:575
-// CONFIRMED loads: {AsTrivialExprOrNone, LoadTensorToRegister, IntRuntimeValue,
+// name loads: {AsTrivialExprOrNone, LoadTensorToRegister, IntRuntimeValue,
 //                   InstDoWhile, is_do_while, continue_condition, addLoop}
 void codegenWhile(self, while_loop) {
     block = self.curBlockStack[-1];
@@ -250,11 +250,11 @@ void codegenWhile(self, while_loop) {
 }
 ```
 
-The Penguin `While` node *is* the do-while abstraction (the body variable is literally `do_while`). Its guard — defaulting to `AlwaysTruePredicate` upstream, replaced by the real condition via `set_continue_condition` — becomes the `InstDoWhile.continue_condition`. A trivial/constant guard folds inline; a runtime guard is loaded into a sequencer register (`LoadTensorToRegister`) and wrapped as `IntRuntimeValue`. The `is_do_while` flag selects test-after (do-while) vs test-before (while) semantics on the **same** `InstDoWhile` node. CONFIRMED.
+The Penguin `While` node *is* the do-while abstraction (the body variable is literally `do_while`). Its guard — defaulting to `AlwaysTruePredicate` upstream, replaced by the real condition via `set_continue_condition` — becomes the `InstDoWhile.continue_condition`. A trivial/constant guard folds inline; a runtime guard is loaded into a sequencer register (`LoadTensorToRegister`) and wrapped as `IntRuntimeValue`. The `is_do_while` flag selects test-after (do-while) against test-before (while) semantics on the **same** `InstDoWhile` node.
 
 ### `axisTrans` (`_131` @ `0xb3b10`) — SPMD grid axis → `AxisListType`
 
-A small mapper, *not* a loop transform: it counts a Penguin SPMD grid axis's program dimensions and returns a BIR `AxisListType` enum tag `{X, XY, XYZ, XYZW}` (1/2/3/4 grid axes). This encodes the m-grid/SPMD launch axes (`grid{w,x,y,z}`) into the partition/replica-axis lowering, distinct from the per-loop machinery above. STRONG (name loads `{X, XY, XYZ, XYZW, AxisListType}`; integer ordinals not pinned).
+A small mapper, *not* a loop transform: it counts a Penguin SPMD grid axis's program dimensions and returns a BIR `AxisListType` enum tag `{X, XY, XYZ, XYZW}` (1/2/3/4 grid axes). This encodes the m-grid/SPMD launch axes (`grid{w,x,y,z}`) into the partition/replica-axis lowering, distinct from the per-loop machinery above. The name loads `{X, XY, XYZ, XYZW, AxisListType}` are present; the integer ordinals behind them are not pinned.
 
 ---
 
@@ -262,7 +262,7 @@ A small mapper, *not* a loop transform: it counts a Penguin SPMD grid axis's pro
 
 ### `beforeStmtTransform` (`_13` @ `0xd1080`, `py420`) — function prologue
 
-The largest hook in the class. It is a `super()` override (carries the "super(): empty `__class__` cell" literal — it calls the `Gen`/upstream base, then adds the work below). Argument `f` is the **Penguin function** being lowered. CONFIRMED name loads include `{need_unroll, need_dce, curModule, addFunction, addBasicBlock, Block1, ensureDstOnFunction, ordered_all_tensors, IdentityWeightTensor, identity__s, lowerAwsNeuronExit}`.
+The largest hook in the class. It is a `super()` override (carries the "super(): empty `__class__` cell" literal — it calls the `Gen`/upstream base, then adds the work below). Argument `f` is the **Penguin function** being lowered. Its name loads include `{need_unroll, need_dce, curModule, addFunction, addBasicBlock, Block1, ensureDstOnFunction, ordered_all_tensors, IdentityWeightTensor, identity__s, lowerAwsNeuronExit}`.
 
 ```c
 // beforeStmtTransform(self, f)                      BirCodeGenLoop.py:420
@@ -290,13 +290,13 @@ void beforeStmtTransform(self, f) {
 
 `beforeStmtTransform` is the function **prologue**: create the `bir::Function`, open the entry block `"Block1"`, wire the IO/destination tensors via `ensureDstOnFunction`, normalize the tensor set, install the per-function identity weight, and lower the function exit.
 
-> **NOTE — why a per-function identity weight.** The `IdentityWeightTensor "identity_%s"` (module string `identity_matrices`, CONFIRMED in `_strings.json`) is a stationary operand for the PE array. Copies and transposes that have no native engine are lowered as identity matmuls (multiply by I) on the systolic array, so each function needs one identity operand available before its body emits any such inst. Guarded by `NeuronPSUMTensor`/`NeuronWeightTensor` type checks, `is_x4_dtype`, and `target.statebuf_num_partitions`. CONFIRMED.
+> **NOTE — why a per-function identity weight.** The `IdentityWeightTensor "identity_%s"` (module string `identity_matrices`, present in `_strings.json`) is a stationary operand for the PE array. Copies and transposes that have no native engine are lowered as identity matmuls (multiply by I) on the systolic array, so each function needs one identity operand available before its body emits any such inst. Guarded by `NeuronPSUMTensor`/`NeuronWeightTensor` type checks, `is_x4_dtype`, and `target.statebuf_num_partitions`.
 
 ### `afterStmtTransform` (`_313` @ `0x5e970`, `py3898`) — function epilogue
 
 ```c
 // afterStmtTransform(self, f)                       BirCodeGenLoop.py:3898
-// CONFIRMED loads: {ordered_all_tensors, transform, curBlockStack, pop,
+// name loads: {ordered_all_tensors, transform, curBlockStack, pop,
 //                   export_new_nki_fe_metrics, print_new_nki_frontend_cache_st}
 void afterStmtTransform(self, f) {
     finalize(f.ordered_all_tensors);                    // finalize the fn tensor set
@@ -306,7 +306,7 @@ void afterStmtTransform(self, f) {
 }
 ```
 
-The epilogue: finalize the function's tensors, pop the entry BB (balancing the `beforeStmtTransform` push), and flush the new-NKI-frontend cache statistics — the latter the diagnostic side of the internal-kernel-registry tracing path. CONFIRMED.
+The epilogue: finalize the function's tensors, pop the entry BB (balancing the `beforeStmtTransform` push), and flush the new-NKI-frontend cache statistics — the latter the diagnostic side of the internal-kernel-registry tracing path.
 
 ---
 
@@ -325,11 +325,11 @@ transformNeuronWeightTensor(self, t) { return self.codegenMemoryLoc(t); }  // py
 codegenMemoryLoc(self, t)            { return self.createMemLoc(t, tilename=tilename); } // py3870
 ```
 
-CONFIRMED (`codegenMemoryLoc@0x73850` loads exactly `{t, createMemLoc, name_2(=tilename kw), self, tilename}`). The per-memory-class behavior is **not** in the transform methods — it is entirely inside `createMemLoc` (`_299` @ `0x175150`, `py3713`), which re-derives the class from the tile `t` at runtime. The transform shims exist only as visitor entry points (one dispatch key per Penguin tile subclass), all funneling to one factory.
+`codegenMemoryLoc@0x73850` loads exactly `{t, createMemLoc, name_2(=tilename kw), self, tilename}`. The per-memory-class behavior is **not** in the transform methods — it is entirely inside `createMemLoc` (`_299` @ `0x175150`, `py3713`), which re-derives the class from the tile `t` at runtime. The transform shims exist only as visitor entry points (one dispatch key per Penguin tile subclass), all funneling to one factory.
 
 ### `createMemLoc` — the tile → BIR memory factory
 
-`createMemLoc` is a giant if/elif chain keyed on the Penguin tile's Python class and its kind predicates, computing (a) the BIR `TensorClass`, (b) the `MemoryType`/`MemoryKind`, and (c) the addressing geometry, then calling `addMemoryLocationSet` on the owning BIR Function. CONFIRMED name loads include `{NeuronPSUMTensor, NeuronSBTensor, NeuronWeightTensor, MemoryType, PSUM, SB, DRAM, MemoryKind, ExternalInput, ExternalInputParameter, Const, Internal, is_const, isExternalInput, tensor_memkind, psum_par_size_in_bytes, tensor_scope_parent, addMemoryLocationSet}`.
+`createMemLoc` is a giant if/elif chain keyed on the Penguin tile's Python class and its kind predicates, computing (a) the BIR `TensorClass`, (b) the `MemoryType`/`MemoryKind`, and (c) the addressing geometry, then calling `addMemoryLocationSet` on the owning BIR Function. Its name loads include `{NeuronPSUMTensor, NeuronSBTensor, NeuronWeightTensor, MemoryType, PSUM, SB, DRAM, MemoryKind, ExternalInput, ExternalInputParameter, Const, Internal, is_const, isExternalInput, tensor_memkind, psum_par_size_in_bytes, tensor_scope_parent, addMemoryLocationSet}`.
 
 ```c
 // createMemLoc(self, t, tilename=…)                BirCodeGenLoop.py:3713 — the factory
@@ -357,13 +357,13 @@ PyObject *createMemLoc(self, t, tilename) {
 }
 ```
 
-> **QUIRK — `createMemLoc` is the *sole* TensorClass→MemoryType binder.** There is no `TensorClass`→`MemoryType` classifier inside `libBIR`. The binding is done **here**, by reading the explicit `tensor_memkind` attribute (when present, it *overrides* the inferred type) or the Penguin tile class. The class names map 1:1 onto the BIR `TensorClass` roster (`NeuronSBTensor=10`, `NeuronPSUMTensor=11`, `NeuronWeightTensor=3`, `NeuronBlockTensor=5`, `NeuronLocalTensor=9`). Weight tensors (`TensorClass 3`) additionally run `setShape`/`setFormat`/`setTensorName` and land in the DRAM constant section (kind `Const`/`ExternalInputParameter`). CONFIRMED.
+> **QUIRK — `createMemLoc` is the *sole* TensorClass→MemoryType binder.** There is no `TensorClass`→`MemoryType` classifier inside `libBIR`. The binding is done **here**, by reading the explicit `tensor_memkind` attribute (when present, it *overrides* the inferred type) or the Penguin tile class. The class names map 1:1 onto the BIR `TensorClass` roster (`NeuronSBTensor=10`, `NeuronPSUMTensor=11`, `NeuronWeightTensor=3`, `NeuronBlockTensor=5`, `NeuronLocalTensor=9`). Weight tensors (`TensorClass 3`) additionally run `setShape`/`setFormat`/`setTensorName` and land in the DRAM constant section (kind `Const`/`ExternalInputParameter`).
 
-> **GOTCHA — tensors scoped inside a while loop.** `createMemLoc` checks `tensor_scope_parent` and `While`: a tensor defined inside a while-loop body has its parent chain resolve to the `While` region, so its lifetime is the loop region, not the function. The error sentinel *"Tensor parent needs to be function, basicblock with function parent or loopaxis, tensor parent:"* (CONFIRMED verbatim in `_strings.json`) fires if the parent chain resolves to none of those. CONFIRMED.
+> **GOTCHA — tensors scoped inside a while loop.** `createMemLoc` checks `tensor_scope_parent` and `While`: a tensor defined inside a while-loop body has its parent chain resolve to the `While` region, so its lifetime is the loop region, not the function. The error sentinel *"Tensor parent needs to be function, basicblock with function parent or loopaxis, tensor parent:"* — verbatim in `_strings.json` — fires if the parent chain resolves to none of those.
 
 ### `transformInstruction` (`_295` @ `0xd5c40`, `py3645`) — the universal finalizer
 
-This is **not** a dispatcher to `codegen<Op>` — it is the per-instruction **finalizer** run for *every* emitted BIR inst. The `codegen<Op>` bodies build the Inst payload; this method wires it into the current block and stamps its scheduling/dependency metadata. CONFIRMED name loads: `{curBlockStack, addInstToBir, id, instructions, setLoopnest, loopnest, engine, setEngine, engineTrans, lnc_id, setPredicate, enumerate_predicates_in_codegen, setLoopMode, function, dep_edges_for_inst, src, kind, EdgeKind, FLOW, OUTPUT, ANTI, Flow, Output, Anti, Ordered, addUnrollDependency, idx_map, BirQuasiAffineExpr, BirAffinePredicate, set_can_read_uninit, has_attr, BranchInst, OptBarrier, NeuronInst}`.
+This is **not** a dispatcher to `codegen<Op>` — it is the per-instruction **finalizer** run for *every* emitted BIR inst. The `codegen<Op>` bodies build the Inst payload; this method wires it into the current block and stamps its scheduling/dependency metadata. Its name loads are: `{curBlockStack, addInstToBir, id, instructions, setLoopnest, loopnest, engine, setEngine, engineTrans, lnc_id, setPredicate, enumerate_predicates_in_codegen, setLoopMode, function, dep_edges_for_inst, src, kind, EdgeKind, FLOW, OUTPUT, ANTI, Flow, Output, Anti, Ordered, addUnrollDependency, idx_map, BirQuasiAffineExpr, BirAffinePredicate, set_can_read_uninit, has_attr, BranchInst, OptBarrier, NeuronInst}`.
 
 ```c
 // transformInstruction(self, inst)                 BirCodeGenLoop.py:3645
@@ -390,27 +390,29 @@ void transformInstruction(self, inst) {
 }
 ```
 
-`transformInstruction` binds, per instruction, **four scheduling axes**: (1) **loopnest** placement — which `InstLoop`/`InstDoWhile` blocks (from §4) the inst nests under; (2) **engine** — `engineTrans` maps the Penguin engine via `engine.value` → `birEngineType[…]` to the BIR engine enum, with `lnc_id` = the logical-neuron-core id; (3) **predicate** — `setPredicate` over `enumerate_predicates_in_codegen` realizes the region-guard predicates as `BirAffinePredicate`/`BirQuasiAffineExpr` on the inst; (4) **dependencies** — `dep_edges_for_inst` builds the BIR dependency graph with `EdgeKind` and `addUnrollDependency` for cross-iteration deps. CONFIRMED.
+`transformInstruction` binds, per instruction, **four scheduling axes**: (1) **loopnest** placement — which `InstLoop`/`InstDoWhile` blocks (from §4) the inst nests under; (2) **engine** — `engineTrans` maps the Penguin engine via `engine.value` → `birEngineType[…]` to the BIR engine enum, with `lnc_id` = the logical-neuron-core id; (3) **predicate** — `setPredicate` over `enumerate_predicates_in_codegen` realizes the region-guard predicates as `BirAffinePredicate`/`BirQuasiAffineExpr` on the inst; (4) **dependencies** — `dep_edges_for_inst` builds the BIR dependency graph with `EdgeKind` and `addUnrollDependency` for cross-iteration deps.
 
-> **NOTE — four edge kinds, not three.** The dependency edges are `EdgeKind.{Flow (RAW), Output (WAW), Anti (WAR), Ordered}`. The disasm carries both the enum-member name loads (`FLOW`/`OUTPUT`/`ANTI` as `n_s_`) **and** the wire-string literals (`Flow`/`Output`/`Anti`/`Ordered` as `n_u_`). The `Ordered` kind — a non-data ordering edge — is present alongside the three classic data-hazard kinds. CONFIRMED (an earlier transform-side note listed only Flow/Anti/Output; the driver-side trace adds `Ordered`).
+> **NOTE — four edge kinds, not three.** The dependency edges are `EdgeKind.{Flow (RAW), Output (WAW), Anti (WAR), Ordered}`. The disasm carries both the enum-member name loads (`FLOW`/`OUTPUT`/`ANTI` as `n_s_`) **and** the wire-string literals (`Flow`/`Output`/`Anti`/`Ordered` as `n_u_`). The `Ordered` kind — a non-data ordering edge — sits alongside the three classic data-hazard kinds, and is easy to miss if you only read the transform side.
 
-> **The `addInstToBir` → `dispatch_codegen` routing.** `addInstToBir` (`_265` @ `0x63f30`) appends the inst to the BB and itself calls `dispatch_codegen` (`_263` @ `0x745d0`), which builds the method name `"codegen" + inst.dispatch_type` (CONFIRMED loads `n_u_codegen` + `n_s_dispatch_type`) and `getattr`-dispatches to `self.codegen<Op>`. This is the name-based op→codegen routing that the per-instruction codegens of §6.5.11–6.5.14 (the `codegenMatMulOp`/`codegenActivation`/`codegenNdDMAAP`/… roster) implement. CONFIRMED.
+> **The `addInstToBir` → `dispatch_codegen` routing.** `addInstToBir` (`_265` @ `0x63f30`) appends the inst to the BB and itself calls `dispatch_codegen` (`_263` @ `0x745d0`), which builds the method name `"codegen" + inst.dispatch_type` (the loads `n_u_codegen` and `n_s_dispatch_type`) and `getattr`-dispatches to `self.codegen<Op>`. This is the name-based op→codegen routing that the per-instruction codegens of §6.5.11–6.5.14 (the `codegenMatMulOp`/`codegenActivation`/`codegenNdDMAAP`/… roster) implement.
 
 ### The TongaISAInst granularity
 
-The banner's "at the TongaISAInst level" fixes the emission granularity: **one BIR `Instruction` per Tonga ISA instruction** — the hardware-instruction granularity of the Trainium "Tonga" ISA (PE matmul, Act, Pool/DVE, DMA, sync/branch) — not a coarser op nor a finer micro-op. Each Penguin tensoriser-IR op (`MatMulOp`, `ActivationOp`, `DMACopy`, …) maps to a small fixed set of BIR L1 Insts (`Matmult`/`Activation`/`DMACopy`/…). The `codegen<Op>` bodies do the op→Inst mapping; `transformInstruction` does the per-ISA-inst finalization; `transformAxis`/`codegenLoop`/`codegenScopeRegion`/`codegenWhile` wrap them in the loop-nest/BB structure. CONFIRMED (banner + §6 structure).
+The banner's "at the TongaISAInst level" fixes the emission granularity: **one BIR `Instruction` per Tonga ISA instruction** — the hardware-instruction granularity of the Trainium "Tonga" ISA (PE matmul, Act, Pool/DVE, DMA, sync/branch) — not a coarser op nor a finer micro-op. Each Penguin tensoriser-IR op (`MatMulOp`, `ActivationOp`, `DMACopy`, …) maps to a small fixed set of BIR L1 Insts (`Matmult`/`Activation`/`DMACopy`/…). The `codegen<Op>` bodies do the op→Inst mapping; `transformInstruction` does the per-ISA-inst finalization; `transformAxis`/`codegenLoop`/`codegenScopeRegion`/`codegenWhile` wrap them in the loop-nest/BB structure.
 
 ---
 
-## 7. Confidence, corrections, gaps
+## 7. Evidence summary
 
-**CONFIRMED** (symbol / string / disasm of this binary): all driver methods at the cited pyx indices / VAs / def-lines (`runOnModule@0x975f0`, `runOnFunction@0xadb40`, `transformAxis@0x62260`, `codegenLoop@0x1daca0`, `beforeStmtTransform@0xd1080`, `afterStmtTransform@0x5e970`, `transformInstruction@0xd5c40`, `codegenScopeRegion@0x173390`, `codegenWhile@0x122c40`, `createMemLoc@0x175150`); the `runOnModule` `subgraph_functions`→`runOnFunction` fan-out; `runOnFunction`'s `run_with_exception_handling` + `estimate_instances` + `TensorizerBIR.json` dump; the prologue hook's `addFunction`/`Block1`/`ensureDstOnFunction`/`IdentityWeightTensor`/`lowerAwsNeuronExit`/`need_unroll`/`need_dce`; the epilogue's `pop` + NKI-fe metrics; `codegenLoop`'s `BirAxis`/`BirDynamicForAxis` + `InstLoop`/`InstDynamicForLoop` + `setParallel` + `block0`; `codegenScopeRegion`'s degenerate `InstLoop` + `no_reorder`; `codegenWhile`'s `InstDoWhile`/`AsTrivialExprOrNone`/`LoadTensorToRegister`/`IntRuntimeValue`; `transformInstruction`'s `addInstToBir` + loopnest/engine/predicate/loopmode + `dep_edges_for_inst`→`EdgeKind{Flow/Output/Anti/Ordered}` + `BirAffinePredicate`/`BirQuasiAffineExpr` + `set_can_read_uninit`; the banner; the `createMemLoc` class→`MemoryType`/`MemoryKind` dispatch; the registry symbols.
+**Read directly** from this binary's symbols, strings, and disassembly: all driver methods at the cited pyx indices / VAs / def-lines (`runOnModule@0x975f0`, `runOnFunction@0xadb40`, `transformAxis@0x62260`, `codegenLoop@0x1daca0`, `beforeStmtTransform@0xd1080`, `afterStmtTransform@0x5e970`, `transformInstruction@0xd5c40`, `codegenScopeRegion@0x173390`, `codegenWhile@0x122c40`, `createMemLoc@0x175150`); the `runOnModule` `subgraph_functions`→`runOnFunction` fan-out; `runOnFunction`'s `run_with_exception_handling` + `estimate_instances` + `TensorizerBIR.json` dump; the prologue hook's `addFunction`/`Block1`/`ensureDstOnFunction`/`IdentityWeightTensor`/`lowerAwsNeuronExit`/`need_unroll`/`need_dce`; the epilogue's `pop` + NKI-fe metrics; `codegenLoop`'s `BirAxis`/`BirDynamicForAxis` + `InstLoop`/`InstDynamicForLoop` + `setParallel` + `block0`; `codegenScopeRegion`'s degenerate `InstLoop` + `no_reorder`; `codegenWhile`'s `InstDoWhile`/`AsTrivialExprOrNone`/`LoadTensorToRegister`/`IntRuntimeValue`; `transformInstruction`'s `addInstToBir` + loopnest/engine/predicate/loopmode + `dep_edges_for_inst`→`EdgeKind{Flow/Output/Anti/Ordered}` + `BirAffinePredicate`/`BirQuasiAffineExpr` + `set_can_read_uninit`; the banner; the `createMemLoc` class→`MemoryType`/`MemoryKind` dispatch; the registry symbols.
 
-**STRONG:** `run_with_exception_handling` = the upstream body-walk visitor (string present, body inherited); `curModule` created in the base and populated by `beforeStmtTransform`; the §2 beta3-vs-beta2 table.
+**Reconstructed rather than read:** that `run_with_exception_handling` is the upstream body-walk visitor (the string is present, the body is inherited); that `curModule` is created in the base and populated by `beforeStmtTransform`; and the beta3-vs-beta2 comparison of §2, whose beta2 column comes from the walrus side.
 
-**INFERRED:** exact intra-body branch order where the mangled C obscured it (resolved via disasm name-order where possible); `createMemLoc`'s per-branch geometry arithmetic is read at attribute-name granularity, not arithmetic-pinned (the addr/bank/base *fields* it feeds are certain via the BIR struct, Part 7 BIR).
+### Limits of this reading
 
-**Open gaps.** The C++ ctors behind `addMemoryLocationSet`/`addLoop`/`addAxis`/`addBasicBlock` are `PyObject` calls into `libBIR`, not byte-pinned here (semantics fixed by the BIR-side pages). The integer `AxisListType` ordinals for `{X,XY,XYZ,XYZW}` are read by name only (dim-count semantics STRONG). The exact `Inst`-subclass → `codegen<Op>` dispatch table is the `BirCodeGenLoopGen` base visitor; it is enumerated by the `codegen*` roster in this binary but the per-IT integer map is the subject of §6.5.11–6.5.14.
+Exact intra-body branch order is **INFERRED** wherever the mangled decompilation obscured it, resolved through disasm name-order where that was possible. `createMemLoc`'s per-branch geometry arithmetic is read at attribute-name granularity rather than arithmetic-pinned — though the addr/bank/base *fields* it feeds are fixed by the BIR struct itself (Part 7).
+
+Three things remain open. The C++ ctors behind `addMemoryLocationSet` / `addLoop` / `addAxis` / `addBasicBlock` are `PyObject` calls into `libBIR` and are not byte-pinned here; their semantics belong to the BIR-side pages. The integer `AxisListType` ordinals for `{X,XY,XYZ,XYZW}` are read by name only, so only the dim-count semantics are settled. And the exact `Inst`-subclass → `codegen<Op>` dispatch table lives in the `BirCodeGenLoopGen` base visitor — this binary enumerates the `codegen*` roster, but the per-IT integer map is the subject of §6.5.11–6.5.14.
 
 ---
 

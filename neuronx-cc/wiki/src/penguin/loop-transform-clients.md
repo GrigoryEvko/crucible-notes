@@ -71,7 +71,7 @@ Penguin loop restructuring is validated against the Penguin **dataflow / DAG dep
 
 Reorder the axes of a single operator's loop nest into a hardware-locality-optimal order — canonically, push the reduction/PSUM-accumulation loop innermost and lift the shard/thread axis outermost. It is an **op-aware canonicalizer**, not a dependence-vector-driven interchange optimizer.
 
-### Class docstring (CONFIRMED, verbatim)
+### Class docstring (verbatim)
 
 ```text
 TongaAffineLoopXform - Loop interchange and skewing.
@@ -115,11 +115,11 @@ function transformMatMulOp(nest):                   // -> matmul_loopnest_order
 
 The MatMul handler's `__pyx_k_` vocabulary — `lhs_free_axes`, `rhs_free_axes`, `contract_axes`, `reduce_axes`, `is_cross_nc_reduce`, `matmul_loopnest_order` — confirms it classifies the nest's axes into LHS-free / RHS-free / contraction groups and constructs `matmul_loopnest_order` with the contraction (PSUM-accumulation) loop innermost, so consecutive matmul tiles accumulate into the same PSUM bank ("improve psum locality"). `is_cross_nc_reduce` flags a reduction crossing NeuronCore boundaries, which is kept out of the innermost-reduce form. The shard/thread handlers (`transformShardAxis`, `transformThreadAxis`, vocab `shard_axis`, `thread_axis`, `shard_axis_on_top`, `thread_or_cc`, `enable_shard_axis_verifier`) move the SPMD-partition (shard) axis and the collective-comm (thread/cc) axis to the top of the nest, so each core executes a contiguous outer slab.
 
-> **GOTCHA —** the shard/thread hoist requires a perfect nest. When it cannot hoist because a sibling sub-loop sits between the axis and the body, the pass raises `The shard/thread axis is not in perfect loopnest!!` (CONFIRMED string). This is precisely why `PerfectLoopNest` and `find_perfect_nested_loops` must run first — the interchange cannot canonicalize an imperfect nest.
+> **GOTCHA —** the shard/thread hoist requires a perfect nest. When it cannot hoist because a sibling sub-loop sits between the axis and the body, the pass raises `The shard/thread axis is not in perfect loopnest!!`. This is precisely why `PerfectLoopNest` and `find_perfect_nested_loops` must run first — the interchange cannot canonicalize an imperfect nest.
 
 ### Legality model
 
-There is **no dependence-direction-vector test and no ISL call** in this module (0 ISL string hits). Correctness rests on three facts: (a) the per-op order is a known-safe canonical reorder — matmul reduce-innermost and shard/thread-outermost are always legal because the op is commutative in those axes; (b) `LoopTransformUtils.interchange` only swaps axes *within one operator's perfect nest*, so there is no cross-statement dependence to violate; (c) the affine-skew + cost-model search that would need a real legality check is the disabled path. This pass is a canonicalizer toward HW-locality-optimal loop order, not a legality-gated interchange optimizer. *(INFERRED legality reasoning; STRONG on the disabled-path and per-op-order facts via docstring + vocab.)*
+There is **no dependence-direction-vector test and no ISL call** in this module (0 ISL string hits). Correctness rests on three facts: (a) the per-op order is a known-safe canonical reorder — matmul reduce-innermost and shard/thread-outermost are always legal because the op is commutative in those axes; (b) `LoopTransformUtils.interchange` only swaps axes *within one operator's perfect nest*, so there is no cross-statement dependence to violate; (c) the affine-skew + cost-model search that would need a real legality check is the disabled path. This pass is a canonicalizer toward HW-locality-optimal loop order, not a legality-gated interchange optimizer. The disabled skew path and the per-op order construction are stated by the docstring and the identifier pool; the safety argument in (a)–(c) is reconstruction — the module itself asserts nothing about legality.
 
 ---
 
@@ -129,7 +129,7 @@ There is **no dependence-direction-vector test and no ISL call** in this module 
 
 Merge two loop nests that share their outer dimensions when a producer's **store** feeds a consumer's **load** — and, in the trivial case, eliminate a pure copy loop outright. Operates at the generic `AffineLoad` / `AffineStore` level (before HW-instruction lowering).
 
-### Class docstrings (CONFIRMED, verbatim)
+### Class docstrings (verbatim)
 
 ```text
 LoopFusion - Merge loops (loopnests) that share the outer dimensions.
@@ -163,7 +163,7 @@ function fuse(load, store):
 
 ### Fusion legality = access-pattern match
 
-Legality is an **access-pattern compatibility test** on the producer-store address versus the consumer-load address — `isLoadStoreAccessMatchForFusion` compares the two access maps — not a dependence-relation test. The complete rejection-reason set (each a CONFIRMED verbatim `": …"` / `Skip:` log string that aborts a candidate):
+Legality is an **access-pattern compatibility test** on the producer-store address versus the consumer-load address — `isLoadStoreAccessMatchForFusion` compares the two access maps — not a dependence-relation test. The complete rejection-reason set — each one a verbatim `": …"` / `Skip:` log string that aborts a candidate:
 
 | Rejection string | Meaning |
 |---|---|
@@ -181,7 +181,7 @@ Legality is an **access-pattern compatibility test** on the producer-store addre
 | `: Cannot fuse with pseudo_elementwise_op` | pseudo-elementwise op blocks fusion |
 | `Skip: loading non local tensor` / `Skip: loading output` / `Skip: Cannot find tensor definition of` | producer not a local, fusable tensor |
 
-Special pattern paths fuse a producer MatMul with a consumer Softmax / RmsNorm (`check_matmult_softmax_pattern`, `check_matmult_rmsnorm_pattern`) and batchnorm-grad reduce chains (`check_bn_grad`, `check_reduces`). Statistics counters confirmed: `Number of loops fused`, `Number of trivial copy eliminated`, `Number of rematted instructions we skipped`.
+Special pattern paths fuse a producer MatMul with a consumer Softmax / RmsNorm (`check_matmult_softmax_pattern`, `check_matmult_rmsnorm_pattern`) and batchnorm-grad reduce chains (`check_bn_grad`, `check_reduces`). Statistics counters: `Number of loops fused`, `Number of trivial copy eliminated`, `Number of rematted instructions we skipped`.
 
 > **NOTE —** the module also carries the string `On the complexity of loop fusion` — a nod to the well-known result that optimal loop fusion is NP-hard. The pass does not solve it optimally; the size gate and the single-def-single-use restriction are the pragmatic cutoffs that keep it tractable.
 
@@ -197,7 +197,7 @@ After fusion the merged insts inherit a recomputed per-inst **schedule** (the Pe
 
 The post-lowering analogue of `LoopFusion`. It runs after lowering to `TongaISAInst`, so it reasons about PSUM banks and matmul accumulation rather than abstract `AffineLoad` / `AffineStore`. Its purpose: fuse the loops of **matmuls that accumulate into the same PSUM tile** so they form one `AccumulationGroup`.
 
-### Class docstring (CONFIRMED, verbatim)
+### Class docstring (verbatim)
 
 ```text
 NeuronLoopFusion - Loop fusion at TongaISAInst level, has extra heuristics/cost
@@ -229,7 +229,7 @@ function canFusePSum(cand):                           // the PSUM-fusion gate
 
 ### PSUM-fusion legality
 
-`canFusePSum` gates on `access_compatible_psum_tile` / `has_compatible_free_ap` / `match_accumulation_axes` (vocab `acc_axes`, `contract_axes`, `is_full_tile_ap`, `fuse_psum_before`): two matmul loops may fuse iff they write compatible PSUM tiles with matching accumulation (contraction) axes and compatible free access-patterns. The CONFIRMED verbatim rejection strings:
+`canFusePSum` gates on `access_compatible_psum_tile` / `has_compatible_free_ap` / `match_accumulation_axes` (vocab `acc_axes`, `contract_axes`, `is_full_tile_ap`, `fuse_psum_before`): two matmul loops may fuse iff they write compatible PSUM tiles with matching accumulation (contraction) axes and compatible free access-patterns. The verbatim rejection strings:
 
 ```text
 : Can only fuse with matmul if it is the last inst   ← matmul must terminate the loop body
@@ -252,7 +252,7 @@ The alias-opt-barrier checks (`check_alias_opt_barrier_violation_with_dag`, `che
 
 Fuse only a **tile** of a producer loop into a consumer, rather than two whole nests. The fusion is controlled by a fusion factor (tripcount) and an extra tiling factor that keeps the fused inner region inside one `AccumulationGroup` / StateBuffer budget. Crucially, PLF can fuse even across a **loop-carried dependence** by affine-shifting the iteration space so the dependence becomes forward-only.
 
-### Class + helper docstrings (CONFIRMED, verbatim)
+### Class + helper docstrings (verbatim)
 
 ```text
 PartialLoopFusion - Partially fuse two loopnests together.
@@ -302,13 +302,13 @@ To fuse two loops whose iteration spaces are not identically indexed, PLF builds
 store_index = coef * load_index * scale + shift + offset
 ```
 
-`match_scale` aligns the per-axis stride scale; `shift` aligns the constant offset; `calculate_offset` computes the base offset (vocab `coef`, `coef_scale`, `axis_coef`, `load_coef`, `store_coef`, `load_shift`, `load_xforms`, `scaled_max_delta`, `split_offset`). The affine fit is guarded by CONFIRMED asserts: `Bad coef value!`, `scale mismatch!`, `Unexpected coef!`. This is the loop-skewing/alignment that the interchange pass's title advertised but had disabled — executed here, for fusion, instead of for interchange.
+`match_scale` aligns the per-axis stride scale; `shift` aligns the constant offset; `calculate_offset` computes the base offset (vocab `coef`, `coef_scale`, `axis_coef`, `load_coef`, `store_coef`, `load_shift`, `load_xforms`, `scaled_max_delta`, `split_offset`). The affine fit is guarded by the asserts `Bad coef value!`, `scale mismatch!`, `Unexpected coef!`. This is the loop-skewing/alignment that the interchange pass's title advertised but had disabled — executed here, for fusion, instead of for interchange.
 
 ### Legality = checkLoopCarriedDep on the DAG
 
 `FusionCandidate.checkLoopCarriedDep` / `checkLoopCarriedDeps` test, over `dep_check_scope`, whether fusing introduces an illegal loop-carried dependence (`loop_carried_deps`). Unlike the other fusion passes, PLF does *not* outright reject a carried dependence — it can still fuse if the `LoopXFormBuilder` shift makes the dependence forward-only, with `lex_schedule` + `static_lex_order` verifying the fused insts keep a valid lexicographic order. Rejection only fires (`cannot fuse loop!`) when no legal alignment/order exists. Statistics: `Number of loops fused`, `Number of loops fused with loop-carried dependencies`, `Number of instruction rematerialized`.
 
-> **CORRECTION (Y07-PLF) —** the backing recon framed PLF's legality as ISL-free ("its own checkLoopCarriedDep, no isl symbols"). A direct string count refines this: PLF's strings reference `IntegerSetAnalysis` (the `islpy~=2023.1` wrapper) — 2 hits, and it is the *only* one of the eight loop transforms to do so (all others = 0). The refined claim is therefore stronger and more precise than "no ISL anywhere": **PLF is the single loop transform that imports the ISL layer**, used in support of its integer-set / iteration-space reasoning, while its primary loop-carried-dependence gate (`checkLoopCarriedDep`) and its order check (`lex_schedule` / `static_lex_order`) are its own static-schedule machinery, not `check_valid_schedule`. PLF imports the `IntegerSetAnalysis` wrapper, not `islpy` directly.
+The `IntegerSetAnalysis` import sits alongside this, not underneath it: PLF is the one loop transform that pulls in the ISL wrapper, and it uses it for integer-set / iteration-space reasoning, but the gate that accepts or rejects a fusion is `checkLoopCarriedDep` plus the `lex_schedule` / `static_lex_order` pair — PLF's own static-schedule machinery, not the ISL subsystem's `check_valid_schedule`.
 
 > **QUIRK —** `lex_schedule` and `static_lex_order` are PLF's own lexicographic-order legality check on the static schedule tuple — the Penguin-DAG analogue of ISL's `lex_lt` test, but implemented over the integer schedule order, not over an `isl.UnionMap`.
 
@@ -326,7 +326,7 @@ Prerequisites #1/#2 (all loads in one `load_loop`, all stores in one `store_loop
 
 Split one large reduction over a too-big reduce axis into a **cascade** of smaller reductions, with a partition-free (PF) transpose between stages — because Neuron HW reduces along the partition dimension and a 12800-long reduce axis does not fit one tile. It is *not* a generic strip-mining pass; it materializes a tree reduction as separate tiled DAGs.
 
-### Class docstring (CONFIRMED, verbatim, abbreviated)
+### Class docstring (verbatim, abbreviated)
 
 ```text
 Split cascaded reduction dags. Example: transform a dag with a reduce max op of
@@ -358,7 +358,7 @@ function transformStmts(stmt):
 
 ### Legality
 
-There is **no dependence legality test** — a tree reduction is value-equivalent to the flat reduction, so the only decision is partition-axis selection for the second DAG. `_get_second_reduce_par_axes` picks the P dims under CONFIRMED constraints: "For reduce add, we can use the partition reduce macro, so the second dag par axes should be the same as the first reduce dag … For other reduce ops … 4. Do not pick any free axes that have been reduced away in the first reduce dag  5. Do not pick any block axes that were loop reduce axes in the first reduce dag." `reduce_add` skips the PF transpose entirely. Asserts: `Could not find first/second reduce load`, `Could not find second reduce store`. `LoopSplitting` is wired into `LayoutTilingPipeline`, not the main codegen loop-opt block.
+There is **no dependence legality test** — a tree reduction is value-equivalent to the flat reduction, so the only decision is partition-axis selection for the second DAG. `_get_second_reduce_par_axes` picks the P dims under constraints the docstring spells out: "For reduce add, we can use the partition reduce macro, so the second dag par axes should be the same as the first reduce dag … For other reduce ops … 4. Do not pick any free axes that have been reduced away in the first reduce dag  5. Do not pick any block axes that were loop reduce axes in the first reduce dag." `reduce_add` skips the PF transpose entirely. Asserts: `Could not find first/second reduce load`, `Could not find second reduce store`. `LoopSplitting` is wired into `LayoutTilingPipeline`, not the main codegen loop-opt block.
 
 ---
 
@@ -403,7 +403,7 @@ This is purely an **index-representability** test (affine / SCEV), not a depende
 
 The nest-perfecting precondition pass. A loop with multiple child sub-loops (an imperfect nest) is rewritten so each loop level has ≤1 child, by distributing the loop — each child subtree gets its own clone of the enclosing loop (loop distribution / fission).
 
-### Class docstring (CONFIRMED, verbatim)
+### Class docstring (verbatim)
 
 ```text
 PerfectLoopNest - Split loop tree into perfect nested loop, i.e. there are at most 1
@@ -441,16 +441,16 @@ The low-level loop-IR mutators every client above drives. Two variants ship: `tr
 
 | Primitive | Role | Confidence |
 |---|---|---|
-| `interchange(outer_axis, inner_axis [, new_inner_axis])` | Swap two adjacent loop levels in a perfect nest (`outer` is `inner`'s parent). Asserts `Incorrect outer axis!`. Pure mechanical IR swap; tests no legality. | CONFIRMED |
-| `licm` / `run_licm` / `licm_children` / `hoistNullary` | Loop-invariant code motion. `calculate_licm_parent` finds the most-recent common loop of an op's operands; `hoistNullary` lifts zero-operand ops (constants) to the top. | CONFIRMED |
-| `getHoistOrSinkLoop` / `hoistOrSinkInst` / `sinkStore` | Hoist/sink an inst across loop levels. "Currently only ElementwiseOp can be hoisted or sink." | CONFIRMED |
-| `can_move_to_{earliest,latest,load,store}` | Bound the legal motion range of an inst from its def/use on the DAG (`earliest_schedule` / `latest_schedule`). | CONFIRMED |
-| `splitAxisAt` / `splitAxisAtWithMapping` | Strip-mine one axis into (outer, inner), optionally returning the old→new axis map. | CONFIRMED |
-| `splitLoopnestForInst` | "Split insts into a new loopnest … inserted after `inner_axis`." Loop fission for a chosen inst set. | CONFIRMED |
-| `splitDAGLoopnest` | Split a whole DAG loopnest; assert `Two splited DAGs should have no overlaps!`. | CONFIRMED |
-| `split_reduce_loop` | "Split one reduce op into 2 consecutive reduce ops, and split the second into a separate loopnest." The primitive `LoopSplitting` and PLF use (FIXME NCC-5367 noted). | CONFIRMED |
-| `cloneLoopNest` / `find_perfect_nested_loops` | Deep-clone a loop subtree (IRCloner); return the maximal perfect sub-nest. | CONFIRMED |
-| `check_schedule` | The generic legality gate (below). | CONFIRMED |
+| `interchange(outer_axis, inner_axis [, new_inner_axis])` | Swap two adjacent loop levels in a perfect nest (`outer` is `inner`'s parent). Asserts `Incorrect outer axis!`. Pure mechanical IR swap; tests no legality. | CERTAIN |
+| `licm` / `run_licm` / `licm_children` / `hoistNullary` | Loop-invariant code motion. `calculate_licm_parent` finds the most-recent common loop of an op's operands; `hoistNullary` lifts zero-operand ops (constants) to the top. | CERTAIN |
+| `getHoistOrSinkLoop` / `hoistOrSinkInst` / `sinkStore` | Hoist/sink an inst across loop levels. "Currently only ElementwiseOp can be hoisted or sink." | CERTAIN |
+| `can_move_to_{earliest,latest,load,store}` | Bound the legal motion range of an inst from its def/use on the DAG (`earliest_schedule` / `latest_schedule`). | CERTAIN |
+| `splitAxisAt` / `splitAxisAtWithMapping` | Strip-mine one axis into (outer, inner), optionally returning the old→new axis map. | CERTAIN |
+| `splitLoopnestForInst` | "Split insts into a new loopnest … inserted after `inner_axis`." Loop fission for a chosen inst set. | CERTAIN |
+| `splitDAGLoopnest` | Split a whole DAG loopnest; assert `Two splited DAGs should have no overlaps!`. | CERTAIN |
+| `split_reduce_loop` | "Split one reduce op into 2 consecutive reduce ops, and split the second into a separate loopnest." The primitive `LoopSplitting` and PLF use (FIXME NCC-5367 noted). | CERTAIN |
+| `cloneLoopNest` / `find_perfect_nested_loops` | Deep-clone a loop subtree (IRCloner); return the maximal perfect sub-nest. | CERTAIN |
+| `check_schedule` | The generic legality gate (below). | CERTAIN |
 
 ### check_schedule — the generic legality gate
 
@@ -510,12 +510,26 @@ Typical loop-opt order (INFERRED from data-deps):
 
 ---
 
-## Confidence Ledger
+## Evidence summary and limits of this reading
 
-- **CONFIRMED** (docstring / explicit string / qualname / `__pyx_k_` symbol / direct count): every class name and docstring; the full method roster of all nine modules; all rejection-reason and assert strings; the ISL-absence symbol sweep; the `IntegerSetAnalysis`-import count (PLF=2, others=0); the `LoopXFormBuilder` coef/scale/shift asserts; the `check_schedule` parameter set and scope-struct name.
-- **STRONG** (vocab-ordering, no contradiction): per-op order construction in NeuronLoopInterchange; PSUM-fuse compatibility logic; PLF ranking (`how_good` / `max_coef_min_depth`); the `check_schedule` mechanism.
-- **INFERRED** (semantics / cross-ref): exact interchange call flow; the affine-remap algebra form (`store = coef·load·scale + shift + offset`); the typical pass order.
-- **Not recoverable without full decompilation** (IDA sidecars are address stubs): exact per-method instruction sequences; the integer thresholds (max insts per loop, `AccumulationGroup` size, fusion-factor formula); the precise `how_good` cost arithmetic.
+Everything named on this page — every class name and docstring, the full method
+roster of all nine modules, every rejection-reason and assert string, the ISL-absence
+symbol sweep, the `IntegerSetAnalysis` import count (PLF = 2 hits, the other seven = 0),
+the `LoopXFormBuilder` coef/scale/shift asserts, and the `check_schedule` parameter set
+and scope-struct name — is read out of the surviving Cython string and qualname pool.
+
+Several statements go one step beyond that pool. The per-op order construction in
+`NeuronLoopInterchange`, the PSUM-fuse compatibility logic, PLF's candidate ranking
+(`how_good` / `max_coef_min_depth`), and the `check_schedule` mechanism are assembled
+from identifier vocabulary that is consistent but not self-describing. The exact
+interchange call flow, the affine-remap algebra form
+(`store = coef·load·scale + shift + offset`), and the typical pass order are
+reconstructions.
+
+Three things cannot be recovered at all from these modules, because their IDA sidecars
+are address stubs rather than decompiled bodies: the per-method instruction sequences,
+the integer thresholds (maximum instructions per loop, `AccumulationGroup` size, the
+fusion-factor formula), and the arithmetic behind `how_good`.
 
 ---
 

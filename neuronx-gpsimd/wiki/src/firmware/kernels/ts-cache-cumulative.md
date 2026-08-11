@@ -744,7 +744,7 @@ A reimplementer building a Vision-Q7-compatible `TensorScalarCacheCumulative`:
   end-to-end through the FLIX desync).
 
 **FLIX-DESYNC FLAG.** The DEBUG worker bodies desync under stock objdump on the recurring `.byte 0x2f/0x8f/0x4f/
-0x5f/0x6f` literal-pool lead bytes (the documented SX-FW-00 limit). The mis-decoded `.byte`/spurious bundles
+0x5f/0x6f` literal-pool lead bytes (the documented FLIX-desync limit). The mis-decoded `.byte`/spurious bundles
 are **not** reported as real instructions; the entry prologue + LOG loader + `call0` edges + the `s16i`
 window-program shape **are** byte-clean. The cleaner **PERF** image is the source for the rotate⊕combine scan
 datapath vocabulary.

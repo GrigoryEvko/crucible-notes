@@ -63,15 +63,14 @@ The wire opcode set is byte-exact in `aws_neuron_isa_tpb_common.h`: `DMAMEMCPY=0
 (:257), `DMA_INDIRECT=0xbb` (:258), `DMA_TRANSPOSE=0xbd` (:260), `SB2SB_COLLECTIVE=0xbf`
 (:262), `GATHER=0x68` (:196), `INDIRECT_COPY=0xe7` (:297), `EXTENDED_INST=0xf0` (:301),
 `DMA_GATHER_TRANSPOSE=0xf1` (:302); the RDMA ext-opcodes `EXTENDED_RDMA_DESC_GEN=8` /
-`…START=9` are in `aws_neuron_isa_tpb_extended_utils.h:30-31`. [HIGH/OBSERVED — re-read this
-pass]
+`…START=9` are in `aws_neuron_isa_tpb_extended_utils.h:30-31`. [HIGH/OBSERVED]
 
 > **CORRECTION (catalog size — settled).** Earlier drafts cataloged **five** 64-B words and
 > folded transpose into one descriptor. The shipped `struct2opcode` map binds **four** DGE
 > structs to four *distinct* opcodes — `DIRECT2D_XPOSE → DMA_TRANSPOSE (0xbd)` and
 > `GATHER_XPOSE → DMA_GATHER_TRANSPOSE (0xf1)` are **separate** — and the two RDMA extended
 > structs are the fifth/sixth. The catalog is **SIX** 64-B words. [HIGH/OBSERVED —
-> `struct2opcode` re-read: all four DGE bindings distinct]
+> `struct2opcode`: all four DGE bindings distinct]
 
 > **GOTCHA — two transposes, two gathers, do not conflate.** `DIRECT2D_XPOSE (0xbd)` is
 > tile-geometry-driven; `GATHER_XPOSE (0xf1)` is index-array-driven. Separately, the POOL/Q7
@@ -116,7 +115,7 @@ collective-reduce tie is §5.3.
 > I/O-length path. A reduce-packet sizer computing `dtype_size·N` traps on `fp32r`
 > (`encd_get_cce_reduce_packet_size` asserts on the 0). The `kbin_dma_desc_cce_info_t` is
 > **140 B**. Both are CARRIED — the host `libnrt.so` carrying them is **not** in this
-> extraction (verified absent this pass). [CARRIED — [cce-in-transfer §1.2,§2.1](cce-in-transfer.md)]
+> extraction (verified absent). [CARRIED — [cce-in-transfer §1.2,§2.1](cce-in-transfer.md)]
 
 ---
 
@@ -208,8 +207,8 @@ doorbell is **abs `0x1038`**; the per-queue array (`M2S_Q`/`S2M_Q`) is at engine
 | TX → M2S (READ, HBM→local) | `TDRTP_inc` | `0x1038` | `udma_m2s.json:TDRTP_inc @0x038` |
 | RX → S2M (WRITE, local→HBM) | `RDRTP_inc` | `0x1038` | `udma_s2m.json:RDRTP_inc @0x038` |
 
-[HIGH/OBSERVED — both `@0x038`, `M2S_Q`/`S2M_Q @0x1000` ArraySize 16 BundleSize 4096, re-read
-this pass from the Cayman CSR JSON. The descriptor and completion ring layouts are
+[HIGH/OBSERVED — both `@0x038`, `M2S_Q`/`S2M_Q @0x1000` ArraySize 16 BundleSize 4096, read
+from the Cayman CSR JSON. The descriptor and completion ring layouts are
 byte-for-byte identical between the two engines — only the `T`/`R` prefix renames.]
 
 ### 3.2 Submit → complete (the HW path)
@@ -257,7 +256,7 @@ holds `priority_class` (0..4), never `DMAQoSClass`.** The host stages the per-cl
 *bytes-per-packet* table via `nrtucode_core_dge_set_priority_class_map@0x3094e0`
 (`dram_base+0x18`, `n≤4`); the firmware read side is
 `nrtucode_core_dge_get_priority_class_map@0x9b10f0` (bounds the index `<= 4`). [HIGH/OBSERVED
-— symbol `@0x9b10f0` re-read this pass; the 17-value `DMAQoSClass` is CARRIED host-cc]
+— symbol `@0x9b10f0` read; the 17-value `DMAQoSClass` is CARRIED host-cc]
 
 `priority_class` surfaces on the M2S queue as `cfg.AXI_qos` + `dwrr_cfg_2.q_qos@0x84` +
 `dwrr_cfg_3.weight@0x88` + the HP-candidate bit; the **`prio_cap`** then bounds the *size* of
@@ -294,7 +293,7 @@ magnitude test** (`addr >= 0x2000000`; no bank bit, no region register). Per-gen
 `0x2004000000`** (32 MiB region; the NX *window* the Q7 pins over it is 64 MiB, but the
 scratch *region* itself is only 32 MiB —
 [onchip-working-memory §1 CORRECTION](onchip-working-memory.md)), **DGE_MEMORY `0x2040000000`**
-(1 GiB), **PSUM_BUF `0x2802000000`** (4 MiB). [HIGH/OBSERVED — re-read this pass]
+(1 GiB), **PSUM_BUF `0x2802000000`** (4 MiB). [HIGH/OBSERVED]
 
 ### 4.2 The keystone — Q7 reaches SBUF, physically cannot touch PSUM
 
@@ -371,7 +370,6 @@ See the collectives Part for the host-side algorithm selection: the
 [unified collective architecture](../collectives/ops/architecture-synthesis.md), the
 [ALL_REDUCE op](../collectives/ops/all-reduce.md), and the
 [NCFW DMA-reprogram + APB broadcast](../collectives/ncfw/dma-reprogram-apb-bcast.md).
-*(Part 10 — planned; forward links.)*
 
 ---
 
@@ -397,7 +395,7 @@ is SoC `0x2802700000`, so the **atomic-increment window is abs `0x2802701800`** 
 writes `EVT_SEM.inc(local_sem)` on this core; a cross-die remote sema BD writes
 `EVT_SEM.inc(remote_sem)` on the *peer* (routed by `routing_id` over `io_d2d`, exactly like
 the data — not an interrupt). [HIGH/OBSERVED — `tpb_semaphores_inc @0x1800` + flat-map
-`TPB_0_EVT_SEM_SEMAPHORE_INC base 0x2802701800`, re-read this pass]
+`TPB_0_EVT_SEM_SEMAPHORE_INC base 0x2802701800`]
 
 ### 6.2 The completion-ring write-back gate — the resolved `en_comp_ring_update` contradiction
 
@@ -405,7 +403,7 @@ Whether the al_udma writes a completion-ring entry at all is gated per queue by
 `comp_cfg.en_comp_ring_update[0]`. Two earlier drafts disagreed on its S2M reset value
 (P9.7/[udma-hw-engine §2.2](udma-hw-engine.md) said **S2M reset = 1**; an earlier draft of
 P9.10/[field-tables §6.2](descriptor-ring-field-tables.md) claimed **reset = 0 on BOTH
-engines**). I re-grounded it directly from the Cayman RTL JSON, the field-tables page has
+engines**). The Cayman RTL JSON grounds it directly; the field-tables page has
 since been corrected to match, and both pages now agree.
 
 > **CORRECTION (resolved — field-tables now fixed to match).** The Cayman RTL JSON shows
@@ -426,7 +424,7 @@ since been corrected to match, and both pages now agree.
 > **both** the Cayman RTL JSON and
 > the Mariana customop-shipped JSON (S2M=1, M2S=0 on both). [HIGH/OBSERVED — `udma_s2m.json`
 > `comp_cfg@0x54.en_comp_ring_update ResetValue 0x1`; `udma_m2s.json`
-> `comp_cfg@0xa0.en_comp_ring_update ResetValue 0x0`; re-read this pass]
+> `comp_cfg@0xa0.en_comp_ring_update ResetValue 0x0`]
 
 The practical consequence: the **inline custom-op staging path leaves M2S at its reset 0** (no
 completion-ring entry — it busy-polls the gen tag instead), while the **DGE/execute path turns
@@ -493,7 +491,7 @@ routed over `io_d2d` to the peer's EVT_SEM `+0x1800` aperture). §5; full byte t
 
 ## 8. Confidence ledger + the cross-page reconciliation
 
-**HIGH/OBSERVED (re-verified against shipped cayman/mariana artifacts this pass):** the six
+**HIGH/OBSERVED (verified against shipped cayman/mariana artifacts):** the six
 64-B descriptor structs + the `struct2opcode` bindings + the opcode bytes
 `0xb8/0xbb/0xbd/0x68/0xe7/0xf1/0xbf/0xf0` + RDMA ext `8/9` (§1.1); the `dge_op@+15`
 pseudo→resolved map (§2.1); the GENERATE/DIMPUSH/REGWRITE strings + the Pool/SW/RTL dim counts
@@ -551,7 +549,7 @@ claimed rst 0 for both engines — has been corrected to match. All three pages 
   base/stride/aperture + the APB config path.
 - [On-Chip Working-Memory Regions](onchip-working-memory.md) — P9.12, the region/aperture map +
   the SoC→Q7 NX-local window TLB.
-- Collectives (Part 10 — planned): [S3D3 collective (SB2SB, 0xBF)](../collectives/ops/s3d3-collective.md),
+- Collectives: [S3D3 collective (SB2SB, 0xBF)](../collectives/ops/s3d3-collective.md),
   [the unified collective architecture](../collectives/ops/architecture-synthesis.md),
   [ALL_REDUCE](../collectives/ops/all-reduce.md),
   [NCFW DMA-reprogram + APB broadcast](../collectives/ncfw/dma-reprogram-apb-bcast.md).

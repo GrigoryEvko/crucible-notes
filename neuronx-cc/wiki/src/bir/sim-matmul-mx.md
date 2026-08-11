@@ -78,7 +78,7 @@ This is the systolic MAC reduced to its arithmetic essence: the simulator does n
 visitInstMatmult @0x27f670          ── thunk
   └─ doMatmult<InstMatmult> @0x289450        ── control + accumulate decision (§2 + §5)
        └─ matmultImpl<InstMatmult> @0x2883a0  ── the fp32 MAC (§2 Algorithm)
-       └─ transposeImpl<InstMatmult> @0x284020 ── CoreV4 transpose-stationary variant [HIGH]
+       └─ transposeImpl<InstMatmult> @0x284020 ── CoreV4 transpose-stationary variant
        └─ Memory::writeAccumulate (vtable+88)  ── PSUM writeback (§5)
 ```
 
@@ -101,7 +101,7 @@ function doMatmult_InstMatmult(I):              // sub_289450
     result = MemoryObject()                            // accumulator scratch
     // CoreV4 transpose load (weights-stationary TRANSPOSE) iff target>20 AND I+440 set:
     if module.target > 20 && byte(I+440):
-        transposeImpl_InstMatmult(...)                 // out = ifmap · weightsᵀ  [HIGH]
+        transposeImpl_InstMatmult(...)                 // out = ifmap · weightsᵀ
     else:
         matmultImpl_InstMatmult(...)                   // the dot product (below)
     // decode the PSUM accumulate command → writeAccumulate (§5):
@@ -240,9 +240,9 @@ function dequantizeMx(rows, K, float* dataF, u8* scale):     // sub_27b040
 
 The disassembly at `0x27b040` confirms every constant: `shr $0x3` (`r/8`), `shr $0x2` (`c/4`) to form the scale index, `sub $0x7f,%edi` (subtract 127), then `call ldexpf@plt` `@0x27b0fd`. From this:
 
-- **Block geometry.** The scale index `(K/4)·(r/8) + (c/4)` means one E8M0 byte is shared by every (8 partitions) × (4 columns) tile = **32 elements** — the OCP-MXFP `block_size` (the HLO legalize pass enforces "block_size must be 32"; the dtype tables call 32 "8 part × 4 elem"). [CERTAIN]
-- **Bias removal.** `scale − 127` removes the `float8_e8m0fnu` bias (E8M0 bias = 127); `ldexpf(x, e) = x · 2^e`, so the shared block exponent is applied as a power-of-two scale. This is bit-exact OCP MX dequant: `value = 2^(E8M0 − 127) · mantissa`. [CERTAIN]
-- **Mantissa is pre-unpacked.** The FP4/FP8 mantissa is already widened to `fp32` by `cast_to(…, 16)` *before* `dequantizeMx`; the x4 lane container (dtypes 2/8/9) was expanded by the `Ki *= 4` extent and `deinterleaveMatrices(factor=4)`. `dequantizeMx` sees a contiguous `fp32` grid. [CERTAIN]
+- **Block geometry.** The scale index `(K/4)·(r/8) + (c/4)` means one E8M0 byte is shared by every (8 partitions) × (4 columns) tile = **32 elements** — the OCP-MXFP `block_size` (the HLO legalize pass enforces "block_size must be 32"; the dtype tables call 32 "8 part × 4 elem").
+- **Bias removal.** `scale − 127` removes the `float8_e8m0fnu` bias (E8M0 bias = 127); `ldexpf(x, e) = x · 2^e`, so the shared block exponent is applied as a power-of-two scale. This is bit-exact OCP MX dequant: `value = 2^(E8M0 − 127) · mantissa`.
+- **Mantissa is pre-unpacked.** The FP4/FP8 mantissa is already widened to `fp32` by `cast_to(…, 16)` *before* `dequantizeMx`; the x4 lane container (dtypes 2/8/9) was expanded by the `Ki *= 4` extent and `deinterleaveMatrices(factor=4)`. `dequantizeMx` sees a contiguous `fp32` grid.
 
 ### The scale-tensor interleave
 
@@ -398,7 +398,9 @@ function generateMxScales(in2D, scale2D, u8 emaxBias):   // sub_29e1d0
             scale2D[rowGroup][colBlock] = scaleByte
 ```
 
-The shared exponent per 8×4 block is `E8M0 = max(1, max(0, maxBiasedExp(block) − emaxBias))`, always in `[1, 255]`. `findMaxExponentPerInputBlock` is a `fp32` biased-exponent **bit-extract** (`bits >> 23`, byte-truncated so the sign in bit 31 is dropped — magnitude-exponent, sign-independent), **not** `ilogbf`; a denormal `fp32` reads exponent byte 0. The block is the same 8 partition × 4 column = 32 elements as `dequantizeMx`. [CERTAIN — disassembly `shr edx,0x17; mov [rcx+rsi-0x20],dl; cmovb`]
+The shared exponent per 8×4 block is `E8M0 = max(1, max(0, maxBiasedExp(block) − emaxBias))`, always in `[1, 255]`. `findMaxExponentPerInputBlock` is a `fp32` biased-exponent **bit-extract** (`bits >> 23`, byte-truncated so the sign in bit 31 is dropped — magnitude-exponent, sign-independent), **not** `ilogbf`; a denormal `fp32` reads exponent byte 0. The block is the same 8 partition × 4 column = 32 elements as `dequantizeMx`.
+
+*Anchors: disassembly `shr edx,0x17; mov [rcx+rsi-0x20],dl; cmovb`.*
 
 > **GOTCHA —** the two clamps compose in order: the signed `maxExp − emaxBias` is first floored to 0, *then* a resulting 0 byte is bumped to 1. The zero-floor is the all-zero / sub-tiny-block guard — a fully-zero block would otherwise carry E8M0 byte 0 (= `2^-127`); forcing it to 1 (= `2^-126`) keeps the stored scale a valid non-zero shared exponent and stops dequant from ever multiplying by exactly `2^-127`. Skip either clamp and the round-trip diverges on edge blocks.
 
@@ -412,7 +414,7 @@ function quantizeDataApplyingMxScales(in2D, out2D, scale2D):   // sub_29e2a0
             out2D[row][col] = float_bits((254 - E8M0) << 23) * in2D[row][col]
 ```
 
-`float_bits((254 − E8M0) << 23) = 2^((254 − E8M0) − 127) = 2^(127 − E8M0)`, so `out = in · 2^(127 − E8M0) = in / 2^(E8M0 − 127)` — the **exact inverse** of `dequantizeMx`'s `ldexpf(x, E8M0 − 127)` (§4). The pre-scale maps each element into the format's normal range before the narrow. The disassembly confirms `mov $0xfe,%ebp` (254), `sub %r14d,%edx; shl $0x17,%edx` (`(254−E8M0)<<23`), `mulss`. The 254 (not 255) is because the multiplier is built directly as an `fp32` exponent field with bias 127; the §6.1 zero-floor keeps `(254 − E8M0) ≤ 253`, so the multiplier is always a finite normal `fp32` (never Inf). [CERTAIN]
+`float_bits((254 − E8M0) << 23) = 2^((254 − E8M0) − 127) = 2^(127 − E8M0)`, so `out = in · 2^(127 − E8M0) = in / 2^(E8M0 − 127)` — the **exact inverse** of `dequantizeMx`'s `ldexpf(x, E8M0 − 127)` (§4). The pre-scale maps each element into the format's normal range before the narrow. The disassembly confirms `mov $0xfe,%ebp` (254), `sub %r14d,%edx; shl $0x17,%edx` (`(254−E8M0)<<23`), `mulss`. The 254 (not 255) is because the multiplier is built directly as an `fp32` exponent field with bias 127; the §6.1 zero-floor keeps `(254 − E8M0) ≤ 253`, so the multiplier is always a finite normal `fp32` (never Inf).
 
 #### 6.3 Round-to-grid per format
 
@@ -430,13 +432,13 @@ The FP4 e2m1 grid is `{0, ±0.5, ±1, ±1.5, ±2, ±3, ±4, ±6}` (decoded from 
 - **Overflow** (`lea -0x7f(%rax),%ecx; cmp $0x2,%ecx; jg` `@0x2a355a` — unbiased exp > 2, i.e. `|x| ≥ 8`) → `or $0x7,%eax` `@0x2a3632` = saturate to nibble `0x7` = `sign|6.0`. No Inf.
 - **RNE** round-bias `0x400000` (½ ULP at FP4's 1 mantissa bit) gated by guard bit 21 with round-to-even (`@0x2a3594..`). Hard RNE — no rounding-mode field.
 
-The simulator has **no** local canonical-FP8 narrow; `Memory::write(v62)` → `cast_and_reshape` `@0x28f1f0` → `cast_to` `@0x28db30` → `bir::CastToNewDType` (PLT thunk `@0xed930` → `@0x22b1230`, a `libBIR` import) does the e4m3fn/e5m2 round/saturate, driven by the `FP8ConvConfig` stamped above (`saturate byte[0] = 1`). The canonical constants (448 = `0x7E`, 57344 = `0x7B`, RNE bias) live in the imported `libBIR` (`float_converter.cpp`, the same source path baked into this binary), so the delegation is CERTAIN and the FP8 constants are HIGH for this binary. The §6.1 EMAX (8/15) bias is what guarantees the pre-scaled block max (§6.2) lands ≤ these maxima, so the narrow rarely saturates.
+The simulator has **no** local canonical-FP8 narrow; `Memory::write(v62)` → `cast_and_reshape` `@0x28f1f0` → `cast_to` `@0x28db30` → `bir::CastToNewDType` (PLT thunk `@0xed930` → `@0x22b1230`, a `libBIR` import) does the e4m3fn/e5m2 round/saturate, driven by the `FP8ConvConfig` stamped above (`saturate byte[0] = 1`). The canonical constants (448 = `0x7E`, 57344 = `0x7B`, RNE bias) live in the imported `libBIR` (`float_converter.cpp`, the same source path baked into this binary): the delegation is read off the call chain, while the FP8 constants themselves are **[INFERRED]** for this binary — they were not re-disassembled here. The §6.1 EMAX (8/15) bias is what guarantees the pre-scaled block max (§6.2) lands ≤ these maxima, so the narrow rarely saturates.
 
 #### 6.4 The x4 pack and scale interleave
 
 The E8M0 scale tensor is written `[partitions/8, cols/4]` with a block-major reorder: `copy2DScaleVectorToArray<uchar>` `@0x29e570` sends scale-row `i` to output slot `(i & 3) + 32·(i >> 2)` — the exact index `copyScalesFromArray` (§4) reads back, making the layout symmetric. The "32" stride is the 8-part × 4-col block granularity in scale space; the 4-bit `(i & 3)` group is the MXMEM_PATTERN1D scale-stream selector ([1.05 MXMEM_PATTERN1D](../isa/mxmem-pattern1d.md)).
 
-FP4 packs two nibbles per byte with an intra-x4 lane permutation: `cast_fp32_to_float4e2m1fn_x4` `@0x2a72c0` (asserts `count % 4 == 0`) calls `sub_2A3530` to encode then `sub_2A6A80` to pack, and the latter applies `sub_2A3500` — a deinterleave-by-`2·stride` that reverses the linear index within each `2·stride` window and pairs even/odd offset-by-2. So the four logical FP4 sub-elements of an x4 container are placed in a stride-dependent permuted order, **not** plain little-endian nibble order. The permutation formula is CERTAIN; the concrete `stride`/`parity` (from the AP via `sub_2A58A0`) is HIGH — they are read at role level but not pinned to a NEFF byte fixture. FP8-x4 (dtypes 8/9) carries the x4-ness in the AP (`num×4`, `u32` container stride 4), not a nibble pack — FP8 bytes are 1-per-element contiguous.
+FP4 packs two nibbles per byte with an intra-x4 lane permutation: `cast_fp32_to_float4e2m1fn_x4` `@0x2a72c0` (asserts `count % 4 == 0`) calls `sub_2A3530` to encode then `sub_2A6A80` to pack, and the latter applies `sub_2A3500` — a deinterleave-by-`2·stride` that reverses the linear index within each `2·stride` window and pairs even/odd offset-by-2. So the four logical FP4 sub-elements of an x4 container are placed in a stride-dependent permuted order, **not** plain little-endian nibble order. The permutation formula is read off the disassembly; the concrete `stride`/`parity` (from the AP via `sub_2A58A0`) is **[INFERRED]** — read at role level, not pinned to a NEFF byte fixture. FP8-x4 (dtypes 8/9) carries the x4-ness in the AP (`num×4`, `u32` container stride 4), not a nibble pack — FP8 bytes are 1-per-element contiguous.
 
 ---
 
@@ -451,7 +453,7 @@ assert numActiveRows % 4 == 0    "Error: num_active_rows should be divisible by 
 assert numActiveRows == 128      "Only the 128-active-rows case is supported!"
 ```
 
-The kernel loops **32** sub-tiles, each advancing the operand APs by `NumElementsPerPartition`; per tile it forces `Pattern[0].step = 4` and `Pattern[0].num = 32 · NumElementsPerPartition` (the dense `K` is 32× the active `K`). For each operand it builds an `std::map<int,int>` of `{active element index → packed position}` via `bir::linearizedElementIndices()`, then the inner MAC walks an access-pattern descriptor (`v48[0..9]`, multi-dim strides/nums = the sparse-mask geometry) and accumulates only the unmasked positions: `acc = weightsF[… + j·Kw] · ifmapF[map_position] + acc` (`fp32 +=`). The `int16` index tensor selects which of the 32× compressed rows are active — the 128-active-rows / `%4` / ×32 numbers are the 2:4-style structured-sparsity geometry the PE engine decodes. Writeback is identical to §5. [CERTAIN]
+The kernel loops **32** sub-tiles, each advancing the operand APs by `NumElementsPerPartition`; per tile it forces `Pattern[0].step = 4` and `Pattern[0].num = 32 · NumElementsPerPartition` (the dense `K` is 32× the active `K`). For each operand it builds an `std::map<int,int>` of `{active element index → packed position}` via `bir::linearizedElementIndices()`, then the inner MAC walks an access-pattern descriptor (`v48[0..9]`, multi-dim strides/nums = the sparse-mask geometry) and accumulates only the unmasked positions: `acc = weightsF[… + j·Kw] · ifmapF[map_position] + acc` (`fp32 +=`). The `int16` index tensor selects which of the 32× compressed rows are active — the 128-active-rows / `%4` / ×32 numbers are the 2:4-style structured-sparsity geometry the PE engine decodes. Writeback is identical to §5.
 
 ### `visitInstReadActivationAccumulator @0x1d2ae0`
 
@@ -466,7 +468,7 @@ function visitInstReadActivationAccumulator(I):    // sub_1d2ae0
     byte(this+872) = 1                              // mark accumulator-read / pending-reset
 ```
 
-It reads the simulator's running activation accumulator (`this+760`, filled by `doEngineAccumReduce @0x1f9900`) and writes it out plain (overwrite), then flags the accumulator consumed. `doEngineAccumReduce`'s `EngineAccumulationType` codes are `1 = Zero/Idle` (`memset(acc,0)`), `3`/`5 = LoadAccumulate` ("an instruction that does a LoadAccumulate must provide an immediate value to load"); the accumulator output must be `fp32` ("OutRes.getType() == Dtype::float32"), and the reduce op is a `std::function<float(float,float)>` looked up from a map keyed by the ALU op. [CERTAIN visitor / HIGH filler]
+It reads the simulator's running activation accumulator (`this+760`, filled by `doEngineAccumReduce @0x1f9900`) and writes it out plain (overwrite), then flags the accumulator consumed. `doEngineAccumReduce`'s `EngineAccumulationType` codes are `1 = Zero/Idle` (`memset(acc,0)`), `3`/`5 = LoadAccumulate` ("an instruction that does a LoadAccumulate must provide an immediate value to load"); the accumulator output must be `fp32` ("OutRes.getType() == Dtype::float32"), and the reduce op is a `std::function<float(float,float)>` looked up from a map keyed by the ALU op. The visitor itself is disassembled; the `doEngineAccumReduce` filler behaviour is **[INFERRED]** from its assert strings.
 
 ---
 
@@ -530,12 +532,12 @@ The quantize round-trip is internally consistent: `quantizeDataApplyingMxScales`
 
 Five claims were re-verified directly against `libBIRSimulator.so` (md5 `f3acdcba…`): the md5 itself; the EMAX table `byte_5F7898 = 02 00 00 08 00 0f 08 0f` (xxd); the `dequantizeMx` body (`shr $0x3` / `shr $0x2` index, `sub $0x7f,%edi`, `call ldexpf@plt`); the FP4 encoder saturate (`ucomiss`/`jp` NaN, `cmp $0x2; jg`, `or $0x7,%eax`, `0x400000` round-bias); and the quantize pre-scale (`mov $0xfe`, `sub; shl $0x17`, `mulss`). All five hold at the disassembly level. The five MX function VAs were confirmed against the IDA `native_exports` mangled-symbol table.
 
-What remains below CERTAIN:
+What remains unpinned:
 
 - **G1 — `EngineAccumulationType` bit-decode.** `getCalcStart`/`getCalcAccu`/`getNumElementsPerPartition` are PLT thunks into `libBIR`; their exact enum→bool mapping lives there, not in the simulator. Their *result-use* is certain; the bit decode is taken on faith from the Idle/Zero/Accumulate model. [GAP]
-- **G2 — canonical FP8 narrow constants.** `bir::CastToNewDType` is a `libBIR` import (`0x22b1230` stub, decompile-failed). The e4m3fn 448 = `0x7E` / e5m2 57344 = `0x7B` / RNE-bias / NaN-code constants are HIGH for this binary — they live in the imported `libBIR` (same `float_converter.cpp` source baked in), not re-disassembled in `libBIRSimulator`, which contains no canonical FP8 narrow at all.
-- **G3 — intra-x4 lane parameterization.** The FP4 lane permutation *formula* (`sub_2A3500`, deinterleave-by-`2·stride`) is CERTAIN; the concrete `stride`/`parity` per tensor (derived from the AP by `sub_2A58A0`) is HIGH — read at role level, not pinned to a NEFF byte fixture. Same residual the encoder and dtype-table reports left open.
-- **G4 — `transposeImpl` index math.** The CoreV4 transpose-stationary variant (§2) is read at structure level (tiled transpose into the result `MemObj`, `out = ifmap · weightsᵀ`) but not element-indexed. [HIGH]
+- **G2 — canonical FP8 narrow constants.** `bir::CastToNewDType` is a `libBIR` import (`0x22b1230` stub, decompile-failed). The e4m3fn 448 = `0x7E` / e5m2 57344 = `0x7B` / RNE-bias / NaN-code constants are **[INFERRED]** for this binary — they live in the imported `libBIR` (same `float_converter.cpp` source baked in), not re-disassembled in `libBIRSimulator`, which contains no canonical FP8 narrow at all.
+- **G3 — intra-x4 lane parameterization.** The FP4 lane permutation *formula* (`sub_2A3500`, deinterleave-by-`2·stride`) is disassembled; the concrete `stride`/`parity` per tensor (derived from the AP by `sub_2A58A0`) is **[INFERRED]** — read at role level, not pinned to a NEFF byte fixture. Same residual the encoder and dtype-table reports left open.
+- **G4 — `transposeImpl` index math.** The CoreV4 transpose-stationary variant (§2) is read at structure level (tiled transpose into the result `MemObj`, `out = ifmap · weightsᵀ`) but not element-indexed, so its index math is **[INFERRED]**.
 - **G5 — `key 19` authoring.** The per-function "auto psum accumulate" attribute is *read* at the call sites (`ToBoolVisitor` over a `boost::variant`); the pass that *sets* it is a `libwalrus`/HLO concern, not traced here.
 - **G6 — `findMaxExponentPerInputBlock` / `generateMxScales` clamps vs HW.** The CLAMP-LOW and ZERO-FLOOR are byte-exact; whether silicon uses the identical all-zero-block convention is inferred from the arithmetic, not cross-checked against a hardware MX reference (no in-binary spec beyond the OCP URL string).
 

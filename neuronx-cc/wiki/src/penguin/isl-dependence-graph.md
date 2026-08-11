@@ -8,7 +8,7 @@
 
 The single most important fact about this module is what it is *not*. The integer-set algebra, the schedule/AST machinery, and the dependence *primitives* are stock **islpy ~= 2023.1**, a pip dependency — they are not Neuron-authored. Every isl call you will see (`apply_range`, `lex_le_union_map`, `lex_lt_at_multi_pw_aff`, `from_set`, `deltas`, `is_empty`) is an upstream islpy method invoked inline. What Neuron wrote — and what this page reverses — is the **glue**: how Penguin IR drives those primitives. A reimplementer who has islpy needs only this glue. The page is organized as that glue: §domain (loop-nest → `UnionSet`), §access (`NeuronAP` → `UnionMap`, including `build_aff`), §dependence (read/write unions → RAW/WAR/WAW), and §schedule-tree feed. This page opens the Part-5 ISL chapter (5.16–5.22); the schedule-tree *legality policy* is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md) (5.17), which consumes the dependence relation built here.
 
-> **QUIRK —** the dependence test is **hand-rolled May-dependence**, not isl exact dataflow. There is **no** `compute_flow` / `union_access_info` symbol anywhere in either `.so`. Instead the glue forms access-pair products (`apply_range(reverse())`) and intersects them with the schedule's happens-before relation (`lex_le_union_map`). A reimplementer who reaches for `isl_union_access_info_compute_flow` will produce a *different* (exact-dataflow) result and a *more permissive* legality gate than what ships. See [§Dependence Relation](#dependence-relation-readwrite-unions--rawwarwaw).
+> **QUIRK —** the dependence test is **hand-rolled May-dependence**, not isl exact dataflow. There is **no** `compute_flow` / `union_access_info` symbol anywhere in either `.so`. Instead the glue forms access-pair products (`apply_range(reverse())`) and intersects them with the schedule's happens-before relation (`lex_le_union_map`). A reimplementer who reaches for `isl_union_access_info_compute_flow` will produce a *different* (exact-dataflow) result and a *more permissive* legality gate than what ships. See [§Dependence Relation](#dependence-relation--readwrite-unions--rawwarwaw).
 
 For reimplementation, the contract is:
 
@@ -57,15 +57,17 @@ neuronxcc.starfish.penguin.IntegerSetAnalysis      (IntegerSetAnalysis.so — ba
        enums DependenceType / DebugLevel
 ```
 
-> **CORRECTION (ISL-DEP-1) —** the base "raw-isl factory" is not a separate Python `.so` as a first pass suggested. Two distinct artifacts carry the `IntegerSetAnalysis` name: (a) a **Python** module `neuronxcc.starfish.penguin.IntegerSetAnalysis` imported by this `.so` (confirmed in the string table), and (b) a **C++** class `islwrapper::IntegerSetAnalysis` compiled into `libBIR.so` whose mangled methods — `domain`, `predicated_domain`, `create_domain_space`, `build_aff`, `add_loop_bounds`, `apply_predicates`, `enumerate_predicates`, `enumerate_affine_predicates`, `build_linear_expr`, `quasi_affine_expr`, `convex_hull`, `simplify`, `extract_cst_floor/ceil` — are decompilable in `libBIR`. The low-level domain/aff/predicate algebra is therefore native C++ in `libBIR.so`; the Python `IntegerSetAnalysis` module and this Cython subclass are the policy/glue layers above it. `IntegerSetWrapper` as a discrete Python lifetime-manager class is INFERRED from naming, not separately confirmed.
+**Where the base actually lives.** Two distinct artifacts carry the `IntegerSetAnalysis` name, and they sit at different levels. One is a **Python** module, `neuronxcc.starfish.penguin.IntegerSetAnalysis`, imported by this `.so` and present in its string table. The other is a **C++** class, `islwrapper::IntegerSetAnalysis`, compiled into `libBIR.so`; its mangled methods — `domain`, `predicated_domain`, `create_domain_space`, `build_aff`, `add_loop_bounds`, `apply_predicates`, `enumerate_predicates`, `enumerate_affine_predicates`, `build_linear_expr`, `quasi_affine_expr`, `convex_hull`, `simplify`, `extract_cst_floor/ceil` — are all decompilable there. So the low-level domain/aff/predicate algebra is native C++ in `libBIR.so`, and the Python `IntegerSetAnalysis` module plus this Cython subclass are the policy and glue layers stacked above it.
+
+> **NOTE —** `IntegerSetWrapper` is treated here as a Python lifetime-manager class, but that reading comes from the name alone; no separate class body was located.
 
 The practical consequence of the MRO: when this module calls `self.create_access` / `self.create_domain_space` / `self.domain`, the lookup resolves to the **base** `IntegerSetAnalysis` (ultimately the `islwrapper` C++ layer) unless overridden here. Three name-classes interleave at every call site:
 
 | Method | Resolves to | Confidence |
 |---|---|---|
-| `create_domain_space`, `create_access`, `domain`, `predicated_domain`, `tensor_space` | base `IntegerSetAnalysis` | STRONG (base symbol set) |
-| `access`, `access_impl`, `build_new_access_impl`, `in_domain`, `in_predicate_domain`, `build_aff`, `affine_exp` | overridden HERE (Pyx symbols present in this `.so`) | CONFIRMED |
-| `apply_range`, `apply_domain`, `reverse`, `from_set`, `lex_le_union_map`, `lex_lt_at_multi_pw_aff` | stock **islpy** UnionMap/Set/MultiPwAff methods, inline | CONFIRMED (string table) |
+| `create_domain_space`, `create_access`, `domain`, `predicated_domain`, `tensor_space` | base `IntegerSetAnalysis` | HIGH (base symbol set) |
+| `access`, `access_impl`, `build_new_access_impl`, `in_domain`, `in_predicate_domain`, `build_aff`, `affine_exp` | overridden HERE (Pyx symbols present in this `.so`) | CERTAIN |
+| `apply_range`, `apply_domain`, `reverse`, `from_set`, `lex_le_union_map`, `lex_lt_at_multi_pw_aff` | stock **islpy** UnionMap/Set/MultiPwAff methods, inline | CERTAIN (string table) |
 
 Other imports observed in `pymod_exec`: `neuronxcc.starfish.penguin.common`, `.IslSimplifier` (`NeuronIslSimplifier`), `.targets.tonga.TongaInst`, and the sibling `.targets.transforms.TongaIslSimplifier` (used by `try_simplify` to coalesce/gist results).
 
@@ -102,7 +104,7 @@ The corresponding schedule tree:        (printable with print(root.to_str()))
 
 From this:
 
-- One Penguin statement (instruction) `sN` ↔ one isl statement tuple `"sN"`, where `N = inst.id`. The `s0`/`s1`/`s2` naming is CONFIRMED by the docstring example; the exact `"s%s"` format string is **not** a `.value` in this module's string table (only `"%s_alloc"` is) — STRONG-inferred to live in the base `IntegerSetAnalysis` tuple-naming, not here.
+- One Penguin statement (instruction) `sN` ↔ one isl statement tuple `"sN"`, where `N = inst.id`. The `s0`/`s1`/`s2` naming comes from the docstring example. The `"s%s"` format string itself is **not** a `.value` in this module's string table — only `"%s_alloc"` is — so the tuple-naming most likely lives in the base `IntegerSetAnalysis`, not here.
 - The iteration domain of `sN` is `{ sN[i,j,...] : bounds }`; the index vars are the enclosing loop induction variables (`loopnest_ivs`), and the bounds come from each loop's trip count plus any predicates.
 - The schedule maps `sN[ivs] -> [(loop-coords)]`; a deeper loop (`s1` over `i,j`) gets a nested band `"[{ s1[i,j] -> [(j)] }]"`.
 - The tree is `DOMAIN(union of all sN sets) → SEQUENCE → per-stmt FILTER → BAND → MARK("sN")`. (The `mark` leaf names each statement — built via `insert_mark`/`get_tuple_id` in §Schedule-Tree.)
@@ -130,9 +132,9 @@ function get_child_domain_union_set(self, stmt):       // 0x33a70 — recursive 
 
 The `ScopeRegion`/`Axis` `__enter__`/`__exit__` manage `loopdepth` so a child `NeuronInst`'s `in_predicate_domain` observes the correct enclosing IVs and bounds. This is the core glue: the nested Penguin loop-nest is flattened into one flat isl `UnionSet` of per-statement Sets. The isl primitives used are stock: `isl.UnionSet.from_set(Set)` and `UnionSet.union(UnionSet)`.
 
-> **NOTE —** `NeuronInst`, `NeuronAP`, and `ScopeRegion` are CONFIRMED as `.value` strings in this module. `Axis` is **not** a string in this `.so`; it is STRONG-inferred as the second loop-scope IR class (the `loopdepth`-pushing context-manager partner of `ScopeRegion`, per Penguin's axis/loop model). A reimplementer should treat the loop-scope handling as "any context-manager scope node," whether the concrete class is `Axis` or `ScopeRegion`.
+> **NOTE —** `NeuronInst`, `NeuronAP`, and `ScopeRegion` all appear as `.value` strings in this module. `Axis` does **not**; naming it as the second loop-scope IR class — the `loopdepth`-pushing context-manager partner of `ScopeRegion`, per Penguin's axis/loop model — is a reconstruction. Treat the loop-scope handling as "any context-manager scope node," whether the concrete class is `Axis` or `ScopeRegion`.
 
-The base-class build (INFERRED from the `IntegerSetWrapper` symbol set) is: `create_domain_space(loopnest, params)` → `isl.Space` (set space, tuple `sN`, dims = #IVs, params = symbolic loop-bound params); then `add_loop_bounds` / `add_partial_loop_bounds` add `0 <= iv < trip` constraints per loop; `predicated_domain = domain ∩ enumerate_predicates(...)`. Symbolic bound params are named/bounded by `add_param_bounds` / `set_param_dim_name`.
+The base-class build, reconstructed from the `IntegerSetWrapper` symbol set, is: `create_domain_space(loopnest, params)` → `isl.Space` (set space, tuple `sN`, dims = #IVs, params = symbolic loop-bound params); then `add_loop_bounds` / `add_partial_loop_bounds` add `0 <= iv < trip` constraints per loop; `predicated_domain = domain ∩ enumerate_predicates(...)`. Symbolic bound params are named/bounded by `add_param_bounds` / `set_param_dim_name`.
 
 ---
 
@@ -170,7 +172,7 @@ function build_new_access_impl(self, inst, ap):        // 0x31ce0 — block/bank
     return self.create_access(sid, tensor_tuple_name(tensor), addrs, preds, ...)   // base class
 ```
 
-The base `IntegerSetAnalysis.create_access` (INFERRED from its isl-API symbol set) assembles the map:
+The base `IntegerSetAnalysis.create_access`, reconstructed from its isl-API symbol set, assembles the map:
 
 ```c
 function create_access(self, sid, tname, addrs, preds, ...):   // base IntegerSetAnalysis
@@ -238,7 +240,7 @@ The dependence relation is derived in two steps: `get_dependency_map` builds the
 ```c
 from enum import Enum
 class DependenceType(Enum):
-    RAW   # flow   (Read-After-Write)    value 0   (INFERRED ordinal — ints 0/1/2 created)
+    RAW   # flow   (Read-After-Write)    value 0   (ordinal reconstructed — ints 0/1/2 created)
     WAR   # anti   (Write-After-Read)    value 1
     WAW   # output (Write-After-Write)   value 2
 class DebugLevel(Enum): NONE [, ...]     # gates debug_info printing
@@ -246,7 +248,7 @@ class DebugLevel(Enum): NONE [, ...]     # gates debug_info printing
 
 `DependenceType` is a Python `enum.Enum` subclass built in `pymod_exec` (the strings `DependenceType`, `DebugLevel`, `RAW`/`WAR`/`WAW` appear in the table; `RAW`/`WAR`/`WAW` are also embedded in the `"RAW violation on tensor: "` / `"WAR …"` / `"WAW …"` diagnostics). Default `dependence_types` arg to `check_valid_schedule` is `{RAW, WAR, WAW}` (all three). The member names are RAW/WAR/WAW — there are no `flow`/`anti`/`output` string members.
 
-> **NOTE —** the `0/1/2` ordinals are INFERRED (an `enum.Enum` body with three bare members yields auto-values, but the exact integers are not directly observable in the string table — only the names are). Treat ordinal identity as low-confidence; the *names and their flow/anti/output meaning* are CONFIRMED via the diagnostics.
+> **NOTE —** the `0/1/2` ordinals are a reconstruction: an `enum.Enum` body with three bare members yields auto-values, but the integers themselves are not observable in the string table — only the names are. Do not rely on ordinal identity. The names and their flow/anti/output meaning do come from the diagnostics.
 
 ### Step 1 — get_dependency_map
 
@@ -287,7 +289,7 @@ function get_alloc_remapping(self, inst, ap):          // 0x2c870
 
 ### Step 2 — check_valid_schedule (the legality gate; policy in 5.17)
 
-This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the D-Y01 dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md).
+This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md).
 
 ```c
 function check_valid_schedule(self, new_schedule, insts,
@@ -402,24 +404,24 @@ DEPENDENCES (get_dependency_map + check_valid_schedule):
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `__init__` | `0x19de0` | construct analysis ctx (caches, params) | CONFIRMED |
-| `in_domain` (wrapper / gen) | `0x182c0` / `0x38450` | cached per-stmt iteration domain | CONFIRMED |
-| `in_predicate_domain` (wrapper / gen) | `0x1ad20` / `0x367c0` | predicate-restricted domain | CONFIRMED |
-| `get_child_domain_union_set` | `0x33a70` | union of subtree domains → `UnionSet` | CONFIRMED |
-| `access` | `0x39f70` | AP → access relation entry | CONFIRMED |
-| `access_impl` | `0x21180` | memoization layer | CONFIRMED |
-| `build_new_access_impl` | `0x31ce0` | block/bank-aware access-map builder | CONFIRMED |
-| `build_aff` (+ `.build`) | `0x4c790` (+ `0x44ee0`) | `AffineExpr` → `isl.Aff/PwAff` | CONFIRMED |
-| `affine_exp` (gen + genexpr) | `0x4dee0` (+ `0x208a0`) | per-dim `PwAff` term iterator | CONFIRMED |
-| `get_dependency_map` | `0x1b8f0` | read/write `UnionMap` builder | CONFIRMED |
-| `get_alloc_remapping` | `0x2c870` | tensor → allocation rename map | STRONG |
-| `add_band` | `0x24bc0` | insert 1-D schedule band | STRONG |
-| `add_sequence_filter` | `0x22b20` | insert SEQUENCE + per-stmt FILTER | STRONG |
-| `get_schedule_tree` | `0x1f600` | entrypoint (docstring) | CONFIRMED |
-| `get_schedule_tree_helper` | `0x3bbd0` | recursive tree assembler | STRONG |
-| `check_valid_schedule` | `0x273f0` | legality gate (policy: 5.17) | CONFIRMED |
-| `internal_check_valid_schedule` | `0x3f080` | lex-positive carried-dep test | STRONG |
-| `DependenceViolation.__init__` | `0x18ce0` | violation record ctor | CONFIRMED |
+| `__init__` | `0x19de0` | construct analysis ctx (caches, params) | CERTAIN |
+| `in_domain` (wrapper / gen) | `0x182c0` / `0x38450` | cached per-stmt iteration domain | CERTAIN |
+| `in_predicate_domain` (wrapper / gen) | `0x1ad20` / `0x367c0` | predicate-restricted domain | CERTAIN |
+| `get_child_domain_union_set` | `0x33a70` | union of subtree domains → `UnionSet` | CERTAIN |
+| `access` | `0x39f70` | AP → access relation entry | CERTAIN |
+| `access_impl` | `0x21180` | memoization layer | CERTAIN |
+| `build_new_access_impl` | `0x31ce0` | block/bank-aware access-map builder | CERTAIN |
+| `build_aff` (+ `.build`) | `0x4c790` (+ `0x44ee0`) | `AffineExpr` → `isl.Aff/PwAff` | CERTAIN |
+| `affine_exp` (gen + genexpr) | `0x4dee0` (+ `0x208a0`) | per-dim `PwAff` term iterator | CERTAIN |
+| `get_dependency_map` | `0x1b8f0` | read/write `UnionMap` builder | CERTAIN |
+| `get_alloc_remapping` | `0x2c870` | tensor → allocation rename map | HIGH |
+| `add_band` | `0x24bc0` | insert 1-D schedule band | HIGH |
+| `add_sequence_filter` | `0x22b20` | insert SEQUENCE + per-stmt FILTER | HIGH |
+| `get_schedule_tree` | `0x1f600` | entrypoint (docstring) | CERTAIN |
+| `get_schedule_tree_helper` | `0x3bbd0` | recursive tree assembler | HIGH |
+| `check_valid_schedule` | `0x273f0` | legality gate (policy: 5.17) | CERTAIN |
+| `internal_check_valid_schedule` | `0x3f080` | lex-positive carried-dep test | HIGH |
+| `DependenceViolation.__init__` | `0x18ce0` | violation record ctor | CERTAIN |
 
 Base-class glue (in `IntegerSetAnalysis.so`, not IDA-extracted here — from symbol/docstring evidence):
 `IntegerSetAnalysis.{create_access, create_domain_space, domain, predicated_domain, tensor_space, is_injective, cover_whole_tensor_impl, _make_access_cache_key, get_scaled_addrs, enumerate_predicates}` and `IntegerSetWrapper.{create_domain, create_access_map_impl, create_relation_space, build_aff, add_loop_bounds, try_simplify, union_and_simplify, val, ctx}`.

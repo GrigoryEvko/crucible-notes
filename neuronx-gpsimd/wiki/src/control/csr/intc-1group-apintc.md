@@ -12,7 +12,8 @@ the exact bytes that change and nothing else.
 All evidence is read directly out of the shipped register-description JSON, the
 shipped Mako generator template (`intc_ngrp_unit.json.mako`), the shipped trigger
 YAMLs, and the shipped address-map xref — all RTL-generated, binary-derived,
-citeable artifacts. Every claim is tagged `[conf · prov]` (`HIGH`/`MED`/`LOW` ×
+citeable artifacts. The page default is `[HIGH · OBSERVED]`; claims that depart
+from it carry an explicit `[conf · prov]` tag (`HIGH`/`MED`/`LOW` ×
 `OBSERVED`/`INFERRED`/`CARRIED`). The byte-grounded generation is **Cayman (NC-v3)**;
 Maverick (v5 / MAVERICK) is **header-OBSERVED only**, so v5-interior claims are
 flagged `INFERRED`.
@@ -38,11 +39,10 @@ and the address-side sibling [`../address/pkl-intc-sprot-security.md`](../addres
 > different* block (the IOFIC group body) whose `1grp` width happens to also be one
 > group. They share register *names* (`int_cause_grp`, `int_mask_grp`, …) and the
 > W0C/W1S polarity, but `ap_intc` is **not** a resized `intc`. Keep them separate.
-> `[HIGH · OBSERVED]`
 
 ---
 
-## 1. `intc_1grp` — exactly two bytes-of-meaning vs `intc_4grp` `[HIGH · OBSERVED]`
+## 1. `intc_1grp` — exactly two bytes-of-meaning vs `intc_4grp`
 
 A `jq -S` whole-file diff of `intc_1grp_*_unit.json` against `intc_4grp_*_unit.json`
 returns **exactly two changed lines**, for *both* flavors:
@@ -74,11 +74,10 @@ Both `INTC_NUM_GROUPS` and `NUM_OF_TRIGS` are `NonOverridable="true"`.
 > **QUIRK — fixed aperture, shrunk payload.** `AddrWidth=12` / `SizeInBytes=0x1000`
 > are **held constant** even with one group active. A `1grp` unit reserves the *same*
 > 4 KiB APB window as a `4grp` unit; the extra group/MSI-X address space is simply
-> unpopulated (§3b). The address decode does not depend on `ngrp`. `[HIGH · OBSERVED]`
+> unpopulated (§3b). The address decode does not depend on `ngrp`.
 
-**Re-derived definition counts (machine-recounted from the JSON, not grepped from a
-decompile) — identical to the 4grp counts because the *definition set* is identical;
-only the runtime `ArraySize` expansion differs:** `[HIGH · OBSERVED]`
+**Definition counts — identical to the 4grp counts because the *definition set* is
+identical; only the runtime `ArraySize` expansion differs:**
 
 | | `1grp_no_msix` | `1grp_msix` |
 |--|---------------|-------------|
@@ -88,7 +87,7 @@ only the runtime `ArraySize` expansion differs:** `[HIGH · OBSERVED]`
 
 ---
 
-## 2. What collapses at `ngrp=1` — the capacity model `[HIGH · OBSERVED]`
+## 2. What collapses at `ngrp=1` — the capacity model
 
 The single behavioural consequence of `INTC_NUM_GROUPS=1` is a **runtime `ArraySize`
 contraction**. Every bundle whose `ArraySize` is the symbolic string `"INTC_NUM_GROUPS"`
@@ -113,7 +112,6 @@ absolute offsets are unchanged): the 12 registers `int_cause_grp@0x00`,
 `int_log_msk_grp@0x38`, `int_posedge_grp@0x3C` — see [`intc-4group.md`](./intc-4group.md)
 for the per-bit semantics; they are unchanged. With `ngrp=1` there is only group 0, so
 trigger bit *b* in any `*_grp` register is global trigger index *b* (0..31).
-`[HIGH · OBSERVED]`
 
 The `int_control_grp@0x28` register keeps all **12** fields at `ngrp=1`
 (`rev_id[29:28]` RO reset `0x1`, `Mod_res[27:24]`, `Mod_intv[23:16]`, `AWID[11:8]`,
@@ -123,7 +121,7 @@ the 9-field `ap_intc` variant in §4c.
 
 ---
 
-## 3. The `no_msix` / `msix` split at 1 group `[HIGH · OBSERVED]`
+## 3. The `no_msix` / `msix` split at 1 group
 
 The split is driven by the Mako `${type}` variable, so it is **identical to the 4grp
 `no_msix`/`msix` delta** — only re-confirmed here at `ngrp=1`:
@@ -139,7 +137,7 @@ The split is driven by the Mako `${type}` variable, so it is **identical to the 
      reset `0xffffffff`); `msix`: RO, `Description="Unused"`, reset `0xffffffff`.
    The other 10 `ctrl` registers are byte-identical across flavors.
 
-### 3a. The 128-entry MSI-X over-provision (the 1grp-specific finding) `[HIGH · OBSERVED]`
+### 3a. The 128-entry MSI-X over-provision (the 1grp-specific finding)
 
 `NUM_OF_TRIGS` is **hardcoded `"128"` in the Mako template** (`intc_ngrp_unit.json.mako`,
 line 23, inside the `% if type == 'msix'` block) — it is **not** a function of `ngrp`.
@@ -170,9 +168,9 @@ Select — up to 256 triggers"* — and left fixed regardless of group count.
 > `0xb1` sentinel; the single `b1` hit in `1grp_msix` is the Verilog literal
 > `13'b1_VVVV_VVVV_WWBB` inside the `MSIX_Vector_Table_Space` *Description* (an
 > address-decode format), not a `ResetValue`. Resets are drawn from
-> `{0, 0x0, 0x00000000, 1, 0x1, 0xffffffff}` only. `[HIGH · OBSERVED]`
+> `{0, 0x0, 0x00000000, 1, 0x1, 0xffffffff}` only.
 
-### 3b. Aperture geometry at `ngrp=1` `[HIGH · OBSERVED]`
+### 3b. Aperture geometry at `ngrp=1`
 
 The aperture closes on `0x1000` **only** if `BundleSizeInBytes` strings are read in the
 mixed base they are actually written in (the same hex/decimal mix as 4grp — see
@@ -194,7 +192,7 @@ msix:     ctrl       0x000..0x03F                (group 0 only)
 
 The MSI-X table is the **only** msix bundle that reaches the `0x1000` ceiling at
 `ngrp=1` — precisely because it did not shrink. The `ctrl`/`PBA`/`VecTable` region now
-carries large internal gaps that were populated in the 4grp instance. `[HIGH · OBSERVED]`
+carries large internal gaps that were populated in the 4grp instance.
 
 > **NOTE — only the `msix` flavor is instantiated at 1 group.** The Cayman address-map
 > xref carries **4 `intc_1grp_msix_unit` instances and 0 `intc_1grp_no_msix_unit`**
@@ -202,11 +200,11 @@ carries large internal gaps that were populated in the 4grp instance. `[HIGH · 
 > census of [`../interrupt/physical-intc-instances.md`](../interrupt/physical-intc-instances.md)
 > and [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md)).
 > The `1grp_no_msix` schema is shipped but never placed; the 4 `1grp_msix` units are
-> the RDM-root host-leaf controllers. `[HIGH · OBSERVED]`
+> the RDM-root host-leaf controllers.
 
 ---
 
-## 4. `ap_intc` (IOFIC) — the genuinely different block `[HIGH · OBSERVED]`
+## 4. `ap_intc` (IOFIC) — the genuinely different block
 
 `ap_intc` is **not** a resized `intc`. `HalName "iofic"` = *I/O Fabric Interrupt
 Controller* (the canonical Annapurna-Labs / Alpine block name) — a hard string that
@@ -214,7 +212,7 @@ confirms the [`intc-4group.md`](./intc-4group.md) lineage inference. It is a lea
 **MEM-mapped** controller reused as the interrupt-group layout *inside the PMDT*
 (Performance-Monitoring / Debug-Trace) complex, not a chip-fabric APB aggregator.
 
-### 4a. The three wrapper units `[HIGH · OBSERVED]`
+### 4a. The three wrapper units
 
 `ap_intc_{1,2,4}grp_unit.json` are 963 B each, **identical except three lines**
 (`HalName`, `INTC_NUM_GROUPS.Value`, `UnitName`):
@@ -249,7 +247,7 @@ symbolic expression strings**, not literals — a downstream generator resolves 
 > Cayman. Cross-referenced in [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md).
 > `[HIGH · OBSERVED header]`
 
-### 4b. The body `ap_intc_grp_ctrl.json` — 9 registers `[HIGH · OBSERVED]`
+### 4b. The body `ap_intc_grp_ctrl.json` — 9 registers
 
 `UnitName ap_intc_grp_ctrl`, `HalName "iofic_grp_ctrl"`, `InterfaceType NONE`,
 `AddrWidth 6`, `SizeInBytes 0x40`. One bundle `grp_ctrl` (base `0x0`, `ArraySize=1`,
@@ -267,13 +265,13 @@ symbolic expression strings**, not literals — a downstream generator resolves 
 | `0x34` | `int_fatal_msk_grp` | RW | `0xffffffff` | same |
 | `0x38` | `int_log_msk_grp` | RW | `0xffffffff` | same |
 
-Re-derived counts: register DEFS **9**, field DEFS **17**, field-`AccessType`
+Counts: register DEFS **9**, field DEFS **17**, field-`AccessType`
 {RW 13, WO 3, RO 1}, `ResetValue` dist `{0:14, 0xffffffff:3}`, `SpecialAccess` all
 `None`, single `BundleSizeInBytes="0x40"`. No `0xb1` placeholder, **no MSI-X table /
 PBA / VecTable, no `Sunda`, no `int_posedge_grp`, no `int_cdc_bypass_grp`, no
-`int_error_msk_grp`.** `[HIGH · OBSERVED]`
+`int_error_msk_grp`.**
 
-### 4c. `ap_intc` vs one group of the APB `intc` — the precise diff `[HIGH · OBSERVED]`
+### 4c. `ap_intc` vs one group of the APB `intc` — the precise diff
 
 | dimension | the divergence |
 |-----------|----------------|
@@ -295,7 +293,7 @@ byte-identical to the APB `intc` — see [`intc-4group.md`](./intc-4group.md).
 > enabling sources** — the reverse contract from the APB INTC. (The `abort`/`fatal`/`log`
 > masks *do* reset to `0xffffffff` in both — severity *routing* is masked at reset
 > regardless.) For a reimplementer this is the single most consequential `ap_intc`
-> divergence. `[HIGH · OBSERVED]`
+> divergence.
 
 > **NOTE — why the three control bits vanish.** `[MED · INFERRED]` No `rev_id`: it is
 > an *included* sub-block, not a standalone versioned unit. No `Chicken_posedge`: there
@@ -304,7 +302,7 @@ byte-identical to the APB `intc` — see [`intc-4group.md`](./intc-4group.md).
 > No `Chicken_addrhi`: the same-domain MEM interface needs no legacy high-address
 > chicken bit.
 
-### 4d. The PMDT include fragment `[HIGH · OBSERVED]`
+### 4d. The PMDT include fragment
 
 `pmdtu/ap_intc_grp_ctrl.json.inc` (14,741 B) is a Mako **include fragment** — the
 `"Registers":[…]` body only, no `RegFile` wrapper. Its 9 registers are
@@ -316,12 +314,12 @@ standalone `ap_intc_grp_ctrl.json`. It exists so the PMDT regfiles can
 
 ---
 
-## 5. What `ap_intc` serves — PMU-local + CCTM-global `[HIGH · OBSERVED]`
+## 5. What `ap_intc` serves — PMU-local + CCTM-global
 
 The standalone `ap_intc_{1,2,4}grp_unit.json` files have **zero instances** in the
 address-map xref (the APB intc has 1,070 + 858 + 4; `ap_intc` has none). The live use
 is the **PMDT include**: the `ap_intc_grp_ctrl` body is `<%include%>`'d into the
-PMU-local and CCTM-global regfiles. `[HIGH · OBSERVED]`
+PMU-local and CCTM-global regfiles.
 
 | consumer | bundle | base | `ArraySize` | `Description` (verbatim) | role |
 |----------|--------|------|-------------|--------------------------|------|
@@ -419,7 +417,7 @@ L1b  intc_1grp / intc_4grp  (per-domain APB leaf)  <-------------+
   hbm_0_nmi    ← hbm errtrig summary
   ```
   `peb_intc` is the on-die summary-tree root; its inputs are the leaf INTC `nmi_out`
-  severity wires. `[HIGH · OBSERVED]`
+  severity wires.
 
 - **L3 — delivery to Q7/GIC.** Not register-encoded → `[MED · INFERRED]`. The exact
   `peb_intc → Q7/GIC` vector map is not in the shipped schema. Corroboration that a GIC
@@ -431,7 +429,7 @@ L1b  intc_1grp / intc_4grp  (per-domain APB leaf)  <-------------+
 
 ---
 
-## 7. Cross-generation — Cayman authoritative, Maverick = security fork `[HIGH · OBSERVED]`
+## 7. Cross-generation — Cayman authoritative, Maverick = security fork
 
 | block | Cayman | Mariana | Mariana+ | Sunda | Maverick |
 |-------|--------|---------|----------|-------|----------|
@@ -477,7 +475,7 @@ core semantics. `[HIGH · OBSERVED header structure · MED · INFERRED v5 silico
 
 ---
 
-## 8. Reimplementer's checklist `[HIGH · OBSERVED unless noted]`
+## 8. Reimplementer's checklist
 
 1. `intc_1grp` is the 4grp APB INTC with `INTC_NUM_GROUPS=1`. Hold the aperture at
    `0x1000` / `AddrWidth=12`; populate only group 0 (`ctrl` 0x000–0x03F, `Sunda` from

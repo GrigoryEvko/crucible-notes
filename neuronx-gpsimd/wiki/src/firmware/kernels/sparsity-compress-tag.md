@@ -28,14 +28,14 @@ surveyed in the [select/shuffle ISA batch](../../isa/ref/b21-select-shuffle.md).
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every host-ISA fact is read out of the public
-`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and was
-re-compile-verified this session; every device fact is byte-pinned to a carve from
+`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and is
+compile-verified; every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so`.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the objects used.** The firmware
 > container is `…/custom_op/c10/lib/libnrtucode_internal.so`
-> (`sha256 b7c67e898a116454…fc329b`, ELF64 x86-64 DYN — the FW-49/60 anchor, re-verified
-> in-task). The DVE images are identity-mapped `.rodata` blobs (VMA == file offset);
+> (`sha256 b7c67e898a116454…fc329b`, ELF64 x86-64 DYN — the FW-49/60 anchor). The DVE
+> images are identity-mapped `.rodata` blobs (VMA == file offset);
 > IRAM file offset == device IRAM VA (reset vector at byte 0), and the DRAM string-file
 > offset == device DRAM VA − `0x80000`. They are disassembled with the native
 > `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, GNU Binutils 2.34 / Xtensa Tools 14.09)
@@ -52,7 +52,7 @@ re-compile-verified this session; every device fact is byte-pinned to a carve fr
 > | `CAYMAN DVE DEBUG DRAM`  | `0x18b320` / `0x6d60`  | `c106642d…` | **0** sparsity/compress strings — the absence proof |
 >
 > `xtensa-elf-objdump --xtensa-core=ncore2gp` decodes all IRAM to real Q7/NX windowed-ABI
-> + FLIX-VLIW (exit 0). `[HIGH/OBSERVED]`
+> + FLIX-VLIW.
 
 ---
 
@@ -72,46 +72,43 @@ pin them:
    (`case …_SPARSITY_COMPRESS: check = dbg_is_valid_s3d3_sc(i,nc);` /
    `case …_SPARSITY_COMPRESS_TAG: check = dbg_is_valid_s2d2d2_sc(i, nc);`). The header
    comment at the `0xe0` slot is candid: *"we are out of contiguous opcode space for
-   general vector instructions … jumping ahead to the 0xe0 space"*. `[HIGH/OBSERVED]`
+   general vector instructions … jumping ahead to the 0xe0 space"*.
 
 2. **They are top-4 reductions, NOT 2:4 / N:M weight pruners.** Each streams a dense
    tensor and reduces every `op_dim`-subgroup to its **4** extreme elements; "compression"
    means *a group of N elements → 4 `{value, index}` pairs*. The header is explicit:
    *"This is a reduction instruction, outputting 4 elements plus location information from
    each subset of the input stream … Each reduced group will be reduced to 4 elements."*
-   `[HIGH/OBSERVED]`
 
 3. **They differ only in output packaging.** SparsityCompress (`S3D3_SC`) writes **one**
    3-D dst holding an *interleaved* `{data, tag}` struct array. SparsityCompressTag
    (`S2D2D2_SC`) writes **two** 2-D dsts — a separate data buffer and a separate
    (optionally bit-packed) tag buffer. The reduction algorithm is identical.
-   `[HIGH/OBSERVED]`
 
 4. **Both structs compile-verify `sizeof == 64`.** Built `verify.c` against
-   `neuron_mariana_arch_isa/tpb` with host gcc this session:
+   `neuron_mariana_arch_isa/tpb` with host gcc:
    `sizeof(S3D3_SC_STRUCT) == 64`, `sizeof(S2D2D2_SC_STRUCT) == 64`,
    `sizeof(S3D3_SC_D16) == 2`, `sizeof(S3D3_SC_D32) == 4`. Every offset below is
-   gcc-emitted. `[HIGH/OBSERVED]`
+   gcc-emitted.
 
 5. **The tag is a 16-bit within-group index.** *"save the 4 min/max/abs_min/abs_max
    elements along with their index (16 bits)."* For `SparsityCompressTag` with
    `packed_tags == 1`, four 4-bit tags are packed into each `u16` (lowest bits = first
-   data element). `[HIGH/OBSERVED]`
+   data element).
 
 6. **The CompressOp is *inverted* relative to the underlying ALU op.** `common.h:1100-1110`
    states the special encoding `CompressOp::Min = AluOp::Max`, `CompressOp::Max =
    AluOp::Min`, `AbsMin = AbsMax`, `AbsMax = AbsMin`, *"because of the way the DVE
    implements sort … letting the smaller element pass down the pipe."* This is the
    datapath fingerprint and explains the extremity-order write rule (fact 7).
-   `[HIGH/OBSERVED]`
 
 7. **Winners are written in extremity order.** *"max or abs_max: smallest written first;
-   min or abs_min: largest written first."* `[HIGH/OBSERVED]`
+   min or abs_min: largest written first."*
 
 8. **MARIANA-generation addition, gated on V4.** The validity predicates begin with
    `check_core_version(nc, NeuronCoreVersion::V4)`. SparsityCompress(Tag) is **present**
    on MARIANA + MAVERICK, **absent** on CAYMAN + SUNDA (no opcode, no struct headers, zero
-   firmware strings). `[HIGH/OBSERVED]`
+   firmware strings).
 
 > **CORRECTION — the `s2d2d2_sc.h` byte-table comment is wrong; the C struct is right.**
 > The human-readable byte table at the top of `aws_neuron_isa_tpb_s2d2d2_sc.h` lists
@@ -150,9 +147,9 @@ site B (Sunda)     0x3715:  addi -48 ; movi a3,186 ; const16 a3,0xaec ; addx4 ; 
 `table = 187 × LE u32` at DRAM **file 0x800** (HW-Decode) / **0xaec** (Sunda);
 `target = table[opcode - 0x30]`; the default (out-of-range) arm is `0x31e3` (HW-Decode) /
 `0x39fa` (Sunda) and appears 105× in each table (only 7 real opcodes are populated in this
-+7 MARIANA set). `[HIGH/OBSERVED]`
++7 MARIANA set).
 
-The seven MARIANA-new real opcode slots, read from **both** DRAM tables this session:
+The seven MARIANA-new real opcode slots, read from **both** DRAM tables:
 
 | opcode | ISA name (`common.h`) | HW-Dec target | Sunda target |
 |---|---|---|---|
@@ -166,7 +163,7 @@ The seven MARIANA-new real opcode slots, read from **both** DRAM tables this ses
 
 Byte read at `0x800 + 176*4 = 0xac0` is `82 31 00 00` → `0x3182`; at `0xac4` is
 `8a 31 00 00` → `0x318a`; the Sunda table at `0xaec + 176*4` is `99 39 00 00` → `0x3999`,
-at `0xaec + 177*4` is `a1 39 00 00` → `0x39a1`. `[HIGH/OBSERVED]`
+at `0xaec + 177*4` is `a1 39 00 00` → `0x39a1`.
 
 > **GOTCHA — the trampoline region desyncs under a linear FLIX sweep.** The 187 jump-table
 > targets land in a region of densely packed 5-byte trampolines (`call8` is 3 bytes + the
@@ -206,7 +203,7 @@ immediate is a signed-negative descriptor-table offset stashed into the command 
 
 The per-kernel `const16 a2` immediate (`SC = 0xee90`, `SCT = 0xf29c`; the siblings:
 `Exp 0xf698`, `RandGet 0xec44`, `RandSet 0xebe0`, `Rand2 0xf2cc`, `QuantizeMx 0xfaf8`) is
-the only static difference between the two stubs besides the name pointer. `[HIGH/OBSERVED]`
+the only static difference between the two stubs besides the name pointer.
 
 ### 2c. The common entry `0x9920` is a data-driven `callx8`
 
@@ -237,8 +234,8 @@ void seq_handler_entry_0x9920(seq_frame_t *a1 /* command frame */) {
 
 ## 3. Operand structs — compile-verified
 
-Both structs were compiled against `neuron_mariana_arch_isa/tpb` with host gcc this
-session; every offset and size below is `offsetof`/`sizeof`-emitted. `[HIGH/OBSERVED]`
+Both structs were compiled against `neuron_mariana_arch_isa/tpb` with host gcc; every
+offset and size below is `offsetof`/`sizeof`-emitted.
 
 ### 3a. SparsityCompress — `NEURON_ISA_TPB_S3D3_SC_STRUCT` (opcode `0xE0`, 64 B)
 
@@ -281,7 +278,7 @@ typedef struct NEURON_ISA_TPB_S3D3_SC_D32 {  // bf16/fp16 output — sizeof == 4
 > validity predicate `is_valid_sparsity_compress_dtypes` enforces the pairing exactly:
 > `{fp8_e3,fp8_e4,fp8_e5} ⇒ out_struct == u16`, `{bf16,fp16} ⇒ out_struct == u32`. So the
 > dst memory-pattern stride is sized by the *struct* dtype (2 or 4 bytes), while the *data*
-> byte inside it is sized by `out_data_dtype`. `[HIGH/OBSERVED]`
+> byte inside it is sized by `out_data_dtype`.
 
 ### 3b. SparsityCompressTag — `NEURON_ISA_TPB_S2D2D2_SC_STRUCT` (opcode `0xE1`, 64 B)
 
@@ -391,7 +388,7 @@ void sparsity_compress(const stream_t *src, sc_params_t *p, dst_t *out) {
 | `fp8_e3` / `fp8_e4` / `fp8_e5` | `u16` | `S3D3_SC_D16 = { u8 data, u8 tag }` (2 B) |
 | `bf16` / `fp16` | `u32` | `S3D3_SC_D32 = { u16 data, u16 tag }` (4 B) |
 
-`in_dtype` may be any normal type (FP32R disallowed). `[HIGH/OBSERVED]`
+`in_dtype` may be any normal type (FP32R disallowed).
 
 **SparsityCompressTag** (`is_valid_sparsity_compress_tag_dtypes`):
 
@@ -401,7 +398,7 @@ void sparsity_compress(const stream_t *src, sc_params_t *p, dst_t *out) {
 | `1` | **`u16` only** | `data_count / 4` (`quadruple_element_count`: 4 × 4-bit tags per `u16`) |
 
 For `SparsityCompressTag`, `out_data_dtype` may be **any** normal type including FP32R
-(unlike SparsityCompress, which is restricted to fp8/bf16/fp16 data). `[HIGH/OBSERVED]`
+(unlike SparsityCompress, which is restricted to fp8/bf16/fp16 data).
 
 ### 4d. Firmware fingerprint — the IVP compute primitives
 
@@ -494,7 +491,7 @@ fmaps per partition per cycle; each cell uses its loaded **tag** to pick among t
 > then 3 or 2 fmaps will be sent across each row … The tags loaded for that sparse matmul
 > should only select from the available 2 or 3 fmaps. If the unused fmaps are selected by
 > the compressed_weight tags, the results will be unpredictable."* The producer's top-4
-> reduction must therefore be matched to the consumer's `w_num`. `[HIGH/OBSERVED]`
+> reduction must therefore be matched to the consumer's `w_num`.
 
 ### 6b. `LdTags` (`S3_LT`, opcode `0x06`) — packs 4 tags per `u16`, mirrors SCT `packed_tags=1`
 
@@ -520,7 +517,7 @@ row-tile fmap group — the byte-exact table from the header:
 Plus `col_grp = 0x0f` (offset 45 — *"Fine Grain sparsity only works across the full array,
 all 4 column groups"*), `num_active_rows` (38), `row_grp` (44, a one-hot/two-hot row-group
 mask), `active_row_mode` (46, logical-vs-physical top rows). The legal `force_tag_bits`
-values are `{0x00, 0x04, 0x08, 0x0C}` exactly. `[HIGH/OBSERVED]`
+values are `{0x00, 0x04, 0x08, 0x0C}` exactly.
 
 ### 6c. `Ldweights` (`S3_LW`) `tag_weight_mode` — interleaved `{weight, tag}` mirrors `S3D3_SC_D32`
 
@@ -536,7 +533,7 @@ values are `{0x00, 0x04, 0x08, 0x0C}` exactly. `[HIGH/OBSERVED]`
 A 32-bit `{u16 weight, u16 tag}` element is **bit-identical** to the
 `NEURON_ISA_TPB_S3D3_SC_D32 = { uint16_t data; uint16_t tag; }` element that
 **SparsityCompress emits for bf16/fp16 output**. The producer's interleaved struct and the
-consumer's `TAG_WEIGHT` load are the same 4-byte layout. `[HIGH/OBSERVED]`
+consumer's `TAG_WEIGHT` load are the same 4-byte layout.
 
 ### 6d. Reconciliation verdict
 
@@ -570,7 +567,7 @@ The DVE hardware compressor is a **MARIANA-generation addition**. CAYMAN's PE co
 consume sparse weights + tags (`MatmulSparse 0x07` / `LdTags 0x06` are present), but had
 **no on-device DVE producer** — the tags were built by host software. SUNDA is a separate
 lineage with neither side. The `check_core_version(nc, V4)` gate in both validity
-predicates is the architectural lock. `[HIGH/OBSERVED]`
+predicates is the architectural lock.
 
 > **CORRECTION — MAVERICK (NC-v5) is NOT a byte-identical inherit; it adds a tile flag.**
 > The MAVERICK `s3d3_sc.h` / `s2d2d2_sc.h` differ from MARIANA in two ways: (1) the header

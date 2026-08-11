@@ -23,14 +23,12 @@ objects shipped in the Neuron runtime package (DMCA 17 U.S.C. §1201(f) interope
 Tools: GNU `objdump`/`nm`/`readelf`/`strings` on the **host** binaries. The Q7 / TOP_SP /
 NCFW receive loops run on **Xtensa** cores; this page decodes the **host producer side**
 (authoritative for the on‑wire format the host emits) and the embedded Q7 firmware blob
-sizes. Confidence tags: **HIGH** = byte‑exact disasm / register immediate / verbatim
-string / `nm`; **MED** = strong cross‑binary inference; **OBSERVED** = read from a shipped
-artifact; **INFERRED** = reconstructed.
+sizes. The page default is `[HIGH / OBSERVED]`; claims that depart from it carry an
+explicit tag.
 
 ---
 
-## 1. The XRP verdict — exhaustive evidence of absence  [HIGH / OBSERVED]
-
+## 1. The XRP verdict — exhaustive evidence of absence
 A Cadence‑XRP host↔DSP RPC stack, if present, would ship `xrp_queue`/`xrp_request`/
 `xrp_comm` structs, an `xrp_run_command`/`xrp_enqueue_command` API, a `libxrp` object, and
 would normally ride `rpmsg`/`virtio` or a hardware mailbox. **None of those symbols,
@@ -74,8 +72,7 @@ verbatim source strings recovered below). §§2–6 decode it.
 
 ---
 
-## 2. The general transport — `hw_exec_queue` (AL/UDMA descriptor ring)  [HIGH / OBSERVED]
-
+## 2. The general transport — `hw_exec_queue` (AL/UDMA descriptor ring)
 This is the **primary** host→device command path for inference / exec / model‑switch and
 for collective DMA legs. Source‑file string (verbatim, `.rodata`):
 `/opt/workspace/KaenaRuntime/tdrv/hw_exec_queue.c`. The full descriptor framing
@@ -97,8 +94,7 @@ this page only adds the **doorbell** and the **completion baking**.
 | `dlr_add_to_hw_exec_queue` | `0xdd820` | model‑level entry |
 | `notification_read_exec_queue` | `0x2ff170` | completion read (§4) |
 
-### 2.2 The ring push — `hw_exec_queue_add_descriptors` @`0x3206f0`  [HIGH / OBSERVED]
-
+### 2.2 The ring push — `hw_exec_queue_add_descriptors` @`0x3206f0`
 The ctx embeds an AL SW‑DMA queue at `+0x8` and the ring base/length in `ctx+0x150` /
 `ctx+0x158` (both must be non‑NULL):
 
@@ -111,8 +107,7 @@ The ctx embeds an AL SW‑DMA queue at `+0x8` and the ring base/length in `ctx+0
 320788:  call sw_dma_queue_set_descriptors       ; @0x448d30  → dma_ring_copy_descriptors @0x22eca0
 ```
 
-### 2.3 The descriptors + completion baking — `…_add_exec_request_impl` @`0x320810`  [HIGH / OBSERVED]
-
+### 2.3 The descriptors + completion baking — `…_add_exec_request_impl` @`0x320810`
 IDA call‑graph for `0x320810` (callees, verbatim): the request is a **set** of UDMA M2M
 copy descriptors whose completion‑event addresses are *baked into the descriptor stream*:
 
@@ -128,8 +123,7 @@ get_dma_queue_tail_inc_offset       @0x318940   the tail-pointer-INC register of
 The exact 16‑byte AL copy‑descriptor byte layout is `al_udma_m2m_build_copy_descriptor`
 territory (ABI‑12); here we observe the *callees*, not the descriptor word layout.
 
-### 2.4 The doorbell — `al_udma_desc_action_add` @`0x461f60`  [HIGH / OBSERVED]
-
+### 2.4 The doorbell — `al_udma_desc_action_add` @`0x461f60`
 The whole UDMA "ring the queue" primitive is a **single 32‑bit tail‑count write** at
 `udma_q_regs + 0x38`, preceded by a producer‑ordering fence and a bounds check:
 
@@ -159,8 +153,7 @@ void al_udma_desc_action_add(al_udma_q *q, uint32_t num_descs) {
 > the same `+0x038` doorbell with the full per‑queue address formula
 > `0x1000 + q*0x1000 + 0x038` (16 M2S queues mirrored by 16 S2M).
 
-### 2.5 The UDMA tail‑inc register offset (per‑arch HAL)  [HIGH / OBSERVED]
-
+### 2.5 The UDMA tail‑inc register offset (per‑arch HAL)
 `get_dma_queue_tail_inc_offset` @`0x318940` resolves the per‑arch offset. The **CAYMAN
 (NC‑v3)** getter computes it relative to the queue bank:
 
@@ -178,8 +171,7 @@ aws_hal_udma_get_s2m_queue_tail_ptr_inc_offset_cayman @0x473c10:  identical, s2m
 plus the `dma_rx_ring_*` mirror — i.e. the DGE NX core hosts a **TX** (host→dev) and **RX**
 (dev→host) descriptor ring whose base/length/head/tail/tail_inc the host programs.
 
-### 2.6 The inference kickoff — `exec_kickoff_infer` @`0x2632e0`  [HIGH / OBSERVED]
-
+### 2.6 The inference kickoff — `exec_kickoff_infer` @`0x2632e0`
 On the inference‑start path the doorbell is a **semaphore increment routed through the
 kernel driver**, not a userspace MMIO write:
 
@@ -201,14 +193,12 @@ codes `0x80084e2a`, `0xc0084e2b`).
 
 ---
 
-## 3. The Q7 command queue — `xt_cc` (the JPEG‑codec transport)  [HIGH / OBSERVED]
-
+## 3. The Q7 command queue — `xt_cc` (the JPEG‑codec transport)
 `xt_cc` = the Xtensa **"CC"** (codec/compute) core = the **Q7**. `NUM_XT_CC_Q7 4`
 (verbatim string). Source: `/opt/workspace/KaenaRuntime/tdrv/xt_cc.c` + `aws_hal_xt_cc.c`
 (both verbatim). In this build the queue carries exactly **one** op — `PseudoJpegDecode`.
 
-### 3.1 The embedded Q7 firmware blobs (`.rodata`, sizes read this session)  [HIGH / OBSERVED]
-
+### 3.1 The embedded Q7 firmware blobs (`.rodata`)
 The Q7 device firmware ships embedded in `libnrt` as named blobs (size word precedes each
 blob; values read from `.rodata`, VMA==fileoffset):
 
@@ -230,8 +220,7 @@ i.e. per‑arch v3/v4/v4_plus Q7 codec images, **6.5 KiB IRAM + 1 KiB DRAM** eac
 315019:  call   aws_hal_xt_cc_init        ; @0x44bae0
 ```
 
-### 3.2 The HAL firmware load + queue init  [HIGH / OBSERVED]
-
+### 3.2 The HAL firmware load + queue init
 | HAL fn | addr | action |
 |---|---|---|
 | `aws_hal_xt_cc_init` | `0x44bae0` | validates `0x20`‑byte handle → `aws_hal_q7_ucode_eng_init` @`0x451080` (loads Q7 IRAM/DRAM via vtable `kaena_khal.khal_q7.ucode_eng_init`) |
@@ -239,8 +228,7 @@ i.e. per‑arch v3/v4/v4_plus Q7 codec images, **6.5 KiB IRAM + 1 KiB DRAM** eac
 | `aws_hal_xt_cc_top_start` | `0x44bbc0` | tail‑calls `aws_reg_write_xt_cc_queue_tail` (the doorbell) |
 | `aws_hal_xt_cc_release_run_stall` | `0x44bac0` | writes `q7_release_run_stall` to start the Q7 executing |
 
-### 3.3 The `xt_cc` queue register block — BYTE‑EXACT (4 queues q0..q3)  [HIGH / OBSERVED]
-
+### 3.3 The `xt_cc` queue register block — BYTE‑EXACT (4 queues q0..q3)
 Recovered from the per‑queue `lea` offsets off reg‑block base `%rbx` in
 `aws_reg_write_xt_cc_queue_start_addr` @`0x44f880` and `aws_reg_write_xt_cc_queue_tail`
 @`0x44f980`:
@@ -271,8 +259,7 @@ aws_reg_write_xt_cc_queue_tail @0x44f980:
 > else → __assert_fail}`. **Arch 2 has no Q7/`xt_cc` engine** — the writes silently
 > return. The 64‑bit ring base is split into the LO/HI register pair via `shr $0x20`.
 
-### 3.4 The host enqueue — `xt_cc_queue_init` @`0x3150d0`  [HIGH / OBSERVED]
-
+### 3.4 The host enqueue — `xt_cc_queue_init` @`0x3150d0`
 ```asm
 3150fa:  lea  0x0(%r13,%r13,2),%rax    ; rax = max_req*3
 3150ff:  push $0x0
@@ -288,14 +275,13 @@ aws_reg_write_xt_cc_queue_tail @0x44f980:
 315198:  call aws_hal_xt_cc_queue_init
 ```
 
-> **CORRECTION (vs SX‑CCL‑13 §3d).** The backing report states the `xt_cc` ring is allocated
+> **CORRECTION (vs CCL‑13 §3d).** The backing report states the `xt_cc` ring is allocated
 > at **`max_req * 0x28`** (40 B/slot). The binary computes **`max_req * 0x34`** (52 B/slot):
 > `max_req*13*4`. The DMEM ring **over‑provisions to 52 B/slot**, while the *request record
 > actually copied in* is 40 B (`0x28`, §3.5). The `0x28` figure is the **copyin length**,
 > not the per‑slot allocation stride. Both are real and distinct.
 
-### 3.5 The 40‑byte request record — `xt_cc_queue_add_request` @`0x315230`  [HIGH / OBSERVED]
-
+### 3.5 The 40‑byte request record — `xt_cc_queue_add_request` @`0x315230`
 ```asm
 315235:  mov  $0xffffffff,%edx
 315240:  cmp  %rcx,%rdx ; jb …          ; assert arg2(jpeg_size) <= UINT32_MAX   "jpeg_size <= UINT32_MAX"
@@ -333,8 +319,7 @@ struct xt_cc_request {        /* offset  size  field            (= JPEG semantic
 };                            /* copied as len 0x28 (40 B) incl. the trailing flag    */
 ```
 
-### 3.6 The caller + JPEG semantics — `translate_one_pseudo_instr_v3` @`0x322200`  [HIGH / OBSERVED]
-
+### 3.6 The caller + JPEG semantics — `translate_one_pseudo_instr_v3` @`0x322200`
 The `PseudoJpegDecode` pseudo‑op resolves the five args (`rsi=jpeg_addr`, `rdx=rgb_addr`,
 `rcx=jpeg memref[0x10]=jpeg_size`, `r8=rgb memref[0x10]=rgb_size`, `r9=flag`) via
 `mem_ref_to_addr`. Corroborating `.rodata` strings: `PseudoJpegDecode`,
@@ -349,13 +334,11 @@ decodes the JPEG into the RGB buffer.
 
 ---
 
-## 4. The completion / response path — semaphores + Notification Queue  [HIGH / OBSERVED]
-
+## 4. The completion / response path — semaphores + Notification Queue
 The device signals completion two complementary ways, both on the **EVT_SEM / NQ**
 substrate.
 
-### 4.1 Reserved completion semaphores + the EVT_SEM windows  [HIGH / OBSERVED]
-
+### 4.1 Reserved completion semaphores + the EVT_SEM windows
 The host pre‑allocates reserved semaphore slots and bakes their **address** into the request
 descriptors (`tdrv_arch_get_evt_addr` / `…_accel_addr`, §2.3) so the device increments them
 on done. The reserved‑slot roster is the `tdrv_sync_get_*` family (each reads a reserved
@@ -388,8 +371,7 @@ Each window is `0x400` = 1024 B = **256 semaphores × 4 B** → **ArraySize 256*
 committed [`rdma‑cross‑die`](../../dma/rdma-cross-die.md) EVT_SEM model (read@`0x1000` /
 set@`0x1400` / inc@`0x1800` / dec@`0x1c00`).
 
-### 4.2 The Notification Queue (NQ) — device→host event ring  [HIGH / OBSERVED]
-
+### 4.2 The Notification Queue (NQ) — device→host event ring
 `notification_read_exec_queue` @`0x2ff170` selects an NQ slot and reads it via
 `aws_hal_notific_nq_read` @`0x451040`, which dispatches through the `kaena_khal` vtable slot
 `+0x438`:
@@ -404,7 +386,7 @@ aws_hal_notific_nq_read @0x451040:
   45104b:  jmp  *0x438(%rax)             ; per-arch nq_read via kaena_khal vtable +0x438
 ```
 
-> **CORRECTION (vs SX‑CCL‑13 §3 TL;DR / §4b).** The backing report states the NQ slot stride
+> **CORRECTION (vs CCL‑13 §3 TL;DR / §4b).** The backing report states the NQ slot stride
 > is **`0xa0` (160 B)**. The disassembly proves the stride is **`0x160` (352 B)**:
 > `idx*5 → idx*11 → <<5 = idx*352`, with the array based at `nq_base + 0x210`. Use **`0x160`**.
 > (The `+0x210` base and the vtable `+0x438` dispatch in the report are correct.)
@@ -413,12 +395,12 @@ Host "consume" entry points — the **collective / CC‑core** completion drain:
 `consume_ready_exec_notification_v2 @0x2fcce0`, `notification_consume_errors @0x300350`
 (+ `notification_consume_error_block @0x2ff250`), and the profile-side
 `nrt_profile_session_append_cc_notifications @0xaf700`. The full NOTIFIC CSR schema
-belongs to the Part‑13 NOTIFIC‑Queue page (`../../control/csr/notific-queue.md`, stub);
+belongs to the Part‑13 NOTIFIC‑Queue page (`../../control/csr/notific-queue.md`);
 this page links it by path.
 
 > **CORRECTION — there is no `exec_consume_cc_core_notifications` (nor
 > `exec_consume_nc_status_notifications` / `exec_consume_gpsimd_stdio`) symbol in
-> `libnrt.so`.** Verified absent this pass (`nm | rg -c` = 0 for each). The real
+> `libnrt.so`.** Verified absent (`nm | rg -c` = 0 for each). The real
 > CC-notification consumers are `consume_ready_exec_notification_v2 @0x2fcce0`,
 > `notification_consume_errors @0x300350`, and `exec_request_process_errors.isra.0
 > @0x2615b0` (the per-TOP_SP count/type validator). This matches the standing
@@ -478,8 +460,7 @@ EVT_SEM increment‑then‑wait gives the cross‑engine happens‑before.
 
 ---
 
-## 6. The host‑side async‑exec worker pool (NOT a host↔DSP transport)  [HIGH / OBSERVED]
-
+## 6. The host‑side async‑exec worker pool (NOT a host↔DSP transport)
 Sitting **above** the device queues is a host‑CPU threadpool the trace taxonomy calls
 `AsyncPostRequest` / `async_post_request`. It is **host‑internal** (pthreads + POSIX
 semaphores + `std::queue<kmgr_async_exec_req*>`), source `kmgr_async_exec.cc`:
@@ -515,8 +496,7 @@ sequencer, not its transport.
 
 ---
 
-## 7. Transport‑sharing — collective vs custom‑op vs JPEG  [HIGH / OBSERVED]
-
+## 7. Transport‑sharing — collective vs custom‑op vs JPEG
 The corpus uses **parallel** bespoke command transports, unified only by the EVT_SEM + NQ
 **completion** substrate. There is **no** single universal "XRP message header."
 
@@ -588,6 +568,6 @@ it is a **semaphore/event** substrate, not a message transport. See the
   both transports → the 5‑slot memhandle table in
   [`nrtucode‑context`](../../runtime/nrtucode-context.md) /
   [`prelinker‑ucpl`](../../runtime/prelinker-ucpl.md).
-- The full NOTIFIC CSR schema → NOTIFIC‑Queue page (`../../control/csr/notific-queue.md`, stub).
+- The full NOTIFIC CSR schema → NOTIFIC‑Queue page (`../../control/csr/notific-queue.md`).
 - The on‑core Q7 JPEG codec decode loop (inside the v3/v4 `q7_xt_cc` bins) — Xtensa,
   blob sizes only.

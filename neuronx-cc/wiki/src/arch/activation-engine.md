@@ -47,12 +47,12 @@ The IR node's operand accessors (libBIR, demangled from `InstActivation` symbols
 
 | Accessor | Role | Wire / dtype | Confidence |
 |---|---|---|---|
-| `InstActivation::getIfmap` | the moving input tensor `x` (SBUF-resident AP) | tensor AP | CONFIRMED |
-| `InstActivation::getBiases` | the per-channel **bias** addend | fp32 immediate/tensor | CONFIRMED |
-| `InstActivation::getDst` | the result destination | tensor AP | CONFIRMED |
-| `InstActivation::getSummation` | optional **accumulator** output (`hasSummation` gates it) | accumulator region | CONFIRMED |
-| `scale` (wire key `"scale"`) | the per-channel **multiplier** | fp32 immediate | CONFIRMED |
-| `alpha` (wire key `"alpha"`) | the parametric-func **alpha** (e.g. leaky-relu slope) | fp32 immediate | CONFIRMED |
+| `InstActivation::getIfmap` | the moving input tensor `x` (SBUF-resident AP) | tensor AP | CERTAIN |
+| `InstActivation::getBiases` | the per-channel **bias** addend | fp32 immediate/tensor | CERTAIN |
+| `InstActivation::getDst` | the result destination | tensor AP | CERTAIN |
+| `InstActivation::getSummation` | optional **accumulator** output (`hasSummation` gates it) | accumulator region | CERTAIN |
+| `scale` (wire key `"scale"`) | the per-channel **multiplier** | fp32 immediate | CERTAIN |
+| `alpha` (wire key `"alpha"`) | the parametric-func **alpha** (e.g. leaky-relu slope) | fp32 immediate | CERTAIN |
 
 > **NOTE — bias, scale, and alpha are *always fp32*, regardless of the ifmap dtype.** The reference model asserts it directly: `imm_value.getType() == Dtype::float32 && "activation function only support float32 bias/scale/alpha"` (`libBIRSimulator`). A reimplementer feeding a bf16 ifmap still passes fp32 scalars for the affine pre-op; the engine widens the product internally. This mirrors the PE array's fp32-PSUM rule — the *accumulation/affine* arithmetic is full-precision even when the streamed data is narrow.
 
@@ -84,12 +84,12 @@ The summation leg is steered by `EngineAccumulationType` (the `bir::` enum behin
 
 | Value | Name | Meaning | Confidence |
 |---|---|---|---|
-| `0` | `Idle` | no accumulation — plain pointwise write | INFERRED (ordinal) |
-| `1` | `ZeroAccumulate` | zero the accumulator region, then write (head of a channel reduction) | STRONG (name CONFIRMED, ordinal INFERRED) |
-| `2` | `AddAccumulate` | add into the existing accumulator region (interior) | STRONG (name CONFIRMED, ordinal INFERRED) |
-| `3` | `LoadAccumulate` | preload the accumulator from an fp32 immediate, then add | STRONG (name CONFIRMED, ordinal INFERRED) |
+| `0` | `Idle` | no accumulation — plain pointwise write | MEDIUM (ordinal) |
+| `1` | `ZeroAccumulate` | zero the accumulator region, then write (head of a channel reduction) | HIGH (name read; ordinal inferred) |
+| `2` | `AddAccumulate` | add into the existing accumulator region (interior) | HIGH (name read; ordinal inferred) |
+| `3` | `LoadAccumulate` | preload the accumulator from an fp32 immediate, then add | HIGH (name read; ordinal inferred) |
 
-> **NOTE — `LoadAccumulate` requires an fp32 immediate seed.** The simulator enforces a cluster of guards: `"an instruction that does a LoadAccumulate must provide an immediate value to load"`, `"immediate value for LoadAccumulate must be an fp32"`, and `"imm_ptr for LoadAccumulate must have the same number of partitions as the src/dst"`. The drain side carries `"Cannot accumulate to nothing"`. The enum *names* are CONFIRMED from the simulator strings and `EngineAccumulationType::LoadAccumulate` usage; the exact integer **ordinals** `{0,1,2,3}` are INFERRED from the conventional ordering (the typed enum is reconstructed only via the `EngineAccumulationType2string` switch, not statically recovered as a value table) and from the sibling [PE engine page](pe-engine.md#the-fp32-psum-accumulator)'s citation of the same enum.
+> **NOTE — `LoadAccumulate` requires an fp32 immediate seed.** The simulator enforces a cluster of guards: `"an instruction that does a LoadAccumulate must provide an immediate value to load"`, `"immediate value for LoadAccumulate must be an fp32"`, and `"imm_ptr for LoadAccumulate must have the same number of partitions as the src/dst"`. The drain side carries `"Cannot accumulate to nothing"`. The member *names* are read directly from the simulator strings and from `EngineAccumulationType::LoadAccumulate` use sites; the integer **ordinals** `{0,1,2,3}` are **[INFERRED]** from conventional ordering and from the sibling [PE engine page](pe-engine.md#the-fp32-psum-accumulator)'s use of the same enum, because the typed enum survives only through its `EngineAccumulationType2string` switch and not as a static value table.
 
 The accumulated channel sums are read out by a *separate* op — `InstActivationReadAccumulator` (alias `InstReadActivationAccumulator`), wire opcode **`0x24`** "ActivationReadAccumulator" — which drains the accumulator region into a tensor, exactly as the PE array's STOP flag drains a PSUM bank. Both accumulator-read ops bind `validEngines = {Activation}` only.
 
@@ -123,9 +123,9 @@ LowerAct::run @ 0x114e280                         ── the lower_act pass driv
 
 | Offset | Field | Source | Confidence |
 |---|---|---|---|
-| `0x00` | opcode `0x23` | `setupHeader(src=0x23)` — stamped at all 3 codegen arms | CONFIRMED |
-| `0x01` | `inst_word_len = 0x10` (16 dwords = 64 B) | `setupHeader` | CONFIRMED |
-| `0x23` | `act_func_set_id` / `act_tbl_sel` — the **set index**, range-checked int→byte | from `inst+0xF0`; field name `"instr.act_tbl_sel"` in rodata | CONFIRMED |
+| `0x00` | opcode `0x23` | `setupHeader(src=0x23)` — stamped at all 3 codegen arms | CERTAIN |
+| `0x01` | `inst_word_len = 0x10` (16 dwords = 64 B) | `setupHeader` | CERTAIN |
+| `0x23` | `act_func_set_id` / `act_tbl_sel` — the **set index**, range-checked int→byte | from `inst+0xF0`; field name `"instr.act_tbl_sel"` in rodata | CERTAIN |
 
 The remaining 60 bytes are zero. A guard at `inst+0x110` (`"fill_reg"`) must be `0` (`test al; jne →out_of_range`): the load cannot be a register-addressed fill.
 
@@ -146,7 +146,9 @@ function visitInstLoadActFuncSet(InstLoadActFuncSet &I):
     emit(bundle)                                 // fwrite 0x40 bytes @ 0x1250d07 / 0x1250d8b
 ```
 
-> **CORRECTION — `LoadActFuncSet` is gen-invariant; there is *no* per-generation override.** Earlier strand-J notes might lead a reader to expect a `CoreV3GenImpl`/`CoreV4GenImpl` override (as exists for `Activate2` at opcode `0x25`, gen4-only). There is none: gen4's visitor reuses the `CoreV2` body verbatim, exactly as plain `Activation` (opcode `0x21`) does. Only `Activate2` (`0x25`) has a gen4 override on the Activation engine; the LUT load and the plain activation are single-implementation across generations.
+The encoder is **gen-invariant**: `CoreV3GenImpl` and `CoreV4GenImpl` do not override `visitInstLoadActFuncSet`, so all three generations run the `CoreV2` body verbatim. Plain `Activation` (opcode `0x21`) is the same way. The *only* Activation-engine op with a gen4 override is `Activate2` at opcode `0x25`.
+
+> **NOTE —** the presence of a gen4-only `Activate2` override makes it easy to assume the LUT load has one too. It does not; there is a single implementation of `LoadActFuncSet` across generations.
 
 ---
 
@@ -179,10 +181,10 @@ The dictionary is built once, while parsing the JSON, by `fillAllActInfos` (@ `0
 
 | Structure | What it is | Confidence |
 |---|---|---|
-| `AllActSetName2ActInfo` | `llvm::MapVector<string, ActFuncSetInfo, std::map<string,unsigned int>, …>` — name→index dict + ordered vector | CONFIRMED |
-| `act_func_set_id` | BIR-JSON wire key; field at `inst+0xF0` | CONFIRMED |
-| `act_tbl_sel` | silicon-encoder field name (`"instr.act_tbl_sel"`) for the same datum | CONFIRMED |
-| `GlobalActFuncSetId` | the int read out of the map, range-checked against the set count | CONFIRMED |
+| `AllActSetName2ActInfo` | `llvm::MapVector<string, ActFuncSetInfo, std::map<string,unsigned int>, …>` — name→index dict + ordered vector | CERTAIN |
+| `act_func_set_id` | BIR-JSON wire key; field at `inst+0xF0` | CERTAIN |
+| `act_tbl_sel` | silicon-encoder field name (`"instr.act_tbl_sel"`) for the same datum | CERTAIN |
+| `GlobalActFuncSetId` | the int read out of the map, range-checked against the set count | CERTAIN |
 
 > **GOTCHA — the index is `act_info.json` array order, not a stable enum.** Because the index is array position, the *same* logical set can carry a *different* `act_func_set_id` on `trainium` vs `with_ln` (the rosters differ — 21 vs 14 sets, with renames; see [Part 10](../activation/)). A reimplementer must resolve the set *name* against the *target's own* `act_info.json` order, never hardcode an index. The asserts `count(ActSetName) > 0` and `size() > GlobalActFuncSetId` are the runtime's own defense against a stale index.
 
@@ -222,10 +224,10 @@ Three Activation-engine passes form the LUT-residency pipeline. Together they pa
 
 | Pass | Function | Role | Confidence |
 |---|---|---|---|
-| `lower_act` (L28) | `LowerPWPImpl::calculateBestSets` @ `0x11597e0` | **set-cover** over the `std::array<pair<string,ActivationFunctionType>,29>` of LUT-driven funcs — pick the minimal sequence of resident sets so set-sharing activations don't each reload | STRONG |
-| | `addLoadInstructionBefore` @ `0x1155620` → `generateInstLoadActFuncSet` @ `0x1156510` | mint the IT6 before the first activation needing a new set | CONFIRMED |
-| `optimize_prefetch_act_control` (L29) | `OptimizePrefetchActLoadImpl` @ `0x11656e6` | **hoist** the load earlier to hide the refill behind upstream compute | CONFIRMED |
-| `optimize_act_control` (L30) | `OptimizeActControl` @ `0x11603b0` / `…Impl::enterBasicBlock` @ `0x11618a0` | **global dedup** — eliminate a load whose set a dominating earlier load already made resident | STRONG |
+| `lower_act` (L28) | `LowerPWPImpl::calculateBestSets` @ `0x11597e0` | **set-cover** over the `std::array<pair<string,ActivationFunctionType>,29>` of LUT-driven funcs — pick the minimal sequence of resident sets so set-sharing activations don't each reload | HIGH |
+| | `addLoadInstructionBefore` @ `0x1155620` → `generateInstLoadActFuncSet` @ `0x1156510` | mint the IT6 before the first activation needing a new set | CERTAIN |
+| `optimize_prefetch_act_control` (L29) | `OptimizePrefetchActLoadImpl` @ `0x11656e6` | **hoist** the load earlier to hide the refill behind upstream compute | CERTAIN |
+| `optimize_act_control` (L30) | `OptimizeActControl` @ `0x11603b0` / `…Impl::enterBasicBlock` @ `0x11618a0` | **global dedup** — eliminate a load whose set a dominating earlier load already made resident | HIGH |
 
 > **NOTE — the prefetch pass bound-checks the index against a per-engine set count.** `optimize_prefetch_act_control` validates `Eng2UsedActTables->count(actTblLoad->getEngineInfo()) > 0 && (int)Eng2UsedActTables->lookup(actTblLoad->getEngineInfo()).size() > actFuncSetId` — `Eng2UsedActTables` is a `DenseMap<EngineInfo, vector<…>>` and `act_func_set_id` is bounded against the per-Activation-engine set count. The global dedup tracks the resident set with a `0xFFFFFFFF` ("no active set") sentinel — which is the same value as the struct default of `inst+0xF0` (`toJson` emits `act_func_set_id` only when the field `≠ -1`).
 
@@ -239,15 +241,15 @@ The `enum_variant_string_opcode(int, char*, int)` ISA-name switch (one body per 
 
 | Opcode | Name (core_v2 == core_v4) | BIR op | Confidence |
 |---|---|---|---|
-| `0x21` | `Activate` | `InstActivation` (IT4, plain) | CONFIRMED |
-| `0x22` | `ActivateQuantize` | act + quantize fused | CONFIRMED |
-| `0x23` | `ActivationTableLoad` | **`InstLoadActFuncSet` (IT6)** — the LUT load | CONFIRMED |
-| `0x24` | `ActivationReadAccumulator` | `InstReadActivationAccumulator` / `InstActivationReadAccumulator` | CONFIRMED |
-| `0x25` | `Activate2` (core_v4 ONLY; core_v2 = ∅) | `InstActivation` (IT4, `is_activate2`) | CONFIRMED |
-| `0x30` | `Exponential` | `InstExponential` (DVE, hardwired) | CONFIRMED |
-| `0xC6` | `PseudoLoadActFuncSet` (both gens) | scheduling pseudo | CONFIRMED (name) |
+| `0x21` | `Activate` | `InstActivation` (IT4, plain) | CERTAIN |
+| `0x22` | `ActivateQuantize` | act + quantize fused | CERTAIN |
+| `0x23` | `ActivationTableLoad` | **`InstLoadActFuncSet` (IT6)** — the LUT load | CERTAIN |
+| `0x24` | `ActivationReadAccumulator` | `InstReadActivationAccumulator` / `InstActivationReadAccumulator` | CERTAIN |
+| `0x25` | `Activate2` (core_v4 ONLY; core_v2 = ∅) | `InstActivation` (IT4, `is_activate2`) | CERTAIN |
+| `0x30` | `Exponential` | `InstExponential` (DVE, hardwired) | CERTAIN |
+| `0xC6` | `PseudoLoadActFuncSet` (both gens) | scheduling pseudo | CERTAIN (name) |
 
-> **NOTE — `0xC6` "PseudoLoadActFuncSet" is a real ISA-named pseudo, lowered to `0x23`.** Both rodata strings exist (`"PSEUDO_LOAD_ACT_FUNC_SET"` and `"PseudoLoadActFuncSet"`), and `0xC6` is referenced by all three `core_vN` `enum_variant_string_opcode` bodies. The most likely role: the real load is the `0x23` "ActivationTableLoad"; `0xC6` is the placeholder the scheduler/prefetch passes manipulate (a pseudo so the resident-set bookkeeping survives hoisting/dedup without consuming a real engine cycle), later materialised to `0x23`. The exact `0xC6 → 0x23` lowering site is INFERRED.
+> **NOTE — `0xC6` "PseudoLoadActFuncSet" is a real ISA-named pseudo, lowered to `0x23`.** Both rodata strings exist (`"PSEUDO_LOAD_ACT_FUNC_SET"` and `"PseudoLoadActFuncSet"`), and `0xC6` is referenced by all three `core_vN` `enum_variant_string_opcode` bodies. The most likely role: the real load is the `0x23` "ActivationTableLoad"; `0xC6` is the placeholder the scheduler/prefetch passes manipulate (a pseudo so the resident-set bookkeeping survives hoisting/dedup without consuming a real engine cycle), later materialised to `0x23`. The exact `0xC6 → 0x23` lowering site is **[INFERRED]** — it was not located.
 
 ---
 
@@ -270,23 +272,23 @@ if (Module::getAttribute(ModuleAttribute::dynamic_pwp) is set):     // call @ 0x
 
 | Facet | Value | Confidence |
 |---|---|---|
-| NEFF feature bit | `0x40` | CONFIRMED |
-| Feature string | `"neff_feature_dynamic_pwp"` | CONFIRMED |
-| Module attribute | `ModuleAttribute "neff_feature_dynamic_pwp"` (registered in `ModuleAttribute2string`) | CONFIRMED |
-| Internal toggle | global `enableDynamicActTable` (.bss); literal `"DynamicActTable"` | STRONG |
-| Wire key | `"dynamic_act_table"` (BIR-JSON) | CONFIRMED |
+| NEFF feature bit | `0x40` | CERTAIN |
+| Feature string | `"neff_feature_dynamic_pwp"` | CERTAIN |
+| Module attribute | `ModuleAttribute "neff_feature_dynamic_pwp"` (registered in `ModuleAttribute2string`) | CERTAIN |
+| Internal toggle | global `enableDynamicActTable` (.bss); literal `"DynamicActTable"` | HIGH |
+| Wire key | `"dynamic_act_table"` (BIR-JSON) | CERTAIN |
 
-> **NOTE — there are two layers to the gate.** The **module attribute** `neff_feature_dynamic_pwp` (set by the front-end/HLO lowering) drives the NEFF feature bit and tells the *runtime* to expect dynamic loads. A separate **internal global** `enableDynamicActTable` (with the literal `"DynamicActTable"`, read at the queue-allocation/codegen layer) selects static-vs-dynamic act-table *mode* inside the compiler: static mode = a single legacy pre-loaded ROM set (no per-op `LoadActFuncSet`); dynamic mode = the set-cover path that emits the `LoadActFuncSet` ops. The exact upstream producer that *sets* the attribute / global — i.e. the precise static↔dynamic decision rule — is upstream of these binaries (HLO/front-end) and is the one SPECULATIVE seam on this page.
+> **NOTE — there are two layers to the gate.** The **module attribute** `neff_feature_dynamic_pwp` (set by the front-end/HLO lowering) drives the NEFF feature bit and tells the *runtime* to expect dynamic loads. A separate **internal global** `enableDynamicActTable` (with the literal `"DynamicActTable"`, read at the queue-allocation/codegen layer) selects static-vs-dynamic act-table *mode* inside the compiler: static mode = a single legacy pre-loaded ROM set (no per-op `LoadActFuncSet`); dynamic mode = the set-cover path that emits the `LoadActFuncSet` ops. Which upstream component *sets* the attribute and the global — i.e. the precise static↔dynamic decision rule — lives in the HLO front-end, outside these binaries, and is **[UNRESOLVED]** here.
 
 ---
 
-## Gaps and Confidence
+## Limits of this reading
 
-- **`EngineAccumulationType` ordinals — INFERRED.** The member *names* (`Idle`, `ZeroAccumulate`, `AddAccumulate`, `LoadAccumulate`) are CONFIRMED from simulator strings; the integer values `{0,1,2,3}` are inferred from conventional ordering and the sibling PE page, because the typed enum is reconstructed only via its `2string`/`string2…` switch, not recovered as a static value table.
-- **The bkt/ctrl blob byte layout — out of scope (Part 10).** This page establishes *selection + addressing*; the physical packing of functions inside the loaded image is owned by [Part 10](../activation/).
-- **The static↔dynamic decision rule — SPECULATIVE.** The role of `enableDynamicActTable` / `neff_feature_dynamic_pwp` is CONFIRMED; the upstream pass that *sets* them, and the precise rule, are not in these binaries.
-- **`0xC6 → 0x23` materialisation site — INFERRED.** That `PseudoLoadActFuncSet` is a real ISA-named pseudo is CONFIRMED; where it lowers to the real `0x23` load is inferred from the prefetch/dedup linkage.
-- **Physical LUT-bank SRAM size — not in these binaries.** A hardware spec; bounded from below only by the per-set blob sizes.
+- **`EngineAccumulationType` ordinals.** The member names (`Idle`, `ZeroAccumulate`, `AddAccumulate`, `LoadAccumulate`) come from simulator strings; the integer values `{0,1,2,3}` are **[INFERRED]** from conventional ordering and the sibling PE page, because the typed enum survives only through its `2string`/`string2…` switch.
+- **The bkt/ctrl blob byte layout is out of scope.** This page establishes *selection and addressing*; the physical packing of functions inside the loaded image belongs to [Part 10](../activation/).
+- **The static↔dynamic decision rule is [UNRESOLVED].** The *role* of `enableDynamicActTable` and `neff_feature_dynamic_pwp` is read off the binaries; the upstream pass that sets them, and its rule, are not.
+- **The `0xC6 → 0x23` materialisation site is [INFERRED].** `PseudoLoadActFuncSet` is a real ISA-named pseudo; where it lowers to the real `0x23` load is deduced from the prefetch/dedup linkage rather than located.
+- **Physical LUT-bank SRAM size is not in these binaries.** It is a hardware spec, bounded from below only by the per-set blob sizes.
 
 ## Cross-References
 

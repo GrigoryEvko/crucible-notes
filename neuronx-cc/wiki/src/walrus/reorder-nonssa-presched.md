@@ -82,7 +82,7 @@ Two `uint32` scratch slots in the inline header are co-opted by this group (both
 | `Inst+0x44` | `InstructionReorder::reorder` | BB-relative running counter (`mov [rbx+44h],eax`) |
 | `Inst+0x4C` | `NonSSALeg::run` and the reorder comparator's tiebreak | persistent flat program-order index (`cmp [rdx+4Ch],[rax+4Ch]`) |
 
-The *roles* of `+0x44` and `+0x4C` are CONFIRMED from the writers/readers; their canonical libBIR field names are not pinned (INFERRED — both sit in the region `bir::Instruction` maps to `optin_passes`/`unique_id`).
+The *roles* of `+0x44` and `+0x4C` are read from their writers and readers; their canonical libBIR field names are not pinned [INFERRED] — both sit in the region `bir::Instruction` maps to `optin_passes`/`unique_id`.
 
 ### Algorithm
 
@@ -136,17 +136,17 @@ function less(A, B):
 
 The relink is genuine LLVM intrusive-list surgery — the assert string `llvm/ADT/ilist_base.h:58 &Next != &First && "Insertion point ..."` confirms an `llvm::ilist` splice — followed by `bir::NamedObjectContainer<BasicBlock,Instruction>::insertIntoSymboltable` so the block symbol table tracks the new sequence.
 
-> **QUIRK — there is no dependency-graph walk here.** Move-legality is delegated entirely to the upstream scheduler that *assigned* the order vector, which already respected the D-E19 flow/anti/output edges. `instruction_reorder` only enforces two structural bounds: (1) unordered instructions are hard barriers, and (2) within a run the permutation is deterministic and stable, so two instructions sharing a schedule coordinate keep their relative order. A reimplementation that re-checks dependencies here is doing redundant work; one that *omits* the barrier rule will hoist a side-effecting unordered op past an ordered run and corrupt the schedule.
+> **QUIRK — there is no dependency-graph walk here.** Move-legality is delegated entirely to the upstream scheduler that *assigned* the order vector, which already respected the flow/anti/output edges. `instruction_reorder` only enforces two structural bounds: (1) unordered instructions are hard barriers, and (2) within a run the permutation is deterministic and stable, so two instructions sharing a schedule coordinate keep their relative order. A reimplementation that re-checks dependencies here is doing redundant work; one that *omits* the barrier rule will hoist a side-effecting unordered op past an ordered run and corrupt the schedule.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `InstructionReorder::run` | `0xbb97a0` | module/function/block driver | CONFIRMED |
-| `InstructionReorder::reorder` | `0xbb9680` | per-block run partition | CONFIRMED |
-| `InstructionReorder::follow_modulo_sched_order` | `0xbb92e0` | sort + ilist splice | CONFIRMED (disasm; HR failed) |
-| comparator `less` | `0xbb9510`–`0xbb965e` | lex order-vector + `+0x4C` tiebreak | CONFIRMED |
-| `bir::QuasiAffineExpr::getAxisCoef` | (libBIR extern) | per-dimension coefficient | CONFIRMED (call site) |
+| `InstructionReorder::run` | `0xbb97a0` | module/function/block driver | CERTAIN |
+| `InstructionReorder::reorder` | `0xbb9680` | per-block run partition | CERTAIN |
+| `InstructionReorder::follow_modulo_sched_order` | `0xbb92e0` | sort + ilist splice | CERTAIN (disasm; HR failed) |
+| comparator `less` | `0xbb9510`–`0xbb965e` | lex order-vector + `+0x4C` tiebreak | CERTAIN |
+| `bir::QuasiAffineExpr::getAxisCoef` | (libBIR extern) | per-dimension coefficient | CERTAIN (call site) |
 
 ---
 
@@ -210,7 +210,7 @@ function clone_and_rebind(memloc_ctx, first_idx, last_idx):
     n     = (*memloc_ctx.counter)++                       // per-memloc serial
     name  = memloc.name + "_SsaClone" + decimal(n)
     clone = bir::MemoryLocation::makeClone(memloc, name, memType)  // 0x61e330
-    if memloc[+168] /* allocated, D-E13 */:               // PHYSICAL-AWARE branch
+    if memloc[+168] /* allocated */:                      // PHYSICAL-AWARE branch
         clone.allocate(memloc.getBasePartition(),
                        memloc.getBankId(), memloc.getAddress())   // SAME slot
         clone.setUserAllocated(memloc[+208])
@@ -238,14 +238,14 @@ The only behavioral difference between order 17 and order 65 is driven by `Funct
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `NonSSALeg::run` | `0x107c580` | driver + Phase A/B/C | CONFIRMED (decompile + disasm) |
-| `sub_107C070` | `0x107c070` | clone + rebind worker | CONFIRMED |
-| `sub_107AF30` | `0x107af30` | insertion-sort APs by owner `+0x4C` | CONFIRMED |
-| `sub_107B2E0` | `0x107b2e0` | introsort entry over APs | CONFIRMED |
-| `bir::MemoryLocation::makeClone` | `0x61e330` (lib) | clone the storage object | CONFIRMED (call site) |
-| `bir::PhysicalAccessPattern::setLocation` | `0x5e9cd0` (lib) | rebind an access to the clone | CONFIRMED (call site) |
-| `remove_redundant_loads` | `0x159fcb0` | pre-alloc load pruning (758 ln) | CONFIRMED |
-| `isDstPotentialPartialAccess` | `0x1091800` | partial-dst filter | CONFIRMED |
+| `NonSSALeg::run` | `0x107c580` | driver + Phase A/B/C | CERTAIN (decompile + disasm) |
+| `sub_107C070` | `0x107c070` | clone + rebind worker | CERTAIN |
+| `sub_107AF30` | `0x107af30` | insertion-sort APs by owner `+0x4C` | CERTAIN |
+| `sub_107B2E0` | `0x107b2e0` | introsort entry over APs | CERTAIN |
+| `bir::MemoryLocation::makeClone` | `0x61e330` (lib) | clone the storage object | CERTAIN (call site) |
+| `bir::PhysicalAccessPattern::setLocation` | `0x5e9cd0` (lib) | rebind an access to the clone | CERTAIN (call site) |
+| `remove_redundant_loads` | `0x159fcb0` | pre-alloc load pruning (758 ln) | CERTAIN |
+| `isDstPotentialPartialAccess` | `0x1091800` | partial-dst filter | CERTAIN |
 
 ---
 
@@ -358,15 +358,15 @@ The Stage-B coupling at step 2 is what makes the instruction order honor the ten
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `PreSched::run` | `0xcad4c0` | pass entry (thin shim) | CONFIRMED |
-| `pre_sched::pre_schedule` | `0xca1cc0` | module driver | CONFIRMED |
-| `pre_sched::run_pre_sched` | `0xca1490` | per-function core | CONFIRMED (disasm; HR failed) |
-| `pre_sched::init` | `0xc9a870` | Stage A DAG build | CONFIRMED |
-| `compute_depths_forward` / `_backward` | `0xc8f610` / `0xc8f270` | unit-weight critical path | CONFIRMED |
-| `pre_sched::dfs_topo_sort` | `0xc98c00` | priority-seeded topo sort | CONFIRMED |
-| `pre_scheduler::schedule(BasicBlock)` | `0xcb1900` | per-block list scheduler | CONFIRMED |
-| `inst_use_size` / `inst_gain_size` | `0xcaede0` / `0xcaf010` | SBUF-byte resource model | CONFIRMED |
-| `topSortDfs` / `assert_no_cycles` | `0xc93ba0` / `0xc941a0` | 3-color cycle check | CONFIRMED |
+| `PreSched::run` | `0xcad4c0` | pass entry (thin shim) | CERTAIN |
+| `pre_sched::pre_schedule` | `0xca1cc0` | module driver | CERTAIN |
+| `pre_sched::run_pre_sched` | `0xca1490` | per-function core | CERTAIN (disasm; HR failed) |
+| `pre_sched::init` | `0xc9a870` | Stage A DAG build | CERTAIN |
+| `compute_depths_forward` / `_backward` | `0xc8f610` / `0xc8f270` | unit-weight critical path | CERTAIN |
+| `pre_sched::dfs_topo_sort` | `0xc98c00` | priority-seeded topo sort | CERTAIN |
+| `pre_scheduler::schedule(BasicBlock)` | `0xcb1900` | per-block list scheduler | CERTAIN |
+| `inst_use_size` / `inst_gain_size` | `0xcaede0` / `0xcaf010` | SBUF-byte resource model | CERTAIN |
+| `topSortDfs` / `assert_no_cycles` | `0xc93ba0` / `0xc941a0` | 3-color cycle check | CERTAIN |
 
 ---
 
@@ -421,7 +421,7 @@ function dont_touch_inst(I):
         default:  return <slot-derived bool>
 ```
 
-> **GOTCHA — sync/semaphore/barrier/collective preservation is in the vtable, not a name list.** No sync opcode (EventSemaphore, AllEngineBarrier, Drain, Halt, CoreBarrier, side-effecting DMA, CustomOp/InlineASM, collectives) appears by number in the switch. They are caught by the three base virtuals, which every `Inst` subclass overrides. A reimplementation that enumerates a name allow/deny list instead of asking the instruction "do you have observable effects / do you synchronize" will silently delete a semaphore or a collective. The opcode switch only adds the seven compute opcodes whose accumulate/cache/command field, when set, makes the op a non-idempotent writer into a PSUM accumulator or cache — preserved even when its nominal SSA result looks unused. The three vtable slot *roles* are INFERRED from position (the base `getValidEngines` anchors vtable+96); the three-virtual gate and the opcode switch are CONFIRMED.
+> **GOTCHA — sync/semaphore/barrier/collective preservation is in the vtable, not a name list.** No sync opcode (EventSemaphore, AllEngineBarrier, Drain, Halt, CoreBarrier, side-effecting DMA, CustomOp/InlineASM, collectives) appears by number in the switch. They are caught by the three base virtuals, which every `Inst` subclass overrides. A reimplementation that enumerates a name allow/deny list instead of asking the instruction "do you have observable effects / do you synchronize" will silently delete a semaphore or a collective. The opcode switch only adds the seven compute opcodes whose accumulate/cache/command field, when set, makes the op a non-idempotent writer into a PSUM accumulator or cache — preserved even when its nominal SSA result looks unused. The three-virtual gate and the opcode switch are read directly; the three vtable slot *roles* are [INFERRED] from position, with the base `getValidEngines` anchoring vtable+96.
 
 The memloc analogue `dont_touch_memloc` (`0xc059c0`) keeps any location that is Shared address space, written-by-another-core, has a remote target, is host-visible I/O, or is touched by an indirect DMA (`InstructionType ∈ {43,45,46}`). DCE therefore **refuses to delete shared/cross-core allocations** — converting those to local is the next pass's job.
 
@@ -473,27 +473,27 @@ A shared-DRAM internal scratch buffer becomes per-core Local iff **all** hold:
 | L3 | `accessCount[name] < numFns` | guards the `numFns==1` corner (no churn on single-core modules) |
 | L4 | `!allocated(+168)` | not already pinned to a fixed physical address |
 
-> **NOTE — collective safety is structural, from counting *after* the LNC split.** Because the toucher count is taken over the per-core Functions, any buffer a collective or a second core touches has `accessCount ≥ 2` and fails L2. There is no explicit alias analysis for cross-core safety; the post-split counting domain *is* the safety argument. The rewrite is a single store `*(loc+0xF0)=0`; the downstream shared-DRAM vs SB/PSUM allocators and `sync_shared_allocations` then place the now-Local buffer in per-core space and drop the cross-core synchronization a shared buffer would have required. L1–L4 are CONFIRMED; the collective-safety attribution is INFERRED from the counting domain.
+> **NOTE — collective safety is structural, from counting *after* the LNC split.** Because the toucher count is taken over the per-core Functions, any buffer a collective or a second core touches has `accessCount ≥ 2` and fails L2. There is no explicit alias analysis for cross-core safety; the post-split counting domain *is* the safety argument. The rewrite is a single store `*(loc+0xF0)=0`; the downstream shared-DRAM vs SB/PSUM allocators and `sync_shared_allocations` then place the now-Local buffer in per-core space and drop the cross-core synchronization a shared buffer would have required. L1–L4 are read from the pass body; the collective-safety attribution is [INFERRED] from the counting domain.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `LocalizeSharedMemory::run(vector<unique_ptr<Module>>&)` | `0xc00200` | 2-pass count-then-localize | CONFIRMED |
-| `LocalizeSharedMemory::run(Module&)` | `0xbfc770` | 14-line stub returning `Status(2)` | CONFIRMED |
-| `DeadCodeElim::run` | `0xc0b050` | -O1 DCE driver | CONFIRMED |
-| `dont_touch_inst` | `0xbfcb50` | side-effect/sync preservation | CONFIRMED (gate); INFERRED (slot roles) |
-| `remove_inst_with_no_user` | `0xc06a60` | reverse use/def sweep to fixpoint | CONFIRMED |
-| `eliminateDeadStore` | `0xc02950` | single-BB dead-store elim | CONFIRMED |
-| `dont_touch_memloc` | `0xc059c0` | memloc preservation | CONFIRMED |
+| `LocalizeSharedMemory::run(vector<unique_ptr<Module>>&)` | `0xc00200` | 2-pass count-then-localize | CERTAIN |
+| `LocalizeSharedMemory::run(Module&)` | `0xbfc770` | 14-line stub returning `Status(2)` | CERTAIN |
+| `DeadCodeElim::run` | `0xc0b050` | -O1 DCE driver | CERTAIN |
+| `dont_touch_inst` | `0xbfcb50` | side-effect/sync preservation | CERTAIN (gate); MEDIUM (slot roles) |
+| `remove_inst_with_no_user` | `0xc06a60` | reverse use/def sweep to fixpoint | CERTAIN |
+| `eliminateDeadStore` | `0xc02950` | single-BB dead-store elim | CERTAIN |
+| `dont_touch_memloc` | `0xc059c0` | memloc preservation | CERTAIN |
 
 ---
 
-## Confidence and Gaps
+## Evidence Summary
 
-- **CONFIRMED** by reading the pass bodies: both `instruction_reorder` bodies (the modulo-sort comparator, the `+0x4C` tiebreak, the ilist splice); the `NonSSALeg` clone-rename worker `sub_107C070`, the `_SsaClone` naming, the `sb_allocated` gate, the `allocated(+168)` physical-clone branch, the `dummy_inst_for_non_ssa_legalization_pass` sentinel, the matmul-accumulation exemption, and the dual-placement orders; `pre_sched`'s two-stage structure, the unit-weight critical path, and the absence of any `getLatency`/`Hwm`/reservation-table reference; the DCE `dont_touch_inst` three-virtual gate plus opcode switch; the `localize_shared_memory` ==1/==7 gate and `*(+0xF0)=0` rewrite.
-- **STRONG**: `hasOrder`/`setOrder` semantics (libBIR externs read at the def site + call sites); the `+224==7` storage-class candidate filter (numeric, name from the class-field convention); the downstream allocator effects of the `localize` rewrite (from the pass-order table).
-- **INFERRED**: the canonical libBIR field names of the `+0x44` vs `+0x4C` scratch `uint32` slots (their *roles* are CONFIRMED, the names are not pinned); the three `dont_touch_inst` vtable slot roles (positions confirmed, semantics inferred from role + the `getValidEngines`-anchored table); the collective-safety argument for `localize_shared_memory` (inferred from the post-split counting domain, not an explicit alias check).
+- Read directly from the pass bodies: both `instruction_reorder` bodies (the modulo-sort comparator, the `+0x4C` tiebreak, the ilist splice); the `NonSSALeg` clone-rename worker `sub_107C070`, the `_SsaClone` naming, the `sb_allocated` gate, the `allocated(+168)` physical-clone branch, the `dummy_inst_for_non_ssa_legalization_pass` sentinel, the matmul-accumulation exemption, and the dual-placement orders; `pre_sched`'s two-stage structure, the unit-weight critical path, and the absence of any `getLatency`/`Hwm`/reservation-table reference; the DCE `dont_touch_inst` three-virtual gate plus opcode switch; the `localize_shared_memory` ==1/==7 gate and `*(+0xF0)=0` rewrite.
+- One inference step away: `hasOrder`/`setOrder` semantics (libBIR externs read at the def site + call sites); the `+224==7` storage-class candidate filter (numeric, name from the class-field convention); the downstream allocator effects of the `localize` rewrite (from the pass-order table).
+- Still [INFERRED]: the canonical libBIR field names of the `+0x44` vs `+0x4C` scratch `uint32` slots (their *roles* are pinned, the names are not); the three `dont_touch_inst` vtable slot roles (positions are read directly, semantics inferred from role plus the `getValidEngines`-anchored table); and the collective-safety argument for `localize_shared_memory`, which follows from the post-split counting domain rather than an explicit alias check.
 - **Gap**: `bir::QuasiAffineExpr::getAxisCoef` internals (which `LoopAxis` the `axis=0` call selects per dimension) live in libBIR and were not read here — the comparator treats the result as an opaque per-dimension integer, which is sufficient for the sort semantics.
 
 ## Cross-References

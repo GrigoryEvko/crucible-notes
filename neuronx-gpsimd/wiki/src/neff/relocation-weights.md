@@ -19,7 +19,7 @@ This page documents both halves byte-exactly. The patches consumed here are
 the mem_ref / `kbin_mr_type` values match [metaneff-io-abi.md](./metaneff-io-abi.md);
 the 64-byte slot stride matches [seq-microcode.md](./seq-microcode.md). The
 runtime `mem_ref` C++ object referenced below is field-mapped in
-`appendix/struct-host-runtime-layouts.md` (pending).
+`appendix/struct-host-runtime-layouts.md`.
 
 > **Evidence base.** All offsets/enums are from the IDA sidecars of
 > `libnrt.so` v2.31.24.0 (`*_structures.json` / `*_enums.json`), decompiled
@@ -27,8 +27,7 @@ runtime `mem_ref` C++ object referenced below is field-mapped in
 > NEFF sample carved at `.rodata` offset `0xC08220` (`tar/sg00/`). `.text` and
 > `.rodata` have VMA == file offset. Tag legend: confidence **HIGH/MED/LOW** ×
 > provenance **OBSERVED** (byte-exact in a sidecar/disasm/sample) /
-> **INFERRED** (control/data-flow) / **CARRIED** (from a sibling DX report,
-> re-cited here).
+> **INFERRED** (control/data-flow) / **CARRIED** (from a sibling page).
 
 ---
 
@@ -434,7 +433,7 @@ the MAIN-section walk yields the index up to the function entry, the
 FUNCTION-section walk yields the offset within the function, and their sum is the
 source IP.
 
-> **CORRECTION vs the source report's "find DELETE / find MAIN" gloss.** Read
+> **CORRECTION vs a "find DELETE / find MAIN" gloss.** Read
 > literally, scan #1 compares `dword [loc+0]` against `2` and scan #2 compares
 > `dword [loc+0xC]` against `1`. With the §1 layout those are
 > `location.offset == 2` and `location.section == POSTAMBLE(1)` — *not* a clean
@@ -666,7 +665,7 @@ So the resolved device address of a constant is `dmem._pa + dmem.align_offset`.
 `TONGA_DRAM` is the MLA's HBM; weights are tagged `DMA_MEM_USAGE_TYPE_WEIGHT(6)`
 for accounting.
 
-> **CORRECTION vs the source report's usage predicate.** The report wrote the
+> **CORRECTION — the usage predicate.** An earlier reading wrote the
 > scratchpad branch as *"type in {TMP_BUF(4), BUFFER_STAGED?}"*. The binary's test
 > is `((mr_type - 4) & 0xFFFFFFFB) != 0` (line 198), which masks bit 2 of
 > `mr_type - 4` — it is false **only** for `mr_type ∈ {4, 8}`
@@ -784,7 +783,7 @@ At fault/trace time:
 7. The mem_ref / `kbin_mr_type` values match
    [metaneff-io-abi.md](./metaneff-io-abi.md) (var/mem_ref ABI; metaneff carries
    no weights); the on-disk `kbin_mem_ref` 152-B form (buffer @ +0x80) is
-   field-mapped in `appendix/struct-host-runtime-layouts.md` (pending).
+   field-mapped in `appendix/struct-host-runtime-layouts.md`.
 
 ## 11. Open items / not fully decoded
 

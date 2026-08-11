@@ -9,8 +9,8 @@ the DGE pseudo→real lowering and `$S[]` micro-op stream live in the
 [DGE Micro-Op Encoding](dge-microop-encoding.md). This page is field rows only.
 
 The al_udma per-engine CSR semantics (engine-global banks, arbiters, rate limiters)
-are catalogued in the CSR pages `control/csr/udma-m2s.md` and `control/csr/udma-s2m.md`
-(stubs at time of writing); the **per-queue ring bank** they reference is reproduced in
+are catalogued in the CSR pages `control/csr/udma-m2s.md` and `control/csr/udma-s2m.md`;
+the **per-queue ring bank** they reference is reproduced in
 full in [section 6](#6-the-al_udma-v4-ring-register-bank) below.
 
 ---
@@ -20,7 +20,7 @@ full in [section 6](#6-the-al_udma-v4-ring-register-bank) below.
 Every row is grounded in a shipped, redistributable artifact read with stock tools, or
 carried byte-exact from a cited sibling page. Tags per row/table:
 
-- **HIGH/OBSERVED** — byte/field-exact in a shipped artifact read this pass (a
+- **HIGH/OBSERVED** — byte/field-exact in a shipped artifact (a
   compile-verified ISA header, the al_udma v4 RTL register-definition JSON, the
   `instruction_mapping.json` struct→opcode table, or a recovered firmware string).
 - **HIGH/CARRIED** — byte-exact in a cited sibling page; the source artifact (host
@@ -275,7 +275,7 @@ size co-constraint above; `in_dtype == out_dtype` and 2-B for the transpose prop
 in multiples of 16; `gather_dim` must be Y (slow axis) initially; dst 32-B aligned (xbar);
 16×128 xbar transpose tiles for 2-B dtypes. Use cases: MoE MLP, chunked-prefill attention.
 
-### 2.5  `RDMA_DESC_GEN` / `EXTENDED` `op8` — cross-die SBUF→SBUF P2P  *(HIGH/CARRIED C2; envelope re-verified H1)*
+### 2.5  `RDMA_DESC_GEN` / `EXTENDED` `op8` — cross-die SBUF→SBUF P2P  *(HIGH/CARRIED C2; envelope from H1)*
 
 The 64-B word is a `NEURON_ISA_TPB_EXTENDED_STRUCT`
 (`aws_neuron_isa_tpb_extended.h:41-48`): `header@0`, `events@4`, `extended_opcode@12`,
@@ -572,7 +572,7 @@ waived. The `PSEUDO_ADDR8` union adds `addr_var` (NEFF variable id) + `addr_unkn
 
 `UnitName UDMA_M2S` (`AddrWidth 18`, `SizeInBytes 0x40000`) / `UDMA_S2M`
 (`SizeInBytes 0x38000`). Engine-global bundle bases (`RegistersBundleArrays`
-`AddressOffset`, re-verified H2):
+`AddressOffset`, H2):
 
 | M2S bundle | base | M2S bundle | base | S2M bundle | base | S2M bundle | base |
 |-----------|------|-----------|------|-----------|------|-----------|------|
