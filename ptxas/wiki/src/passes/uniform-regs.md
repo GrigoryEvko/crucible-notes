@@ -52,12 +52,30 @@ sm_75+ architectures provide a dedicated set of uniform-only SASS instructions t
 | `UPLOP3` | `HCYBC3` | Uniform predicate LOP3 |
 | `VOTEU` | `IBGRH` | Uniform vote |
 
-Blackwell (sm_100+) extends the uniform ISA with:
-- `UFADD`, `UFFMA`, `UFSEL`, `UFSETP` — uniform floating-point operations
-- `UVIADDR` — uniform virtual address computation
-- `UCLEA`, `UCVTA`, `ULEPC` — uniform address operations
-- `UTMAPC`, `UTMALDG`, `UTMAPF`, `UTMAREDG` — uniform TMA (tensor memory accelerator) operations
-- `UBLKPC`, `UBLKRED`, `UBLKPF` — uniform block operations
+The uniform ISA then grows once per generation. Diffing the decoded per-architecture
+instruction tables gives the mnemonic families each step adds:
+
+- **sm_90 (Hopper)** — the async / cluster / warp-specialization uniform ops:
+  `UTMALDG`, `UTMASTG`, `UTMAPF`, `UTMAREDG`, `UTMACCTL`, `UTMACMDFLUSH` (TMA),
+  `UBLKCP`, `UBLKPF`, `UBLKRED` (bulk copy), `UCGABAR` (cluster barrier),
+  `USETMAXREG`, `USETSHMSZ` (register / shared-memory reconfiguration), `ULEPC`.
+- **sm_100 (Blackwell datacenter)** — the tcgen05 uniform tensor ops: `UTCHMMA`,
+  `UTCIMMA`, `UTCQMMA`, `UTCOMMA`, `UTCMXQMMA`, `UTCCP`, `UTCBAR`, `UTCSHIFT`,
+  `UTCATOMSWS`, `UTCLDSWS`, `UTCSTSWS`, plus `UREDGR`, `USTGR`, `UMEMSETS`,
+  `UGETNEXTWORKID`, `UVIRTCOUNT`. `LDCU` also first appears here.
+- **sm_120 (Blackwell consumer)** — the **uniform floating-point ALU**: `UFADD`,
+  `UFMUL`, `UFFMA`, `UFSET`/`UFSETP`, `UFMNMX`, `UFRND`, `UFSEL`, `UFHADD`,
+  `UFHFMA`, the uniform conversions `UF2F`, `UF2I`, `UI2F`, `UI2I`, and
+  `UIABS`, `UIMNMX`, `UVIADD`, `UVIMNMX`. The same step **drops** the entire
+  `UTC*` tcgen05 group and `UREDGR`/`USTGR`.
+
+The uniform-FP ALU is therefore a **consumer-Blackwell** feature, not a datacenter
+one: sm_100, sm_103 and sm_110 carry no `UF*` arithmetic class at all. This makes
+sm_120/sm_121 the most uniform-datapath-rich targets in the lineup — 196 uniform
+classes against 148 on sm_100, 111 on sm_90 and 77 on sm_89.
+
+`UCLEA` is not a Blackwell addition — it is present from sm_75. The uniform *packed*
+convert `UF2FP` arrives at sm_86; the non-packed `UF2F` is sm_120-only.
 
 The `R2UR` instruction transfers a value from the R file to the UR file; `UR2R` does the reverse. These are the bridge instructions that `ConvertToUniformReg` inserts at file boundaries.
 
@@ -418,9 +436,14 @@ This fires on pre-sm_75 targets where the UR file does not exist, or when a CLI 
 | SM range | UR support | UR ALU instructions | Uniform FP |
 |---|---|---|---|
 | sm_30 — sm_72 | None | None | None |
-| sm_75 — sm_89 | UR0–UR62, UP0–UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV | None |
-| sm_90 — sm_90a | UR0–UR62, UP0–UP6 | Full integer uniform ALU | None (LDCU requires `-forcetext -sso`) |
-| sm_100+ | UR0–UR62, UP0–UP6 | Full integer + FP uniform ALU | UFADD, UFFMA, UFSEL, UFSETP, UVIADDR |
+| sm_75 — sm_89 | UR0–UR62, UP0–UP6 | UIADD3, UIMAD, ULOP3, UISETP, UMOV, UPRMT, USGXT, UPOPC, UBREV, UCLEA, ULEA, UFLO, USHF, USEL, UBMSK, ULDC, UP2UR, UR2UP, UPLOP3 | None |
+| sm_90 — sm_90a | UR0–UR62, UP0–UP6 | Same integer ALU, plus the uniform async/cluster ops (UTMA\*, UBLK\*, UCGABAR, USETMAXREG, USETSHMSZ, ULEPC) | None (LDCU requires `-forcetext -sso`) |
+| sm_100, sm_103, sm_110 | UR0–UR62, UP0–UP6 | Adds the uniform tcgen05 tensor group (UTC\*) and LDCU | None |
+| sm_120, sm_121 | UR0–UR62, UP0–UP6 | Drops UTC\*; adds the uniform FP ALU and uniform conversions | UFADD, UFMUL, UFFMA, UFSET/UFSETP, UFMNMX, UFRND, UFSEL, UF2F, UF2I, UI2F, UI2I, UIABS |
+
+The uniform integer ALU class inventory is unchanged from sm_75 through sm_110 —
+what each generation adds is a new *category* of uniform op (async, then tensor,
+then floating-point), not a wider integer datapath.
 
 The `LDCU` (Load Constant Uniform) instruction is gated by architecture capability. The validation at `sub_B28400` (345 bytes) checks:
 

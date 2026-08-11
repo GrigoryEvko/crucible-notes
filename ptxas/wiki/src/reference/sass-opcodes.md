@@ -29,8 +29,8 @@ Opcodes are partitioned by SM generation through explicit boundary markers embed
 | 252 | `SM90_LAST` | End of sm_90 range |
 | 253–280 | sm_100+ | Blackwell datacenter additions (UTC, QFMA4, MEMSET) |
 | 280 | `SM100_LAST` | End of sm_100 range |
-| 281–320 | sm_104+ | Blackwell Ultra additions (uniform FP, new conversions) |
-| 320 | `SM104_LAST` | End of sm_104 range |
+| 281–320 | sm_120/121 | Consumer Blackwell additions (uniform FP, new conversions, 64-bit integer forms) |
+| 320 | `SM104_LAST` | End of that range (internal enum label) |
 | 321 | `LAST` | Sentinel (end of table) |
 
 Each SM generation only adds opcodes; no base opcodes are removed. The Ori IR uses the 12-bit index into this table as the base opcode field (instruction offset +72, lower 12 bits). Bits 12–13 of the opcode word encode sub-operation modifiers (`.HI`, `.WIDE`, etc.) and are stripped by the `0xFFFFCFFF` mask to recover the base index.
@@ -58,13 +58,17 @@ Five entries in the table share a SASS mnemonic with an earlier index. These are
 | 215 (sm_90) | 180 (sm_82) | DMMA | Hopper warpgroup-aware TC path (enc. cat. 515 vs 434) |
 | 220 (sm_90) | 14 (sm_70) | FMNMX | Hopper adds 5-entry operand sub-mode table (enc. cat. 534 vs 510) |
 
-**Category B — Operand-width extension.** Blackwell Ultra (sm_104) adds 64-bit operand variants of existing integer ALU instructions. The SASS printer appends a `.64` suffix at render time; the IR name table stores the same base mnemonic for both widths:
+**Category B — Operand-width extension.** Consumer Blackwell adds 64-bit operand variants of existing integer ALU instructions. The SASS printer appends a `.64` suffix at render time; the IR name table stores the same base mnemonic for both widths:
 
 | Later Index | Earlier Index | Mnemonic | What the later index adds |
 |-------------|---------------|----------|---------------------------|
-| 284 (sm_104) | 37 (sm_70) | IMNMX | 32-bit form, new encoding path |
-| 285 (sm_104) | 37 (sm_70) | IMNMX | 64-bit form (`IMNMX.64`, `.64.UI`, `.64.LO`) |
-| 288 (sm_104) | 7 (sm_70) | ISETP | 64-bit comparison (`ISETP.64`, `.64.UI`, `.64.LO`) |
+| 284 | 37 (sm_70) | IMNMX | 32-bit form, new encoding path |
+| 285 | 37 (sm_70) | IMNMX | 64-bit form (`IMNMX.64`, `.64.UI`, `.64.LO`) |
+| 288 | 7 (sm_70) | ISETP | 64-bit comparison (`ISETP.64`, `.64.UI`, `.64.LO`) |
+
+The decoded instruction tables place these on **sm_120/sm_121 only**: the
+`imnmx_64`, `isetp_64`, `iadd_64`, `mov_64` and `sel_64` class groups are absent
+from sm_100, sm_103 and sm_110 and present on consumer Blackwell.
 
 Binary evidence: in the constructor `sub_7A5D10`, indices 284 and 285 store identical `"VZAZK"` string pointers at adjacent 16-byte slots (`v2+8728` and `v2+8744`). The SASS printer (`sub_7CB560`) maps them to `IMNMX` vs `IMNMX.64` based on operand metadata.
 
@@ -550,9 +554,20 @@ Blackwell datacenter additions. UTC (Unified Tensor Core) operations, quad-preci
 | 278 | `FGGZ` | **STTM** | Store via tensor memory |
 | 279 | `SRAPR_G` | **FENCE_T** | Fence, tensor scope |
 
-## sm_104 Extensions (Indices 281–320)
+## Consumer-Blackwell Extensions (Indices 281–320)
 
-Blackwell Ultra additions. Uniform FP operations, additional integer widths, conversion variants, MMA shape extensions, and MKQ sparse variants.
+Uniform FP operations, additional integer widths, conversion variants, MMA shape
+extensions, and MKQ sparse variants. The internal enum labels this range `SM104`,
+but `sm_104` is **not an accepted `gpu-name`** — ptxas rejects it (as it rejects
+`sm_101`, `sm_107` and `sm_130`); the range normalizes to the shipping consumer
+Blackwell targets **sm_120/sm_121**. The decoded per-architecture tables confirm
+the placement: the uniform-FP ALU (`UFADD`, `UFMUL`, `UFFMA`, `UFSET[P]`,
+`UFMNMX`, `UFRND`, `UFSEL`, `UF2F`, `UF2I`, `UI2F`, `UI2I`) and the 64-bit integer
+groups appear only on sm_120/sm_121 and are absent from sm_100, sm_103 and sm_110.
+
+Blackwell Ultra is **sm_103**, a different target: relative to sm_100 it drops the
+integer tensor class group and adds a packed-FP16 special-function form — it carries
+none of the uniform-FP or 64-bit integer additions listed here.
 
 ### Integer Extensions
 
@@ -560,7 +575,7 @@ Blackwell Ultra additions. Uniform FP operations, additional integer widths, con
 |-----|-------|----------|-------------|
 | 282 | `VNQQ` | **IADD** | Integer add (two-input, distinct from IADD3) |
 | 283 | `HIVNQQ` | **UVIADD** | Uniform vector integer add |
-| 284 | `VZAZK` | **IMNMX** | Integer min/max, 32-bit operands (sm_104 re-introduction; new Blackwell Ultra encoding path distinct from base index 37) |
+| 284 | `VZAZK` | **IMNMX** | Integer min/max, 32-bit operands (re-introduction; new consumer-Blackwell encoding path distinct from base index 37) |
 | 285 | `VZAZK` | **IMNMX** | Integer min/max, 64-bit operands (SASS prints as `IMNMX.64`; consecutive with 284 to form the 32/64-bit pair; `.64.UI` and `.64.LO` sub-modifiers select unsigned/low-half comparison modes) |
 | 286 | `HVZAZK` | **UIMNMX** | Uniform integer min/max |
 | 287 | `HIVZAZK` | **UVIMNMX** | Uniform vector integer min/max |
@@ -1037,7 +1052,7 @@ Five distinct modifier suffix patterns are used in the extended table's dot-sepa
 
 Also: `SYNCS.ARRIVE.A1T0.A0T1`, `SYNCS.CAS.EXCH`, `SYNCS.CCTL`, `SYNCS.FLUSH`, `SYNCS.LD.NON_UNIFORM`, `SYNCS.LD.UNIFORM`, `SYNCS.PHASECHK` (8 variants); and `BPT.DRAIN`, `BPT.PAUSE`.
 
-**Pattern 2 — Operand width.** The `.64` suffix (with optional `.HI`/`.LO` half-selectors) indicates 64-bit operand mode. Added for sm_104 (Blackwell Ultra):
+**Pattern 2 — Operand width.** The `.64` suffix (with optional `.HI`/`.LO` half-selectors) indicates 64-bit operand mode. Added for consumer Blackwell (sm_120/sm_121):
 
 | Extended Mnemonic | Base Opcode |
 |-------------------|-------------|

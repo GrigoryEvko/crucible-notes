@@ -468,7 +468,7 @@ These are not directly exposed as PTX instructions — they are inserted by the 
 
 `ELECT.SYNC` (sm75+) elects a single active lane from the warp, setting a predicate register to true for exactly one thread.
 
-In the SASS opcode table, `ELECT` appears among the Blackwell-era additions alongside `ENDCOLLECTIVE`, `PREXIT`, `SETMAXREG`, and `SETSMEMSIZE`. The `ELECT` opcode is used for leader-based algorithms where only one thread per warp performs a shared operation.
+In the SASS opcode table, `ELECT` appears among the Hopper-era additions alongside `ENDCOLLECTIVE`, `PREEXIT`, `USETMAXREG`, and `USETSHMSZ` — all five are absent from the sm_89 instruction table and present from sm_90 onward. The `ELECT` opcode is used for leader-based algorithms where only one thread per warp performs a shared operation.
 
 ## Asynchronous Barriers (MBARRIER)
 

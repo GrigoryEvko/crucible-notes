@@ -9,8 +9,9 @@
 
 Every NVIDIA GPU since Volta carries a dedicated **matrix unit** alongside the FMA,
 ALU, FP16 and FP64 datapaths. ptxas emits its work as a small family of SASS opcodes
-— `HMMA`, `IMMA`, `BMMA`, `DMMA`, `QMMA` (warp-level), and `HGMMA`/`IGMMA`/`BGMMA`
-(Hopper warpgroup-level) — plus the matrix-move helpers `LDSM`, `STSM` and `MOVM`.
+— `HMMA`, `IMMA`, `BMMA`, `DMMA`, `QMMA`, `OMMA` (warp-level), and
+`HGMMA`/`IGMMA`/`QGMMA`/`BGMMA` (Hopper warpgroup-level) — plus the matrix-move
+helpers `LDSM`, `STSM` and `MOVM`.
 This page is the machine-level model of that unit: how a PTX `mma`/`wmma`/`wgmma`
 lowers to SASS, how the 32 lanes of a warp (or 128 of a warpgroup) partition the
 operand tiles into per-thread register fragments, how the shared-memory **matrix
@@ -79,16 +80,33 @@ loop wants. (See [Latency Model](../scheduling/latency-model.md#result-forwardin
 ## 2. Warp-level MMA: shapes, types and lowering
 
 A warp-level PTX `mma.sync`/`wmma` is issued cooperatively by all 32 lanes; each lane
-holds a slice of the A, B, C and D tiles in its own registers. ptxas selects one of
-five warp-level opcodes by the operand element type:
+holds a slice of the A, B, C and D tiles in its own registers. ptxas selects a
+warp-level opcode by the operand element type, and the opcode a given element type
+reaches depends on the target — several types have no native class on some
+architectures and are lowered onto a wider one:
 
-| Element type | SASS opcode | Accumulate |
+| Element type | SASS opcode | Accumulate | Native on |
+|---|---|---|---|
+| F16, BF16, TF32 | `HMMA` | F16 or F32 | all (sm_75+) |
+| INT8 | `IMMA` | INT32 | all (sm_75+) |
+| INT4 | `IMMA` (`S4`/`U4`) | INT32 | sm_75–sm_89 |
+| 1-bit (binary) | `BMMA` | INT32 (popcount) | sm_75–sm_90 |
+| FP64 | `DMMA` | FP64 | sm_80+ |
+| FP8 (E4M3 / E5M2) | `QMMA` | F32 | sm_89, sm_120/121 |
+| FP4/FP6 block-scaled | `OMMA`/`QMMA` (`.SF`) | F32 | sm_120/121 |
+
+Where a type is not native, ptxas emulates it rather than rejecting the PTX:
+
+| PTX | Target | Lowering |
 |---|---|---|
-| F16, BF16, TF32 | `HMMA` | F16 or F32 |
-| INT8, INT4 | `IMMA` | INT32 |
-| 1-bit (binary) | `BMMA` | INT32 (popcount) |
-| FP64 | `DMMA` | FP64 |
-| FP8 (E4M3 / E5M2) | `QMMA` | F32 |
+| `mma…s4` | sm_90+ | `LOP3`/`SHF` sign-extend to INT8, then `IMMA…S8.S8` |
+| `mma…b1.xor.popc` | sm_90 | `LOP3` XOR, then `BMMA.88128.AND.POPC` (only `AND` is native) |
+| `mma…b1` | sm_100+ | `MOVM.U4TO8` + `LOP3`/`SHF` unpack, then `IMMA.16832.U8.U8` |
+| `mma…e4m3`/`e5m2` | sm_90, sm_100/103/110 | `F2FP.F16.E4M3.UNPACK_B` upconvert, then `HMMA.16816.F32` |
+
+So binary MMA has no native class anywhere on Blackwell, and per-warp FP8 is native
+only on Ada and consumer Blackwell — Hopper and datacenter Blackwell reach FP8
+through `wgmma` and `tcgen05` respectively, and emulate the `mma.sync` form.
 
 ### 2.1 Shape naming
 
@@ -96,19 +114,29 @@ SASS names a shape by a compact `MNK` token that is **not** the PTX shape verbat
 it is the on-wire tile the hardware executes, with the K dimension expressed per
 32-bit operand lane. The validated mapping (ptxas → nvdisasm) is:
 
-| PTX shape (type) | SASS mnemonic |
-|---|---|
-| `mma.m16n8k16.f16` | `HMMA.16816.F32` |
-| `mma.m16n8k8.f16` | `HMMA.1688.F32` |
-| `mma.m16n8k16.bf16` | `HMMA.16816.F32.BF16` |
-| `mma.m16n8k8.tf32` | `HMMA.1688.F32.TF32` |
-| `mma.m8n8k4.f16` (Volta form) | `HMMA.884.F32.F32.STEP{0..3}` |
-| `mma.m8n8k16.s8` | `IMMA.8816.S8.S8` |
-| `mma.m8n8k32.s4` | `IMMA.8832.S4.S4` |
-| `mma.m16n8k32.s8` | `IMMA.16832.S8.S8` |
-| `mma.m8n8k128.b1.xor.popc` | `BMMA.88128.XOR.POPC` |
-| `mma.m8n8k4.f64` | `DMMA.884` |
-| `mma.m16n8k32.e4m3` | `QMMA.16832.F32.E4M3.E4M3` |
+| PTX shape (type) | SASS mnemonic | Target scope |
+|---|---|---|
+| `mma.m16n8k16.f16` | `HMMA.16816.F32` | sm_80+ |
+| `mma.m16n8k8.f16` | `HMMA.1688.F32` | all |
+| `mma.m16n8k16.bf16` | `HMMA.16816.F32.BF16` | sm_80+ |
+| `mma.m16n8k8.tf32` | `HMMA.1688.F32.TF32` | sm_80+ |
+| `mma.m8n8k4.f16` (Volta form) | `HMMA.884.F32.F32.STEP{0..3}` | sm_75 |
+| `mma.m8n8k16.s8` | `IMMA.8816.S8.S8` | sm_75–sm_90 |
+| `mma.m8n8k16.s8` | `IMMA.16816.S8.S8` | sm_100+ (8-row shapes retired) |
+| `mma.m8n8k32.s4` | `IMMA.8832.S4.S4` | sm_75–sm_89 |
+| `mma.m16n8k32.s8` | `IMMA.16832.S8.S8` | sm_80+ |
+| `mma.m8n8k128.b1.xor.popc` | `BMMA.88128.XOR.POPC` | sm_75–sm_89 |
+| `mma.m8n8k4.f64` | `DMMA.884` | sm_80, sm_89 |
+| `mma.m8n8k4.f64` | `DMMA.8x8x4` | sm_90+ |
+| `mma.m16n8k32.e4m3` | `QMMA.16832.F32.E4M3.E4M3` | sm_89, sm_120/121 |
+| `mma.kind::mxf8f6f4.block_scale.m16n8k32.e4m3` | `QMMA.SF.16832.F32.E4M3.E4M3.E8` | sm_120/121 |
+| `mma.kind::mxf4.block_scale.m16n8k64.e2m1` | `OMMA.SF.16864.F32.E2M1.E2M1.E8` | sm_120/121 |
+
+Rows without a target scope of "all" fall back to the emulation sequences in §2 on
+targets outside their scope. The `MNK` token itself is also not stable across
+generations: Hopper renames the FP64 shape from the concatenated `884` to the
+`x`-separated `8x8x4`, and the warpgroup family uses the `x`-separated form
+throughout (§6).
 
 The full SASS shape vocabularies the disassembler will print:
 
@@ -118,12 +146,22 @@ The full SASS shape vocabularies the disassembler will print:
 - **IMMA** — `8816`, `8832`, `8864`, `16816`, `16832`, `16864`, `168128`. The two
   type suffixes are the A and B operand formats, each one of `U8`, `S8`, `U4`, `S4`
   (`U16`/`S16` are also encodable). Operands carry explicit `.ROW`/`.COL` modifiers.
+  The three 8-row shapes (`8816`, `8832`, `8864`) are **absent from the Blackwell
+  tables** — sm_100 onward maps those PTX shapes onto the 16-row unit.
 - **BMMA** — `88128`, `168128`, `168256`. The logical-op suffix is the source op
-  (`XOR`, `AND`) followed by the accumulate op, which is always `POPC` (population
-  count) — binary MMA computes `popc(A op B)`.
-- **DMMA** — `884` only, with a rounding-mode field (`ROUND`/`FLOOR`/`CEILING`/`TRUNC`).
-- **QMMA** — the FP8 family (Ada `sm_89` onward); the type suffixes name the A and B
-  FP8 formats (`E4M3`, `E5M2`).
+  followed by the accumulate op, which is always `POPC` (population count) — binary
+  MMA computes `popc(A op B)`. `XOR` is native on sm_75–sm_89; `AND` requires sm_80
+  and is the only native source op on sm_90. **No `BMMA` class exists on any
+  Blackwell target.**
+- **DMMA** — one shape, printed `884` on sm_80/sm_89 and `8x8x4` on sm_90 onward,
+  with a rounding-mode field (`ROUND`/`FLOOR`/`CEILING`/`TRUNC`).
+- **QMMA** — the FP8 family, native on Ada `sm_89` and consumer Blackwell
+  `sm_120`/`sm_121`; the type suffixes name the A and B FP8 formats (`E4M3`,
+  `E5M2`). On `sm_120`/`sm_121` the family extends to FP6 (`E3M2`, `E2M3`) and FP4
+  (`E2M1`) and gains the block-scaled `.SF` forms.
+- **OMMA** — consumer-Blackwell-only, block-scaled FP4 at `16864` (and `168128`
+  sparse). Every `OMMA` class in the tables carries a scale factor; there is no
+  unscaled form.
 
 ### 2.2 Operand modifiers
 
@@ -242,8 +280,10 @@ is fixed at "second from last". Two metadata layouts are encodable, selected by 
 | `TID`       | metadata addressed by lane (thread) id |
 | `REGOFFSET` | metadata addressed by register offset |
 
-Sparse variants exist for `HMMA`, `IMMA` and the Hopper `HGMMA`/`IGMMA`. The
-standalone metadata-preparation opcodes are `SPMETADATA` / `GENMETADATA`.
+Sparse variants exist for `HMMA` and `IMMA` on every target, for the Hopper
+`HGMMA`/`IGMMA`/`QGMMA` warpgroup families, and on consumer Blackwell for `QMMA` and
+`OMMA` (including their block-scaled `.SF.SP` forms). The standalone
+metadata-preparation opcodes are `SPMETADATA` / `GENMETADATA`.
 
 > *Note:* ptxas advises using the PTX `.sp::ordered_metadata` modifier rather than the
 > bare `.sp` form, warning that the latter "is expected to have substantially reduced
@@ -261,10 +301,13 @@ immediately, with the accumulator filling in the background. ptxas selects an
 `HGMMA` / `IGMMA` / `BGMMA` opcode by element type (the half/int/binary warpgroup
 families), each with the same async structure.
 
-The warpgroup-MMA shapes are `m64nNk{8,16,32}` — the M dimension is **fixed at 64**
-(the warpgroup's row count), N ranges over `{8,16,24,32,…,256}` in steps of 8, and K
-is 8/16/32 by element width. Decoded shape codes the disassembler prints include
-`641616` (m64n16k16), `64816`, `643216`, etc.
+The warpgroup-MMA shapes are `m64nNkK` — the M dimension is **fixed at 64** (the
+warpgroup's row count), N ranges over `{8,16,24,32,…,256}` in steps of 8 (32 values),
+and K is one of `{8, 16, 32, 64, 256}` by element width (K=64 for sub-byte integer,
+K=256 for the binary `BGMMA` forms). The warpgroup family prints its shape token in
+**`x`-separated** form, not the concatenated form the warp-level opcodes use:
+`HGMMA.64x16x16.F32` (m64n16k16), `HGMMA.64x8x16.F32`, `HGMMA.64x32x16.F32`. The
+tables carry 146 distinct `64xNxK` tokens.
 
 ### 6.1 The shared-memory matrix descriptor
 
@@ -380,10 +423,11 @@ shuffle.
 
 ---
 
-## 8. Blackwell (`sm_100`+): tcgen05 — TMEM, the instruction descriptor, and 2-CTA issue
+## 8. Datacenter Blackwell (`sm_100`/`103`/`110`): tcgen05 — TMEM, the instruction descriptor, and 2-CTA issue
 
-Hopper's warpgroup `*GMMA` family is **removed** at Blackwell and replaced by
-**tcgen05**. Assembling `tcgen05.*` PTX for `sm_100a` and disassembling pins the
+Hopper's warpgroup `*GMMA` family is **removed** across all of Blackwell, and on the
+datacenter targets it is replaced by **tcgen05**. Consumer Blackwell has neither
+family (§8.3). Assembling `tcgen05.*` PTX for `sm_100a` and disassembling pins the
 opcodes and — decisively — the operand-class structure the disassembler prints:
 
 | PTX | SASS (`sm_100a`) | op byte |
@@ -457,13 +501,31 @@ predicate operand (the `UPp` in the disassembled `UTCHMMA`).
 
 ### 8.3 The datacenter/consumer split
 
-tcgen05 + TMEM + 2-CTA paired issue exist **only on the datacenter/Jetson Blackwell
-parts** (`sm_100`/`103`/`110`). Consumer Blackwell (`sm_120a`/`sm_121a`) **rejects
+tcgen05 + TMEM + 2-CTA paired issue exist **only on the datacenter Blackwell
+targets** (`sm_100`/`103`/`110`). Consumer Blackwell (`sm_120a`/`sm_121a`) **rejects
 every `tcgen05.*` instruction** — ptxas reports `Instruction 'tcgen05.mma' not
-supported on .target 'sm_120a'` and `Feature '.kind::f16' not supported` — so
-consumer Blackwell has no TMEM and does FP4/FP6 tensor through the legacy per-warp
-`OMMA`/`QMMA` path instead. This is the third matrix-unit redesign in four
-generations.
+supported on .target 'sm_120a'`, and the `kind::` qualifier on a warp-level `mma`
+draws `Feature '.kind::f16' not supported on .target 'sm_120a'`. The decoded tables
+agree: `utc*`, `ldtm` and `sttm` classes are present on sm_100/103/110 and number
+**zero** on sm_120/121.
+
+Consumer Blackwell instead reaches FP8/FP6/FP4 through the **per-warp** `QMMA` and
+`OMMA` classes, which is where its block-scaled MX support lives:
+
+| PTX | SASS (`sm_120a`/`sm_121a`) |
+|---|---|
+| `mma…kind::mxf8f6f4.block_scale.scale_vec::1X.m16n8k32…{e4m3,e5m2,e3m2,e2m3,e2m1}…ue8m0` | `QMMA.SF.16832.F32.<fmt>.<fmt>.E8` |
+| `mma…kind::mxf4.block_scale.scale_vec::2X.m16n8k64…e2m1…ue8m0` | `OMMA.SF.16864.F32.E2M1.E2M1.E8` |
+| `mma…kind::mxf4nvf4.block_scale.scale_vec::4X.m16n8k64…e2m1…ue4m3` | `OMMA.SF.16864.F32.E2M1.E2M1.UE4M3.4X` |
+| `mma.sp::ordered_metadata…kind::mxf8f6f4.block_scale…m16n8k64` | `QMMA.SF.SP.16864.F32.E4M3.E4M3.E8` |
+| `mma.sp::ordered_metadata…kind::mxf4.block_scale…m16n8k128` | `OMMA.SF.SP.168128.F32.E2M1.E2M1.E8` |
+
+Every one of these is **rejected on sm_89, sm_90a, sm_100a, sm_103a and sm_110a**
+with `Instruction 'mma with block scale' not supported` — the block-scaled
+`mma.sync` form is exclusive to consumer Blackwell, exactly complementing the
+datacenter line's block-scaled `tcgen05` path. Consumer Blackwell also **drops
+`BMMA` entirely** (§2). This is the third matrix-unit redesign in four generations,
+and the first that splits the ISA between datacenter and consumer parts.
 
 The opcode bytes, operand classes, and the consumer rejection were taken directly
 from CUDA 13.1 ptxas + nvdisasm/cuobjdump on `sm_100a`/`sm_120a` probes; the idesc
@@ -475,8 +537,10 @@ consume. The full op taxonomy and the datacenter/consumer split are catalogued i
 
 ## 9. Summary — the matrix-unit model at a glance
 
-- **Five warp-level opcodes** (`HMMA`/`IMMA`/`BMMA`/`DMMA`/`QMMA`) selected by element
-  type; the shape token is the on-wire `MNK` tile, not the PTX shape.
+- **Six warp-level opcodes** (`HMMA`/`IMMA`/`BMMA`/`DMMA`/`QMMA`/`OMMA`) selected by
+  element type; the shape token is the on-wire `MNK` tile, not the PTX shape. Which
+  opcode a type reaches is target-dependent — INT4, binary and (on Hopper/datacenter
+  Blackwell) FP8 are emulated onto wider units rather than rejected.
 - **Fragments are per-lane register vectors** with fixed per-shape lengths — the 32
   lanes partition each A/B/C/D tile; ptxas addresses each fragment by a constant offset
   in a contiguous register window.
@@ -496,4 +560,6 @@ consume. The full op taxonomy and the datacenter/consumer split are catalogued i
   [Latency Model](../scheduling/latency-model.md#functional-unit-base-latencies).
 - **The unit was redesigned three times**: Volta `884` steps → Ampere wide SuperHMMA +
   `IMMA` wakeup domain → Hopper async warpgroup + SMEM descriptor → Blackwell tcgen05 +
-  tensor memory.
+  tensor memory — and at Blackwell the ISA **splits**: tcgen05/TMEM on
+  sm_100/103/110, block-scaled per-warp `QMMA`/`OMMA` on sm_120/121, with neither
+  target accepting the other's family.

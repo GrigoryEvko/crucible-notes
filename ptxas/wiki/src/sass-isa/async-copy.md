@@ -13,8 +13,8 @@ have landed. This page recovers the full lowering of that subsystem from the PTX
 the programmer writes down to the SASS the GPU executes:
 
 - **Ampere `cp.async`** — the `LDGSTS` instruction (global→shared), the
-  commit/wait *group* mechanism (`LDGDEPBAR` + `DEPBAR.LE`), and the Ampere
-  arrive (`ARRIVES.LDGSTSBAR`).
+  commit/wait *group* mechanism (`LDGDEPBAR` + `DEPBAR.LE`), and the copy→barrier
+  arrive (`ARRIVES.LDGSTSBAR`, which survives through Blackwell).
 - **The mbarrier object** — its packed 64-bit shared-memory layout (phase, pending
   arrivals, expected arrivals, transaction-byte count) and the Hopper `SYNCS`
   family that operates on it.
@@ -138,12 +138,29 @@ LDGSTS.E.128 …                         ; the async copy
 ARRIVES.LDGSTSBAR.64 [URZ+0x1000]      ; arm: signal [bar] when this copy lands
 ```
 
-`ARRIVES.LDGSTSBAR` is the Ampere instruction that ties the LDGSTS completion to a
-shared-memory barrier: the warp arrives on the named mbarrier *after* the
-outstanding `cp.async` copies have written shared memory, not when the `ARRIVES`
-itself issues. This is the direct ancestor of Hopper's transaction-counting
-`SYNCS.ARRIVE` (§2). The `.noinc` variant arrives without incrementing the arrival
-count (it only registers the copy-completion dependency).
+`ARRIVES.LDGSTSBAR` ties the LDGSTS completion to a shared-memory barrier: the warp
+arrives on the named mbarrier *after* the outstanding `cp.async` copies have written
+shared memory, not when the `ARRIVES` itself issues. The `.noinc` variant arrives
+without incrementing the arrival count (it only registers the copy-completion
+dependency).
+
+The instruction is **not** superseded by the Hopper `SYNCS` family — it is still the
+opcode ptxas emits for `cp.async.mbarrier.arrive` on SM90 through SM121, and the
+`arrives_` class is present in every decoded table from SM80 onward. What changes is
+which barrier field the copy completion decrements, expressed as a new modifier:
+
+| Target | `cp.async.mbarrier.arrive` | `cp.async.mbarrier.arrive.noinc` |
+|---|---|---|
+| `sm_80` / `sm_89` | `ATOMS.ADD.S32` + `ARRIVES.LDGSTSBAR.64` | `ARRIVES.LDGSTSBAR.64` |
+| `sm_90a` / `sm_100a` / `sm_120a` | `SYNCS.ARRIVE.TRANS64.RED.A0T1` + `ARRIVES.LDGSTSBAR.64.TRANSCNT` | `ARRIVES.LDGSTSBAR.64.ARVCNT` |
+
+On Ampere/Ada the arrival count is bumped by a separate shared-memory atomic
+(`ATOMS.ADD.S32`) because the barrier word has no transaction channel. On
+Hopper/Blackwell the plain form raises the transaction-byte expectation by one
+(`SYNCS.ARRIVE.TRANS64.RED.A0T1`) and the copy retires against the **transaction**
+counter (`.TRANSCNT`); the `.noinc` form retires against the **arrival** counter
+(`.ARVCNT`) instead. So `ARRIVES` is the ancestor *and* the surviving mechanism, with
+`SYNCS` supplying the transaction-byte accounting around it.
 
 ---
 
@@ -423,13 +440,16 @@ Two orthogonal completion mechanisms cover the whole subsystem:
    command queue so the `DEPBAR` sees the right count. This is the low-overhead path
    when the consumer is in the same warp and a simple FIFO ordering is enough.
 
-2. **Transaction-byte completion** (`cp.async.bulk[.tensor].mbarrier…` and the
-   Ampere `cp.async.mbarrier.arrive`). The copy carries the address of an mbarrier;
-   the producer arms the expected byte count (`SYNCS.ARRIVE.TRANS64.A1T0`, or on
-   Ampere the `ARRIVES.LDGSTSBAR` form), the engine decrements the byte counter as
-   data lands, and a separate consumer warp is released by the **phase flip** it
-   observes through `SYNCS.PHASECHK`. This decouples the producer and consumer
-   entirely — the consumer never touches the scoreboard, only the barrier object.
+2. **Transaction-byte completion** (`cp.async.bulk[.tensor].mbarrier…` and
+   `cp.async.mbarrier.arrive`). The copy carries the address of an mbarrier;
+   the producer arms the expected byte count (`SYNCS.ARRIVE.TRANS64.A1T0`, or the
+   `ARRIVES.LDGSTSBAR.64.TRANSCNT` form for a `cp.async` batch), the engine
+   decrements the byte counter as data lands, and a separate consumer warp is
+   released by the **phase flip** it observes through `SYNCS.PHASECHK`. This
+   decouples the producer and consumer entirely — the consumer never touches the
+   scoreboard, only the barrier object. On SM80/SM89 the same PTX takes the
+   arrival-only path instead: there is no transaction channel in the barrier word,
+   so `ARRIVES.LDGSTSBAR.64` pairs with an `ATOMS` arrival update.
 
 ptxas chooses the mechanism from the PTX form (a `.mbarrier::complete_tx::bytes`
 qualifier selects path 2, a `.bulk_group`/`.commit_group` selects path 1), wraps
@@ -445,17 +465,45 @@ instruction stream itself.
 
 ## Architecture coverage
 
-| Capability | Turing SM75 | Ampere SM80/86 | Hopper SM90 | Blackwell SM100/103 | Blackwell SM120/121 |
-|---|---|---|---|---|---|
-| `cp.async` / `LDGSTS` | — | **yes** | yes | yes (`desc[...]` addr) | yes |
-| `LDGDEPBAR` / `DEPBAR.LE SB0` groups | — | yes | yes | yes | yes |
-| `ARRIVES.LDGSTSBAR` (copy→barrier) | — | yes | (subsumed by `SYNCS`) | — | — |
-| mbarrier via `ATOMS.ARRIVE` (arrivals only) | — | yes | (replaced by `SYNCS`) | — | — |
-| mbarrier `SYNCS.ARRIVE/PHASECHK.TRANS64` (+tx) | — | — | **yes** | yes | yes |
-| `UBLKCP`/`UBLKRED`/`UBLKPF` (bulk) | — | — | **yes** | yes | yes |
-| `UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF` (TMA) | — | — | **yes** | yes | yes |
-| `.MULTICAST` / `.IM2COL` | — | — | **yes** | yes | yes |
-| `UCGABAR` cluster barriers | — | — | **yes** | yes | yes |
+| Capability | Turing SM75 | Ampere SM80/86 | Ada SM89 | Hopper SM90 | Blackwell SM100/103/110 | Blackwell SM120/121 |
+|---|---|---|---|---|---|---|
+| `cp.async` / `LDGSTS` | — | **yes** | yes | yes | yes (`desc[...]` addr) | yes |
+| `LDGDEPBAR` / `DEPBAR.LE SB0` groups | — | yes | yes | yes | yes | yes |
+| `ARRIVES.LDGSTSBAR` (copy→barrier) | — | **yes** | yes | yes (`.TRANSCNT`/`.ARVCNT`) | yes | yes |
+| mbarrier via `ATOMS.ARRIVE` (arrivals only) | — | yes | yes | (replaced by `SYNCS`) | (replaced by `SYNCS`) | (replaced by `SYNCS`) |
+| mbarrier `SYNCS.ARRIVE/PHASECHK.TRANS64` (+tx) | — | — | — | **yes** | yes | yes |
+| `UBLKCP`/`UBLKRED`/`UBLKPF` (bulk) | — | — | — | **yes** | yes | yes |
+| `UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF` (TMA) | — | — | — | **yes** | yes | yes |
+| `.MULTICAST` / `.IM2COL` | — | — | — | **yes** | yes | yes |
+| `.GATHER4` / `.SCATTER4` (`tile::gather4`/`scatter4`, `a`/`f` target) | — | — | — | — | **yes** | **—** |
+| `UCGABAR` cluster barriers | — | — | — | **yes** | yes | yes |
+| `USETMAXREG` (`setmaxnreg`, arch-conditional target) | — | — | — | **yes** (`sm_90a`) | yes | yes |
+
+Class counts from the decoded per-architecture tables agree with the emission
+probes: `utma*` 15, `ublk*` 6, `syncs*` 9, `cgabar*` 4, `elect*` 2, `usetmaxreg*`
+4 and `usetshmsz*` 3 on **every** target from SM90 through SM121, and **zero** of
+each on SM75/SM80/SM86/SM89. `ldgsts*` is 5 on SM80 through SM121 and 0 on SM75.
+Ada (SM89) therefore has the Ampere `cp.async` path and none of the Hopper async
+stack: ptxas rejects `cp.async.bulk[.tensor]`, `mbarrier.arrive.expect_tx`,
+`elect`, `stmatrix`, `mapa`, `%cluster_ctarank` and `barrier.cluster.*` for
+`sm_89` with *"requires .target sm_90 or higher"*, and `setmaxnreg` with *"not
+supported on .target 'sm_89'"*.
+
+Consumer Blackwell (SM120/121) carries the complete Hopper async stack — the same
+TMA, bulk-copy, transaction-barrier, cluster and register-reconfiguration
+instructions the datacenter parts use. The one async-family gap measured is
+`tile::gather4`/`tile::scatter4`: ptxas accepts these on `sm_100a`/`sm_100f`,
+`sm_103a`/`sm_103f` and `sm_110a`/`sm_110f`, and rejects them on
+`sm_120a`/`sm_120f`/`sm_121a`/`sm_121f` with *"Feature '.tile::gather4 with
+destination state space as .shared::cluster' not supported"*. Only the
+tensor-core families (`tcgen05`, TMEM) are absent outright; see
+[Architecture Evolution](architecture-evolution.md#b-datacenter-and-consumer-blackwell-are-not-the-same-chip).
+
+Targeting note: most of this subsystem assembles for the plain
+`sm_90`/`sm_100`/`sm_120`/`sm_121` targets — TMA tile/multicast/im2col copies,
+bulk copies, mbarriers, `elect`, clusters and DSMEM all do. Two members require an
+arch-conditional (`a`/`f`) target on every architecture that has them:
+`setmaxnreg` and `tile::gather4`/`scatter4`; the base targets reject both.
 
 On Blackwell (`sm_100a`) the mbarrier and TMA instruction families are encoded
 identically to Hopper; the visible delta in the disassembly is that ordinary

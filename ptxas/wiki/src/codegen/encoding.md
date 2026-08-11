@@ -937,7 +937,7 @@ The encoding system is replicated per SM target. Each SM architecture has its ow
 
 The total SM100 codec spans roughly 2.5 MB of binary code across approximately 4,700 functions (including the shared bitfield accessor library).
 
-Other SM targets (SM75 Turing, SM80 Ampere, SM86 Ada, SM89 Lovelace, SM90a Hopper, SM103 Blackwell Ultra, SM120 consumer Blackwell) have parallel encoder populations in the p1.14, p1.15, p1.17–p1.22 address ranges, each with matched xmmword constants for their architecture-specific instruction set.
+Other SM targets (SM75 Turing, SM80 Ampere, SM86/87/88 Ampere, SM89 Ada, SM90a Hopper, SM103 Blackwell Ultra, SM110 Thor, SM120/121 consumer Blackwell) have parallel encoder populations in the p1.14, p1.15, p1.17–p1.22 address ranges, each with matched xmmword constants for their architecture-specific instruction set. The two newest Blackwell-generation targets do not share the classic emitter at all: SM110 and SM120/SM121 each carry their own disjoint encoder block (blocks 6 and 7, 100% unique handlers) rather than a re-parameterised copy of the SM100 codec.
 
 ## Per-SM Instruction Format Descriptors
 

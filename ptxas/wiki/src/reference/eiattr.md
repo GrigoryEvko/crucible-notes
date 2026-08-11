@@ -257,7 +257,7 @@ These attributes directly control how the GPU driver allocates hardware resource
 | 76 | `0x4C` | `EIATTR_NUM_BARRIERS` | Indexed | Number of named barriers used (max 16 on most architectures). Propagated from callees to entry points by `sub_1CC8950`. |
 | 56 | `0x38` | `EIATTR_NUM_MBARRIERS` | Indexed | Number of memory barriers (mbarrier objects) used. |
 | 27 | `0x1B` | `EIATTR_MAXREG_COUNT` | Sized | Maximum register count hint (from `--maxrregcount` or `.maxnreg`). |
-| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | Dynamic register reconfiguration support (`setmaxnreg` instruction, sm_100+). |
+| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Indexed | Dynamic register reconfiguration support (`setmaxnreg` instruction, sm_90a+). |
 
 ### Parameter Bank Layout
 
@@ -1204,7 +1204,7 @@ No explicit switch case in the builder — passes through the default path.
 
 ### Register Reconfiguration (84)
 
-**Code 84 (`0x54`) — `EIATTR_REG_RECONFIG`**: Indexed format, flag-only with optional value. Signals the kernel uses dynamic register reconfiguration (`setmaxnreg` instruction, sm_100+). SM-gated via `sub_1C97840(0x54, sm_version)`.
+**Code 84 (`0x54`) — `EIATTR_REG_RECONFIG`**: Indexed format, flag-only with optional value. Signals the kernel uses dynamic register reconfiguration (`setmaxnreg` instruction, sm_90a+). SM-gated via `sub_1C97840(0x54, sm_version)`. `setmaxnreg` requires an arch-conditional target: `sm_90a`, `sm_100a`/`sm_100f`, `sm_120a`/`sm_120f`, `sm_121a` accept it, while the base `sm_90`/`sm_100`/`sm_120`/`sm_121` targets reject it. The attribute is emitted identically (`USETMAXREG.TRY_ALLOC.CTAPOOL` / `USETMAXREG.DEALLOC.CTAPOOL`) on every accepting target.
 
 ```text
 Offset  Size  Field

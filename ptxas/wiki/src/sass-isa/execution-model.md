@@ -92,9 +92,8 @@ Blackwell-DC=34, consumer Blackwell=27). Population by form:
 | `UNORDERED` | `BAR`/`CCTL`/`LDC`/`BMOV` | 48 | 45 | 88 | 94 | 92 |
 | `CBU` | convergence/branch (`BRA`/`BSSY`/`BSYNC`/`CALL`/`EXIT`) | 53 | 64 | 71 | 68 | 68 |
 | `TEX` | texture/surface (`TEX`/`SULD`/`TXQ`) | 61 | 53 | 57 | 24 | 36 |
-| `REDIRECTABLE` | FP64 **emulation** queue (`DADD`/`DFMA`/`DMUL`) | 29 | 36 | 36 | 20 | **0** |
+| `REDIRECTABLE` / `FP64` | queue slot 6 — `DADD`/`DFMA`/`DMUL`/`DSETP` (named `FP64` on SM120/121) | 29 | 36 | 36 | 20 | 20 |
 | `REDIRECTABLE_FP16` | **Turing-only** FP16 pipe | 42 | 0 | 0 | 0 | 0 |
-| `FP64` | **SM120-only** *native* double precision | 0 | 0 | 0 | 0 | **20** |
 | `UMMA` | **Hopper-only** warpgroup MMA (`*GMMA`) | 0 | 0 | 24 | 0 | 0 |
 | `TC_1CTA` / `TC_2CTA` | **Blackwell-DC** tcgen05 tensor cores | 0 | 0 | 0 | 30/30 | 0 |
 | `TMEM` | **Blackwell-DC** tensor memory (`LDTM`/`STTM`) | 0 | 0 | 0 | 4 | 0 |
@@ -106,12 +105,24 @@ Blackwell-DC=34, consumer Blackwell=27). Population by form:
 | `IPA` | attribute interpolation (graphics) | 7 | 7 | 7 | 6 | 6 |
 
 Separate queues mean a long-latency texture or tensor op does not block an
-independent FMA — the scheduler tracks readiness per queue. The **emulation→native
-migration** is visible directly: Turing's dedicated `REDIRECTABLE_FP16` folds away by
-SM80; FP64 stays on the emulated `REDIRECTABLE` queue until **SM120 gains a native
-`FP64` pipe**; tensor goes emulated `HMMA`/`IMMA` → Hopper `UMMA` → Blackwell-DC
-`TC_1CTA`/`TC_2CTA` + `TMEM`. **`COUPLED_EMULATABLE` reaches zero on SM120/121** —
-consumer Blackwell implements FP64 and its tensor variants natively.
+independent FMA — the scheduler tracks readiness per queue.
+
+Queue **slot 6** carries the FP64 ops (`DADD`/`DFMA`/`DMUL`/`DSETP`) on every
+architecture; only its name changes, from `VQ_REDIRECTABLE` (SM75–SM110) to
+`VQ_FP64` (SM120/121). `dfma__RRR_RRR` selects slot 6 on SM100 and SM120 alike, and
+the slot carries the same 20 entries on SM100/103/110/120/121. The rename is a
+scheduler-table label, not a change of datapath, and it does not track FP64
+throughput: the dependent-`DFMA` issue gap measured from emitted SASS is `0x10` on
+sm_100 (full rate) against `0x50` on sm_103/110/120/121 (rate-limited), so consumer
+Blackwell is the *slower* FP64 part despite carrying the `FP64` queue name.
+
+The genuine queue migrations are: Turing's dedicated `REDIRECTABLE_FP16` folds away
+by SM80, and tensor moves `HMMA`/`IMMA` → Hopper `UMMA` → Blackwell-DC
+`TC_1CTA`/`TC_2CTA` + `TMEM`. On SM120/121 the tensor classes
+(`hmma_*`/`imma_*`/`qmma_*`/`omma_*`) carry **no** `VIRTUAL_QUEUE` field at all,
+which is why the `HMMA`/`IMMA` columns read zero — the instructions are present and
+emitted (`HMMA.16816.F32`, `IMMA.16832.S8.S8`, `QMMA.SF.*`, `OMMA.SF.*`), only their
+queue assignment is left unstated in the decoder tables.
 
 ## The scheduling-control word
 
@@ -287,9 +298,9 @@ the control-word decoder it consumes.
 | `INSTRUCTION_TYPE` codes | 0–8 | 0–8 | 0–8 | **0–11** | 0–11 |
 | Distinct pipes | 17 | 20 | 26 | 34 | 27 |
 | FP16 | dedicated pipe | folded | folded | folded | folded |
-| FP64 | emulated | emulated | emulated | emulated | **native pipe** |
-| Tensor | `HMMA`/`IMMA` (emul) | +`DMMA` | **+`UMMA` (wgmma)** | **+`TC_1CTA/2CTA`+`TMEM`** | none |
-| Async copy / barriers | — | — | **+`TMA`/`SYNCS`** | TMA + TMEM | TMA |
+| FP64 | queue slot 6 | slot 6 | slot 6 | slot 6 | slot 6 (renamed `FP64`) |
+| Tensor | `HMMA`/`IMMA` | +`DMMA` | **+`UMMA` (wgmma)** | **+`TC_1CTA/2CTA`+`TMEM`** | `HMMA`/`IMMA`/`QMMA`/`OMMA` (per-warp, no queue field) |
+| Async copy / barriers | — | `cp.async` (`LDGSTS`/`ARRIVES`, no dedicated pipe) | **+`TMA`/`SYNCS`** | TMA + TMEM | TMA + `SYNCS` (full Hopper stack) |
 | `COUPLED_EMULATABLE` forms | 83 | 44 | 44 | 27 (+3 elided) | **0** |
 
 ## Cross-References

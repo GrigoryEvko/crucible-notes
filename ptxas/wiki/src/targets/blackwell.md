@@ -296,7 +296,7 @@ B100, B200 (datacenter GPU), paired as GB200 NVL72 superchips.
 - **No WGMMA**: the Hopper `wgmma.mma_async` warpgroup matmul does *not* carry forward (ptxas rejects `wgmma.*` on `sm_100a`) — datacenter Blackwell's warpgroup-class matmul is **tcgen05** instead
 - **Cluster operations**: Thread-block clusters, distributed shared memory (from Hopper)
 - **setmaxnreg**: Dynamic register allocation (from Hopper)
-- **Uniform register ALU**: UFADD, UFFMA, UFSEL, UFSETP, UVIADDR (Blackwell uniform register ISA additions)
+- **No uniform-FP ALU**: `sm_100` carries the same 7 `uf*` classes as Turing through Hopper; the uniform floating-point ALU (`UFADD`/`UFFMA`/`UFMUL`/`UFSEL`/`UFSETP`, 55 classes) is consumer-Blackwell-only (`sm_120`/`sm_121`)
 
 ### Handler Functions
 
@@ -508,17 +508,27 @@ CUDA_ARCH:     "-D__CUDA_ARCH__=1210"
 
 ## Blackwell Uniform Register ISA
 
-Blackwell extends the uniform register (UR) ISA introduced in Turing/Ampere with dedicated uniform ALU instructions:
+The uniform-FP ALU is **consumer Blackwell only**. The datacenter and Thor targets
+(`sm_100`/`103`/`110`) carry the same 7 `uf*` classes as Turing through Hopper;
+`sm_120`/`sm_121` jump to **55**, adding a full floating-point ALU on the uniform
+datapath:
 
-| SASS Instruction | Operation | Notes |
+| SASS Instruction | Operation | First arch |
 |---|---|---|
-| `UFADD` | Uniform floating-point add | New in Blackwell |
-| `UFFMA` | Uniform fused multiply-add | New in Blackwell |
-| `UFSEL` | Uniform floating-point select | New in Blackwell |
-| `UFSETP` | Uniform FP set-predicate | New in Blackwell |
-| `UVIADDR` | Uniform integer-to-address | New in Blackwell |
+| `UFADD` | Uniform floating-point add | sm_120/121 |
+| `UFFMA` | Uniform fused multiply-add | sm_120/121 |
+| `UFMUL` | Uniform floating-point multiply | sm_120/121 |
+| `UFSEL` | Uniform floating-point select | sm_120/121 |
+| `UFSETP` | Uniform FP set-predicate | sm_120/121 |
+| `UF2F`/`UF2I`/`UI2F`/`UI2I` | Uniform conversions | sm_120/121 |
+| `UFMNMX`/`UFRND`/`UIABS` | Uniform min/max, round, abs | sm_120/121 |
 
-These instructions execute on the uniform datapath (UDP, functional unit index 9), allowing floating-point uniform computations to stay in the UR file without round-tripping through the R file. Mercury encoding assigns major opcode `0x0E` with 6 variants (`sub_10C0550`) for uniform ALU.
+These execute on the uniform datapath (UDP, functional unit index 9), letting
+floating-point uniform computations stay in the UR file without round-tripping
+through the R file. Mercury encoding assigns major opcode `0x0E` with 6 variants
+(`sub_10C0550`) for uniform ALU. Consumer Blackwell is consequently the most
+uniform-datapath-rich target in the lineup — 196 uniform classes against 148 on
+sm_100, 111 on sm_90, and 77 on sm_89.
 
 ## Architecture Version Threshold Checks
 

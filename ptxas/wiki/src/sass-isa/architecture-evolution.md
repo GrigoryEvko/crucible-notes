@@ -49,12 +49,12 @@ Each step lists the net mnemonic delta and the families that drive it:
 |---|---|---|---|
 | **SM75 → SM80** (Turing → Ampere) | +7 | `DMMA` (FP64 tensor); `LDGSTS`/`ARRIVES`/`LDGDEPBAR` (cp.async); `REDUX`; `SPMETADATA` (2:4 sparse) | — |
 | **SM80 → SM86** | +4 | `F2IP`/`I2FP`/`UF2FP` (packed convert); `SUQUERY` | — |
-| **SM86 → SM89** (→ Ada) | +1 | `QMMA` (FP8 tensor, transient) | — |
-| **SM89 → SM90** (→ **Hopper**) | **+41** | **`HGMMA`/`IGMMA`/`QGMMA`/`BGMMA` + `WARPGROUP[SET]`** (wgmma); **`UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF`/… + `UBLKCP`/`UBLKRED`/`UBLKPF`** (TMA / bulk-async); **`UCGABAR*`/`ELECT`/`SETCTAID`/`ENDCOLLECTIVE`** (CGA clusters); `STSM`/`SYNCS`/`FENCE`/`PREEXIT`; `REDAS`/`REDG`/`STAS` | `QMMA` |
+| **SM86 → SM89** (→ Ada) | +1 | `QMMA` (FP8 tensor; dropped at SM90, returns at SM120) | — |
+| **SM89 → SM90** (→ **Hopper**) | **+41** | **`HGMMA`/`IGMMA`/`QGMMA`/`BGMMA` + `WARPGROUP[SET]`** (wgmma); **`UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF`/… + `UBLKCP`/`UBLKRED`/`UBLKPF`** (TMA / bulk-async); **`UCGABAR*`/`ELECT`/`ENDCOLLECTIVE`/`CGAERRBAR`** (CGA clusters); **`USETMAXREG`/`USETSHMSZ`** (warp specialization); `STSM`/`SYNCS`/`FENCE`/`PREEXIT`; `REDAS`/`REDG`/`STAS` | `QMMA` |
 | **SM90 → SM100** (→ **Blackwell-DC**) | +30 / −10 | **`UTCHMMA`/`UTCIMMA`/`UTCQMMA`/`UTCOMMA`/`UTCCP`/`UTCBAR`/`UTCSHIFT`** (tcgen05); **`LDTM`/`STTM`/`LDT`/`STT`** (tensor memory, TMEM); `FADD2`/`FMUL2`/`FFMA2`/`FHADD`/`FHFMA` (paired-FP); `QADD4`/`QFMA4`/`QMUL4`; `REDS`/`CREDUX`/`UREDGR`; `UGETNEXTWORKID` | **all `*GMMA` + `WARPGROUP*`**, `BMMA`, `RED`, `ULDC`, `SPMETADATA` |
-| **SM100 → SM103** (→ **Bk-Ultra / GB300**) | +1 / −2 | `mufu_fp16_simd` (packed-FP16 special-fn); `ldtm_stat` | **`UTCIMMA`** (int tensor); **`utcmxqmma`** (MX-dedicated tensor) |
+| **SM100 → SM103** (→ **Bk-Ultra / GB300**) | +0 / −1 | `mufu_fp16_simd` (packed-FP16 special-fn) and `ldtm_stat` arrive as new *classes* under existing mnemonics, so the mnemonic count does not move (class-level: +4) | **`UTCIMMA`** (int tensor, the one mnemonic lost); the four `utcmxqmma` MX-dedicated tensor classes (class-level: −8) |
 | **SM103 → SM110** (→ **Thor**) | +1 / −12 | restores `UTCIMMA` | `FADD2`/`FMUL2`/`FFMA2`; `VI*`; `QADD4`/`QFMA4`/`QMUL4`; `CREDUX`; `VHMNMX` |
-| **SM110 → SM120** (→ **Bk-consumer**) | +27 / −17 | **`UFADD`/`UFMUL`/`UFFMA`/`UFSET[P]`/`UF2F`/`UF2I`/`UI2F`/`UI2I`/`UFMNMX`/`UFRND`/`UFSEL`/`UIABS`** (full uniform-FP ALU); `OMMA`; `MOV64IUR`; `CS2UR` | **all `UTC*` + TMEM (`LDT`/`STT`/`LDTM`/`STTM`)**; `UTCBAR`/`UTCSHIFT`/`UREDGR`; `VABSDIFF[4]` |
+| **SM110 → SM120** (→ **Bk-consumer**) | +27 / −17 | **`UFADD`/`UFMUL`/`UFFMA`/`UFSET[P]`/`UF2F`/`UF2I`/`UF2IP`/`UI2F`/`UI2FP`/`UI2I`/`UI2IP`/`UFMNMX`/`UFHADD`/`UFHFMA`/`UFRND`/`UFSEL`/`UIABS`/`UIMNMX`/`UVIADD`/`UVIMNMX`** (full uniform-FP ALU); `OMMA`; **`QMMA`** (returns from Ada); `VIADD`/`VIMNMX` (return); `MOV64IUR`; `CS2UR` | **all `UTC*` + TMEM (`LDT`/`STT`/`LDTM`/`STTM`)**; `UREDGR`/`USTGR`; `FMNMX3`; `VABSDIFF[4]` |
 
 ## The two decisive capability splits
 
@@ -72,12 +72,22 @@ not an incremental extension.
 
 tcgen05 + TMEM + 2-CTA paired issue exist **only on SM100/103/110** (datacenter +
 Thor) and are **absent on SM120/121** (consumer RTX 50-series). Consumer Blackwell
-does FP4/FP6 tensor through the legacy **per-warp** `OMMA`/`omma_scale`/`mxqmma_scale`
-path (microscaling + 2:4 sparsity baked in via `SCALEFMT`/`SCALEVECTORSZ`) and has
-**no tensor-memory engine** — but it uniquely gains a **full uniform-float ALU**
-(12+ `UF*`/`UI*` ops), making SM120 the most uniform-datapath-rich arch (196 uniform
-classes vs 148 on SM100). The compute capability gap between datacenter and consumer
-Blackwell is an ISA-level gate, not a clock/SKU difference.
+does FP8/FP6/FP4 tensor through the legacy **per-warp** path —
+`OMMA`/`omma_scale`/`omma_sp_scale` for FP4 and `QMMA`/`qmma_scale`/`qmma_sp_scale`
+plus `mxqmma_scale` for FP8 (microscaling + 2:4 sparsity baked in via
+`SCALEFMT`/`SCALEVECTORSZ`) — and has **no tensor-memory engine**. It uniquely gains a
+**full uniform-float ALU** (20 `UF*`/`UI*`/`UVI*` ops), making SM120 the most
+uniform-datapath-rich arch (196 uniform classes vs 148 on SM100).
+
+The split is confined to the **matrix datapath**. The Hopper **async data-movement**
+stack is retained in full on SM120/121: TMA (15 `utma*` classes), untyped bulk copy
+(6 `ublk*`), the transaction-byte mbarrier (9 `syncs*`), CGA cluster barriers
+(4 `cgabar*` + `CGAERRBAR`), `ELECT`, and warp specialization
+(`USETMAXREG`/`USETSHMSZ`) — every one at the same class count as SM90 and SM100.
+A warp-specialized TMA producer/consumer pipeline therefore compiles for consumer
+Blackwell exactly as it does for Hopper; only the matrix instruction at the end of
+the pipeline differs. The compute capability gap between datacenter and consumer
+Blackwell is an ISA-level gate on the tensor core, not a clock/SKU difference.
 
 ### C. Within datacenter Blackwell, SM103 (GB300/Ultra) is FP-biased
 
@@ -102,18 +112,20 @@ The microscaling `scale` MMA classes appear **first** on Blackwell (0 on Ada/Hop
 Counting instruction classes legal **only** in compute/trap shaders (illegal in any
 graphics stage):
 
-| Turing SM75 | Hopper SM90 | Blackwell-DC SM100 |
-|:---:|:---:|:---:|
-| 55 | 143 | **224** |
+| Turing SM75 | Ada SM89 | Hopper SM90 | Blackwell-DC SM100 | Blackwell-consumer SM120 |
+|:---:|:---:|:---:|:---:|:---:|
+| 55 | 58 | 143 | **224** | 148 |
 
 Nearly a quarter of SM100's ISA is illegal outside compute — a quantitative measure
 of the datacenter GPU's pivot to a compute-first device. The growth is driven
-entirely by the async / tensor / cluster families above.
+entirely by the async / tensor / cluster families above: Ada barely moves off Turing,
+Hopper's async stack more than doubles the count, and SM120 sits just above Hopper
+because it inherits that stack without the tcgen05 families.
 
 ## Headline findings
 
 1. **`SM90a` is not a hardware variant** — same decoder as `SM90`; the distinction is purely a ptxas PTX-acceptance flag.
-2. **Consumer Blackwell (RTX 50xx) lacks the datacenter tensor core** (tcgen05/TMEM/2-CTA) — a hard, ISA-level gate, not a binning difference.
+2. **Consumer Blackwell (RTX 50xx) lacks the datacenter tensor core** (tcgen05/TMEM/2-CTA) — a hard, ISA-level gate, not a binning difference. The gate is on the *matrix datapath only*: TMA, cluster barriers, the transaction-byte mbarrier, `ELECT` and `USETMAXREG` warp specialization are all present at full Hopper class count.
 3. **Blackwell-Ultra (SM103/GB300) sacrifices INT8 tensor** (`UTCIMMA`) for FP16 special-function throughput.
 4. **Hopper is the single largest expansion** (+41 mnemonics): TMA, CGA clusters, warpgroup MMA, and async barriers all arrive together.
 5. **The matrix datapath was redesigned twice** in three generations — Ampere/Ada `HMMA`/`QMMA` → Hopper warpgroup `*GMMA` → Blackwell async `UTC*MMA` + tensor memory.

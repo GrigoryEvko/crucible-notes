@@ -81,10 +81,11 @@ Legality by pipeline stage is stored as a `VALID_IN_SHADERS` bitmask plus
 | `$ST_UNKNOWN` | sentinel → always illegal |
 
 Capability tiers on SM90 (202 primary mnemonics): **156 universal (`ISHADER_ALL`)**,
-**34 compute/trap-only**, **11 graphics-gated**, 1 mixed.
+**34 compute/trap-only**, **9 graphics-gated**, 3 mixed.
 
 - **Compute/TRAP-only** (illegal in any graphics shader) — the Hopper async/tensor/cluster core: `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`, `WARPGROUP[SET]`, `UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF`/`UTMACCTL`/`UTMACMDFLUSH`, `UBLKCP`/`UBLKRED`/`UBLKPF`, `LDGSTS`/`LDSM`/`STSM`, `UCGABAR*`/`SETCTAID`, `LDS`/`STS`/`STAS`/`REDAS`, `BAR`/`SYNCS`/`ARRIVES`, `USETMAXREG`/`USETSHMSZ`, `ATOMS`.
-- **Graphics-gated** (require a pipeline stage) — `IPA`, `ISBERD`, `AL2P`, `ALD`, `AST`, `OUT`, `KILL`, `LDTRAM`, `CS2R`, `VOTE`, `CSMTEST` (attribute interpolation / fragment kill / SBE read).
+- **Graphics-gated** (require a pipeline stage) — `IPA`, `ISBERD`, `AL2P`, `ALD`, `AST`, `OUT`, `KILL`, `LDTRAM`, `CSMTEST` (attribute interpolation / fragment kill / SBE read).
+- **Mixed** — `CS2R` and `VOTE` carry both an `ISHADER_ALL` class and a graphics-restricted class, so they are legal in compute; a compute kernel reading `%clock64`/`%globaltimer` emits `CS2R` and one using `vote.sync` emits `VOTE` on SM90 and SM120 alike.
 
 The compute-only surface grows monotonically: **55 (Turing) → 143 (Hopper) → 224
 (Blackwell-DC SM100)** classes — nearly a quarter of SM100's ISA is illegal outside

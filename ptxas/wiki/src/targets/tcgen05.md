@@ -408,13 +408,13 @@ The `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` attribute tags objects compiled 
 
 ### SM 100 vs SM 103 Differences
 
-Both sm_100 and sm_103 share the same tcgen05 instruction set, but they have **distinct** internal profile codes (sm_100=`0x9000`/36864, sm_103=`0x9003`/36867) and distinct per-SM dispatch-table handler functions. The differences between sm_100 and sm_103 are:
+sm_100 and sm_103 share most of the tcgen05 instruction set but **not all of it**, and they have distinct internal profile codes (sm_100=`0x9000`/36864, sm_103=`0x9003`/36867) and distinct per-SM dispatch-table handler functions. The differences are:
 
+- **sm_103 drops integer tensor.** `tcgen05.mma.kind::i8` compiles to `UTCIMMA` on sm_100a but is rejected on sm_103a with `Feature '.kind::i8' not supported on .target 'sm_103a'`. The decoded SASS tables agree: `utcimma` classes number 4 on sm_100 and sm_110, and **0** on sm_103. The MX-dedicated `utcmxqmma` classes are likewise sm_100-only (4 on sm_100, 0 on sm_103 and sm_110).
 - Different Handler A and Handler B capability accessor functions (sm_100: `sub_609C30`/`sub_609BD0`; sm_103: `sub_608F20`/`sub_609D20`)
 - Different intrinsic table initializers (sm_100: `sub_60A910`; sm_103: `sub_60A700`)
-- sm_103 may expose additional capability flags for GB300-specific features
 
-Both targets produce identical SASS for tcgen05 instructions. The `f` sub-variants (sm_100f, sm_103f) allow cross-compilation within the family: sm_100f code can run on sm_103 hardware.
+For the instructions both targets accept, the emitted SASS matches. The `f` sub-variants (sm_100f, sm_103f) allow cross-compilation within the family.
 
 ## Compiler Pipeline
 

@@ -126,8 +126,9 @@ CALL.REL.NOINC `($k$helper) ;
 BSYNC.RECONVERGENT B0 ;
 ```
 
-The modifier is absent on Hopper and earlier (`BSSY B0` / `BSYNC B0`), present on
-SM100 and SM120 — a binary-RE-only observation, as Blackwell post-dates the
+The modifier is absent on Hopper and earlier (`BSSY B0` / `BSYNC B0`) and present on
+every Blackwell decoder — SM100, SM103, SM110 and SM120/121 each carry four
+`RECONVERGENT` classes — a binary-RE-only observation, as Blackwell post-dates the
 convergence-barrier model documented for Turing→Hopper here. It does not change the
 barrier file, the membership-mask semantics, or the reconvergence-PC operand; it makes
 the reconvergence intent of the barrier explicit in the encoding.

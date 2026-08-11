@@ -24,9 +24,12 @@ ptxas tracks five distinct tensor core generations, each introducing new SASS op
 |---|---|---|---|---|
 | 1st | 75 (Turing) | HMMA (m16n8k8, m8n8k16) | `wmma.mma` | FP16 tensor cores; INT8/INT4/B1 WMMA |
 | 2nd | 80 (Ampere) | HMMA (m16n8k16), IMMA, DMMA, BMMA | `wmma.mma`, `mma.sync` | BF16, TF32, FP64, structured sparsity |
-| 3rd | 89 (Ada) | HMMA (extended) | `mma.sync` | FP8 (E4M3, E5M2), block-scale MMA |
+| 3rd | 89 (Ada) | QMMA | `mma.sync` | FP8 (E4M3, E5M2) per-warp |
 | 4th | 90 (Hopper) | WGMMA | `wgmma.mma_async` | Warpgroup MMA, async pipeline, sub-byte sparse |
-| 5th | 100 (Blackwell) | UTCHMMA, UTCIMMA, tcmma | `tcgen05.mma`, `tcgen05.mma.ws` | Tensor memory (TMEM), warp-shared, block-scale |
+| 5th | 100/103/110 (Blackwell DC) | UTCHMMA, UTCIMMA, tcmma | `tcgen05.mma`, `tcgen05.mma.ws` | Tensor memory (TMEM), warp-shared, block-scale |
+| 5th | 120/121 (Blackwell consumer) | QMMA.SF, OMMA.SF | `mma.sync…block_scale` | Per-warp MX block-scale (FP8/FP6/FP4); no TMEM |
+
+Block-scale MMA is **not** an Ada feature — `mma…block_scale` is rejected on sm_89, sm_90a, sm_100a, sm_103a and sm_110a, and is accepted only on sm_120a/sm_121a. Ada's contribution is the per-warp FP8 `QMMA` class.
 
 ### Scheduling Unit Names
 
@@ -170,13 +173,14 @@ Note the `.param .align 16 .b32 mma_dst[N]` return convention — MMA results ar
 | m8n8k4 | f64 | 80 | DMMA | Double-precision |
 | m8n8k16 | f16 | 75 | HMMA | Original Turing shape |
 | m8n8k32 | s4/u4 | 75 | IMMA | Sub-byte integer |
-| m8n8k128 | b1 | 75 | BMMA | 1-bit (XOR/AND pop) |
+| m8n8k128 | b1 | 75 | BMMA | 1-bit (`XOR` from sm_75, `AND` from sm_80; emulated on Blackwell) |
 | m16n8k8 | f16 | 75 | HMMA | Asymmetric Turing shape |
 | m16n8k16 | f16, bf16, s8/u8 | 80 | HMMA, IMMA | Primary Ampere shape |
 | m16n8k32 | s8/u8, s4/u4 | 80/90 | IMMA | Integer, sub-byte at sm_90 |
 | m16n8k64 | s4/u4 | 90 | IMMA | Hopper sub-byte extension |
-| m16n8k128 | s4/u4 (sparse), b1 | 90 | IMMA, BMMA | Hopper sparse sub-byte |
-| m16n8k256 | b1 | 90/100 | BMMA | Extended 1-bit MMA |
+| m16n8k128 | s4/u4 (sparse) | 90 | IMMA | Hopper sparse sub-byte |
+| m16n8k128 | b1 | 80 | BMMA | `BMMA.168128`; emulated on Blackwell |
+| m16n8k256 | b1 | 80 | BMMA | `BMMA.168256`; emulated on Blackwell |
 
 ### MMA Validation
 
@@ -289,7 +293,7 @@ These `mdata` functions compute sparse metadata for Blackwell's 5th-gen tensor c
 | `__cuda_sm_10x_mma_bit_internal_xor_m16n8k128` | m16n8k128 | XOR | same as AND |
 | `__cuda_sm_10x_mma_bit_internal_xor_m16n8k256` | m16n8k256 | XOR | same as AND |
 
-Blackwell adds the AND reduction mode for 1-bit MMA (sm_90 only had XOR).
+Both reduction modes are registered, but no Blackwell target has a native `BMMA` class — the decoded SASS tables carry `bmma` on sm_75 through sm_90 and **zero** `bmma` classes on sm_100, sm_103, sm_110, sm_120 and sm_121. On Blackwell ptxas lowers 1-bit MMA onto the integer unit: `mma…b1.xor.popc` emits `MOVM.U4TO8.M832` unpacks plus `LOP3`/`SHF` and `IMMA.16832.U8.U8`. The two source ops also have different floors — `XOR` is native from sm_75, `AND` requires sm_80, and on sm_90 only `AND` is native (a `.xor.popc` there emits an explicit `LOP3` XOR feeding `BMMA.88128.AND.POPC`).
 
 ## WGMMA — Warpgroup MMA (SM 90+)
 
@@ -508,7 +512,7 @@ Complete data type support across tensor core generations as visible in the bina
 | FP8 E5M2 | `.e5m2` | 8b | 89 | Ada/Hopper FP8 MMA |
 | INT8 | `.s8`, `.u8` | 8b | 72 | IMMA integer MMA |
 | INT4 | `.s4`, `.u4` | 4b | 72 | IMMA sub-byte MMA |
-| INT1 | `.b1` | 1b | 75 | BMMA 1-bit MMA (XOR/AND) |
+| INT1 | `.b1` | 1b | 75 | BMMA 1-bit MMA (`XOR` sm_75+, `AND` sm_80+); no native class on Blackwell |
 | UE8M0 | `.ue8m0x2` | 8b (packed) | 100 | Block-scale exponent factor |
 | B1024 | `.b1024` | 1024b | 100 | TMEM-width operand |
 

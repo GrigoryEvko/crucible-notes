@@ -9,6 +9,15 @@
 > feature; the model is presented for SM90a. Where the encoding tables show Blackwell
 > (SM100+) extending the mechanism, it is called out as decoder-only.*
 
+The mechanism carries forward unchanged across the whole Blackwell lineup. The
+decoded tables hold the same four `cgabar*` classes and one `setctaid`,
+`endcollective` and `cgaerrbar` class on SM90 through SM121, and the same probe
+kernel (`mapa.shared::cluster` + `st.shared::cluster` + `barrier.cluster.arrive`/
+`wait`) assembles for `sm_90`, `sm_100`, `sm_120` and `sm_121` alike, emitting the
+identical `S2UR SR_CgaCtaId` / `UCGABAR_ARV` / `UCGABAR_WAIT` / `CGAERRBAR`
+sequence. Clusters and DSMEM are present on consumer Blackwell, not a
+datacenter-only feature, and they need no arch-conditional target.
+
 A **thread-block cluster** — called a **CGA** (*cooperative grid array*) throughout
 the machine model and the SASS encoding — is a second level of the launch hierarchy
 that sits between the grid and the CTA. A grid of clusters is launched; each cluster
@@ -277,5 +286,7 @@ dedicated opcode — the multicast routing rides in the memory descriptor of an 
 - [Architecture Evolution](architecture-evolution.md) — where the CGA / `UCGABAR*` /
   `ELECT` / `SETCTAID` family first appears (Hopper, SM90) and how the SM75→SM121
   instruction set grew.
-- [Legality & Capabilities](legality-and-capabilities.md) — the `a`-suffix gate
-  (`sm_90a`) that the cluster, DSMEM, and async families require.
+- [Legality & Capabilities](legality-and-capabilities.md) — the shader-type gate that
+  makes the cluster, DSMEM, and async families compute-only. These families assemble
+  for the plain `sm_90`/`sm_100`/`sm_120` targets; the `a`-suffix gate applies to
+  `wgmma`, `tcgen05` and `setmaxnreg`, not to clusters, DSMEM or TMA.

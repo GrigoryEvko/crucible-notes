@@ -1286,7 +1286,7 @@ The HW limit (`alloc+756`) and the per-class `RegClassDesc.max_regs` field (`+88
 | `--device-function-maxrregcount=N` | `device-function-maxrregcount` | Overrides `-maxrregcount` for `-c` compilations; ignored for whole-program. Diagnostic `"Overriding global maxrregcount %d with entry-specific value %d %s"` records the substitution. |
 | `.maxnreg N` (PTX directive) | `of .maxnreg` | Per-function override; takes precedence over the CLI value when `--override-directive-values` is not set. |
 | `.minnctapersm N` (PTX) | `minnctapersm` | Drives occupancy target. Ignored if `-maxrregcount` is also given (diagnostic `"... ignored if -maxrregcount option is used"`). |
-| `setmaxnreg.inc/dec` (SASS) | `setmaxnreg.inc/dec` | Runtime per-warp register pool adjustment on sm90+. Validated against the static budget; see the bail-out diagnostics below. |
+| `setmaxnreg.inc/dec` (SASS) | `setmaxnreg.inc/dec` | Runtime per-warp register pool adjustment, accepted only on arch-conditional targets (`sm_90a`, `sm_100a`/`f`, `sm_120a`/`f`, `sm_121a`); the base `sm_90`/`sm_100`/`sm_120` targets reject it. Lowers to `USETMAXREG.TRY_ALLOC.CTAPOOL`/`.DEALLOC.CTAPOOL`. Validated against the static budget; see the bail-out diagnostics below. |
 | `--register-usage-level=[0..10]` | `register-usage-level` | Bias knob (default 5). Maps to OCG knob index that scales the spill-cost multiplier at `alloc+1548` (default 4.0). Higher values trade extra registers for fewer spills. |
 
 `setmaxnreg.inc/dec` carries five rejection paths, all emitting `Potential Performance Loss:`:

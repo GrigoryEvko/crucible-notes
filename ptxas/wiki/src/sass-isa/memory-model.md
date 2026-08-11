@@ -52,8 +52,12 @@ block. Its byte layout is fixed and was read directly out of emitted SASS:
 | `0x18` … | shared-window / local-window base addresses |
 | `0x28` | initial **stack pointer** (loaded as the very first `LDC R1, c[0x0][0x28]`) |
 | `0x30` … | grid-id, launch metadata |
-| descriptor slot | 64-bit **global-memory descriptor** — `c[0x0][0x118]` on SM75–89, `c[0x0][0x208]` on SM90 |
-| param base | **kernel parameters** — `c[0x0][0x160]` on SM75–89, `c[0x0][0x210]` on SM90 |
+| descriptor slot | 64-bit **global-memory descriptor** — `c[0x0][0x118]` on SM80–89, `c[0x0][0x208]` on SM90, `c[0x0][0x358]` on Blackwell |
+| param base | **kernel parameters** — `c[0x0][0x160]` on SM75–89, `c[0x0][0x210]` on SM90, `c[0x0][0x360]` on Blackwell |
+
+SM75 has no descriptor slot: the descriptor-addressed (`desc[UR][Ra.64]`) memory
+forms first appear at SM80, and a Turing `LDG`/`STG` takes a bare 64-bit pointer.
+The Blackwell offsets are identical on SM100 and SM120.
 
 `blockIdx` and `threadIdx` are **not** in the bank — they come from the `S2R`/`CS2R`
 special-register reads (`SR_CTAID`, `SR_TID`). Everything that is uniform across the

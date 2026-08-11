@@ -16,7 +16,7 @@
 - [SM 70-89 (Volta through Ada Lovelace)](sm70-89.md) — Feature configuration call order, complete `sub_60E7C0` flag table, atomic lowering, cumulative flag profiles
 - [SM 90 — Hopper](sm90-hopper.md) — Thread block clusters, TMA descriptor format and lowering, WGMMA, setmaxnreg, distributed shared memory
 - [SM 100 — Blackwell Datacenter](sm100-blackwell.md) — tcgen05 tensor core ISA, arch-conditional vs. family-conditional gating, cvt_packfloat FP4/FP6/MX formats
-- [SM 120 — Blackwell Consumer](sm120.md) — No tcgen05, .offset.bindless texture intrinsics, f16 texture support, mma.sync.block_scale (future)
+- [SM 120 — Blackwell Consumer](sm120.md) — No tcgen05, .offset.bindless texture intrinsics, f16 texture support, per-warp `mma.sync.block_scale`; retains the Hopper async stack (TMA, clusters, `setmaxnreg`)
 
 ## Complete SM Table
 
@@ -120,8 +120,8 @@ For the complete NVPTXSubtarget analysis, see [NVPTX Target Infrastructure](../i
 
 The NVVMIntrinsicVerifier (143KB) gates intrinsics by SM version. For the complete three-layer verification architecture, see [NVVM IR Verifier](../passes/nvvm-verify-deep.md).
 
-| Gate | SM | Intrinsics | Detail |
-|---|---|---|---|
+| SM gate | Intrinsics | Detail |
+|---|---|---|
 | sm_72 (Volta) | Convergent branch intrinsics, some atomic ops | [sm70-89 Volta](sm70-89.md#volta-sm_70--threshold-qword_4f077a8--69999) |
 | sm_75 (Turing) | Conversion type intrinsics | [sm70-89 Turing](sm70-89.md#turing-sm_75--default-architecture) |
 | sm_89 (Ada) | Specific intrinsics | [sm70-89 Ada](sm70-89.md#ada-lovelace-and-ampere-variants-sm_86--sm_89) |
@@ -156,6 +156,11 @@ See [Tensor / MMA Builtins](../builtins/tensor-mma.md) for the per-builtin ID re
 | cp.async | — | [sm_80+](sm70-89.md#ampere-sm_80--threshold-qword_4f077a8--79999) | Yes | Yes | Yes | Yes |
 | TMA (tensor memory access) | — | — | [Yes](sm90-hopper.md#tma--tensor-memory-access) | Yes | Yes | Yes |
 | TMA 2CTA mode, Im2Col_W | — | — | — | [sm_100+](sm90-hopper.md#cpasyncbulktensor-g2s-lowering-sub_36ec510) | sm_100+ | sm_100+ |
+| TMA `tile::gather4`/`scatter4` (`a`/`f` target) | — | — | — | Yes | Yes | **—** |
+
+The `tile::gather4`/`tile::scatter4` split is a ptxas-side gate: ptxas v13.1.115
+accepts them for `sm_100a`/`f`, `sm_103a`/`f` and `sm_110a`/`f`, and rejects them
+for `sm_120a`/`f` and `sm_121a`/`f`. All base (suffix-less) targets reject them.
 | setmaxnreg | — | — | [Yes](sm90-hopper.md#setmaxnreg--dynamic-register-count) | Yes | Yes | Yes |
 | fence.sc.cluster | — | — | [Yes](sm90-hopper.md#fencesccluster-instruction) | Yes | Yes | Yes |
 

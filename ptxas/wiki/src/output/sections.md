@@ -498,7 +498,7 @@ ptxas v13.0.88 defines 97 EIATTR codes numbered 0 through 96 (plus the `EIATTR_E
 | 81 | `0x51` | `EIATTR_TCGEN05_1CTA_USED` | Idx | Blackwell |
 | 82 | `0x52` | `EIATTR_TCGEN05_2CTA_USED` | Idx | Blackwell |
 | 83 | `0x53` | `EIATTR_GEN_ERRBAR_AT_EXIT` | Idx | Blackwell |
-| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Idx | Blackwell |
+| 84 | `0x54` | `EIATTR_REG_RECONFIG` | Idx | Hopper |
 | 85 | `0x55` | `EIATTR_ANNOTATIONS` | Free | Metadata |
 | 86 | `0x56` | `EIATTR_UNKNOWN` | — | Sentinel |
 | 87 | `0x57` | `EIATTR_STACK_CANARY_TRAP_OFFSETS` | Free | Offsets |
@@ -751,7 +751,7 @@ Not all EIATTR codes are valid on all SM architectures. The function `sub_1C9784
 | `0x50` (SPARSE_MMA_MASK) | `sub_1C97840(0x50, sm)` | SM 100+ (Blackwell) |
 | `0x51` (TCGEN05_1CTA) | `sub_1C97840(0x51, sm)` implicit | SM 100+ |
 | `0x52` (TCGEN05_2CTA) | `sub_1C97840(0x52, sm)` implicit | SM 100+ |
-| `0x54` (REG_RECONFIG) | `sub_1C97840(0x54, sm)` implicit | SM 100+ |
+| `0x54` (REG_RECONFIG) | `sub_1C97840(0x54, sm)` implicit | SM 90a+ (arch-conditional targets only) |
 
 The `sub_1C97840` function takes an EIATTR code and the SM version from the ELFW object's field at offset 624, returning a boolean. This prevents older EIATTR codes from appearing in Blackwell cubins and prevents Blackwell-only codes from appearing in Hopper cubins.
 

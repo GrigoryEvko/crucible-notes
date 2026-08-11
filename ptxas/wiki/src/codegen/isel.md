@@ -307,7 +307,7 @@ The type qualifier disappears from the instruction syntax during conversion. It 
 
 The MercConverter gates operations by SM version through the architecture vtable. An instruction available natively on one SM may require a multi-instruction lowering sequence on another:
 
-- **64-bit integer arithmetic** on SM 50–75 (no native 64-bit ALU): splits into 32-bit hi/lo pairs
+- **64-bit integer arithmetic** on SM 50–110 (no native 64-bit integer ALU): splits into 32-bit hi/lo pairs — `add.s64` lowers to `IADD3` + `IADD3.X` (carry-chained) and `min.s64` to an `ISETP…EX` compare pair plus two `SEL`. Consumer Blackwell is the first target with native 64-bit integer classes: on sm_120/sm_121 the same PTX lowers to a single `IADD.64` and a single `IMNMX.S64`
 - **FP16 operations** on pre-SM 53 targets: promoted to FP32 (handled by Phase 2 `PromoteFP16`)
 - **`bfe`/`bfi` variants**: some bit-field extract/insert modes not supported on all targets
 - **Tensor core intrinsics**: SM 70 has HMMA v1, SM 75 has HMMA v2, SM 80+ has HMMA v3/DMMA, SM 100 has TCGen05
