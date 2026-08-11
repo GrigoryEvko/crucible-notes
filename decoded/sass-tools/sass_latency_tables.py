@@ -27,8 +27,12 @@ operand-collect timing.  Those constants come from differential analysis of
 emitted SASS, held as a per-(family, prod-pipe, cons-pipe) matrix
 (coupled_stall_matrix.tsv).
 
-Result-band provenance.  The completion-latency bands are GPU-measured on sm_89
-(the one part we can run); ``band_provenance(mnem, arch)`` labels how each band
+Result-band provenance.  Most completion-latency bands are GPU-measured on sm_89
+(the one part we can run); the exceptions are the stores and the tiered global
+loads, whose band is ptxas's static critical-path weight rather than a silicon
+number (a store is not on a RAW completion path and a global load has no single
+latency -- its per-tier silicon values live in ``memory_latency``).
+``band_provenance(mnem, arch)`` labels how each band
 maps to another arch -- "gpu" on sm_89, "family" within its sm_8x descriptor
 family (sm_80/86/90/90a), "inherited" for the sm_7x / sm_10x families (ptxas's
 scalar band model is family-invariant there and no GPU is available to refine
@@ -504,13 +508,31 @@ _MEM_REPRESENTATIVE_OPS = {"LDG", "LDL", "LD", "ATOMG", "ATOM", "LDGSTS"}
 
 
 @lru_cache(maxsize=1)
+def _weight_derived_ops() -> frozenset[str]:
+    """Ops whose result_band is the ptxas critical-path WEIGHT, not silicon.
+
+    A store / RED is fire-and-forget and a tiered global load has no single
+    latency, so their band is taken from the `band=N(weight)` field of
+    memory_latency.tsv's source_model column -- a static ptxas scheduler input
+    read out of the binary, NOT the GPU measurement in the same row (e.g. LDG
+    band 300 vs measured 35/152/606; STG band 1 vs measured 7).  Provenance for
+    these is "binary-derived" even on sm_89: the number never came from silicon.
+    The per-tier silicon values stay reachable through memory_latency()."""
+    mem = _load_memory()
+    return frozenset(b for b in mem
+                     if b in _MEM_WEIGHT_OPS or b in _MEM_REPRESENTATIVE_OPS)
+
+
+@lru_cache(maxsize=1)
 def _measured_band() -> dict[str, int]:
     """base-mnemonic -> result band, derived purely from the measured TSVs.
 
     Resolution per op: tensor result band, then decoupled-scalar measured, then
     memory (weight for stores / tiered global loads, measured otherwise), with
     the documented caveat overrides applied last.  Nothing here is a literal
-    cycle count -- every number is read out of a TSV row."""
+    cycle count -- every number is read out of a TSV row.  Note the memory
+    weight rows are binary-derived rather than GPU-measured; see
+    _weight_derived_ops (band_provenance labels them accordingly)."""
     band: dict[str, int] = {}
 
     # tensor MMA: the inline completion band (~27 / ~26), not the HW-interlock
@@ -632,11 +654,20 @@ def band_provenance(mnem: str, arch: str = "SM89") -> str:
                        value may differ (e.g. Blackwell HBM vs Ada DRAM), but
                        ptxas's scheduling band model is family-invariant here.
       "binary-derived" the arch-invariant ptxas scalar-oracle band, a
-                       class-derived fallback, or a static tensor-async row
-                       (wgmma / tcgen05) -- read from the binaries, not the GPU.
+                       class-derived fallback, a static tensor-async row
+                       (wgmma / tcgen05), or a memory op whose band is ptxas's
+                       critical-path weight rather than a silicon measurement
+                       (the stores and the tiered global loads -- see
+                       _weight_derived_ops) -- read from the binaries, not the GPU.
       "anchor"         the structural ALU default (6).
+
+    Only a band whose cycle count actually came off silicon is labelled "gpu" /
+    "family" / "inherited"; a weight-sourced band stays "binary-derived" on
+    every arch including sm_89.
     """
     base = _base_mnem(mnem)
+    if base in _weight_derived_ops():       # ptxas weight, never a measurement
+        return "binary-derived"
     if base in _measured_band():            # an sm_89-silicon-measured band
         if _arch_num(arch) == 89:
             return "gpu"
@@ -921,8 +952,17 @@ def _selfcheck() -> int:
     chk("provenance(MUFU,SM100) inherited",
         band_provenance("MUFU", "SM100"), "inherited")
     chk("provenance(LDS,SM89) gpu", band_provenance("LDS", "SM89"), "gpu")
-    chk("provenance(LDG,SM100) inherited",
-        band_provenance("LDG", "SM100"), "inherited")
+    chk("provenance(LDC,SM89) gpu", band_provenance("LDC", "SM89"), "gpu")
+    # the stores / tiered global loads carry ptxas's critical-path WEIGHT, not a
+    # silicon number -- they must NOT claim GPU provenance on any arch.
+    chk("provenance(LDG,SM89) weight",
+        band_provenance("LDG", "SM89"), "binary-derived")
+    chk("provenance(LDG,SM100) weight",
+        band_provenance("LDG", "SM100"), "binary-derived")
+    chk("provenance(STG,SM89) weight",
+        band_provenance("STG", "SM89"), "binary-derived")
+    chk("provenance(RED,SM89) weight",
+        band_provenance("RED", "SM89"), "binary-derived")
     chk("provenance(HMMA,SM89) gpu", band_provenance("HMMA", "SM89"), "gpu")
     # tensor genuinely shifts by arch (inline coupled vs group-async)
     chk("tensor_latency(HMMA,SM89)", tensor_latency("HMMA", "SM89"), (True, 27))
