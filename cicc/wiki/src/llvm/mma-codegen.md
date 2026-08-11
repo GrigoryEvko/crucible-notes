@@ -490,7 +490,7 @@ The "kind" field occupies bits `[8:6]` of the packed operand word:
 
 **Sparsity** (bit 5): Adds one extra operand. Restricted for MXF4 and MXF4NVF4 types to arch-conditional variants only.
 
-**Scale input accumulator** (bit 4): Only usable with f16 and tf32 types. Not supported on sm_100a (v=1001) or sm_103a (v=1033), but supported on sm_100 (v=1000), sm_103 (v=1030), and sm_120+ (v>=1101).
+**Scale input accumulator** (bit 4): Only usable with f16 and tf32 types. Not supported on sm_100a (v=1001) or sm_103a (v=1031), but supported on sm_100 (v=1000), sm_103 (v=1030), and v>=1101 — which is sm_110a/sm_110f, not the sm_120 family. The bit rides the tcgen05 instruction descriptor, so it does not reach sm_120/121 at all: those targets have no tcgen05.
 
 **Collector modes** (emitted by `sub_35F38B0`):
 

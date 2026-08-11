@@ -80,8 +80,13 @@ Legality by pipeline stage is stored as a `VALID_IN_SHADERS` bitmask plus
 | `PS` | pixel |
 | `$ST_UNKNOWN` | sentinel → always illegal |
 
-Capability tiers on SM90 (202 primary mnemonics): **156 universal (`ISHADER_ALL`)**,
-**34 compute/trap-only**, **9 graphics-gated**, 3 mixed.
+Capability tiers on SM90, counted **by primary mnemonic** (202): **156 universal
+(`ISHADER_ALL`)**, **34 compute/trap-only**, **9 graphics-gated**, 3 mixed. Counted
+**by class** — the basis used for the growth figures below, and the one that
+reproduces directly from the tables — SM90 carries 1589 classes with a
+`VALID_IN_SHADERS` property: 1408 universal, 143 compute/trap-only, 38
+graphics-gated. The two bases differ because one mnemonic spans several operand-form
+classes; always state which basis a count uses.
 
 - **Compute/TRAP-only** (illegal in any graphics shader) — the Hopper async/tensor/cluster core: `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`, `WARPGROUP[SET]`, `UTMALDG`/`UTMASTG`/`UTMAREDG`/`UTMAPF`/`UTMACCTL`/`UTMACMDFLUSH`, `UBLKCP`/`UBLKRED`/`UBLKPF`, `LDGSTS`/`LDSM`/`STSM`, `UCGABAR*`/`SETCTAID`, `LDS`/`STS`/`STAS`/`REDAS`, `BAR`/`SYNCS`/`ARRIVES`, `USETMAXREG`/`USETSHMSZ`, `ATOMS`.
 - **Graphics-gated** (require a pipeline stage) — `IPA`, `ISBERD`, `AL2P`, `ALD`, `AST`, `OUT`, `KILL`, `LDTRAM`, `CSMTEST` (attribute interpolation / fragment kill / SBE read).

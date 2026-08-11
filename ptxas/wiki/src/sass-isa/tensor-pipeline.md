@@ -553,10 +553,23 @@ consume. The full op taxonomy and the datacenter/consumer split are catalogued i
   accumulator is committed and waited via `WARPGROUP.ARRIVE`/`.WAIT`/`.DEPBAR` and the
   per-instruction `gsb` scoreboard.
 - **Sparsity** adds a metadata register + selector and halves the A fragment.
-- **Latencies** (result latency charged to a dependent consumer, from the ptxas
-  scheduling tables): `HMMA m16n8k8` = 14 (Volta) → 16 (Ampere), `HMMA m16n8k16` =
-  22 → 24, `DMMA` = 18, warpgroup `GMMA` = 20; an `HMMA`→`HMMA` accumulator chain
-  forwards in **0** cycles. Full table in
+- **Latencies.** Two distinct quantities, often conflated. From the **ptxas
+  scheduling tables** (per-shape result latency charged to a dependent consumer):
+  `HMMA m16n8k8` = 14 (Volta) → 16 (Ampere), `HMMA m16n8k16` = 22 → 24, `DMMA` = 18,
+  warpgroup `GMMA` = 20; an `HMMA`→`HMMA` accumulator chain forwards in **0** cycles.
+  Measured against **emitted SASS and the sm_89 GPU**, the per-op result-latency band
+  is 27–28 for `HMMA`/`IMMA`/`BMMA` and 25–26 for `DMMA`, and ptxas spaces a
+  dependent consumer **23** issue-cycles after the producer on the `m16n16k16`
+  lowering (8+7+8). The enforcement mechanism differs by op: `HMMA`/`IMMA`/`BMMA` are
+  **coupled** — ptxas sets no write-scoreboard (`dst_wr_sb=7`) and the consumer
+  carries no wait, so ordering rests on summed `usched` stalls — while `DMMA` is
+  **decoupled**, carrying a real write-scoreboard the consumer waits on. On sm_89 the
+  tensor read is additionally interlocked in hardware: patching the producer→use gap
+  down to 3 still reproduces the baseline bit-for-bit, whereas the same harness
+  corrupts an under-stalled `FFMA` chain. Hopper `*GMMA` and Blackwell `tcgen05.mma`
+  are group-scoreboard async and carry no inline producer→use stall at all; their
+  accumulator read is gated by `wgmma.wait_group` / `tcgen05.wait` instead. Full
+  table in
   [Latency Model](../scheduling/latency-model.md#functional-unit-base-latencies).
 - **The unit was redesigned three times**: Volta `884` steps → Ampere wide SuperHMMA +
   `IMMA` wakeup domain → Hopper async warpgroup + SMEM descriptor → Blackwell tcgen05 +

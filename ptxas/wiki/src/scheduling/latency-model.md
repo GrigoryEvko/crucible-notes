@@ -682,6 +682,17 @@ sm_110/120/121**, which install this exact table via the per-SM selector `sub_AB
 `0x2245060` (sm_7x — sm_60/70/72/75). Dependency-rule tables are **per-SM** (sm_110/120/121
 resolve to the sm_103 rule + scoreboard tables; sm_120 ≡ sm_121, byte-identical).
 
+**Consumer-Blackwell coverage gap.** sm_120/121 add three class families that no
+entry in these tables was written for: the uniform floating-point ALU (`uf*` grows
+from 7 classes to 55 — `UFADD`/`UFFMA`/`UFMUL`/`UFSEL`/`UFSETP`/`UF2F`/`UF2I`,
+plus `UI2F`/`UI2I`/`UIABS`), the native 64-bit integer ALU (`iadd_64`, `mov_64`,
+`sel_64`, `isetp_64`, `imnmx_64` — absent on sm_100/103/110), and the `rml2`
+remote-L2 load forms. Because sm_120/121 install the sm_103 dependency rules,
+producer→consumer edges for these families fall through to the generic uniform
+anchors rather than to measured values. They cannot be measured on an sm_89 part —
+the classes do not exist there — so the model carries them at anchor provenance
+until consumer-Blackwell silicon is available to probe.
+
 #### Latency / sched-class descriptor (72 B)
 
 ```text
