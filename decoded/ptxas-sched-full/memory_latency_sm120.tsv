@@ -1,0 +1,52 @@
+# sm_120 (consumer Blackwell) memory-op load-use latency, per space and cache tier.
+#
+# Companion to memory_latency.tsv (sm_89).  Same method: single-warp clock64
+# pointer-chase in which each memory op's address is a strict data dependency on
+# the prior op's loaded value, so the SM cannot hide the latency behind ILP and
+# the per-op cycle count IS the load-use latency.  clock64 counts SM cycles, so
+# the figures are boost-clock invariant.  Each value is stable to +/-1 cycle
+# across repeated launches; every chase is warmed before the timed pass.
+#
+# Part.  NVIDIA RTX PRO 6000 Blackwell Server Edition, sm_120, 188 SMs,
+# 2430 MHz, 512-bit GDDR7 (~1598 GB/s theoretical, 1535 GB/s measured stream),
+# L2 = 128 MiB, max shared memory 100 KiB/SM.  CUDA 13.2 (ptxas V13.2.86),
+# driver 610.43.03.
+#
+# Tier isolation.  The L1/shared array is unified and its split is a per-kernel
+# carveout, so "L1_hit" is measured with no dynamic shared memory requested
+# (L1-preferring carveout) and an 8 KiB working set.  L2 = 4 MiB set (overflows
+# L1, far inside the 128 MiB L2; warmed twice before timing, since a cold 4 MiB
+# set reads at DRAM latency).  DRAM = 512 MiB set.
+#
+# Caveat on STG.  The sm_89 table's STG row measures store-to-load FORWARDING
+# (~7 cycles, the store hits L1 and forwards).  The sm_120 row here uses a
+# volatile store/load pair, which defeats forwarding and measures a real
+# write-then-read round trip -- a different quantity.  The two STG numbers are
+# NOT comparable across the two files.
+#
+# UBLKCP is the TMA bulk-copy round trip (arrive.expect_tx -> cp.async.bulk ->
+# mbarrier try_wait spin) for a 4 KiB tile issued by one elected lane.  It has no
+# sm_89 counterpart: sm_89 has no TMA engine.  Both it and LDGSTS are full
+# issue-to-completion round trips measured with nothing else in flight; under a
+# warp-specialized producer/consumer pipeline ~97% of this latency is hidden
+# behind concurrent math (see the overlap note below).
+#
+# Overlap.  With one producer warp issuing TMA and seven consumer warps running a
+# dependent FMA chain, adding 0.143 ms of standalone TMA traffic costs 0.004 ms of
+# wall clock -- 97% of the transfer is absorbed.  Overlap efficiency falls as the
+# kernel becomes math-light (~69% when the math side is 0.08 ms).
+#
+op	space	cache_tier	sets_scoreboard	source_model	gpu_measured_latency	note
+LDG	global	L1_hit	write_sb	band=300(weight)	62	dependent LDG chase, 8 KiB set, L1-preferring carveout; 1.8x the sm_89 L1 hit
+LDG	global	L2	write_sb	band=300(weight)	352	4 MiB set inside the 128 MiB L2; 2.3x the sm_89 L2 latency (much larger array)
+LDG	global	DRAM_miss	write_sb	band=300(weight)	857	512 MiB set; GDDR7 miss, 1.4x the sm_89 DRAM latency
+LDL	local	L1_hit	write_sb	band=300(weight)	40	dependent local-frame chase resident in L1
+LDS	shared	smem	write_sb	band=30(weight)	34	dependent LDS chase in shared memory
+LDC	const	const_cache_hit	write_sb	band=24(weight)	41	dependent LDC chase, 2 KiB set resident in the constant cache
+STG	global	L1_writeback	write_sb	band=1(weight)	341	volatile store->load round trip (forwarding defeated); NOT comparable to the sm_89 STG row
+STS	shared	smem	write_sb	band=1(weight)	36	volatile shared store->load round trip
+ATOMG	global	L2_rmw	rd_wr_sb	band=300(weight)	406	atom.global.add.u32 returning old value, dependent round trip through the L2 RMW
+ATOMS	shared	smem_rmw	rd_wr_sb	band=30(weight)	29	atom.shared.add.u32 single-lane dependent round trip, uncontended
+RED	global	L2_rmw	write_sb	band=1(weight)	45	red.global.add.u32, no return value; back-to-back issue throughput, not a RAW path
+LDGSTS	global	async_copy_L2	dep_bar	band=300(weight)	540	cp.async.cg + commit_group + wait_group 0, L2-resident round trip
+UBLKCP	global	tma_bulk_L2	trans_bar	band=300(weight)	779	TMA 4 KiB bulk copy: arrive.expect_tx -> cp.async.bulk -> mbarrier try_wait, nothing else in flight

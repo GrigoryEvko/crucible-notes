@@ -186,6 +186,15 @@ def _arch_num(arch: str) -> int:
     return int(m.group(1)) if m else 89
 
 
+# Arches with their own GPU-measured memory table (see _load_memory).
+_SM120_ARCHS = frozenset({120, 121})
+
+
+def _has_own_memory_table(arch: str) -> bool:
+    """True when `arch` carries its own measured memory_latency TSV."""
+    return _arch_num(arch) in _SM120_ARCHS
+
+
 # Scalar latency oracle: Ori-opcode -> result band {6,13,24,30,300}.
 
 @lru_cache(maxsize=1)
@@ -225,6 +234,7 @@ def _load_oracle() -> dict[str, int]:
 
 DECOUPLED_TSV = SCHED_DIR / "decoupled_scalar_latency.tsv"
 MEMORY_TSV = SCHED_DIR / "memory_latency.tsv"
+MEMORY_TSV_SM120 = SCHED_DIR / "memory_latency_sm120.tsv"
 TENSOR_TSV = SCHED_DIR / "tensor_latency.tsv"
 UPRED_TSV = SCHED_DIR / "uniform_pred_hazards.tsv"
 ASYNC_TSV = SCHED_DIR / "async_scoreboards.tsv"
@@ -293,15 +303,20 @@ def decoupled_latency(mnem: str, arch: str = "SM89") -> tuple[str, int]:
 
 # -- memory load/store latency, per space and global cache tier.
 
-@lru_cache(maxsize=1)
-def _load_memory() -> dict[str, list[dict]]:
-    """base-mnemonic -> list of per-(space,tier) rows.
+@lru_cache(maxsize=4)
+def _load_memory(arch: str = "SM89") -> dict[str, list[dict]]:
+    """base-mnemonic -> list of per-(space,tier) rows, for the arch's own TSV.
 
     Each row dict: {space, tier, scoreboard, weight (the band=N critical-path
     weight ptxas assigns), measured (gpu_measured_latency)}.  Columns: op space
-    cache_tier sets_scoreboard source_model gpu_measured_latency note."""
+    cache_tier sets_scoreboard source_model gpu_measured_latency note.
+
+    Two arches carry their own GPU measurements: sm_89 (memory_latency.tsv) and
+    sm_120/sm_121 (memory_latency_sm120.tsv, measured on an RTX PRO 6000
+    Blackwell Server Edition).  Every other arch falls back to the sm_89 set."""
+    path = MEMORY_TSV_SM120 if _has_own_memory_table(arch) else MEMORY_TSV
     out: dict[str, list[dict]] = {}
-    for cols in _read_tsv_rows(MEMORY_TSV):
+    for cols in _read_tsv_rows(path):
         if len(cols) < 6:
             continue
         base = _base_mnem(cols[0]).upper()
@@ -333,13 +348,20 @@ def memory_latency(op: str, space: str | None = None,
 
     With no `space`/`tier` the cheapest representative tier is returned (the
     on-chip / L1-hit common case); pass `space=` and/or `tier=` to select a
-    specific row (e.g. memory_latency("LDG", tier="DRAM_miss") -> 606).  All
-    tiers stay exposed -- the global-load tiers measured on sm_89 are
-    L1_hit 35 / L2 152 / DRAM_miss 606.  `arch` is accepted for API symmetry; the
-    value is the sm_89 measurement (the silicon tier latencies on another arch --
-    e.g. Blackwell HBM -- are not measurable here, so band_provenance reports them
-    "inherited" off sm_89).  Raises KeyError for an unknown op."""
-    rows = _load_memory()[_base_mnem(op).upper()]
+    specific row (e.g. memory_latency("LDG", tier="DRAM_miss") -> 606).
+
+    Two arches are GPU-measured and `arch` selects between them:
+    sm_89 gives L1_hit 35 / L2 152 / DRAM_miss 606, sm_120 (and sm_121, which
+    shares its tables) gives L1_hit 62 / L2 352 / DRAM_miss 857 -- consumer
+    Blackwell is slower at every tier, the L2 step most of all (a 128 MiB array
+    against Ada's 24 MiB).  sm_120 additionally carries a UBLKCP row (the TMA
+    bulk round trip) that has no sm_89 counterpart.  Any other arch falls back to
+    the sm_89 numbers, and band_provenance reports those "inherited".
+
+    Note the two STG rows measure different things: sm_89's is store-to-load
+    forwarding (~7), sm_120's is a volatile round trip (341).  Raises KeyError
+    for an unknown op."""
+    rows = _load_memory(arch)[_base_mnem(op).upper()]
     cand = [r for r in rows
             if (space is None or r["space"] == space)
             and (tier is None or r["tier"] == tier)]
@@ -930,6 +952,22 @@ def _selfcheck() -> int:
     chk("memory_latency(LDG,DRAM_miss)",
         memory_latency("LDG", tier="DRAM_miss"), 606)
     chk("memory_latency(LDG,L2)", memory_latency("LDG", tier="L2"), 152)
+    # sm_120 carries its own GPU-measured memory table (RTX PRO 6000 Blackwell).
+    chk("memory_latency(LDG,L1,SM120)",
+        memory_latency("LDG", tier="L1_hit", arch="SM120"), 62)
+    chk("memory_latency(LDG,L2,SM120)",
+        memory_latency("LDG", tier="L2", arch="SM120"), 352)
+    chk("memory_latency(LDG,DRAM,SM120)",
+        memory_latency("LDG", tier="DRAM_miss", arch="SM120"), 857)
+    chk("memory_latency(LDS,SM120)", memory_latency("LDS", arch="SM120"), 34)
+    # sm_121 shares sm_120's tables byte-identically.
+    chk("memory_latency(LDG,L2,SM121)",
+        memory_latency("LDG", tier="L2", arch="SM121"), 352)
+    # TMA bulk round trip exists only on the Blackwell table.
+    chk("memory_latency(UBLKCP,SM120)", memory_latency("UBLKCP", arch="SM120"), 779)
+    # every other arch still falls back to the sm_89 measurement
+    chk("memory_latency(LDG,L2,SM100) inherits sm_89",
+        memory_latency("LDG", tier="L2", arch="SM100"), 152)
     chk("tensor_latency(HMMA)", tensor_latency("HMMA"), (True, 27))
     chk("tensor_latency(DMMA)", tensor_latency("DMMA"), (False, 25))
     k, c = uniform_pred_hazard("ISETP", "VOTE")

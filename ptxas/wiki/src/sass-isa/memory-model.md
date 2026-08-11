@@ -150,6 +150,26 @@ hardware-selectable carveout split points the front-end accepts. Requesting a si
 the hardware does not support raises a shared-memory-size class error
 (`ILLEGAL_SHARED_MEMORY_SIZE…`, `ILLEGAL_SHARED_LOCAL_OVERLAP`).
 
+**The default policy is a switch, not a slider.** Measured on sm_120 (100 KB max
+shared per SM), a dependent-load chase shows the L1 knee move as the carveout
+changes — and *any* nonzero dynamic shared-memory request collapses L1 identically,
+whether the kernel asks for 8 KB or 96 KB:
+
+| shared requested | 16 KB set | 24 KB set | 48 KB set | 96 KB set |
+|---|--:|--:|--:|--:|
+| none | 62 | 72 | 101 | 245 |
+| 8 KB, default policy | 62 | **258** | 353 | 353 |
+| 8 KB, carveout hint 0 (prefer L1) | 62 | 72 | 101 | **159** |
+
+With no shared memory requested, L1 stays resident past 64 KB; asking for 8 KB
+under the default policy drops the effective L1 to roughly 16 KB and sends a 24 KB
+working set to L2 (72 → 258 cycles). Setting
+`cudaFuncAttributePreferredSharedMemoryCarveout` to 0 restores the L1-preferring
+split while still granting the shared allocation, which is the best configuration
+measured here (159 cycles at a 96 KB footprint against 353 under the default). A
+kernel that needs only a little shared memory should set the hint explicitly
+rather than accept the driver's default.
+
 ### Shared-memory atomics
 
 Atomics that target shared memory use the dedicated `ATOMS` opcode (distinct from

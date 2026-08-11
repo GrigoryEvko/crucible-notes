@@ -689,9 +689,28 @@ plus `UI2F`/`UI2I`/`UIABS`), the native 64-bit integer ALU (`iadd_64`, `mov_64`,
 `sel_64`, `isetp_64`, `imnmx_64` — absent on sm_100/103/110), and the `rml2`
 remote-L2 load forms. Because sm_120/121 install the sm_103 dependency rules,
 producer→consumer edges for these families fall through to the generic uniform
-anchors rather than to measured values. They cannot be measured on an sm_89 part —
-the classes do not exist there — so the model carries them at anchor provenance
-until consumer-Blackwell silicon is available to probe.
+anchors rather than to measured values. They do not exist on sm_89, so the model
+still carries them at anchor provenance.
+
+The **memory** tiers, by contrast, are now measured on consumer-Blackwell silicon
+(RTX PRO 6000 Blackwell Server Edition, 188 SMs, 128 MiB L2, 512-bit GDDR7) and
+are carried in `decoded/ptxas-sched-full/memory_latency_sm120.tsv`, which
+`memory_latency(..., arch="SM120")` selects:
+
+| tier | sm_89 | sm_120 |
+|---|--:|--:|
+| shared (`LDS`) | 24 | 34 |
+| `LDG` L1 hit | 35 | 62 |
+| `LDG` L2 | 152 | 352 |
+| `LDG` DRAM miss | 606 | 857 |
+| `ATOMG` L2 RMW | 276 | 406 |
+| `LDGSTS` async copy | 254 | 540 |
+| `UBLKCP` TMA bulk round trip | — | 779 |
+
+Consumer Blackwell is slower at every tier, the L2 step most of all — a 128 MiB
+array against Ada's 24 MiB. The `UBLKCP` row has no sm_89 counterpart because Ada
+has no TMA engine, and it is a standalone round trip: under a warp-specialized
+producer/consumer pipeline roughly 97% of it is absorbed behind concurrent math.
 
 #### Latency / sched-class descriptor (72 B)
 
